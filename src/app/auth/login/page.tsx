@@ -55,10 +55,30 @@ const AppleIcon = () => (
 
 const BottomWave = () => (
   <div className="w-full overflow-hidden leading-none rounded-b-3xl -mb-1">
-    <svg viewBox="0 0 500 50" preserveAspectRatio="none" className="w-full h-10 sm:h-12">
-      <path d="M0,15 C150,55 350,-5 500,25 L500,50 L0,50 Z" fill="#FFC107" opacity="0.85" />
-      <path d="M0,25 C200,-5 300,45 500,15 L500,50 L0,50 Z" fill="#28A745" />
-      <path d="M0,38 C180,20 320,50 500,30 L500,50 L0,50 Z" fill="#0D4A71" />
+    <svg viewBox="0 0 500 130" preserveAspectRatio="none" className="w-full h-20 sm:h-24 md:h-28">
+      {/* Light Ice-Blue Backdrop Swoosh (Top Right) */}
+      <path
+        d="M 280,60 C 360,20 440,30 500,20 L 500,130 L 280,130 Z"
+        fill="#E6F2FF"
+      />
+
+      {/* Top-Left Golden Yellow Swoosh */}
+      <path
+        d="M 0,0 C 90,45 180,75 270,75 C 180,85 90,65 0,110 Z"
+        fill="#FFC107"
+      />
+
+      {/* Middle Green Swoosh */}
+      <path
+        d="M 0,45 C 120,80 230,95 340,75 C 410,60 460,50 500,45 L 500,130 L 0,130 Z"
+        fill="#28A745"
+      />
+
+      {/* Deep Navy Blue Foundation */}
+      <path
+        d="M 0,95 C 100,85 200,80 300,75 C 380,70 440,65 500,60 L 500,130 L 0,130 Z"
+        fill="#0D4A71"
+      />
     </svg>
   </div>
 );
