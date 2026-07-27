@@ -871,23 +871,25 @@ export default function ParentDashboard() {
           )
         ) : tab === 'messages' ? (
           children.length === 0 ? (
-            <div className="bg-white rounded-2xl p-10 text-center shadow-sm border border-gray-100">
-              <MessageSquare size={36} className="mx-auto text-gray-300 mb-3" />
-              <p className="font-medium text-gray-700">Link a child first</p>
+            <div className="bg-slate-950 rounded-2xl p-10 text-center shadow-xl border border-slate-800 text-slate-100">
+              <MessageSquare size={40} className="mx-auto text-slate-700 mb-3" />
+              <p className="font-medium text-slate-300">Link a child first</p>
             </div>
           ) : (
             <div className="space-y-4">
-              <div className="bg-white rounded-2xl p-4 shadow-sm border border-gray-100">
-                <h2 className="font-bold text-gray-900 text-base mb-1">EduChart – Secure School & Teacher Chat</h2>
-                <p className="text-xs text-gray-500 mb-4 leading-relaxed">
+              <div className="bg-slate-950 rounded-2xl p-6 shadow-xl border border-slate-800 text-slate-100">
+                <h2 className="font-bold text-white text-lg mb-1 flex items-center gap-2">
+                  EduChart – Secure School & Teacher Chat
+                </h2>
+                <p className="text-xs text-slate-400 mb-5 leading-relaxed">
                   Chat directly and securely with your child's class teacher or the school administration office via EduChart. Phone numbers are hidden for your privacy.
                 </p>
                 
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-3 mb-4">
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-5">
                   <div>
-                    <label className="text-[10px] font-bold text-gray-400 block mb-1 uppercase tracking-wide">Select Child</label>
+                    <label className="text-[10px] font-bold text-slate-400 block mb-1.5 uppercase tracking-wide">Select Child</label>
                     <select
-                      className="input min-h-[42px]"
+                      className="w-full bg-slate-900 border border-slate-800 rounded-xl py-3 px-3.5 text-xs text-slate-100 focus:outline-none focus:border-emerald-500 focus:ring-1 focus:ring-emerald-500 transition-all font-medium"
                       value={messageForm.student_id || (children[0]?.id || '')}
                       onChange={(e) => setMessageForm((f) => ({ ...f, student_id: e.target.value }))}
                     >
@@ -897,15 +899,15 @@ export default function ParentDashboard() {
                     </select>
                   </div>
                   <div>
-                    <label className="text-[10px] font-bold text-gray-400 block mb-1 uppercase tracking-wide">Chat Channel</label>
+                    <label className="text-[10px] font-bold text-slate-400 block mb-1.5 uppercase tracking-wide">Chat Channel</label>
                     <div className="grid grid-cols-2 gap-2">
                       <button
                         type="button"
                         onClick={() => setMessageForm((f) => ({ ...f, recipient_type: 'teacher' }))}
-                        className={`py-2.5 px-3 text-xs font-semibold rounded-xl border transition-all ${
+                        className={`py-3 px-4 text-xs font-bold rounded-xl border transition-all ${
                           messageForm.recipient_type === 'teacher'
-                            ? 'bg-primary-50 border-primary-500 text-primary-700 shadow-xs'
-                            : 'bg-white border-gray-200 text-gray-500 hover:bg-gray-50'
+                            ? 'bg-emerald-600 border-emerald-500 text-white shadow-md'
+                            : 'bg-slate-900 border-slate-800 text-slate-400 hover:text-slate-200'
                         }`}
                       >
                         🏫 Class Teacher
@@ -913,10 +915,10 @@ export default function ParentDashboard() {
                       <button
                         type="button"
                         onClick={() => setMessageForm((f) => ({ ...f, recipient_type: 'school' }))}
-                        className={`py-2.5 px-3 text-xs font-semibold rounded-xl border transition-all ${
+                        className={`py-3 px-4 text-xs font-bold rounded-xl border transition-all ${
                           messageForm.recipient_type === 'school'
-                            ? 'bg-primary-50 border-primary-500 text-primary-700 shadow-xs'
-                            : 'bg-white border-gray-200 text-gray-500 hover:bg-gray-50'
+                            ? 'bg-emerald-600 border-emerald-500 text-white shadow-md'
+                            : 'bg-slate-900 border-slate-800 text-slate-400 hover:text-slate-200'
                         }`}
                       >
                         🏢 School Office
@@ -926,7 +928,7 @@ export default function ParentDashboard() {
                 </div>
 
                 {/* Conversation Box */}
-                <div className="border border-gray-100 rounded-2xl bg-slate-50 p-4 mb-4 min-h-[280px] max-h-[380px] overflow-y-auto flex flex-col gap-3">
+                <div className="border border-slate-800 rounded-2xl bg-slate-900/60 p-5 mb-5 min-h-[450px] max-h-[550px] overflow-y-auto flex flex-col gap-3.5">
                   {(() => {
                     const activeChildId = messageForm.student_id || (children[0]?.id || '');
                     const activeChild = children.find((c) => c.id === activeChildId);
@@ -942,10 +944,10 @@ export default function ParentDashboard() {
 
                     if (filteredChat.length === 0) {
                       return (
-                        <div className="my-auto text-center py-8">
-                          <MessageSquare size={32} className="mx-auto text-gray-300 mb-2" />
-                          <p className="text-xs text-gray-400 font-medium">No EduChart messages yet</p>
-                          <p className="text-[10px] text-gray-400 mt-1 max-w-[200px] mx-auto">
+                        <div className="my-auto text-center py-12">
+                          <MessageSquare size={40} className="mx-auto text-slate-700 mb-3" />
+                          <p className="text-sm text-slate-400 font-medium">No EduChart messages yet</p>
+                          <p className="text-xs text-slate-500 mt-1 max-w-[240px] mx-auto">
                             Send a secure message using the box below to start the conversation.
                           </p>
                         </div>
@@ -965,37 +967,37 @@ export default function ParentDashboard() {
                       return (
                         <div
                           key={m.id}
-                          className={`flex items-start gap-2 max-w-[90%] ${isOutbound ? 'ml-auto flex-row-reverse' : 'mr-auto'}`}
+                          className={`flex items-start gap-3 max-w-[85%] ${isOutbound ? 'ml-auto flex-row-reverse' : 'mr-auto'}`}
                         >
                           <div className="shrink-0 mt-1">
                             {avatarSrc ? (
                               <img
                                 src={avatarSrc}
                                 alt="avatar"
-                                className="w-8 h-8 rounded-full object-cover border border-slate-200 shadow-sm"
+                                className="w-9 h-9 rounded-xl object-cover border border-slate-700 shadow-sm"
                               />
                             ) : (
-                              <div className="w-8 h-8 rounded-full bg-slate-200 text-slate-700 flex items-center justify-center text-xs font-bold border border-slate-300">
+                              <div className="w-9 h-9 rounded-xl bg-slate-800 text-slate-200 flex items-center justify-center text-xs font-bold border border-slate-700">
                                 {senderInitial}
                               </div>
                             )}
                           </div>
 
                           <div
-                            className={`flex flex-col rounded-2xl p-3 shadow-xs ${
+                            className={`flex flex-col rounded-2xl p-4 shadow-md ${
                               isOutbound
-                                ? 'bg-primary-600 text-white rounded-tr-none'
-                                : 'bg-white text-gray-800 border border-gray-100 rounded-tl-none'
+                                ? 'bg-emerald-600 text-white rounded-tr-none'
+                                : 'bg-slate-900 text-slate-100 border border-slate-800 rounded-tl-none'
                             }`}
                           >
                             {!isOutbound && (
-                              <span className="text-[9px] font-bold text-primary-700 uppercase mb-1">
+                              <span className="text-[10px] font-bold text-emerald-400 uppercase tracking-wide mb-1.5">
                                 {m.sender_name}
                               </span>
                             )}
                             <ChatMediaBubble mediaUrl={m.media_url} mediaType={m.media_type} photoSrc={photoSrc} />
-                            <p className="text-xs leading-relaxed whitespace-pre-line break-words">{m.message}</p>
-                            <span className={`text-[8px] mt-1 text-right block ${isOutbound ? 'text-white/70' : 'text-gray-400'}`}>
+                            <p className="text-sm leading-relaxed whitespace-pre-line break-words">{m.message}</p>
+                            <span className={`text-[9px] mt-1.5 text-right block font-mono ${isOutbound ? 'text-emerald-100/70' : 'text-slate-500'}`}>
                               {formatDateTimeLagos(m.created_at)}
                             </span>
                           </div>
@@ -1005,8 +1007,8 @@ export default function ParentDashboard() {
                   })()}
                 </div>
 
-                {/* Message Input Box */}
-                <div>
+                {/* Message Input Box & Expanded Attachment Bar */}
+                <div className="bg-slate-900/40 p-1 rounded-2xl">
                   {selectedFile && (
                     <ChatAttachmentPreview
                       file={selectedFile}
@@ -1017,13 +1019,13 @@ export default function ParentDashboard() {
                     />
                   )}
                   {attachPhoto && (
-                    <div className="flex items-center gap-3 bg-slate-100 border border-slate-200 p-2 rounded-xl mb-2 relative">
-                      <div className="relative w-12 h-12 shrink-0 rounded-lg overflow-hidden border border-slate-300 bg-white">
+                    <div className="flex items-center gap-3 bg-slate-900 border border-slate-800 p-3 rounded-xl mb-3 relative">
+                      <div className="relative w-12 h-12 shrink-0 rounded-lg overflow-hidden border border-slate-800 bg-slate-950">
                         <img
                           src={
                             session?.avatar_url
                               ? photoSrc(session.avatar_url)
-                              : 'data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 400 300" fill="none"><rect width="100%" height="100%" rx="12" fill="%23E8F5E9"/><circle cx="200" cy="110" r="50" fill="%231B4D3E"/><path d="M130,210 C130,170 170,160 200,160 C230,160 270,170 270,210" fill="%231B4D3E"/><text x="200" y="240" font-family="sans-serif" font-size="16" font-weight="bold" fill="%231B4D3E" text-anchor="middle">MyEduRide User</text><text x="200" y="265" font-family="sans-serif" font-size="12" fill="%234CAF50" font-weight="bold" text-anchor="middle">Click to set your photo in Settings</text></svg>'
+                              : 'data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 400 300" fill="none"><rect width="100%" height="100%" rx="12" fill="%231B4D3E"/><circle cx="200" cy="110" r="50" fill="%234CAF50"/><path d="M130,210 C130,170 170,160 200,160 C230,160 270,170 270,210" fill="%234CAF50"/><text x="200" y="240" font-family="sans-serif" font-size="16" font-weight="bold" fill="%23FFFFFF" text-anchor="middle">MyEduRide User</text></svg>'
                           }
                           alt="Attachment preview"
                           className="w-full h-full object-cover"
@@ -1031,16 +1033,16 @@ export default function ParentDashboard() {
                         <button
                           type="button"
                           onClick={() => setAttachPhoto(false)}
-                          className="absolute top-0 right-0 p-0.5 bg-black/60 hover:bg-black/80 text-white rounded-bl"
+                          className="absolute top-0 right-0 p-1 bg-slate-950/90 hover:bg-black text-white rounded-bl"
                           title="Remove attachment"
                         >
-                          <X size={10} />
+                          <X size={12} />
                         </button>
                       </div>
                       <div className="flex-1 min-w-0">
-                        <p className="text-[10px] font-bold text-slate-700">Profile Photo Attached</p>
-                        <p className="text-[9px] text-slate-400">
-                          {session?.avatar_url ? 'Your uploaded profile picture' : 'Default profile card (set photo in settings!)'}
+                        <p className="text-xs font-bold text-slate-200">Profile Photo Attached</p>
+                        <p className="text-[10px] text-slate-400">
+                          {session?.avatar_url ? 'Your uploaded profile picture' : 'Default profile card'}
                         </p>
                       </div>
                     </div>
@@ -1057,17 +1059,19 @@ export default function ParentDashboard() {
                       }
                     }}
                   />
-                  <div className="flex gap-2 items-end">
+                  
+                  {/* Expanded Input Action Bar */}
+                  <div className="flex gap-3 items-end">
                     <button
                       type="button"
                       onClick={() => fileInputRef.current?.click()}
-                      className="p-3 h-[50px] w-[50px] flex items-center justify-center rounded-xl border border-gray-200 bg-white text-gray-400 hover:text-gray-600 hover:bg-gray-50 transition-all shrink-0"
+                      className="p-3.5 h-[52px] w-[52px] flex items-center justify-center rounded-xl border border-slate-800 bg-slate-900 text-slate-400 hover:text-white hover:bg-slate-800 transition-all shrink-0"
                       title="Attach File (Image/PDF)"
                     >
-                      <Paperclip size={18} />
+                      <Paperclip size={20} />
                     </button>
                     
-                    <div className="shrink-0 mb-1">
+                    <div className="shrink-0 mb-0.5">
                       <VoiceRecordButton
                         onRecordComplete={(blob) => {
                           const file = new File([blob], `voice-note-${Date.now()}.webm`, { type: blob.type });
@@ -1078,8 +1082,8 @@ export default function ParentDashboard() {
                     </div>
 
                     <textarea
-                      rows={2}
-                      className="input py-2.5 px-3.5 text-xs flex-1 min-h-[50px] resize-none"
+                      rows={3}
+                      className="w-full bg-slate-900 border border-slate-800 rounded-xl py-3 px-4 text-sm placeholder-slate-500 text-slate-100 focus:outline-none focus:border-emerald-500 focus:ring-1 focus:ring-emerald-500 transition-all flex-1 min-h-[52px] resize-none font-sans"
                       value={messageForm.message_text}
                       onChange={(e) => setMessageForm((f) => ({ ...f, message_text: e.target.value }))}
                       placeholder={
@@ -1089,22 +1093,19 @@ export default function ParentDashboard() {
                             ? "Write a message to the class teacher..."
                             : "Write a message to the school office..."
                       }
+                      maxLength={1000}
                       disabled={isRecordingVoice}
-                      maxLength={500}
                     />
+
                     <button
                       type="button"
                       onClick={handleSendMessage}
                       disabled={sendingMessage || uploadingFile || (!messageForm.message_text.trim() && !selectedFile)}
-                      className="btn-primary px-4 h-[50px] flex items-center justify-center rounded-xl shrink-0"
-                      aria-label="Send message"
+                      className="h-[52px] px-6 text-sm font-bold bg-emerald-600 hover:bg-emerald-500 text-white rounded-xl shadow-lg shadow-emerald-950/20 active:scale-[0.98] transition-all flex items-center justify-center gap-2 shrink-0 disabled:opacity-50"
+                      aria-label="Send"
                     >
-                      <Send size={16} />
+                      <Send size={18} />
                     </button>
-                  </div>
-                  <div className="flex justify-between items-center text-[9px] text-gray-400 mt-1 px-1">
-                    <span>Max 500 characters</span>
-                    <span>{messageForm.message_text.length}/500</span>
                   </div>
                 </div>
               </div>

@@ -560,23 +560,22 @@ export default function TeacherDashboard() {
           )}
         </>
       ) : (
-        /* Messages tab: Side-by-side WhatsApp-style chat interface */
-        <div className="flex bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden min-h-[500px] max-h-[70vh]">
+        <div className="flex bg-slate-950 rounded-2xl border border-slate-800 shadow-xl overflow-hidden min-h-[620px] h-[calc(100vh-220px)] text-slate-100">
           {/* Left panel: student/parent thread list */}
-          <div className={`w-full md:w-80 border-r border-gray-100 flex flex-col ${mobileShowThread ? 'hidden md:flex' : 'flex'}`}>
-            <div className="p-4 border-b border-gray-100 bg-slate-50/50">
+          <div className={`w-full md:w-80 lg:w-96 border-r border-slate-800 bg-slate-900/90 flex flex-col ${mobileShowThread ? 'hidden md:flex' : 'flex'}`}>
+            <div className="p-4 border-b border-slate-800 bg-slate-900/50">
               <div className="relative">
-                <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={16} />
+                <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-500" size={16} />
                 <input
                   type="search"
                   value={chatSearch}
                   onChange={(e) => setChatSearch(e.target.value)}
                   placeholder="Search students/parents…"
-                  className="input pl-9 min-h-[40px] text-xs"
+                  className="w-full bg-slate-950 border border-slate-800 rounded-xl py-2.5 pl-9 pr-4 text-xs placeholder-slate-500 text-slate-100 focus:outline-none focus:border-emerald-500 focus:ring-1 focus:ring-emerald-500 transition-all"
                 />
               </div>
             </div>
-            <div className="flex-1 overflow-y-auto divide-y divide-gray-50">
+            <div className="flex-1 overflow-y-auto divide-y divide-slate-800/40">
               {(() => {
                 const query = chatSearch.trim().toLowerCase();
                 const filteredList = students.filter((s: any) => {
@@ -586,7 +585,12 @@ export default function TeacherDashboard() {
                 });
 
                 if (filteredList.length === 0) {
-                  return <p className="text-xs text-slate-400 text-center py-8">No matching students found</p>;
+                  return (
+                    <div className="p-8 text-center text-slate-500 text-xs">
+                      <MessageSquare size={24} className="mx-auto mb-2 text-slate-700" />
+                      No matching students found
+                    </div>
+                  );
                 }
 
                 return filteredList.map((s: any) => {
@@ -600,23 +604,23 @@ export default function TeacherDashboard() {
                         setSelectedStudent(s);
                         setMobileShowThread(true);
                       }}
-                      className={`w-full text-left p-3.5 flex items-center gap-3 transition-all ${
-                        isSelected ? 'bg-primary-50/50 border-l-4 border-primary-500' : 'hover:bg-gray-50/50'
+                      className={`w-full text-left p-4 flex items-center gap-3 transition-all relative ${
+                        isSelected ? 'bg-slate-800/60 border-r-2 border-emerald-500' : 'hover:bg-slate-850/40'
                       }`}
                     >
                       <StudentAvatar photoUrl={s.photo_url} firstName={s.first_name} lastName={s.last_name} size="sm" />
                       <div className="flex-1 min-w-0">
                         <div className="flex items-center justify-between gap-1">
-                          <p className="text-xs font-bold text-slate-900 truncate">{s.first_name} {s.last_name}</p>
+                          <p className="text-xs font-bold text-white truncate">{s.first_name} {s.last_name}</p>
                           {s.unread_count > 0 && (
                             <span className="shrink-0 bg-emerald-500 text-white font-bold text-[9px] px-1.5 py-0.5 rounded-full">
                               {s.unread_count}
                             </span>
                           )}
                         </div>
-                        <p className="text-[10px] text-slate-500 truncate mt-0.5">Parent: {parentNames}</p>
+                        <p className="text-[10px] text-slate-400 truncate mt-0.5">Parent: {parentNames}</p>
                         {s.last_message && (
-                          <p className="text-[10px] text-slate-400 truncate mt-1 italic">
+                          <p className="text-[11px] text-slate-400 truncate mt-1 italic">
                             {s.last_message.message}
                           </p>
                         )}
@@ -629,25 +633,25 @@ export default function TeacherDashboard() {
           </div>
 
           {/* Right panel: Active chat thread */}
-          <div className={`flex-1 flex flex-col bg-slate-50/40 ${mobileShowThread ? 'flex' : 'hidden md:flex'}`}>
+          <div className={`flex-1 flex flex-col bg-slate-950 ${mobileShowThread ? 'flex' : 'hidden md:flex'}`}>
             {selectedStudent ? (
               <>
                 {/* Chat Header */}
-                <div className="bg-white border-b border-gray-100 p-4 flex items-center justify-between shadow-xs">
+                <div className="bg-slate-900 border-b border-slate-800 p-4 flex items-center justify-between shadow-md shrink-0 h-16">
                   <div className="flex items-center gap-3 min-w-0">
                     <button
                       type="button"
                       onClick={() => setMobileShowThread(false)}
-                      className="p-2 text-slate-500 hover:text-slate-700 md:hidden"
+                      className="p-2 text-slate-400 hover:text-slate-100 md:hidden rounded-lg hover:bg-slate-800"
                       aria-label="Back"
                     >
                       <ChevronLeft size={20} />
                     </button>
                     <div>
-                      <h3 className="text-xs font-bold text-slate-900">
+                      <h3 className="text-sm font-bold text-white">
                         {(selectedStudent.parents || []).map((p: any) => p.full_name).join(', ') || 'Parent'}
                       </h3>
-                      <p className="text-[10px] text-slate-500 mt-0.5">
+                      <p className="text-xs text-slate-400 mt-0.5">
                         Parent of {selectedStudent.first_name} {selectedStudent.last_name} ({selectedStudent.class?.name || 'No Class'})
                       </p>
                     </div>
@@ -655,11 +659,11 @@ export default function TeacherDashboard() {
                 </div>
 
                 {/* Messages Stream */}
-                <div className="flex-1 p-4 overflow-y-auto flex flex-col gap-3 bg-slate-50">
+                <div className="flex-1 p-5 overflow-y-auto flex flex-col gap-3.5 bg-slate-950/90">
                   {chatHistory.length === 0 ? (
-                    <div className="my-auto text-center py-8">
-                      <MessageSquare size={36} className="mx-auto text-slate-300 mb-2" />
-                      <p className="text-xs text-slate-400 font-medium">No EduChart messages with this parent yet</p>
+                    <div className="my-auto text-center py-10">
+                      <MessageSquare size={40} className="mx-auto text-slate-700 mb-3" />
+                      <p className="text-sm text-slate-400 font-medium">No EduChart messages with this parent yet</p>
                     </div>
                   ) : (
                     chatHistory.map((m: any) => {
@@ -677,61 +681,61 @@ export default function TeacherDashboard() {
                       return (
                         <div
                           key={m.id}
-                          className={`flex items-start gap-2 max-w-[90%] ${isTeacherOutbound ? 'ml-auto flex-row-reverse' : 'mr-auto'}`}
+                          className={`flex items-start gap-3 max-w-[85%] ${isTeacherOutbound ? 'ml-auto flex-row-reverse' : 'mr-auto'}`}
                         >
                           <div className="shrink-0 mt-1">
                             {avatarSrc ? (
                               <img
                                 src={avatarSrc}
                                 alt="avatar"
-                                className="w-8 h-8 rounded-full object-cover border border-slate-200 shadow-sm"
+                                className="w-9 h-9 rounded-xl object-cover border border-slate-700 shadow-sm"
                               />
                             ) : (
-                              <div className="w-8 h-8 rounded-full bg-slate-200 text-slate-700 flex items-center justify-center text-xs font-bold border border-slate-300">
+                              <div className="w-9 h-9 rounded-xl bg-slate-800 text-slate-200 flex items-center justify-center text-xs font-bold border border-slate-700">
                                 {senderInitial}
                               </div>
                             )}
                           </div>
 
                           <div
-                            className={`flex flex-col rounded-2xl p-3 shadow-xs ${
+                            className={`flex flex-col rounded-2xl p-4 shadow-md ${
                               isTeacherOutbound
-                                ? 'bg-primary-600 text-white rounded-tr-none'
-                                : 'bg-white text-gray-800 border border-gray-100 rounded-tl-none'
+                                ? 'ml-auto bg-emerald-600 text-white rounded-tr-none'
+                                : 'mr-auto bg-slate-900 text-slate-100 border border-slate-800 rounded-tl-none'
                             }`}
                           >
                             {!isTeacherOutbound ? (
-                              <span className="text-[9px] font-bold text-primary-700 uppercase mb-1">
+                              <span className="text-[10px] font-bold text-emerald-400 uppercase tracking-wide mb-1.5">
                                 {m.sender_name}
                                 {m.recipient_type === 'teacher' && (
-                                  <span className="bg-amber-100 text-amber-800 text-[8px] font-extrabold px-1.5 py-0.5 rounded ml-1.5">
+                                  <span className="bg-amber-950/80 border border-amber-800/50 text-amber-300 text-[9px] font-extrabold px-2 py-0.5 rounded ml-2">
                                     Class Teachers
                                   </span>
                                 )}
                                 {m.recipient_type === 'school' && (
-                                  <span className="bg-blue-100 text-blue-800 text-[8px] font-extrabold px-1.5 py-0.5 rounded ml-1.5">
+                                  <span className="bg-blue-950/80 border border-blue-800/50 text-blue-300 text-[9px] font-extrabold px-2 py-0.5 rounded ml-2">
                                     To Admin
                                   </span>
                                 )}
                               </span>
                             ) : (
-                              <span className="text-[9px] font-bold text-white/80 uppercase mb-1">
+                              <span className="text-[10px] font-bold text-emerald-100 uppercase tracking-wide mb-1.5">
                                 {m.sender_name}
                                 {m.recipient_type === 'teacher' && (
-                                  <span className="bg-amber-500/35 text-white text-[8px] font-extrabold px-1.5 py-0.5 rounded ml-1.5">
+                                  <span className="bg-amber-950/80 border border-amber-800/50 text-amber-300 text-[9px] font-extrabold px-2 py-0.5 rounded ml-2">
                                     Class Teachers
                                   </span>
                                 )}
                                 {m.recipient_type === 'school' && (
-                                  <span className="bg-blue-500/35 text-white text-[8px] font-extrabold px-1.5 py-0.5 rounded ml-1.5">
+                                  <span className="bg-blue-950/80 border border-blue-800/50 text-blue-300 text-[9px] font-extrabold px-2 py-0.5 rounded ml-2">
                                     To Admin
                                   </span>
                                 )}
                               </span>
                             )}
                             <ChatMediaBubble mediaUrl={m.media_url} mediaType={m.media_type} photoSrc={photoSrc} />
-                            <p className="text-xs leading-relaxed whitespace-pre-line break-words">{m.message}</p>
-                            <span className={`text-[8px] mt-1 text-right block ${isTeacherOutbound ? 'text-white/70' : 'text-gray-400'}`}>
+                            <p className="text-sm leading-relaxed whitespace-pre-line break-words">{m.message}</p>
+                            <span className={`text-[9px] mt-1.5 text-right block font-mono ${isTeacherOutbound ? 'text-emerald-100/70' : 'text-slate-500'}`}>
                               {formatDateTimeLagos(m.created_at)}
                             </span>
                           </div>
@@ -741,17 +745,17 @@ export default function TeacherDashboard() {
                   )}
                 </div>
 
-                {/* Message Input Box */}
-                <div className="bg-white border-t border-gray-100 p-3">
+                {/* Message Input Box & Expanded Attachment Section */}
+                <div className="bg-slate-900 border-t border-slate-800 p-4">
                   {/* Recipient Selector Pills */}
-                  <div className="flex gap-2 mb-2 bg-slate-100 p-1 rounded-xl w-fit">
+                  <div className="flex gap-2 mb-3 bg-slate-950 p-1.5 rounded-xl w-fit border border-slate-800/80">
                     <button
                       type="button"
                       onClick={() => setRecipientType('parent')}
-                      className={`px-3 py-1 text-[10px] font-bold rounded-lg transition-all ${
+                      className={`px-4 py-1.5 text-xs font-bold rounded-lg transition-all ${
                         recipientType === 'parent'
-                          ? 'bg-white text-slate-800 shadow-2xs'
-                          : 'text-slate-500 hover:text-slate-800'
+                          ? 'bg-slate-800 text-white shadow'
+                          : 'text-slate-400 hover:text-slate-200'
                       }`}
                     >
                       Parent
@@ -759,10 +763,10 @@ export default function TeacherDashboard() {
                     <button
                       type="button"
                       onClick={() => setRecipientType('teacher')}
-                      className={`px-3 py-1 text-[10px] font-bold rounded-lg transition-all ${
+                      className={`px-4 py-1.5 text-xs font-bold rounded-lg transition-all ${
                         recipientType === 'teacher'
-                          ? 'bg-white text-slate-800 shadow-2xs'
-                          : 'text-slate-500 hover:text-slate-800'
+                          ? 'bg-slate-800 text-white shadow'
+                          : 'text-slate-400 hover:text-slate-200'
                       }`}
                     >
                       Class Teachers
@@ -770,10 +774,10 @@ export default function TeacherDashboard() {
                     <button
                       type="button"
                       onClick={() => setRecipientType('school')}
-                      className={`px-3 py-1 text-[10px] font-bold rounded-lg transition-all ${
+                      className={`px-4 py-1.5 text-xs font-bold rounded-lg transition-all ${
                         recipientType === 'school'
-                          ? 'bg-white text-slate-800 shadow-2xs'
-                          : 'text-slate-500 hover:text-slate-800'
+                          ? 'bg-slate-800 text-white shadow'
+                          : 'text-slate-400 hover:text-slate-200'
                       }`}
                     >
                       Admin
@@ -790,13 +794,13 @@ export default function TeacherDashboard() {
                     />
                   )}
                   {attachPhoto && (
-                    <div className="flex items-center gap-3 bg-slate-100 border border-slate-200 p-2 rounded-xl mb-2 relative">
-                      <div className="relative w-12 h-12 shrink-0 rounded-lg overflow-hidden border border-slate-300 bg-white">
+                    <div className="flex items-center gap-3 bg-slate-950 border border-slate-800 p-3 rounded-xl mb-3 relative">
+                      <div className="relative w-12 h-12 shrink-0 rounded-lg overflow-hidden border border-slate-800 bg-slate-900">
                         <img
                           src={
                             session?.avatar_url
                               ? photoSrc(session.avatar_url)
-                              : 'data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 400 300" fill="none"><rect width="100%" height="100%" rx="12" fill="%23E8F5E9"/><circle cx="200" cy="110" r="50" fill="%231B4D3E"/><path d="M130,210 C130,170 170,160 200,160 C230,160 270,170 270,210" fill="%231B4D3E"/><text x="200" y="240" font-family="sans-serif" font-size="16" font-weight="bold" fill="%231B4D3E" text-anchor="middle">MyEduRide User</text><text x="200" y="265" font-family="sans-serif" font-size="12" fill="%234CAF50" font-weight="bold" text-anchor="middle">Click to set your photo in Settings</text></svg>'
+                              : 'data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 400 300" fill="none"><rect width="100%" height="100%" rx="12" fill="%231B4D3E"/><circle cx="200" cy="110" r="50" fill="%234CAF50"/><path d="M130,210 C130,170 170,160 200,160 C230,160 270,170 270,210" fill="%234CAF50"/><text x="200" y="240" font-family="sans-serif" font-size="16" font-weight="bold" fill="%23FFFFFF" text-anchor="middle">MyEduRide User</text></svg>'
                           }
                           alt="Attachment preview"
                           className="w-full h-full object-cover"
@@ -804,16 +808,16 @@ export default function TeacherDashboard() {
                         <button
                           type="button"
                           onClick={() => setAttachPhoto(false)}
-                          className="absolute top-0 right-0 p-0.5 bg-black/60 hover:bg-black/80 text-white rounded-bl"
+                          className="absolute top-0 right-0 p-1 bg-slate-900/90 hover:bg-slate-950 text-white rounded-bl"
                           title="Remove attachment"
                         >
-                          <X size={10} />
+                          <X size={12} />
                         </button>
                       </div>
                       <div className="flex-1 min-w-0">
-                        <p className="text-[10px] font-bold text-slate-700">Profile Photo Attached</p>
-                        <p className="text-[9px] text-slate-400">
-                          {session?.avatar_url ? 'Your uploaded profile picture' : 'Default profile card (set photo in settings!)'}
+                        <p className="text-xs font-bold text-slate-200">Profile Photo Attached</p>
+                        <p className="text-[10px] text-slate-400">
+                          {session?.avatar_url ? 'Your uploaded profile picture' : 'Default profile card'}
                         </p>
                       </div>
                     </div>
@@ -831,15 +835,17 @@ export default function TeacherDashboard() {
                     }}
                     disabled={recipientType === 'parent' && (!selectedStudent.parents || selectedStudent.parents.length === 0)}
                   />
-                  <div className="flex gap-2 items-end">
+
+                  {/* Expanded Input Action Bar */}
+                  <div className="flex gap-3 items-end">
                     <button
                       type="button"
                       onClick={() => fileInputRef.current?.click()}
                       disabled={recipientType === 'parent' && (!selectedStudent.parents || selectedStudent.parents.length === 0)}
-                      className="p-3 h-[46px] w-[46px] flex items-center justify-center rounded-xl border border-gray-200 bg-white text-gray-400 hover:text-gray-600 hover:bg-gray-50 transition-all shrink-0"
+                      className="p-3.5 h-[52px] w-[52px] flex items-center justify-center rounded-xl border border-slate-800 bg-slate-950 text-slate-400 hover:text-white hover:bg-slate-800 transition-all shrink-0"
                       title="Attach File (Image/PDF)"
                     >
-                      <Paperclip size={18} />
+                      <Paperclip size={20} />
                     </button>
                     
                     {!(recipientType === 'parent' && (!selectedStudent.parents || selectedStudent.parents.length === 0)) && (
@@ -855,8 +861,8 @@ export default function TeacherDashboard() {
                     )}
 
                     <textarea
-                      rows={2}
-                      className="input py-2 px-3 text-xs flex-1 min-h-[46px] resize-none"
+                      rows={3}
+                      className="w-full bg-slate-950 border border-slate-800 rounded-xl py-3 px-4 text-sm placeholder-slate-500 text-slate-100 focus:outline-none focus:border-emerald-500 focus:ring-1 focus:ring-emerald-500 transition-all flex-1 min-h-[52px] resize-none font-sans"
                       value={chatText}
                       onChange={(e) => setChatText(e.target.value)}
                       placeholder={
@@ -867,28 +873,29 @@ export default function TeacherDashboard() {
                             : recipientType === 'teacher'
                               ? "Type your message to class teachers..."
                               : recipientType === 'school'
-                                ? "Type your message to school administration..."
+                                ? "Type your message to school office..."
                                 : "Type your message to the parent..."
                       }
+                      maxLength={1000}
                       disabled={isRecordingVoice || (recipientType === 'parent' && (!selectedStudent.parents || selectedStudent.parents.length === 0))}
-                      maxLength={500}
                     />
+
                     <button
                       type="button"
                       onClick={handleSendChat}
                       disabled={sendingChat || uploadingFile || (!chatText.trim() && !selectedFile) || (recipientType === 'parent' && (!selectedStudent.parents || selectedStudent.parents.length === 0))}
-                      className="btn-primary px-4 h-[46px] flex items-center justify-center rounded-xl shrink-0"
+                      className="h-[52px] px-6 text-sm font-bold bg-emerald-600 hover:bg-emerald-500 text-white rounded-xl shadow-lg shadow-emerald-950/20 active:scale-[0.98] transition-all flex items-center justify-center gap-2 shrink-0 disabled:opacity-50"
                       aria-label="Send"
                     >
-                      <Send size={16} />
+                      <Send size={18} />
                     </button>
                   </div>
                 </div>
               </>
             ) : (
-              <div className="m-auto text-center py-8">
-                <MessageSquare size={36} className="mx-auto text-slate-300 mb-2" />
-                <p className="text-xs text-slate-400 font-medium">Select a student/parent to start EduChart</p>
+              <div className="m-auto text-center py-12">
+                <MessageSquare size={40} className="mx-auto text-slate-700 mb-3" />
+                <p className="text-sm text-slate-400 font-medium">Select a student/parent thread to view EduChart history</p>
               </div>
             )}
           </div>
