@@ -7,7 +7,11 @@
 export async function fetchData(action: string, params?: any) {
   const res = await fetch('/api/data', {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
+    headers: {
+      'Content-Type': 'application/json',
+      'Cache-Control': 'no-cache, no-store, must-revalidate',
+      'Pragma': 'no-cache',
+    },
     body: JSON.stringify({ action, params }),
     cache: 'no-store',
     credentials: 'include',

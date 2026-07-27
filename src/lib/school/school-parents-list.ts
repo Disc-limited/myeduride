@@ -136,11 +136,29 @@ export function aggregateStudentParentRows(rows: StudentParentCredential[]): Sch
   return [...map.values()].sort((a, b) => a.name.localeCompare(b.name));
 }
 
-/** Parents on file for active students (not orphan parent role accounts). */
-export async function countSchoolParentsOnFile(
+import { deduplicateSchoolParents } from '@/lib/school/deduplicate-parents';
+
+export type UnifiedParentsSummary = {
+  parents: SchoolParentRow[];
+  total: number;
+  with_login: number;
+};
+
+/**
+ * Returns unified school parents list and consistent metrics across all modules.
+ * Runs automatic deduplication to ensure duplicates are consolidated.
+ */
+export async function getUnifiedSchoolParentsSummary(
   supabase: SupabaseClient,
-  schoolId: string
-): Promise<number> {
+  schoolId: string,
+  opts: { autoDeduplicate?: boolean } = { autoDeduplicate: true }
+): Promise<UnifiedParentsSummary> {
+  if (opts.autoDeduplicate) {
+    await deduplicateSchoolParents(supabase, schoolId).catch((err) =>
+      console.error('[AUTO DEDUPLICATE FAILED]', err)
+    );
+  }
+
   const profileById = new Map<
     string,
     { id: string; username: string | null; full_name: string | null }
@@ -151,7 +169,25 @@ export async function countSchoolParentsOnFile(
     schoolId,
     profileById,
     authById,
-    { repairMissingParents: false }
+    { repairMissingParents: true }
   );
-  return aggregateStudentParentRows(rows).length;
+
+  const parents = aggregateStudentParentRows(rows);
+  const with_login = parents.filter((p) => p.has_login).length;
+
+  return {
+    parents,
+    total: parents.length,
+    with_login,
+  };
 }
+
+/** Parents on file for active students, consistent across all dashboard pages. */
+export async function countSchoolParentsOnFile(
+  supabase: SupabaseClient,
+  schoolId: string
+): Promise<number> {
+  const summary = await getUnifiedSchoolParentsSummary(supabase, schoolId, { autoDeduplicate: false });
+  return summary.total;
+}
+

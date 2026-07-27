@@ -4,6 +4,8 @@
 import { useEffect, useState } from 'react';
 import { X } from 'lucide-react';
 import { toast } from 'sonner';
+import { clearParentSearchCache } from '@/hooks/useParentSearch';
+import { clearUsernameLookupCache } from '@/hooks/useUsernameLookup';
 
 export default function EditParentModal({ isOpen, onClose, onSuccess, parent, schoolId }) {
   const [form, setForm] = useState({
@@ -57,6 +59,8 @@ export default function EditParentModal({ isOpen, onClose, onSuccess, parent, sc
 
       const d = await res.json();
       if (res.ok) {
+        clearParentSearchCache();
+        clearUsernameLookupCache();
         toast.success('Parent details updated successfully');
         onSuccess();
         onClose();

@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
-import { Search, UserCheck, KeyRound, RefreshCcw, Pencil } from 'lucide-react';
+import { Search, UserCheck, KeyRound, RefreshCcw, Pencil, Users, Loader2 } from 'lucide-react';
 import { toast } from 'sonner';
 import type { SchoolParentRow } from '@/lib/school/school-parents-list';
 import EditParentModal from '@/components/school-admin/EditParentModal';
@@ -10,6 +10,7 @@ import EditParentModal from '@/components/school-admin/EditParentModal';
 export default function ParentsListPage() {
   const [parents, setParents] = useState<SchoolParentRow[]>([]);
   const [loading, setLoading] = useState(true);
+  const [deduplicating, setDeduplicating] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
   const [schoolId, setSchoolId] = useState('');
   const [editingParent, setEditingParent] = useState<SchoolParentRow | null>(null);
@@ -34,6 +35,32 @@ export default function ParentsListPage() {
       setLoading(false);
     }
   }, []);
+
+  const handleDeduplicate = async () => {
+    setDeduplicating(true);
+    try {
+      const res = await fetch('/api/school-admin/parents/deduplicate', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ school_id: schoolId }),
+      });
+      const data = await res.json();
+      if (res.ok) {
+        if (data.totalMerged > 0) {
+          toast.success(`Merged ${data.totalMerged} duplicate parent accounts!`);
+        } else {
+          toast.info('No duplicate parent accounts found. All parent records are up-to-date.');
+        }
+        loadParents();
+      } else {
+        toast.error(data.error || 'Deduplication failed');
+      }
+    } catch {
+      toast.error('Failed to run parent deduplication');
+    } finally {
+      setDeduplicating(false);
+    }
+  };
 
   useEffect(() => {
     loadParents();
@@ -77,6 +104,16 @@ export default function ParentsListPage() {
           </p>
         </div>
         <div className="flex flex-wrap gap-2 shrink-0 w-full sm:w-auto">
+          <button
+            type="button"
+            onClick={handleDeduplicate}
+            disabled={deduplicating}
+            className="btn-secondary flex items-center justify-center gap-2 text-sm min-h-[44px]"
+            title="Clean up duplicate parent records and synchronize student links"
+          >
+            {deduplicating ? <Loader2 size={16} className="animate-spin" /> : <Users size={16} />}
+            {deduplicating ? 'Syncing…' : 'Deduplicate Parents'}
+          </button>
           <button
             type="button"
             onClick={loadParents}

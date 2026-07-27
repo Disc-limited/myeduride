@@ -76,8 +76,14 @@ export async function GET(request: NextRequest) {
       .order('full_name', { ascending: true })
       .limit(100);
 
-    if (q.length >= 2) {
-      query = query.or(`username.ilike.%${q}%,full_name.ilike.%${q}%`);
+    if (q.length >= 1) {
+      const isUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(q);
+      const sanitized = q.replace(/,/g, '');
+      let orClause = `username.ilike.%${sanitized}%,full_name.ilike.%${sanitized}%,phone.ilike.%${sanitized}%,email.ilike.%${sanitized}%`;
+      if (isUuid) {
+        orClause += `,id.eq.${sanitized}`;
+      }
+      query = query.or(orClause);
     }
 
     const { data, error } = await query;

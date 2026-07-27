@@ -1,8 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getAdminClient } from '@/lib/supabase/admin';
 import { getSessionFromRequest } from '@/lib/session';
-import { fetchStudentParentCredentials } from '@/lib/school/student-parent-credentials';
-import { aggregateStudentParentRows } from '@/lib/school/school-parents-list';
+import { getUnifiedSchoolParentsSummary } from '@/lib/school/school-parents-list';
 
 export const dynamic = 'force-dynamic';
 
@@ -29,27 +28,13 @@ export async function GET(request: NextRequest) {
 
   try {
     const supabase = getAdminClient();
-    const profileById = new Map<
-      string,
-      { id: string; username: string | null; full_name: string | null }
-    >();
-    const authById = new Map<string, string>();
-
-    const studentRows = await fetchStudentParentCredentials(
-      supabase,
-      schoolId,
-      profileById,
-      authById,
-      { repairMissingParents: true }
-    );
-
-    const parents = aggregateStudentParentRows(studentRows);
+    const summary = await getUnifiedSchoolParentsSummary(supabase, schoolId, { autoDeduplicate: true });
 
     return NextResponse.json({
       school_id: schoolId,
-      parents,
-      total: parents.length,
-      with_login: parents.filter((p) => p.has_login).length,
+      parents: summary.parents,
+      total: summary.total,
+      with_login: summary.with_login,
     });
   } catch (error: unknown) {
     const message = error instanceof Error ? error.message : 'Failed to load parents';

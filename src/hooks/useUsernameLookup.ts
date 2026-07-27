@@ -28,6 +28,10 @@ const clientLookupCache = new Map<string, {
 
 const CLIENT_CACHE_TTL = 3 * 60 * 1000; // 3 minutes
 
+export function clearUsernameLookupCache() {
+  clientLookupCache.clear();
+}
+
 export function useUsernameLookup(username: string, options?: UseUsernameLookupOptions) {
   const [existingUser, setExistingUser] = useState<UsernameLookupUser | null>(null);
   const [taken, setTaken] = useState(false);

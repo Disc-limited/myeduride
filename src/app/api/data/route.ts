@@ -11,6 +11,9 @@ import { getSessionFromRequest } from '@/lib/session';
 import { countSchoolParentsOnFile } from '@/lib/school/school-parents-list';
 import { buildStaffDailyReport } from '@/lib/attendance/staff-report';
 
+export const dynamic = 'force-dynamic';
+export const revalidate = 0;
+
 export async function POST(request: NextRequest) {
   try {
     const session = getSessionFromRequest(request);
