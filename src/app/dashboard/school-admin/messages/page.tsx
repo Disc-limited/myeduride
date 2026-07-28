@@ -7,10 +7,11 @@ import { createClient } from '@/lib/supabase/client';
 import StudentAvatar from '@/components/shared/StudentAvatar';
 import { PageHeader } from '@/components/ui/PageHeader';
 import {
-  MessageSquare, Send, ChevronLeft, Search, Phone, Image, X, Paperclip
+  MessageSquare, Send, ChevronLeft, Search, Phone, Image, X, Paperclip, CheckCheck
 } from 'lucide-react';
 import { formatDateTimeLagos } from '@/lib/timezone';
 import { toast } from 'sonner';
+import { showWhatsAppToast } from '@/lib/notifications/whatsapp-toast';
 import { photoSrc } from '@/lib/photo';
 import { useFileUpload } from '@/hooks/useFileUpload';
 import { ChatAttachmentPreview } from '@/components/chat/ChatAttachmentPreview';
@@ -115,7 +116,7 @@ export default function SchoolAdminMessages() {
         (payload) => {
           const newMsg = payload.new;
 
-          // Format new message (mapping content to message for UI compatibility)
+          // Format new message
           const formatted = {
             id: newMsg.id,
             created_at: newMsg.created_at,
@@ -126,7 +127,7 @@ export default function SchoolAdminMessages() {
             sender_id: newMsg.sender_id,
             sender_name: newMsg.sender_name,
             recipient_type: newMsg.recipient_type,
-            is_read: newMsg.is_read,
+            is_read: selectedStudent?.id && newMsg.student_id === selectedStudent.id ? true : newMsg.is_read,
           };
 
           // If message belongs to the currently active chat thread
@@ -137,15 +138,17 @@ export default function SchoolAdminMessages() {
             });
 
             // Mark as read
-            fetch('/api/chat', {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
-              credentials: 'include',
-              body: JSON.stringify({
-                action: 'mark_read',
-                params: { student_id: selectedStudent.id },
-              }),
-            }).catch(() => {});
+            if (newMsg.sender_id !== session.user_id) {
+              fetch('/api/chat', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                credentials: 'include',
+                body: JSON.stringify({
+                  action: 'mark_read',
+                  params: { student_id: selectedStudent.id },
+                }),
+              }).catch(() => {});
+            }
           } else {
             // Update unread count for other students in the list
             setStudents((prev) =>
@@ -166,6 +169,41 @@ export default function SchoolAdminMessages() {
                 return s;
               })
             );
+
+            // WhatsApp toast notification for non-active thread messages
+            if (newMsg.sender_id !== session.user_id) {
+              const targetStudent = students.find((s) => s.id === newMsg.student_id);
+              const senderLabel = newMsg.sender_name || (targetStudent ? `Parents of ${targetStudent.first_name}` : 'Parent');
+              showWhatsAppToast({
+                senderName: senderLabel,
+                roleBadge: newMsg.recipient_type === 'teacher' ? 'Class Teacher' : 'Parent',
+                content: newMsg.content,
+                mediaType: newMsg.media_type,
+                onView: () => {
+                  if (targetStudent) {
+                    setSelectedStudent(targetStudent);
+                    setMobileShowThread(true);
+                  }
+                },
+              });
+            }
+          }
+        }
+      )
+      .on(
+        'postgres_changes',
+        {
+          event: 'UPDATE',
+          schema: 'public',
+          table: 'chat_messages',
+          filter: `school_id=eq.${schoolId}`,
+        },
+        (payload) => {
+          const updatedMsg = payload.new;
+          if (selectedStudent?.id && updatedMsg.student_id === selectedStudent.id) {
+            setChatHistory((prev) =>
+              prev.map((m) => (m.id === updatedMsg.id ? { ...m, is_read: updatedMsg.is_read } : m))
+            );
           }
         }
       )
@@ -174,7 +212,7 @@ export default function SchoolAdminMessages() {
     return () => {
       supabase.removeChannel(channel);
     };
-  }, [schoolId, selectedStudent]);
+  }, [schoolId, selectedStudent, students]);
 
   // Load chat history when selectedStudent changes
   useEffect(() => {
@@ -419,8 +457,15 @@ export default function SchoolAdminMessages() {
                           </span>
                           <ChatMediaBubble mediaUrl={m.media_url} mediaType={m.media_type} photoSrc={photoSrc} />
                           <p className="text-sm leading-relaxed whitespace-pre-line break-words">{m.message}</p>
-                          <span className={`text-[9px] mt-1.5 text-right block font-mono ${isOutbound ? 'text-emerald-100/70' : 'text-slate-500'}`}>
-                            {formatDateTimeLagos(m.created_at)}
+                          <span className={`text-[9px] mt-1.5 text-right flex items-center justify-end gap-1 font-mono ${isOutbound ? 'text-emerald-100/70' : 'text-slate-500'}`}>
+                            <span>{formatDateTimeLagos(m.created_at)}</span>
+                            {isOutbound && (
+                              <CheckCheck
+                                size={13}
+                                className={m.is_read ? 'text-emerald-200 font-bold' : 'text-emerald-100/40'}
+                                title={m.is_read ? 'Read' : 'Delivered'}
+                              />
+                            )}
                           </span>
                         </div>
                       </div>

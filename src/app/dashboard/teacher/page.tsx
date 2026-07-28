@@ -9,13 +9,14 @@ import { PageHeader } from '@/components/ui/PageHeader';
 import {
   Users, UserCheck, AlertTriangle, GraduationCap, Clock, Download,
   BookOpen, Car, CheckCircle2, ScanLine, Search, MessageSquare, Send, ChevronLeft,
-  Image, X, Paperclip
+  Image, X, Paperclip, CheckCheck
 } from 'lucide-react';
 import TeacherScanModal from '@/components/teacher/TeacherScanModal';
 import Link from 'next/link';
 import { ATTENDANCE_UI_NOTE } from '@/lib/attendance/window';
 import { formatTimeLagos, formatDateTimeLagos } from '@/lib/timezone';
 import { toast } from 'sonner';
+import { showWhatsAppToast } from '@/lib/notifications/whatsapp-toast';
 import { photoSrc } from '@/lib/photo';
 import { useFileUpload } from '@/hooks/useFileUpload';
 import { ChatAttachmentPreview } from '@/components/chat/ChatAttachmentPreview';
@@ -24,24 +25,22 @@ import { VoiceRecordButton } from '@/components/chat/VoiceRecordButton';
 
 export default function TeacherDashboard() {
   const [students, setStudents] = useState([]);
-  const [stats, setStats] = useState({ present: 0, absent: 0, late: 0, total: 0 });
-  const [loading, setLoading] = useState(true);
-  const [schoolId, setSchoolId] = useState('');
-  const [schoolName, setSchoolName] = useState('');
-  const [busyId, setBusyId] = useState(null);
-  const [dismissAllBusy, setDismissAllBusy] = useState(false);
-  const [showScan, setShowScan] = useState(false);
-  const [readySearch, setReadySearch] = useState('');
-
-  // Messaging / Chat States
-  const [activeTab, setActiveTab] = useState('class'); // 'class' | 'messages'
   const [selectedStudent, setSelectedStudent] = useState(null);
+  const [stats, setStats] = useState({ total: 0, present: 0, absent: 0 });
+  const [loading, setLoading] = useState(true);
+  const [readySearch, setReadySearch] = useState('');
+  const [chatSearch, setChatSearch] = useState('');
   const [chatHistory, setChatHistory] = useState([]);
   const [chatText, setChatText] = useState('');
   const [attachPhoto, setAttachPhoto] = useState(false);
   const [sendingChat, setSendingChat] = useState(false);
+  const [busyId, setBusyId] = useState(null);
+  const [dismissAllBusy, setDismissAllBusy] = useState(false);
+  const [showScan, setShowScan] = useState(false);
+  const [activeTab, setActiveTab] = useState('class'); // 'class' | 'messages'
+  const [schoolId, setSchoolId] = useState('');
+  const [schoolName, setSchoolName] = useState('');
   const [mobileShowThread, setMobileShowThread] = useState(false);
-  const [chatSearch, setChatSearch] = useState('');
 
   // Phase 2 states
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
@@ -50,7 +49,28 @@ export default function TeacherDashboard() {
   const [isRecordingVoice, setIsRecordingVoice] = useState(false);
   const [recipientType, setRecipientType] = useState('parent'); // 'parent' | 'teacher' | 'school'
 
-  const loadChatHistory = async (studentId) => {
+  const [session, setSession] = useState(null);
+
+  useEffect(() => {
+    setSession(getSession());
+    loadClass();
+  }, []);
+
+  const loadClass = async () => {
+    try {
+      const data = await fetchData('get_teacher_class_data', { role: 'teacher' });
+      setStudents(data.students || []);
+      setStats(data.stats || { total: 0, present: 0, absent: 0 });
+      setSchoolId(data.school_id || '');
+      setSchoolName(data.school_name || '');
+    } catch (e) {
+      console.error(e);
+      toast.error('Could not load class data');
+    }
+    setLoading(false);
+  };
+
+  const loadChatHistory = async (studentId: string) => {
     if (!studentId) return;
     try {
       const res = await fetch('/api/chat', {
@@ -108,26 +128,30 @@ export default function TeacherDashboard() {
             sender_id: newMsg.sender_id,
             sender_name: newMsg.sender_name,
             recipient_type: newMsg.recipient_type,
-            is_read: newMsg.is_read,
+            is_read: activeTab === 'messages' && selectedStudent?.id === newMsg.student_id ? true : newMsg.is_read,
           };
 
+          const isCurrentlyViewingThread = activeTab === 'messages' && selectedStudent?.id === newMsg.student_id;
+
           // If message belongs to the currently active chat thread
-          if (selectedStudent?.id && newMsg.student_id === selectedStudent.id) {
+          if (isCurrentlyViewingThread) {
             setChatHistory((prev) => {
               if (prev.some((m) => m.id === formatted.id)) return prev;
               return [...prev, formatted];
             });
 
             // Mark as read
-            fetch('/api/chat', {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
-              credentials: 'include',
-              body: JSON.stringify({
-                action: 'mark_read',
-                params: { student_id: selectedStudent.id },
-              }),
-            }).catch(() => {});
+            if (newMsg.sender_id !== session.user_id) {
+              fetch('/api/chat', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                credentials: 'include',
+                body: JSON.stringify({
+                  action: 'mark_read',
+                  params: { student_id: selectedStudent.id },
+                }),
+              }).catch(() => {});
+            }
           } else {
             // Update unread count for other students in the list
             setStudents((prev) =>
@@ -149,6 +173,44 @@ export default function TeacherDashboard() {
                 return s;
               })
             );
+
+            // WhatsApp toast notification for non-active thread messages
+            if (newMsg.sender_id !== session.user_id) {
+              const targetStudent = students.find((s) => s.id === newMsg.student_id);
+              const senderLabel = newMsg.sender_name || (targetStudent ? `Parents of ${targetStudent.first_name}` : 'Parent');
+              const roleTag = newMsg.recipient_type === 'school' ? 'School Admin' : 'Parent';
+              
+              showWhatsAppToast({
+                senderName: senderLabel,
+                roleBadge: roleTag,
+                content: newMsg.content,
+                mediaType: newMsg.media_type,
+                onView: () => {
+                  setActiveTab('messages');
+                  if (targetStudent) {
+                    setSelectedStudent(targetStudent);
+                    setMobileShowThread(true);
+                  }
+                },
+              });
+            }
+          }
+        }
+      )
+      .on(
+        'postgres_changes',
+        {
+          event: 'UPDATE',
+          schema: 'public',
+          table: 'chat_messages',
+          filter: `school_id=eq.${schoolId}`,
+        },
+        (payload) => {
+          const updatedMsg = payload.new;
+          if (selectedStudent?.id && updatedMsg.student_id === selectedStudent.id) {
+            setChatHistory((prev) =>
+              prev.map((m) => (m.id === updatedMsg.id ? { ...m, is_read: updatedMsg.is_read } : m))
+            );
           }
         }
       )
@@ -157,7 +219,7 @@ export default function TeacherDashboard() {
     return () => {
       supabase.removeChannel(channel);
     };
-  }, [schoolId, selectedStudent]);
+  }, [schoolId, selectedStudent, activeTab, students]);
 
   // Load chat history when selectedStudent changes
   useEffect(() => {
@@ -212,34 +274,6 @@ export default function TeacherDashboard() {
       toast.error(e?.message || 'Failed to send message');
     }
     setSendingChat(false);
-  };
-
-  const [session, setSession] = useState(null);
-
-  useEffect(() => {
-    setSession(getSession());
-    loadClass();
-    const interval = setInterval(loadClass, 60000);
-    return () => clearInterval(interval);
-  }, []);
-
-  const loadClass = async () => {
-    try {
-      const data = await fetchData('get_teacher_dashboard_full');
-      setSchoolId(data.school_id || '');
-      setSchoolName(data.school?.name || '');
-      setStudents(data.students || []);
-      setStats({
-        present: data.present_count || 0,
-        absent: data.absent_count || 0,
-        late: data.late_count || 0,
-        total: (data.students || []).length,
-      });
-    } catch (err) {
-      console.error(err);
-      toast.error('Could not load class');
-    }
-    setLoading(false);
   };
 
   const activeStudents = useMemo(
@@ -735,8 +769,15 @@ export default function TeacherDashboard() {
                             )}
                             <ChatMediaBubble mediaUrl={m.media_url} mediaType={m.media_type} photoSrc={photoSrc} />
                             <p className="text-sm leading-relaxed whitespace-pre-line break-words">{m.message}</p>
-                            <span className={`text-[9px] mt-1.5 text-right block font-mono ${isTeacherOutbound ? 'text-emerald-100/70' : 'text-slate-500'}`}>
-                              {formatDateTimeLagos(m.created_at)}
+                            <span className={`text-[9px] mt-1.5 text-right flex items-center justify-end gap-1 font-mono ${isTeacherOutbound ? 'text-emerald-100/70' : 'text-slate-500'}`}>
+                              <span>{formatDateTimeLagos(m.created_at)}</span>
+                              {isTeacherOutbound && (
+                                <CheckCheck
+                                  size={13}
+                                  className={m.is_read ? 'text-emerald-200 font-bold' : 'text-emerald-100/40'}
+                                  title={m.is_read ? 'Read' : 'Delivered'}
+                                />
+                              )}
                             </span>
                           </div>
                         </div>

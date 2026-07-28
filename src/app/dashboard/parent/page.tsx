@@ -20,8 +20,10 @@ import {
   Image,
   X,
   Paperclip,
+  CheckCheck,
 } from 'lucide-react';
 import { toast } from 'sonner';
+import { showWhatsAppToast } from '@/lib/notifications/whatsapp-toast';
 import { formatTimeLagos, formatDateTimeLagos, todayInLagos } from '@/lib/timezone';
 import { photoSrc } from '@/lib/photo';
 import { DAY_STATUS_LABELS } from '@/lib/attendance/status';
@@ -147,7 +149,7 @@ export default function ParentDashboard() {
     const studentId = messageForm.student_id || (children[0]?.id || '');
     if (tab !== 'messages' || !studentId) return;
 
-    // Load initial history
+    // Load initial history and auto mark as read
     loadChatHistory(studentId);
 
     const session = getSession();
@@ -169,7 +171,7 @@ export default function ParentDashboard() {
         (payload) => {
           const newMsg = payload.new;
 
-          // Format new message (mapping content to message for UI compatibility)
+          // Format new message
           const formatted = {
             id: newMsg.id,
             created_at: newMsg.created_at,
@@ -180,7 +182,7 @@ export default function ParentDashboard() {
             sender_id: newMsg.sender_id,
             recipient_type: newMsg.recipient_type,
             sender_name: newMsg.sender_name,
-            is_read: newMsg.is_read,
+            is_read: true,
             title: newMsg.title || null,
           };
 
@@ -190,16 +192,34 @@ export default function ParentDashboard() {
             return [...prev, formatted];
           });
 
-          // Mark thread as read
-          fetch('/api/chat', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            credentials: 'include',
-            body: JSON.stringify({
-              action: 'mark_read',
-              params: { student_id: studentId },
-            }),
-          }).catch(() => {});
+          // Auto mark thread as read immediately if user is viewing thread
+          if (newMsg.sender_id !== session.user_id) {
+            fetch('/api/chat', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              credentials: 'include',
+              body: JSON.stringify({
+                action: 'mark_read',
+                params: { student_id: studentId },
+              }),
+            }).catch(() => {});
+          }
+        }
+      )
+      .on(
+        'postgres_changes',
+        {
+          event: 'UPDATE',
+          schema: 'public',
+          table: 'chat_messages',
+          filter: `student_id=eq.${studentId}`,
+        },
+        (payload) => {
+          const updatedMsg = payload.new;
+          // Synchronize double checkmark read status in real-time
+          setChatHistory((prev) =>
+            prev.map((m) => (m.id === updatedMsg.id ? { ...m, is_read: updatedMsg.is_read } : m))
+          );
         }
       )
       .subscribe();
@@ -209,16 +229,53 @@ export default function ParentDashboard() {
     };
   }, [messageForm.student_id, tab, children]);
 
-  // Global realtime listener for unread EduChart messages count
+  // Global realtime listener for unread EduChart messages count & WhatsApp Toast notifications
   useEffect(() => {
     fetchUnreadChatTotal();
+    const session = getSession();
+    if (!session?.user_id) return;
+
     const supabase = createClient();
     const channel = supabase
       .channel('parent-global-chat-unread')
       .on(
         'postgres_changes',
         {
-          event: '*',
+          event: 'INSERT',
+          schema: 'public',
+          table: 'chat_messages',
+        },
+        (payload) => {
+          const newMsg = payload.new;
+          fetchUnreadChatTotal();
+
+          // If incoming message is NOT from current user
+          if (newMsg.sender_id !== session.user_id) {
+            const activeStudentId = messageForm.student_id || (children[0]?.id || '');
+            const isCurrentlyViewingThread = tab === 'messages' && activeStudentId === newMsg.student_id;
+
+            if (!isCurrentlyViewingThread) {
+              const roleTag = newMsg.recipient_type === 'teacher' ? 'Class Teacher' : 'School Admin';
+              showWhatsAppToast({
+                senderName: newMsg.sender_name || 'School Office',
+                roleBadge: roleTag,
+                content: newMsg.content,
+                mediaType: newMsg.media_type,
+                onView: () => {
+                  setTab('messages');
+                  if (newMsg.student_id) {
+                    setMessageForm((f) => ({ ...f, student_id: newMsg.student_id }));
+                  }
+                },
+              });
+            }
+          }
+        }
+      )
+      .on(
+        'postgres_changes',
+        {
+          event: 'UPDATE',
           schema: 'public',
           table: 'chat_messages',
         },
@@ -231,7 +288,7 @@ export default function ParentDashboard() {
     return () => {
       supabase.removeChannel(channel);
     };
-  }, []);
+  }, [messageForm.student_id, tab, children]);
 
   useEffect(() => {
     const interval = setInterval(() => {
@@ -997,8 +1054,15 @@ export default function ParentDashboard() {
                             )}
                             <ChatMediaBubble mediaUrl={m.media_url} mediaType={m.media_type} photoSrc={photoSrc} />
                             <p className="text-sm leading-relaxed whitespace-pre-line break-words">{m.message}</p>
-                            <span className={`text-[9px] mt-1.5 text-right block font-mono ${isOutbound ? 'text-emerald-100/70' : 'text-slate-500'}`}>
-                              {formatDateTimeLagos(m.created_at)}
+                            <span className={`text-[9px] mt-1.5 text-right flex items-center justify-end gap-1 font-mono ${isOutbound ? 'text-emerald-100/70' : 'text-slate-500'}`}>
+                              <span>{formatDateTimeLagos(m.created_at)}</span>
+                              {isOutbound && (
+                                <CheckCheck
+                                  size={13}
+                                  className={m.is_read ? 'text-emerald-200 font-bold' : 'text-emerald-100/40'}
+                                  title={m.is_read ? 'Read' : 'Delivered'}
+                                />
+                              )}
                             </span>
                           </div>
                         </div>

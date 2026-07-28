@@ -32,6 +32,7 @@ import {
 import Link from 'next/link';
 import { photoSrc } from '@/lib/photo';
 import { toast } from 'sonner';
+import { showWhatsAppToast } from '@/lib/notifications/whatsapp-toast';
 
 interface StaffRosterItem {
   id: string;
@@ -363,6 +364,32 @@ export default function StaffPrivateChatPage() {
                   return c;
                 })
               );
+
+              // WhatsApp toast alert for incoming 1-on-1 direct message
+              if (isRecipient) {
+                const partnerItem = rawStaffRoster.find((s) => s.id === chatPartnerId);
+                showWhatsAppToast({
+                  senderName: partnerItem?.full_name || 'Staff Member',
+                  senderAvatar: partnerItem?.avatar_url,
+                  roleBadge: 'Staff 1-on-1',
+                  content: newMsg.content,
+                  mediaType: newMsg.media_type,
+                  onView: () => {
+                    if (partnerItem) {
+                      setSelectedItem({
+                        type: 'direct',
+                        id: partnerItem.id,
+                        name: partnerItem.full_name,
+                        avatar_url: partnerItem.avatar_url,
+                        is_online: partnerItem.is_online,
+                        last_seen_at: partnerItem.last_seen_at,
+                        unread_count: 0,
+                        roles: partnerItem.roles,
+                      });
+                    }
+                  },
+                });
+              }
             }
           }
         }
@@ -432,6 +459,22 @@ export default function StaffPrivateChatPage() {
                 return r;
               })
             );
+
+            // WhatsApp toast notification for group room message
+            if (!isSelf) {
+              const targetRoom = unifiedRoster.find((r) => r.type === 'group' && r.id === newMsg.room_id);
+              if (targetRoom) {
+                showWhatsAppToast({
+                  senderName: targetRoom.name,
+                  roleBadge: 'Group Room',
+                  content: newMsg.content,
+                  mediaType: newMsg.media_type,
+                  onView: () => {
+                    setSelectedItem(targetRoom);
+                  },
+                });
+              }
+            }
           }
         }
       )

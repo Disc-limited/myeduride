@@ -73,11 +73,15 @@ export function useParentSearch(schoolId: string | null | undefined, searchTerm:
       const data = await res.json();
       const resultParents: ParentUser[] = data.parents || [];
 
-      // Store in cache
-      cache.set(cacheKey, {
-        parents: resultParents,
-        timestamp: Date.now(),
-      });
+      // Store in cache ONLY if results exist (do NOT cache empty 0-match results)
+      if (resultParents.length > 0) {
+        cache.set(cacheKey, {
+          parents: resultParents,
+          timestamp: Date.now(),
+        });
+      } else {
+        cache.delete(cacheKey);
+      }
 
       setParents(resultParents);
     } catch (err: any) {
