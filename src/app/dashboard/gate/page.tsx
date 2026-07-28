@@ -25,6 +25,8 @@ import { toast } from 'sonner';
 import { photoSrc } from '@/lib/photo';
 import ReadyForPickupList from '@/components/gate/ReadyForPickupList';
 import StudentPickupVerify from '@/components/pickup/StudentPickupVerify';
+import StudentIdScanPanel from '@/components/gate/StudentIdScanPanel';
+import StaffIdScanPanel from '@/components/gate/StaffIdScanPanel';
 
 function splitName(fullName) {
   const parts = (fullName || '').trim().split(/\s+/).filter(Boolean);
@@ -33,6 +35,8 @@ function splitName(fullName) {
 
 export default function GateOfficerDashboard() {
   const [gateMode, setGateMode] = useState('arrival');
+  const [scanKind, setScanKind] = useState('student');
+  const [releaseStudent, setReleaseStudent] = useState(null);
   const [sessionActive, setSessionActive] = useState(false);
   const [gateTab, setGateTab] = useState('scan');
   const [currentTime, setCurrentTime] = useState(null);
@@ -921,123 +925,94 @@ export default function GateOfficerDashboard() {
       <main className="flex-1 px-4 max-w-lg mx-auto w-full overflow-y-auto">
         {scannedPerson && gateTab === 'scan' && renderAcceptCard()}
 
-        {gateTab === 'scan' && !scannedPerson && !sessionActive && (
-          <div className="card-elevated p-5 space-y-4 mb-4">
-            <p className="text-sm font-semibold text-slate-800 text-center">Start gate session to scan</p>
-            <div className="grid grid-cols-2 gap-3">
-              <button type="button" onClick={() => setGateMode('arrival')} className={`p-4 rounded-2xl border-2 ${gateMode === 'arrival' ? 'border-emerald-500 bg-emerald-50' : 'border-slate-200'}`}>
-                <LogIn className="mx-auto mb-2 text-emerald-600" size={26} />
-                <span className="block text-sm font-semibold">Arrival</span>
-              </button>
-              <button type="button" onClick={() => setGateMode('dismissal')} className={`p-4 rounded-2xl border-2 ${gateMode === 'dismissal' ? 'border-orange-500 bg-orange-50' : 'border-slate-200'}`}>
-                <LogOut className="mx-auto mb-2 text-orange-600" size={26} />
-                <span className="block text-sm font-semibold">Dismissal</span>
-              </button>
-            </div>
-            <button type="button" onClick={handleStartSession} disabled={!schoolReady} className="btn-primary w-full py-3.5 disabled:opacity-50">
-              {schoolReady ? 'Start gate session' : 'Loading…'}
-            </button>
-          </div>
-        )}
-
-        {gateTab === 'scan' && sessionActive && (
-          <div className={scannedPerson ? 'hidden' : 'block'}>
-            {/* Rapid Scan Toggle Switch */}
-            <div className="flex items-center justify-between p-3.5 mb-3 rounded-2xl border-2 border-slate-100 bg-slate-50/50">
-              <div className="flex flex-col">
-                <span className="text-sm font-bold text-slate-900 font-sans">Rapid Scan Mode</span>
-                <span className="text-xs text-slate-500 font-sans">Auto-confirm check-ins without clicking</span>
-              </div>
+        {gateTab === 'scan' && (
+          <div className="space-y-4 mb-4">
+            <div className="pill-tabs mb-3">
               <button
                 type="button"
                 onClick={() => {
-                  const newMode = !rapidScanMode;
-                  setRapidScanMode(newMode);
-                  toast.info(newMode ? 'Rapid Scan (Auto-Confirm) enabled' : 'Manual verification enabled');
+                  setScanKind('student');
+                  setReleaseStudent(null);
                 }}
-                className={`relative inline-flex h-6 w-11 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none ${
-                  rapidScanMode ? 'bg-emerald-600' : 'bg-slate-300'
-                }`}
+                className={scanKind === 'student' ? 'pill-tab-active' : 'pill-tab-inactive'}
               >
-                <span
-                  className={`pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out ${
-                    rapidScanMode ? 'translate-x-5' : 'translate-x-0'
-                  }`}
-                />
+                Student scan
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  setScanKind('staff');
+                  setReleaseStudent(null);
+                }}
+                className={scanKind === 'staff' ? 'pill-tab-active' : 'pill-tab-inactive'}
+              >
+                Staff scan
+              </button>
+              <button
+                type="button"
+                onClick={() => setScanKind('ready')}
+                className={scanKind === 'ready' ? 'pill-tab-active' : 'pill-tab-inactive'}
+              >
+                <Car size={14} className="inline mr-1" />
+                Ready for pickup ({pickupQueue.length})
               </button>
             </div>
 
-            <div className="aspect-[4/3] bg-slate-900 rounded-3xl overflow-hidden relative mb-3 shadow-lg">
-              <video ref={videoRef} className="w-full h-full object-cover" playsInline muted autoPlay />
-              
-              {/* Flash overlay for visual feedback */}
-              {flashStatus && (
-                <div className={`absolute inset-0 pointer-events-none transition-opacity duration-300 flex items-center justify-center ${
-                  flashStatus === 'success' ? 'bg-emerald-500/25 border-8 border-emerald-500' : 'bg-red-500/25 border-8 border-red-500'
-                }`}>
-                  <div className={`px-4 py-2 rounded-full font-bold text-white text-sm shadow-lg tracking-wide ${
-                    flashStatus === 'success' ? 'bg-emerald-600' : 'bg-red-600'
-                  }`}>
-                    {flashStatus === 'success' ? 'SCAN SUCCESS' : 'SCAN FAILED'}
-                  </div>
+            {scanKind === 'ready' ? (
+              <ReadyForPickupList
+                schoolId={schoolId}
+                onRelease={(student) => {
+                  setReleaseStudent(student);
+                  setScanKind('student');
+                  setGateMode('departure');
+                }}
+                showReleaseButton
+              />
+            ) : (
+              <>
+                <div className="pill-tabs mb-4">
+                  <button
+                    type="button"
+                    onClick={() => setGateMode('arrival')}
+                    className={gateMode === 'arrival' ? 'pill-tab-active' : 'pill-tab-inactive'}
+                  >
+                    {scanKind === 'student' ? 'Check in (Arrival)' : 'Sign in'}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setGateMode('departure')}
+                    className={gateMode === 'departure' ? 'pill-tab-active' : 'pill-tab-inactive'}
+                  >
+                    {scanKind === 'student' ? 'Check out (Dismissal)' : 'Sign out'}
+                  </button>
                 </div>
-              )}
 
-              <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
-                <div className="w-44 h-44 border-2 border-white/80 rounded-2xl animate-pulse" />
-              </div>
-              <button type="button" onClick={switchCamera} className="absolute bottom-3 right-3 bg-black/60 text-white text-xs px-3 py-2 rounded-full flex items-center gap-1">
-                <Camera size={14} /> Flip
-              </button>
-            </div>
-
-            {/* Rapid Scan mode status indicator banner */}
-            {rapidScanMode && (
-              <div className="bg-purple-50 border border-purple-200 text-purple-800 text-xs font-semibold px-4 py-2.5 rounded-xl text-center mb-3 flex items-center justify-center gap-2">
-                <span className="w-2 h-2 rounded-full bg-purple-600 animate-ping" />
-                Rapid Scan Mode Active (Auto-Confirm)
-              </div>
-            )}
-            
-            <p className="text-xs text-center text-slate-500 mb-4">
-              Scan student or staff ID card · one sign-in and one sign-out per day
-            </p>
-
-            {/* Recent Scans History Panel */}
-            {recentScans.length > 0 && (
-              <div className="mt-4 pb-4">
-                <h3 className="text-xs font-bold text-slate-500 uppercase tracking-wider mb-2">Recent Scans</h3>
-                <div className="card-elevated divide-y overflow-hidden max-h-[250px] overflow-y-auto">
-                  {recentScans.map((scan) => (
-                    <div key={scan.id} className="flex items-center gap-3 p-3 text-sm hover:bg-slate-50 transition-colors">
-                      <StudentAvatar
-                        photoUrl={scan.photo_url}
-                        firstName={scan.name.split(' ')[0]}
-                        lastName={scan.name.split(' ').slice(1).join(' ')}
-                        size="sm"
-                      />
-                      <div className="flex-1 min-w-0">
-                        <div className="flex items-center justify-between gap-1.5">
-                          <p className="font-semibold text-slate-900 truncate">{scan.name}</p>
-                          <span className="text-[10px] text-slate-400 font-mono font-medium shrink-0">{scan.timestamp}</span>
-                        </div>
-                        <div className="flex items-center justify-between gap-1.5 mt-0.5">
-                          <span className={`text-xs ${scan.status === 'success' ? 'text-emerald-700 font-medium' : 'text-red-700 font-bold'}`}>
-                            {scan.message}
-                          </span>
-                          <span className={`text-[10px] uppercase font-bold px-1.5 py-0.5 rounded ${
-                            scan.type === 'staff' ? 'bg-violet-50 text-violet-700 border border-violet-150' : 
-                            scan.type === 'student' ? 'bg-blue-50 text-blue-700 border border-blue-150' :
-                            'bg-slate-100 text-slate-700'
-                          }`}>
-                            {scan.type}
-                          </span>
-                        </div>
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              </div>
+                {scanKind === 'student' ? (
+                  <StudentIdScanPanel
+                    key={releaseStudent?.id || `student-${gateMode}`}
+                    schoolId={schoolId}
+                    mode={gateMode}
+                    onModeChange={setGateMode}
+                    onSuccess={() => {
+                      setReleaseStudent(null);
+                      setTodayCount((p) => p + 1);
+                      loadGateData();
+                    }}
+                    initialStudent={releaseStudent}
+                    fromReadyQueue={!!releaseStudent}
+                  />
+                ) : (
+                  <StaffIdScanPanel
+                    schoolId={schoolId}
+                    mode={gateMode}
+                    onModeChange={setGateMode}
+                    onSuccess={() => {
+                      setTodayCount((p) => p + 1);
+                      loadGateData();
+                    }}
+                  />
+                )}
+              </>
             )}
           </div>
         )}

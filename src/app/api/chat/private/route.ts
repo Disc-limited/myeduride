@@ -37,14 +37,18 @@ export async function POST(request: NextRequest) {
 
       case 'send_private': {
         const { school_id, recipient_id, content, media_url, media_type } = params || {};
-        if (!school_id || !recipient_id || !content?.trim()) {
-          return NextResponse.json({ error: 'school_id, recipient_id, and content required' }, { status: 400 });
+        if (!school_id || !recipient_id || (!content?.trim() && !media_url?.trim())) {
+          return NextResponse.json({ error: 'school_id, recipient_id, and message content or attachment required' }, { status: 400 });
         }
+
+        const fallbackContent = content?.trim() || (
+          media_type === 'image' ? '📷 Photo' : media_type === 'audio' ? '🎙️ Voice Note' : '📄 Attachment'
+        );
 
         const result = await sendPrivateMessage(session, {
           school_id,
           recipient_id,
-          content: content.trim(),
+          content: fallbackContent,
           media_url,
           media_type,
         });

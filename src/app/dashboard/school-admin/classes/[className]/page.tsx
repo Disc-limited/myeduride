@@ -1,7 +1,8 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import { useParams } from 'next/navigation';
+import { useRouter, useParams } from 'next/navigation';
+import { navigateBack } from '@/lib/navigation/smart-back';
 import { createClient } from '@/lib/supabase/client';
 import type { Student } from '@/lib/types';
 import { Users, GraduationCap, ArrowLeft, UserPlus } from 'lucide-react';
@@ -9,6 +10,7 @@ import Link from 'next/link';
 import StudentAvatar from '@/components/shared/StudentAvatar';
 
 export default function ClassDetailPage() {
+  const router = useRouter();
   const params = useParams();
   const className = decodeURIComponent(params.className as string);
   const [students, setStudents] = useState<Student[]>([]);
@@ -71,10 +73,14 @@ export default function ClassDetailPage() {
     <div className="p-6 bg-gray-50 min-h-screen">
       {/* Header */}
       <div className="mb-6">
-        <Link href="/dashboard/school-admin/classes" className="flex items-center gap-2 text-sm text-gray-500 hover:text-gray-700 mb-3">
+        <button
+          type="button"
+          onClick={() => navigateBack(router, '/dashboard/school-admin/classes')}
+          className="flex items-center gap-2 text-sm text-gray-500 hover:text-gray-700 mb-3 cursor-pointer"
+        >
           <ArrowLeft size={16} />
           Back to Classes
-        </Link>
+        </button>
         <div className="flex items-center justify-between">
           <div>
             <h1 className="text-2xl font-bold text-gray-900">{className}</h1>

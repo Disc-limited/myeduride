@@ -2,12 +2,15 @@
 'use client';
 
 import { useEffect, useState } from 'react';
+import { useRouter } from 'next/navigation';
+import { navigateBack } from '@/lib/navigation/smart-back';
 import { fetchData } from '@/lib/api';
 import DetailedAttendanceReports from '@/components/attendance/DetailedAttendanceReports';
 import Link from 'next/link';
 import { ArrowLeft } from 'lucide-react';
 
 export default function TeacherReportsPage() {
+  const router = useRouter();
   const [schoolId, setSchoolId] = useState('');
   const [classIds, setClassIds] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -31,9 +34,13 @@ export default function TeacherReportsPage() {
 
   return (
     <div className="page-shell max-w-lg mx-auto">
-      <Link href="/dashboard/teacher" className="inline-flex items-center gap-2 text-sm text-slate-500 hover:text-slate-800 mb-4">
+      <button
+        type="button"
+        onClick={() => navigateBack(router, '/dashboard/teacher')}
+        className="inline-flex items-center gap-2 text-sm text-slate-500 hover:text-slate-800 mb-4 cursor-pointer"
+      >
         <ArrowLeft size={16} /> Back to class
-      </Link>
+      </button>
       <h1 className="text-2xl font-bold text-slate-900 mb-1">Class attendance reports</h1>
       <p className="text-sm text-slate-500 mb-6">
         Your class only — daily, weekly, and monthly (includes today&apos;s gate scans). Staff tab shows your own ID scans.

@@ -1,6 +1,8 @@
 'use client';
 
 import { useEffect, useRef, useState } from 'react';
+import { useRouter } from 'next/navigation';
+import { navigateBack } from '@/lib/navigation/smart-back';
 import Link from 'next/link';
 import {
   Mail,
@@ -84,6 +86,7 @@ const BottomWave = () => (
 );
 
 export default function LoginPage() {
+  const router = useRouter();
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
@@ -221,15 +224,16 @@ export default function LoginPage() {
   return (
     <div className="min-h-screen bg-slate-100 font-poppins flex flex-col justify-between relative selection:bg-brand-green selection:text-white">
       
-      {/* Top Floating Back to Home Bar */}
+      {/* Top Floating Back Bar */}
       <div className="w-full max-w-6xl mx-auto px-4 pt-4 sm:pt-6 flex items-center justify-between z-20">
-        <Link
-          href="/"
-          className="inline-flex items-center gap-2 px-3.5 py-1.5 sm:px-4 sm:py-2 rounded-xl bg-white text-navy-900 font-bold text-xs sm:text-sm border border-slate-200 hover:bg-slate-50 transition-all shadow-sm group"
+        <button
+          type="button"
+          onClick={() => navigateBack(router, '/')}
+          className="inline-flex items-center gap-2 px-3.5 py-1.5 sm:px-4 sm:py-2 rounded-xl bg-white text-navy-900 font-bold text-xs sm:text-sm border border-slate-200 hover:bg-slate-50 transition-all shadow-sm group active:scale-95 cursor-pointer"
         >
           <ArrowLeft className="w-4 h-4 text-brand-green group-hover:-translate-x-0.5 transition-transform" />
-          <span>Back to Home</span>
-        </Link>
+          <span>Back</span>
+        </button>
         <span className="text-[10px] sm:text-xs font-semibold text-slate-500 uppercase tracking-widest hidden xs:inline">
           THE STUDENT SAFETY PLATFORM
         </span>

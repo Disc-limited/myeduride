@@ -24,9 +24,10 @@ export default function SchoolSettingsPage() {
     const sid = id || schoolId;
     if (!sid) return;
     try {
-      const res = await fetch(`/api/schools/settings?school_id=${sid}`, {
+      const res = await fetch(`/api/schools/settings?school_id=${sid}&t=${Date.now()}`, {
         credentials: 'include',
         cache: 'no-store',
+        headers: { 'Cache-Control': 'no-cache' },
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || 'Failed to load settings');

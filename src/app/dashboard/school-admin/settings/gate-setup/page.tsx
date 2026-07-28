@@ -43,9 +43,10 @@ export default function GateSetupPage() {
     const sid = id || schoolId;
     if (!sid) return;
     try {
-      const res = await fetch(`/api/schools/settings?school_id=${sid}`, {
+      const res = await fetch(`/api/schools/settings?school_id=${sid}&t=${Date.now()}`, {
         credentials: 'include',
         cache: 'no-store',
+        headers: { 'Cache-Control': 'no-cache' },
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || 'Failed to load settings');
@@ -56,19 +57,21 @@ export default function GateSetupPage() {
         setMigrationRequired(false);
       }
 
-      const parsed = schoolToSettingsForm(data.school);
-      setFormData({
-        gate_open_time: parsed.gate_open_time || '06:30',
-        school_start_time: parsed.school_start_time || '08:00',
-        late_threshold: parsed.late_threshold || '08:15',
-        gate_close_time: parsed.gate_close_time || '09:00',
-        dismissal_start_time: parsed.dismissal_start_time || '14:00',
-        dismissal_end_time: parsed.dismissal_end_time || '16:00',
-        staff_gate_start: parsed.staff_gate_start || '07:00',
-        staff_gate_end: parsed.staff_gate_end || '17:00',
-        student_gate_start: parsed.student_gate_start || '07:30',
-        student_gate_end: parsed.student_gate_end || '15:00',
-      });
+      if (data.school) {
+        const parsed = schoolToSettingsForm(data.school);
+        setFormData({
+          gate_open_time: parsed.gate_open_time || '06:30',
+          school_start_time: parsed.school_start_time || '08:00',
+          late_threshold: parsed.late_threshold || '08:15',
+          gate_close_time: parsed.gate_close_time || '09:00',
+          dismissal_start_time: parsed.dismissal_start_time || '14:00',
+          dismissal_end_time: parsed.dismissal_end_time || '16:00',
+          staff_gate_start: parsed.staff_gate_start || '07:00',
+          staff_gate_end: parsed.staff_gate_end || '17:00',
+          student_gate_start: parsed.student_gate_start || '07:30',
+          student_gate_end: parsed.student_gate_end || '15:00',
+        });
+      }
     } catch (err) {
       console.error(err);
       toast.error(err.message || 'Could not load gate setup settings');
@@ -107,7 +110,7 @@ export default function GateSetupPage() {
 
       const res = await fetch('/api/schools/settings', {
         method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 'Content-Type': 'application/json', 'Cache-Control': 'no-cache' },
         credentials: 'include',
         cache: 'no-store',
         body: JSON.stringify(payload),
@@ -125,6 +128,25 @@ export default function GateSetupPage() {
       if (!res.ok) throw new Error(data.error || 'Save failed');
 
       setMigrationRequired(false);
+
+      if (data.school) {
+        const parsed = schoolToSettingsForm(data.school);
+        setFormData({
+          gate_open_time: parsed.gate_open_time || '06:30',
+          school_start_time: parsed.school_start_time || '08:00',
+          late_threshold: parsed.late_threshold || '08:15',
+          gate_close_time: parsed.gate_close_time || '09:00',
+          dismissal_start_time: parsed.dismissal_start_time || '14:00',
+          dismissal_end_time: parsed.dismissal_end_time || '16:00',
+          staff_gate_start: parsed.staff_gate_start || '07:00',
+          staff_gate_end: parsed.staff_gate_end || '17:00',
+          student_gate_start: parsed.student_gate_start || '07:30',
+          student_gate_end: parsed.student_gate_end || '15:00',
+        });
+      } else {
+        await loadSettings(schoolId);
+      }
+
       toast.success('Gate schedules updated successfully');
     } catch (err) {
       toast.error(err.message || 'Could not save gate schedules');

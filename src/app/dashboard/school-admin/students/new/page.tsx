@@ -14,6 +14,7 @@ import { validatePasswordPair } from '@/lib/auth/password-policy';
 import { useUsernameLookup, clearUsernameLookupCache } from '@/hooks/useUsernameLookup';
 import ParentSelectAutocomplete from '@/components/school-admin/ParentSelectAutocomplete';
 import { ParentUser, clearParentSearchCache } from '@/hooks/useParentSearch';
+import { navigateBack } from '@/lib/navigation/smart-back';
 
 export default function AddStudentPage() {
   const [classes, setClasses] = useState([]);
@@ -184,7 +185,13 @@ export default function AddStudentPage() {
   return (
     <div className="p-6 min-h-screen">
       <div className="max-w-2xl mx-auto">
-        <Link href="/dashboard/school-admin/students" className="flex items-center gap-2 text-sm text-gray-500 hover:text-gray-700 mb-4"><ArrowLeft size={16} /> Back</Link>
+        <button
+          type="button"
+          onClick={() => navigateBack(router, '/dashboard/school-admin/students')}
+          className="flex items-center gap-2 text-sm text-gray-500 hover:text-gray-700 mb-4 cursor-pointer"
+        >
+          <ArrowLeft size={16} /> Back
+        </button>
         <h1 className="text-2xl font-bold mb-6">Add Student</h1>
 
         <div className="space-y-5">

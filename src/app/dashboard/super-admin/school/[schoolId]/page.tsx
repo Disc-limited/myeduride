@@ -2,13 +2,15 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import { useParams } from 'next/navigation';
+import { useRouter, useParams } from 'next/navigation';
+import { navigateBack } from '@/lib/navigation/smart-back';
 import { Users, GraduationCap, UserCheck, ArrowLeft, School } from 'lucide-react';
 import Link from 'next/link';
 import { toast } from 'sonner';
 import StudentAvatar from '@/components/shared/StudentAvatar';
 
 export default function SchoolDetailPage() {
+  const router = useRouter();
   const params = useParams();
   const schoolId = params.schoolId;
   const [school, setSchool] = useState(null);
@@ -77,7 +79,13 @@ export default function SchoolDetailPage() {
 
   return (
     <div className="p-6 min-h-screen">
-      <Link href="/dashboard/super-admin" className="flex items-center gap-2 text-sm text-gray-500 hover:text-gray-700 mb-4"><ArrowLeft size={16} /> Back</Link>
+      <button
+        type="button"
+        onClick={() => navigateBack(router, '/dashboard/super-admin')}
+        className="flex items-center gap-2 text-sm text-gray-500 hover:text-gray-700 mb-4 cursor-pointer"
+      >
+        <ArrowLeft size={16} /> Back
+      </button>
       <h1 className="text-2xl font-bold">{school?.name || 'School'}</h1>
       <p className="text-sm text-gray-500 mb-6">{school?.address || ''}</p>
 

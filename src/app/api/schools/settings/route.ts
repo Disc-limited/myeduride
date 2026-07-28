@@ -45,10 +45,17 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ error: error || 'School not found' }, { status: 500 });
     }
 
-    return NextResponse.json({
-      school: data,
-      time_columns_available: timeColumnsAvailable,
-    });
+    return NextResponse.json(
+      {
+        school: data,
+        time_columns_available: timeColumnsAvailable,
+      },
+      {
+        headers: {
+          'Cache-Control': 'no-store, no-cache, must-revalidate, max-age=0',
+        },
+      }
+    );
   } catch (err: unknown) {
     const message = err instanceof Error ? err.message : 'Failed to load settings';
     return NextResponse.json({ error: message }, { status: 500 });
@@ -114,11 +121,18 @@ export async function PUT(request: NextRequest) {
       );
     }
 
-    return NextResponse.json({
-      success: true,
-      school: result.data,
-      migration_required: result.migrationRequired || false,
-    });
+    return NextResponse.json(
+      {
+        success: true,
+        school: result.data,
+        migration_required: result.migrationRequired || false,
+      },
+      {
+        headers: {
+          'Cache-Control': 'no-store, no-cache, must-revalidate, max-age=0',
+        },
+      }
+    );
   } catch (err: unknown) {
     const message = err instanceof Error ? err.message : 'Failed to save settings';
     console.error('[schools/settings PUT]', err);

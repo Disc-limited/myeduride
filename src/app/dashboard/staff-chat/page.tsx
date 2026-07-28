@@ -33,6 +33,9 @@ import Link from 'next/link';
 import { photoSrc } from '@/lib/photo';
 import { toast } from 'sonner';
 import { showWhatsAppToast } from '@/lib/notifications/whatsapp-toast';
+import { VoiceRecordButton } from '@/components/chat/VoiceRecordButton';
+import { ChatAttachmentPreview } from '@/components/chat/ChatAttachmentPreview';
+import { ChatMediaBubble } from '@/components/chat/ChatMediaBubble';
 
 interface StaffRosterItem {
   id: string;
@@ -95,9 +98,23 @@ export default function StaffPrivateChatPage() {
   const [isSending, setIsSending] = useState(false);
   const [isLoadingHistory, setIsLoadingHistory] = useState(false);
 
-  // Media attachments
+  // Media attachments & File uploads
+  const fileInputRef = useRef<HTMLInputElement | null>(null);
+  const [selectedFile, setSelectedFile] = useState<File | null>(null);
+  const [isRecordingVoice, setIsRecordingVoice] = useState(false);
   const [mediaUrlInput, setMediaUrlInput] = useState('');
   const [showAttachInput, setShowAttachInput] = useState(false);
+
+  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    if (e.target.files && e.target.files[0]) {
+      const file = e.target.files[0];
+      if (file.size > 25 * 1024 * 1024) {
+        toast.error('File size exceeds maximum limit of 25MB');
+        return;
+      }
+      setSelectedFile(file);
+    }
+  };
 
   // Modal / Drawer UI states
   const [isCreateGroupOpen, setIsCreateGroupOpen] = useState(false);
@@ -512,13 +529,51 @@ export default function StaffPrivateChatPage() {
   // 6. Action: Send Message (Direct or Group)
   const handleSendMessage = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!newMessageText.trim() && !mediaUrlInput.trim()) return;
+    if (!newMessageText.trim() && !mediaUrlInput.trim() && !selectedFile) return;
     if (!selectedItem || !schoolId || !currentUser) return;
 
     setIsSending(true);
-    const content = newMessageText.trim();
-    const mediaUrl = mediaUrlInput.trim() || null;
-    const mediaType = mediaUrl ? 'image' : null;
+
+    let mediaUrl: string | null = mediaUrlInput.trim() || null;
+    let mediaType: string | null = mediaUrl ? 'image' : null;
+
+    if (selectedFile) {
+      try {
+        const formData = new FormData();
+        formData.append('file', selectedFile);
+        formData.append('folder', 'chat-attachments');
+
+        const uploadRes = await fetch('/api/upload', {
+          method: 'POST',
+          body: formData,
+        });
+
+        const uploadData = await uploadRes.json();
+        if (!uploadRes.ok || !uploadData.url) {
+          toast.error(uploadData.error || 'Failed to upload attachment');
+          setIsSending(false);
+          return;
+        }
+
+        mediaUrl = uploadData.url;
+        if (selectedFile.type.startsWith('image/')) {
+          mediaType = 'image';
+        } else if (selectedFile.type.startsWith('audio/')) {
+          mediaType = 'audio';
+        } else {
+          mediaType = 'document';
+        }
+      } catch (uploadErr) {
+        console.error('[Staff Chat] File upload error:', uploadErr);
+        toast.error('Failed to upload file attachment');
+        setIsSending(false);
+        return;
+      }
+    }
+
+    const content = newMessageText.trim() || (
+      mediaType === 'image' ? '📷 Photo' : mediaType === 'audio' ? '🎙️ Voice Note' : '📄 Attachment'
+    );
 
     // Optimistic local append
     const optimisticMsg: ChatMessage = {
@@ -535,6 +590,7 @@ export default function StaffPrivateChatPage() {
     setMessages((prev) => [...prev, optimisticMsg]);
     setNewMessageText('');
     setMediaUrlInput('');
+    setSelectedFile(null);
     setShowAttachInput(false);
 
     try {
@@ -1152,13 +1208,12 @@ export default function StaffPrivateChatPage() {
                             }`}
                           >
                             {m.media_url && (
-                              <div className="mb-2 max-w-full rounded-lg overflow-hidden border border-slate-750 bg-slate-950">
-                                <img
-                                  src={m.media_url}
-                                  alt="Attachment"
-                                  className="max-h-56 object-cover w-full"
-                                />
-                              </div>
+                              <ChatMediaBubble
+                                mediaUrl={m.media_url}
+                                mediaType={m.media_type}
+                                photoSrc={photoSrc}
+                                isDark={true}
+                              />
                             )}
                             <p className="leading-relaxed break-words whitespace-pre-wrap">{m.content}</p>
                           </div>
@@ -1189,8 +1244,27 @@ export default function StaffPrivateChatPage() {
 
               {/* Message Input Panel */}
               <div className="p-4 border-t border-slate-800 bg-slate-900/30 shrink-0">
+                {/* Hidden File Input */}
+                <input
+                  type="file"
+                  ref={fileInputRef}
+                  onChange={handleFileChange}
+                  accept="image/*,application/pdf,.doc,.docx,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document,.xls,.xlsx,.ppt,.pptx,text/plain,audio/*,.zip,.rar"
+                  className="hidden"
+                />
+
+                {/* Pending Attachment Preview */}
+                {selectedFile && (
+                  <div className="mb-2">
+                    <ChatAttachmentPreview
+                      file={selectedFile}
+                      onCancel={() => setSelectedFile(null)}
+                    />
+                  </div>
+                )}
+
                 {showAttachInput && (
-                  <div className="mb-2 flex items-center gap-2 bg-slate-950 border border-slate-850 p-2 rounded-xl">
+                  <div className="mb-2 flex items-center gap-2 bg-slate-950 border border-slate-800 p-2 rounded-xl">
                     <input
                       type="text"
                       placeholder="Paste image/media URL link..."
@@ -1214,21 +1288,30 @@ export default function StaffPrivateChatPage() {
                 <form onSubmit={handleSendMessage} className="flex items-end gap-2.5">
                   <button
                     type="button"
-                    onClick={() => setShowAttachInput(!showAttachInput)}
-                    className={`p-3 rounded-xl text-slate-400 hover:text-slate-100 hover:bg-slate-800 transition-colors flex-shrink-0 ${
-                      showAttachInput ? 'bg-slate-850 text-slate-200' : 'bg-slate-900 border border-slate-800/80'
-                    }`}
-                    title="Attach media URL"
+                    onClick={() => fileInputRef.current?.click()}
+                    disabled={isSending || isRecordingVoice}
+                    className="p-3 rounded-xl text-slate-400 hover:text-slate-100 hover:bg-slate-800 transition-colors flex-shrink-0 bg-slate-900 border border-slate-800/80 h-[46px] w-[46px] flex items-center justify-center"
+                    title="Attach File (Image, PDF, Word, File)"
                   >
                     <Paperclip size={18} />
                   </button>
 
+                  <div className="shrink-0 mb-0.5">
+                    <VoiceRecordButton
+                      onRecordComplete={(blob) => {
+                        const voiceFile = new File([blob], `voice-note-${Date.now()}.webm`, { type: blob.type || 'audio/webm' });
+                        setSelectedFile(voiceFile);
+                      }}
+                      onRecordingStateChange={setIsRecordingVoice}
+                    />
+                  </div>
+
                   <textarea
                     rows={1}
-                    placeholder={`Type message to ${selectedItem.name}...`}
+                    placeholder={isRecordingVoice ? 'Recording voice note...' : `Type message to ${selectedItem.name}...`}
                     value={newMessageText}
                     onChange={(e) => setNewMessageText(e.target.value)}
-                    disabled={isSending}
+                    disabled={isSending || isRecordingVoice}
                     className="flex-1 bg-slate-900 border border-slate-800/80 rounded-xl px-4 py-3 text-xs text-slate-100 placeholder-slate-500 focus:outline-none focus:border-emerald-500 focus:ring-1 focus:ring-emerald-500 transition-all resize-none max-h-32 min-h-[46px]"
                     onKeyDown={(e) => {
                       if (e.key === 'Enter' && !e.shiftKey) {
@@ -1240,7 +1323,7 @@ export default function StaffPrivateChatPage() {
 
                   <button
                     type="submit"
-                    disabled={isSending || (!newMessageText.trim() && !mediaUrlInput.trim())}
+                    disabled={isSending || isRecordingVoice || (!newMessageText.trim() && !mediaUrlInput.trim() && !selectedFile)}
                     className="p-3 bg-emerald-600 hover:bg-emerald-500 text-white rounded-xl transition-all flex items-center justify-center flex-shrink-0 disabled:opacity-50 disabled:hover:bg-emerald-600 shadow shadow-emerald-950/20 active:scale-95 h-[46px] w-[46px]"
                   >
                     <Send size={18} className={isSending ? 'animate-pulse' : ''} />

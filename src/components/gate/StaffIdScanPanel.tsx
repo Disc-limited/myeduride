@@ -37,6 +37,8 @@ export default function StaffIdScanPanel({ schoolId, mode = 'arrival', onModeCha
       .catch((err) => console.error('[StaffIdScanPanel] Failed to load jsqr:', err));
   }, []);
 
+  const [cameraError, setCameraError] = useState(false);
+
   const stopCamera = () => {
     if (scanIntervalRef.current) {
       clearInterval(scanIntervalRef.current);
@@ -55,16 +57,53 @@ export default function StaffIdScanPanel({ schoolId, mode = 'arrival', onModeCha
         videoRef.current.srcObject = streamRef.current;
         await videoRef.current.play().catch(() => {});
       }
+      setCameraError(false);
       startQrScanning();
       return;
     }
 
     stopCamera();
+    let stream = null;
+
     try {
-      const stream = await navigator.mediaDevices.getUserMedia({
+      stream = await navigator.mediaDevices.getUserMedia({
         video: { facingMode: facing },
         audio: false,
       });
+    } catch {
+      try {
+        const altFacing = facing === 'environment' ? 'user' : 'environment';
+        stream = await navigator.mediaDevices.getUserMedia({
+          video: { facingMode: altFacing },
+          audio: false,
+        });
+        setFacingMode(altFacing);
+      } catch {
+        try {
+          stream = await navigator.mediaDevices.getUserMedia({
+            video: true,
+            audio: false,
+          });
+        } catch (err: unknown) {
+          console.error('[StaffIdScanPanel] Camera access error:', err);
+          setCameraError(true);
+          const errObj = err as { name?: string; message?: string };
+          const errName = errObj?.name || 'Error';
+          const errMsg = errObj?.message || 'Camera blocked or unavailable';
+          if (errName === 'NotAllowedError' || errName === 'PermissionDeniedError') {
+            toast.error('Camera blocked by browser — click 🔒 icon in address bar to Allow Camera');
+          } else if (errName === 'NotReadableError' || errName === 'TrackStartError') {
+            toast.error('Camera in use by another app — close Zoom/Meet or other tabs');
+          } else {
+            toast.error(`Camera error (${errName}): ${errMsg}`);
+          }
+          return;
+        }
+      }
+    }
+
+    if (stream) {
+      setCameraError(false);
       streamRef.current = stream;
       setFacingMode(facing);
       if (videoRef.current) {
@@ -72,8 +111,6 @@ export default function StaffIdScanPanel({ schoolId, mode = 'arrival', onModeCha
         await videoRef.current.play().catch(() => {});
       }
       startQrScanning();
-    } catch {
-      toast.error('Camera access denied — enter staff ID below');
     }
   };
 
@@ -328,10 +365,24 @@ export default function StaffIdScanPanel({ schoolId, mode = 'arrival', onModeCha
         <div className="card-elevated overflow-hidden">
           <div className="relative aspect-[4/3] bg-slate-900">
             <video ref={videoRef} className="w-full h-full object-cover" playsInline muted autoPlay />
+            {cameraError && (
+              <div className="absolute inset-0 flex flex-col items-center justify-center p-4 bg-slate-900/90 text-white text-center z-10">
+                <Camera size={36} className="text-slate-400 mb-2" />
+                <p className="text-xs font-semibold mb-1 text-slate-200">Camera Access Paused or Blocked</p>
+                <p className="text-[11px] text-slate-400 mb-3 max-w-xs">Allow browser camera permissions or tap below to retry</p>
+                <button
+                  type="button"
+                  onClick={() => startCamera()}
+                  className="px-4 py-2 bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-xs rounded-xl shadow transition-all active:scale-95 flex items-center gap-1.5"
+                >
+                  <Camera size={14} /> Enable / Retry Camera
+                </button>
+              </div>
+            )}
             <button
               type="button"
               onClick={() => startCamera(facingMode === 'environment' ? 'user' : 'environment')}
-              className="absolute bottom-3 right-3 bg-black/60 text-white text-xs px-3 py-2 rounded-full flex items-center gap-1"
+              className="absolute bottom-3 right-3 bg-black/60 text-white text-xs px-3 py-2 rounded-full flex items-center gap-1 z-20"
             >
               <Camera size={14} /> Flip
             </button>
