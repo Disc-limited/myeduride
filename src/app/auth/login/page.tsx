@@ -222,18 +222,22 @@ export default function LoginPage() {
   };
 
   return (
-    <div className="min-h-screen bg-slate-100 font-poppins flex flex-col justify-between relative selection:bg-brand-green selection:text-white">
+    <div
+      className="min-h-screen bg-slate-900 font-poppins flex flex-col justify-between relative selection:bg-brand-green selection:text-white bg-cover bg-center bg-no-repeat"
+      style={{
+        backgroundImage: "linear-gradient(to bottom, rgba(15, 23, 42, 0.7), rgba(15, 23, 42, 0.8)), url('/images/background%20image.png')",
+      }}
+    >
       
       {/* Top Floating Back Bar */}
       <div className="w-full max-w-6xl mx-auto px-4 pt-4 sm:pt-6 flex items-center justify-between z-20">
-        <button
-          type="button"
-          onClick={() => navigateBack(router, '/')}
+        <Link
+          href="/"
           className="inline-flex items-center gap-2 px-3.5 py-1.5 sm:px-4 sm:py-2 rounded-xl bg-white text-navy-900 font-bold text-xs sm:text-sm border border-slate-200 hover:bg-slate-50 transition-all shadow-sm group active:scale-95 cursor-pointer"
         >
           <ArrowLeft className="w-4 h-4 text-brand-green group-hover:-translate-x-0.5 transition-transform" />
-          <span>Back</span>
-        </button>
+          <span>Back to Home</span>
+        </Link>
         <span className="text-[10px] sm:text-xs font-semibold text-slate-500 uppercase tracking-widest hidden xs:inline">
           THE STUDENT SAFETY PLATFORM
         </span>
