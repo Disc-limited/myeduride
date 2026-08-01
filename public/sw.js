@@ -1,4 +1,4 @@
-const CACHE_NAME = 'myeduride-v2';
+const CACHE_NAME = 'myeduride-v3';
 const PRECACHE_ASSETS = [
   '/',
   '/offline',
