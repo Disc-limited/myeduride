@@ -131,7 +131,7 @@ export default function Navbar({ onOpenDemo, onOpenMigo }: NavbarProps) {
               Login
             </Link>
             <Link
-              href="/auth/register-school"
+              href="/auth/register"
               className="px-6 py-2.5 rounded-xl bg-brand-green text-white font-semibold text-sm hover:bg-brand-green-dark transition-all shadow-md shadow-brand-green/25 active:scale-95"
             >
               Get Started
@@ -197,7 +197,7 @@ export default function Navbar({ onOpenDemo, onOpenMigo }: NavbarProps) {
               Login
             </Link>
             <Link
-              href="/auth/register-school"
+              href="/auth/register"
               className="w-full text-center py-3 rounded-xl bg-brand-green text-white font-semibold shadow-md"
             >
               Get Started Now

@@ -44,7 +44,7 @@ export default function HeroSection({ onOpenDemo, onOpenMigo }: HeroSectionProps
             {/* Primary Action Buttons */}
             <div className="flex flex-wrap items-center gap-4 pt-1">
               <Link
-                href="/auth/register-school"
+                href="/auth/register"
                 className="inline-flex items-center gap-2.5 px-7 py-3.5 rounded-xl bg-brand-green text-white font-bold text-base hover:bg-brand-green-dark transition-all shadow-lg shadow-brand-green/30 hover:-translate-y-0.5 active:translate-y-0"
               >
                 <span>Get Started Now</span>
