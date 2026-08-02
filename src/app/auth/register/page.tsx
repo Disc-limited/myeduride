@@ -251,6 +251,50 @@ function RegisterContent() {
         {/* LEFT COLUMN: Main Sign Up Form Container (Mobile-first Frame) */}
         <div className="lg:col-span-7 xl:col-span-6 mx-auto w-full max-w-[440px] bg-white rounded-[28px] shadow-2xl border border-slate-200/80 overflow-hidden flex flex-col relative">
           
+          {/* Role & Sign In Toggle Switcher Header */}
+          <div className="bg-slate-900 px-3.5 sm:px-4 py-2 sm:py-2.5 flex items-center justify-between text-white text-xs font-semibold shrink-0 gap-2">
+            <div className="flex items-center gap-1.5 min-w-0">
+              <span className="text-slate-400 text-[10px] sm:text-[11px] font-bold uppercase tracking-wider hidden xs:inline shrink-0">Role:</span>
+              <div className="flex bg-slate-800 p-0.5 rounded-xl text-[10px] sm:text-[11px]">
+                <button
+                  type="button"
+                  onClick={() => setRole('parent')}
+                  className={`px-2 sm:px-2.5 py-1 rounded-lg transition-all cursor-pointer ${
+                    role === 'parent' ? 'bg-[#28A745] text-white font-bold shadow-xs' : 'text-slate-300 hover:text-white'
+                  }`}
+                >
+                  Parent
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setRole('school')}
+                  className={`px-2 sm:px-2.5 py-1 rounded-lg transition-all cursor-pointer ${
+                    role === 'school' ? 'bg-[#28A745] text-white font-bold shadow-xs' : 'text-slate-300 hover:text-white'
+                  }`}
+                >
+                  School
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setRole('driver')}
+                  className={`px-2 sm:px-2.5 py-1 rounded-lg transition-all cursor-pointer ${
+                    role === 'driver' ? 'bg-[#28A745] text-white font-bold shadow-xs' : 'text-slate-300 hover:text-white'
+                  }`}
+                >
+                  Escort
+                </button>
+              </div>
+            </div>
+
+            <Link
+              href="/auth/login"
+              className="px-2.5 sm:px-3 py-1 rounded-xl bg-[#28A745] hover:bg-[#208838] text-white text-[10px] sm:text-[11px] font-bold transition-all shadow-xs flex items-center gap-1 cursor-pointer shrink-0"
+            >
+              <span>Sign In</span>
+              <ArrowRight className="w-3 h-3" />
+            </Link>
+          </div>
+
           {/* Top Header Bar */}
           <div className="p-5 sm:p-6 pb-2 relative">
             <button

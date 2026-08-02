@@ -319,6 +319,18 @@ export default function LoginPage() {
           <div className="lg:col-span-6 w-full max-w-[420px] mx-auto">
             <div className="bg-white rounded-3xl shadow-2xl border border-slate-200/90 overflow-hidden flex flex-col transition-all">
               
+              {/* Mode Switcher Header Bar */}
+              <div className="bg-slate-900 px-3.5 sm:px-4 py-2 sm:py-2.5 flex items-center justify-between text-white text-xs font-semibold shrink-0 gap-2">
+                <span className="text-slate-300 text-[10px] sm:text-[11px] font-bold uppercase tracking-wider">Access Portal</span>
+                <Link
+                  href="/auth/register"
+                  className="px-2.5 sm:px-3 py-1 rounded-xl bg-[#28A745] hover:bg-[#208838] text-white text-[10px] sm:text-[11px] font-bold transition-all shadow-xs flex items-center gap-1 cursor-pointer shrink-0"
+                >
+                  <span>Create Account / Sign Up</span>
+                  <ArrowRight className="w-3 h-3" />
+                </Link>
+              </div>
+
               {/* Header Section with Logo & Bus Illustration */}
               <div className="p-6 sm:p-8 pb-4 text-center relative bg-gradient-to-b from-slate-50 to-white">
                 

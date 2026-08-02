@@ -491,32 +491,42 @@ export default function ParentRegistrationWizard({ onSwitchRole }: ParentRegistr
       {/* Main Wizard Mobile Frame Container */}
       <div className="max-w-[440px] w-full bg-white rounded-2xl sm:rounded-[32px] shadow-2xl border border-slate-200 overflow-hidden flex flex-col relative min-h-[580px] sm:min-h-[720px] max-h-[92vh] sm:max-h-none">
         
-        {/* Role Toggle Switcher Header */}
-        <div className="bg-slate-900 px-3.5 sm:px-4 py-2 sm:py-2.5 flex items-center justify-between text-white text-xs font-semibold shrink-0">
-          <span className="text-slate-300 text-[10px] sm:text-[11px] font-bold uppercase tracking-wider">Signing up as:</span>
-          <div className="flex bg-slate-800 p-0.5 rounded-xl text-[10px] sm:text-[11px]">
-            <button
-              type="button"
-              onClick={() => onSwitchRole?.('parent')}
-              className="px-2 sm:px-2.5 py-1 rounded-lg bg-[#28A745] text-white font-bold transition-all shadow-xs cursor-pointer"
-            >
-              Parent
-            </button>
-            <button
-              type="button"
-              onClick={() => onSwitchRole?.('school')}
-              className="px-2 sm:px-2.5 py-1 rounded-lg text-slate-300 hover:text-white transition-all cursor-pointer"
-            >
-              School
-            </button>
-            <button
-              type="button"
-              onClick={() => onSwitchRole?.('driver')}
-              className="px-2 sm:px-2.5 py-1 rounded-lg text-slate-300 hover:text-white transition-all cursor-pointer"
-            >
-              Escort
-            </button>
+        {/* Role & Sign In Toggle Switcher Header */}
+        <div className="bg-slate-900 px-3.5 sm:px-4 py-2 sm:py-2.5 flex items-center justify-between text-white text-xs font-semibold shrink-0 gap-2">
+          <div className="flex items-center gap-1.5 min-w-0">
+            <span className="text-slate-400 text-[10px] sm:text-[11px] font-bold uppercase tracking-wider hidden xs:inline shrink-0">Role:</span>
+            <div className="flex bg-slate-800 p-0.5 rounded-xl text-[10px] sm:text-[11px]">
+              <button
+                type="button"
+                onClick={() => onSwitchRole?.('parent')}
+                className="px-2 sm:px-2.5 py-1 rounded-lg bg-[#28A745] text-white font-bold transition-all shadow-xs cursor-pointer"
+              >
+                Parent
+              </button>
+              <button
+                type="button"
+                onClick={() => onSwitchRole?.('school')}
+                className="px-2 sm:px-2.5 py-1 rounded-lg text-slate-300 hover:text-white transition-all cursor-pointer"
+              >
+                School
+              </button>
+              <button
+                type="button"
+                onClick={() => onSwitchRole?.('driver')}
+                className="px-2 sm:px-2.5 py-1 rounded-lg text-slate-300 hover:text-white transition-all cursor-pointer"
+              >
+                Escort
+              </button>
+            </div>
           </div>
+
+          <Link
+            href="/auth/login"
+            className="px-2.5 sm:px-3 py-1 rounded-xl bg-[#28A745] hover:bg-[#208838] text-white text-[10px] sm:text-[11px] font-bold transition-all shadow-xs flex items-center gap-1 cursor-pointer shrink-0"
+          >
+            <span>Sign In</span>
+            <ArrowRight className="w-3 h-3" />
+          </Link>
         </div>
 
         {/* Step Indicator Header Bar */}
@@ -719,6 +729,15 @@ export default function ParentRegistrationWizard({ onSwitchRole }: ParentRegistr
                 </>
               )}
             </button>
+
+            <div className="text-center pt-2">
+              <p className="text-xs text-slate-600">
+                Already have an account?{' '}
+                <Link href="/auth/login" className="text-[#0D4A71] font-bold hover:underline">
+                  Sign In
+                </Link>
+              </p>
+            </div>
           </div>
         )}
 
