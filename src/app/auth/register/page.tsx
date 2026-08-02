@@ -202,7 +202,12 @@ function RegisterContent() {
 
   if (submitted) {
     return (
-      <div className="min-h-screen flex items-center justify-center p-4 sm:p-6 bg-gradient-to-br from-slate-900 via-navy-900 to-slate-950 font-poppins relative">
+      <div
+        className="min-h-screen flex items-center justify-center p-4 sm:p-6 bg-slate-900 font-poppins relative selection:bg-brand-green selection:text-white bg-cover bg-center bg-no-repeat"
+        style={{
+          backgroundImage: "linear-gradient(to bottom, rgba(15, 23, 42, 0.7), rgba(15, 23, 42, 0.8)), url('/images/background%20image.png')",
+        }}
+      >
         <div className="bg-white rounded-3xl p-8 max-w-md w-full text-center shadow-2xl space-y-5 border border-slate-100 animate-in fade-in zoom-in-95">
           <div className="w-16 h-16 bg-emerald-100 rounded-full flex items-center justify-center mx-auto text-brand-green shadow-inner">
             <CheckCircle size={36} />
@@ -233,7 +238,12 @@ function RegisterContent() {
   }
 
   return (
-    <div className="min-h-screen bg-slate-100/70 font-poppins text-slate-800 py-6 sm:py-10 px-3 sm:px-6 md:px-8 flex items-center justify-center">
+    <div
+      className="min-h-screen bg-slate-900 font-poppins text-slate-800 py-6 sm:py-10 px-3 sm:px-6 md:px-8 flex items-center justify-center relative selection:bg-brand-green selection:text-white bg-cover bg-center bg-no-repeat"
+      style={{
+        backgroundImage: "linear-gradient(to bottom, rgba(15, 23, 42, 0.7), rgba(15, 23, 42, 0.8)), url('/images/background%20image.png')",
+      }}
+    >
       
       {/* Container Wrapper */}
       <div className="max-w-6xl w-full grid grid-cols-1 lg:grid-cols-12 gap-8 items-start">
@@ -732,8 +742,13 @@ function RegisterContent() {
 export default function RegisterPage() {
   return (
     <Suspense fallback={
-      <div className="min-h-screen bg-slate-100 flex items-center justify-center p-4">
-        <div className="animate-pulse text-slate-500 text-sm font-semibold">Loading registration page...</div>
+      <div
+        className="min-h-screen bg-slate-900 flex items-center justify-center p-4 selection:bg-brand-green selection:text-white bg-cover bg-center bg-no-repeat"
+        style={{
+          backgroundImage: "linear-gradient(to bottom, rgba(15, 23, 42, 0.7), rgba(15, 23, 42, 0.8)), url('/images/background%20image.png')",
+        }}
+      >
+        <div className="animate-pulse text-slate-200 text-sm font-semibold">Loading registration page...</div>
       </div>
     }>
       <RegisterContent />

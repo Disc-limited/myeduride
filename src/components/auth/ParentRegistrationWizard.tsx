@@ -458,7 +458,12 @@ export default function ParentRegistrationWizard({ onSwitchRole }: ParentRegistr
   };
 
   return (
-    <div className="min-h-screen bg-slate-100/80 font-poppins text-slate-800 py-2 sm:py-8 px-2 sm:px-4 flex flex-col items-center justify-center">
+    <div
+      className="min-h-screen bg-slate-900 font-poppins text-slate-800 py-2 sm:py-8 px-2 sm:px-4 flex flex-col items-center justify-center relative selection:bg-brand-green selection:text-white bg-cover bg-center bg-no-repeat"
+      style={{
+        backgroundImage: "linear-gradient(to bottom, rgba(15, 23, 42, 0.7), rgba(15, 23, 42, 0.8)), url('/images/background%20image.png')",
+      }}
+    >
       
       {/* Top Banner Notice */}
       <div className="max-w-4xl w-full mb-3 sm:mb-4 bg-gradient-to-r from-[#0D4A71] via-slate-900 to-[#0D4A71] text-white p-3 sm:p-4 rounded-2xl shadow-md flex flex-wrap items-center justify-between gap-2.5 text-xs">
