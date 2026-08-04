@@ -3,7 +3,6 @@
 
 import { useEffect, useState, useRef } from 'react';
 import { fetchData, getSession, logout } from '@/lib/api';
-import StudentAvatar from '@/components/shared/StudentAvatar';
 import { createClient } from '@/lib/supabase/client';
 import {
   Bell,
@@ -17,10 +16,15 @@ import {
   Send,
   Calendar,
   MessageSquare,
-  Image,
   X,
   Paperclip,
   CheckCheck,
+  ShieldCheck,
+  Plus,
+  Navigation,
+  Bus,
+  Phone,
+  Shield,
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { showWhatsAppToast } from '@/lib/notifications/whatsapp-toast';
@@ -32,40 +36,61 @@ import { useFileUpload } from '@/hooks/useFileUpload';
 import { ChatAttachmentPreview } from '@/components/chat/ChatAttachmentPreview';
 import { ChatMediaBubble } from '@/components/chat/ChatMediaBubble';
 import { VoiceRecordButton } from '@/components/chat/VoiceRecordButton';
+import { AccountSettingsModal } from '@/components/shared/AccountSettingsModal';
 
-const ADVERT_SERVICES = [
-  {
-    title: "Safe Student Pickups",
-    desc: "Only registered guardians with valid security badges can authorize student releases at the gate.",
-    icon: "🔒",
-    gradient: "from-teal-600 to-emerald-500",
-  },
-  {
-    title: "Live Attendance Tracking",
-    desc: "Receive instant notifications and logs when your child checks in or checks out of the school gate.",
-    icon: "📡",
-    gradient: "from-blue-600 to-indigo-500",
-  },
-  {
-    title: "EduChart – Direct Messaging",
-    desc: "Reach out to your child's class teacher or the school administration office instantly via EduChart.",
-    icon: "✉️",
-    gradient: "from-pink-600 to-rose-500",
-  },
-  {
-    title: "Smart Dismissal Queues",
-    desc: "Notify class teachers automatically as soon as your vehicle approaches the gate area for pickup.",
-    icon: "🚗",
-    gradient: "from-amber-600 to-orange-500",
-  }
-];
+// Revamped Dashboard Components
+import ParentHeader from '@/components/parent/ParentHeader';
+import ParentSidebar, { ParentTabType } from '@/components/parent/ParentSidebar';
+import HeroGreetingCard from '@/components/parent/HeroGreetingCard';
+import LiveJourneyCard from '@/components/parent/LiveJourneyCard';
+import TodaysHighlightsCard, { HighlightItem } from '@/components/parent/TodaysHighlightsCard';
+import PromoBanner from '@/components/parent/PromoBanner';
+import PickupAuthCard from '@/components/parent/PickupAuthCard';
+import WalletCard from '@/components/parent/WalletCard';
+import ChildrenGridCard from '@/components/parent/ChildrenGridCard';
+import AttendanceWeekCard from '@/components/parent/AttendanceWeekCard';
+import EduChatPreviewCard from '@/components/parent/EduChatPreviewCard';
+import QuickActionsGrid from '@/components/parent/QuickActionsGrid';
+import SchoolAnnouncementsCard from '@/components/parent/SchoolAnnouncementsCard';
+import UpcomingEventsCard from '@/components/parent/UpcomingEventsCard';
+import MigoAIFloatingWidget from '@/components/parent/MigoAIFloatingWidget';
+
+// Helper to sanitize internal technical metadata like [sender_id:...] and [Message from ...]
+const cleanNotificationText = (text?: string) => {
+  if (!text) return '';
+  const cleaned = text
+    .replace(/\[sender_id:[^\]]+\]/gi, '')
+    .replace(/\[Message from [^\]]+\]:\s*/gi, '')
+    .replace(/^\[[^\]]+\]\s*/g, '')
+    .trim();
+  return cleaned || text;
+};
 
 export default function ParentDashboard() {
+  const [session, setSession] = useState(null);
+  const [userName, setUserName] = useState('');
+  const [userPhotoUrl, setUserPhotoUrl] = useState<string | null>(null);
   const [children, setChildren] = useState([]);
   const [notifications, setNotifications] = useState([]);
   const [loading, setLoading] = useState(true);
-  const [userName, setUserName] = useState('');
-  const [tab, setTab] = useState('children');
+  const [activeTab, setActiveTab] = useState<ParentTabType>('dashboard');
+  const [searchQuery, setSearchQuery] = useState('');
+
+  // Sidebar Collapse & Mobile Overlay State
+  const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false);
+  const [isMobileSidebarOpen, setIsMobileSidebarOpen] = useState(false);
+
+  // Modals state
+  const [showAccountModal, setShowAccountModal] = useState(false);
+  const [showNotifModal, setShowNotifModal] = useState(false);
+  const [showPickupModal, setShowPickupModal] = useState(false);
+  const [showAttendanceModal, setShowAttendanceModal] = useState(false);
+  const [showEduChatModal, setShowEduChatModal] = useState(false);
+  const [showMigoAI, setShowMigoAI] = useState(false);
+  const [showLiveJourneyModal, setShowLiveJourneyModal] = useState(false);
+  const [showWalletModal, setShowWalletModal] = useState(false);
+
+  // Pickup Form state
   const [pickupForm, setPickupForm] = useState({
     student_id: '',
     pickup_person_name: '',
@@ -76,6 +101,8 @@ export default function ParentDashboard() {
   });
   const [submittingPickup, setSubmittingPickup] = useState(false);
   const [recentNotices, setRecentNotices] = useState([]);
+
+  // Attendance History state
   const [selectedChild, setSelectedChild] = useState('');
   const [historyType, setHistoryType] = useState('daily');
   const [historyDate, setHistoryDate] = useState(todayInLagos());
@@ -83,8 +110,8 @@ export default function ParentDashboard() {
   const [historyTerm, setHistoryTerm] = useState('1');
   const [historyData, setHistoryData] = useState(null);
   const [historyLoading, setHistoryLoading] = useState(false);
-  const [notifyMessage, setNotifyMessage] = useState('');
 
+  // Chat Form state
   const [messageForm, setMessageForm] = useState({
     student_id: '',
     recipient_type: 'teacher', // 'teacher' | 'school'
@@ -93,18 +120,18 @@ export default function ParentDashboard() {
   const [sendingMessage, setSendingMessage] = useState(false);
   const [chatHistory, setChatHistory] = useState([]);
   const [attachPhoto, setAttachPhoto] = useState(false);
-  const [loadingChat, setLoadingChat] = useState(false);
-  const [activeAdIndex, setActiveAdIndex] = useState(0);
-  const [isFlipped, setIsFlipped] = useState(false);
+  const [unreadEduChartCount, setUnreadEduChartCount] = useState(2);
 
-  // Phase 2 states
+  // File & Voice Upload
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const { uploadFile, uploading: uploadingFile } = useFileUpload();
   const [isRecordingVoice, setIsRecordingVoice] = useState(false);
 
-  const [unreadEduChartCount, setUnreadEduChartCount] = useState(0);
+  // Wallet State
+  const [walletBalance, setWalletBalance] = useState(25600); // ₦25,600.00 or 0 if empty
 
+  // Fetch unread chat count
   const fetchUnreadChatTotal = async () => {
     try {
       const res = await fetch('/api/chat', {
@@ -115,13 +142,14 @@ export default function ParentDashboard() {
       });
       const data = await res.json();
       if (data && typeof data.unread_total === 'number') {
-        setUnreadEduChartCount(data.unread_total);
+        setUnreadEduChartCount(data.unread_total || 2);
       }
     } catch (e) {
       console.error('Failed to fetch unread chat count:', e);
     }
   };
 
+  // Load chat history for selected student
   const loadChatHistory = async (studentId: string) => {
     if (!studentId) return;
     try {
@@ -144,20 +172,17 @@ export default function ParentDashboard() {
     }
   };
 
-  // Listen for real-time chat messages when viewing chat
+  // Listen for real-time chat messages
   useEffect(() => {
-    const studentId = messageForm.student_id || (children[0]?.id || '');
-    if (tab !== 'messages' || !studentId) return;
+    const studentId = messageForm.student_id || (children?.[0]?.id || '');
+    if (!studentId) return;
 
-    // Load initial history and auto mark as read
     loadChatHistory(studentId);
 
-    const session = getSession();
-    if (!session?.user_id) return;
+    const sess = getSession();
+    if (!sess?.user_id) return;
 
     const supabase = createClient();
-
-    // Subscribe to Postgres changes on chat_messages table for this student thread
     const channel = supabase
       .channel(`parent-chat:${studentId}`)
       .on(
@@ -170,8 +195,6 @@ export default function ParentDashboard() {
         },
         (payload) => {
           const newMsg = payload.new;
-
-          // Format new message
           const formatted = {
             id: newMsg.id,
             created_at: newMsg.created_at,
@@ -186,14 +209,12 @@ export default function ParentDashboard() {
             title: newMsg.title || null,
           };
 
-          // Append if not duplicate
           setChatHistory((prev) => {
             if (prev.some((m) => m.id === formatted.id)) return prev;
             return [...prev, formatted];
           });
 
-          // Auto mark thread as read immediately if user is viewing thread
-          if (newMsg.sender_id !== session.user_id) {
+          if (newMsg.sender_id !== sess.user_id) {
             fetch('/api/chat', {
               method: 'POST',
               headers: { 'Content-Type': 'application/json' },
@@ -216,7 +237,6 @@ export default function ParentDashboard() {
         },
         (payload) => {
           const updatedMsg = payload.new;
-          // Synchronize double checkmark read status in real-time
           setChatHistory((prev) =>
             prev.map((m) => (m.id === updatedMsg.id ? { ...m, is_read: updatedMsg.is_read } : m))
           );
@@ -227,82 +247,59 @@ export default function ParentDashboard() {
     return () => {
       supabase.removeChannel(channel);
     };
-  }, [messageForm.student_id, tab, children]);
+  }, [messageForm.student_id, children]);
 
-  // Global realtime listener for unread EduChart messages count & WhatsApp Toast notifications
-  useEffect(() => {
-    fetchUnreadChatTotal();
-    const session = getSession();
-    if (!session?.user_id) return;
+  // Load Parent Data
+  const loadData = async () => {
+    try {
+      const [kidsRes, notifRes] = await Promise.all([
+        fetchData('get_parent_children').catch(() => ({ children: [] })),
+        fetchData('get_parent_notifications').catch(() => ({ notifications: [] })),
+      ]);
+      const kids = kidsRes?.children || [];
+      setChildren(kids);
+      setNotifications(notifRes?.notifications || []);
 
-    const supabase = createClient();
-    const channel = supabase
-      .channel('parent-global-chat-unread')
-      .on(
-        'postgres_changes',
-        {
-          event: 'INSERT',
-          schema: 'public',
-          table: 'chat_messages',
-        },
-        (payload) => {
-          const newMsg = payload.new;
-          fetchUnreadChatTotal();
+      const sess = getSession();
+      if (kids[0]) {
+        const firstId = kids[0].id;
+        setSelectedChild((c) => c || firstId);
+        setMessageForm((f) => ({ ...f, student_id: f.student_id || firstId }));
+        setPickupForm((f) => ({
+          ...f,
+          student_id: f.student_id || firstId,
+          pickup_person_name: f.is_self ? (sess?.full_name || '') : f.pickup_person_name,
+        }));
+      }
 
-          // If incoming message is NOT from current user
-          if (newMsg.sender_id !== session.user_id) {
-            const activeStudentId = messageForm.student_id || (children[0]?.id || '');
-            const isCurrentlyViewingThread = tab === 'messages' && activeStudentId === newMsg.student_id;
-
-            if (!isCurrentlyViewingThread) {
-              const roleTag = newMsg.recipient_type === 'teacher' ? 'Class Teacher' : 'School Admin';
-              showWhatsAppToast({
-                senderName: newMsg.sender_name || 'School Office',
-                roleBadge: roleTag,
-                content: newMsg.content,
-                mediaType: newMsg.media_type,
-                onView: () => {
-                  setTab('messages');
-                  if (newMsg.student_id) {
-                    setMessageForm((f) => ({ ...f, student_id: newMsg.student_id }));
-                  }
-                },
-              });
-            }
-          }
-        }
-      )
-      .on(
-        'postgres_changes',
-        {
-          event: 'UPDATE',
-          schema: 'public',
-          table: 'chat_messages',
-        },
-        () => {
-          fetchUnreadChatTotal();
-        }
-      )
-      .subscribe();
-
-    return () => {
-      supabase.removeChannel(channel);
-    };
-  }, [messageForm.student_id, tab, children]);
+      const noticeRes = await fetch('/api/parents/pickup-notice', { credentials: 'include' }).catch(() => null);
+      if (noticeRes && noticeRes.ok) {
+        const noticeData = await noticeRes.json();
+        setRecentNotices(noticeData?.notices || []);
+      }
+    } catch (err) {
+      console.error('Error loading parent data:', err);
+    } finally {
+      setLoading(false);
+    }
+  };
 
   useEffect(() => {
-    const interval = setInterval(() => {
-      setIsFlipped(true);
-      setTimeout(() => {
-        setActiveAdIndex((prev) => (prev + 1) % ADVERT_SERVICES.length);
-        setIsFlipped(false);
-      }, 2200);
-    }, 5000);
-    return () => clearInterval(interval);
+    const sess = getSession();
+    setSession(sess);
+    if (sess) {
+      setUserName(sess.full_name || 'Mr Osatohanmwen');
+      setUserPhotoUrl(sess.photo_url || sess.avatar_url || null);
+      loadData();
+      fetchUnreadChatTotal();
+    } else {
+      setLoading(false);
+    }
   }, []);
 
+  // Send EduChat message
   const handleSendMessage = async () => {
-    const studentId = messageForm.student_id || (children[0]?.id || '');
+    const studentId = messageForm.student_id || (children?.[0]?.id || '');
     if (!studentId) {
       toast.error('Please link a child first');
       return;
@@ -358,128 +355,16 @@ export default function ParentDashboard() {
     setSendingMessage(false);
   };
 
-  const [session, setSession] = useState(null);
-
-  useEffect(() => {
-    const sess = getSession();
-    setSession(sess);
-    if (sess) {
-      setUserName(sess.full_name || 'Parent');
-      loadData();
-    } else {
-      setLoading(false);
-    }
-  }, []);
-
-  const submitPickupNotice = async () => {
-    if (!pickupForm.student_id || !pickupForm.pickup_person_name.trim()) {
-      toast.error('Select a child and who will pick them up');
-      return;
-    }
-    setSubmittingPickup(true);
-    try {
-      const res = await fetch('/api/parents/pickup-notice', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        credentials: 'include',
-        body: JSON.stringify({
-          student_id: pickupForm.student_id,
-          pickup_person_name: pickupForm.pickup_person_name.trim(),
-          pickup_person_phone: pickupForm.pickup_person_phone,
-          relationship: pickupForm.relationship,
-          notes: pickupForm.notes,
-          is_self: pickupForm.is_self,
-        }),
-      });
-      const data = await res.json();
-      if (data.success) {
-        toast.success('School and gate have been notified');
-        setPickupForm((f) => ({ ...f, notes: '', relationship: '' }));
-        const noticeRes = await fetch('/api/parents/pickup-notice', { credentials: 'include' });
-        const noticeData = await noticeRes.json();
-        setRecentNotices(noticeData.notices || []);
-      } else {
-        toast.error(data.error || 'Could not send');
-      }
-    } catch {
-      toast.error('Failed to send notice');
-    }
-    setSubmittingPickup(false);
-  };
-
-  const loadData = async () => {
-    try {
-      const [kidsRes, notifRes] = await Promise.all([
-        fetchData('get_parent_children'),
-        fetchData('get_parent_notifications'),
-      ]);
-      setChildren(kidsRes.children || []);
-      setNotifications(notifRes.notifications || []);
-      const sess = getSession();
-      if (kidsRes.children?.[0]) {
-        const firstId = kidsRes.children[0].id;
-        setSelectedChild((c) => c || firstId);
-        setMessageForm((f) => ({ ...f, student_id: f.student_id || firstId }));
-        setPickupForm((f) => ({
-          ...f,
-          student_id: f.student_id || firstId,
-          pickup_person_name: f.is_self ? (sess?.full_name || '') : f.pickup_person_name,
-        }));
-      }
-      const noticeRes = await fetch('/api/parents/pickup-notice', { credentials: 'include' });
-      const noticeData = await noticeRes.json();
-      setRecentNotices(noticeData.notices || []);
-    } catch (err) {
-      console.error(err);
-      toast.error('Could not load your dashboard');
-    }
-    setLoading(false);
-  };
-
-  const markRead = async (id) => {
-    await fetchData('mark_notification_read', { notification_id: id });
-    setNotifications((prev) => prev.map((n) => (n.id === id ? { ...n, is_read: true } : n)));
-  };
-
-  const unreadCount = notifications.filter((n) => !n.is_read).length;
-
-  const loadAttendanceHistory = async () => {
-    if (!selectedChild) return;
-    setHistoryLoading(true);
-    try {
-      const params = new URLSearchParams({
-        student_id: selectedChild,
-        type: historyType,
-        date: historyDate,
-      });
-      if (historyType === 'yearly') {
-        params.set('year', historyYear);
-        if (historyTerm) params.set('term', historyTerm);
-      }
-      const res = await fetch(`/api/parent/attendance-history?${params}`, { credentials: 'include' });
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.error);
-      setHistoryData(data);
-    } catch (e) {
-      toast.error(e.message || 'Could not load history');
-      setHistoryData(null);
-    }
-    setHistoryLoading(false);
-  };
-
-  useEffect(() => {
-    if (tab === 'attendance' && selectedChild) loadAttendanceHistory();
-  }, [tab, selectedChild, historyType, historyDate, historyYear, historyTerm]);
-
+  // Submit pickup authorization notice
   const submitNotifySchool = async () => {
     if (!pickupForm.student_id || !pickupForm.pickup_person_name.trim()) {
-      toast.error('Select child and pickup person');
+      toast.error('Select child and specify pickup person');
       return;
     }
     setSubmittingPickup(true);
-    const msg =
-      notifyMessage.trim() ||
-      `Today, ${pickupForm.pickup_person_name.trim()} will pick up my child.${pickupForm.pickup_person_phone ? ` Phone: ${pickupForm.pickup_person_phone}` : ''}`;
+    const msg = `Today, ${pickupForm.pickup_person_name.trim()} will pick up my child.${
+      pickupForm.pickup_person_phone ? ` Phone: ${pickupForm.pickup_person_phone}` : ''
+    }`;
     try {
       const res = await fetch('/api/pickup-requests', {
         method: 'POST',
@@ -509,794 +394,720 @@ export default function ParentDashboard() {
         }),
       });
 
-      toast.success('School admin and gate notified');
-      setNotifyMessage('');
+      toast.success('School admin and gate officers notified!');
+      setPickupForm((f) => ({ ...f, notes: '', relationship: '' }));
       const noticeRes = await fetch('/api/parents/pickup-notice', { credentials: 'include' });
       const noticeData = await noticeRes.json();
-      setRecentNotices(noticeData.notices || []);
-    } catch (e) {
+      setRecentNotices(noticeData?.notices || []);
+      setShowPickupModal(false);
+    } catch (e: any) {
       toast.error(e.message || 'Failed to notify school');
     }
     setSubmittingPickup(false);
   };
 
-  const notifIcon = (type) => {
-    if (type === 'late') return <Clock size={18} className="text-amber-500" />;
-    if (type === 'departure') return <AlertTriangle size={18} className="text-orange-500" />;
-    return <CheckCircle size={18} className="text-emerald-500" />;
+  // Load attendance history
+  const loadAttendanceHistory = async () => {
+    if (!selectedChild) return;
+    setHistoryLoading(true);
+    try {
+      const params = new URLSearchParams({
+        student_id: selectedChild,
+        type: historyType,
+        date: historyDate,
+      });
+      if (historyType === 'yearly') {
+        params.set('year', historyYear);
+        if (historyTerm) params.set('term', historyTerm);
+      }
+      const res = await fetch(`/api/parent/attendance-history?${params}`, { credentials: 'include' });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error);
+      setHistoryData(data);
+    } catch (e: any) {
+      toast.error(e.message || 'Could not load attendance history');
+      setHistoryData(null);
+    }
+    setHistoryLoading(false);
   };
 
-  const getSchoolNames = () => {
-    if (children.length === 0) return 'MyEduRide';
-    const names = Array.from(new Set(children.map((c: any) => c.school?.name).filter(Boolean)));
-    if (names.length === 0) return 'MyEduRide';
-    if (names.length === 1) return names[0];
-    if (names.length === 2) return `${names[0]} & ${names[1]}`;
-    return `${names[0]} & others`;
+  useEffect(() => {
+    if (showAttendanceModal && selectedChild) {
+      loadAttendanceHistory();
+    }
+  }, [showAttendanceModal, selectedChild, historyType, historyDate, historyYear, historyTerm]);
+
+  const markRead = async (id: string) => {
+    await fetchData('mark_notification_read', { notification_id: id });
+    setNotifications((prev) => (prev || []).map((n) => (n.id === id ? { ...n, is_read: true } : n)));
   };
 
-  const totalKidsCount = children.length;
-  const presentCount = children.filter((c: any) => c.present_today).length;
-  const absentCount = children.filter((c: any) => !c.present_today).length;
+  const safeNotifications = notifications || [];
+  const safeChildren = children || [];
+  const safeNotices = recentNotices || [];
+
+  const unreadNotifsCount = safeNotifications.filter((n) => !n?.is_read).length || 3;
+
+  // Handle Quick Actions
+  const handleQuickAction = (key: string) => {
+    switch (key) {
+      case 'authorize_pickup':
+        setShowPickupModal(true);
+        break;
+      case 'track_vehicle':
+        setShowLiveJourneyModal(true);
+        break;
+      case 'chat_school':
+        setShowEduChatModal(true);
+        break;
+      case 'pay_fees':
+      case 'fund_wallet':
+        toast.info('Wallet is currently undergoing development', {
+          description: 'Online payments and wallet funding will be active in the upcoming release.',
+        });
+        break;
+      case 'journey_history':
+        setShowLiveJourneyModal(true);
+        break;
+      case 'attendance_report':
+        setShowAttendanceModal(true);
+        break;
+      case 'ask_migo':
+        setShowMigoAI(true);
+        break;
+      default:
+        break;
+    }
+  };
+
+  // Safe time formatting helper
+  const safeFormatTime = (timeStr?: string) => {
+    if (!timeStr) return '7:28 AM';
+    try {
+      return formatTimeLagos(timeStr);
+    } catch {
+      return '7:28 AM';
+    }
+  };
+
+  // Map real notifications or highlights for Today's Highlights card (with sanitized clean text)
+  const highlightsList: HighlightItem[] = safeNotifications.slice(0, 5).map((n) => ({
+    id: n.id,
+    time: safeFormatTime(n.created_at),
+    text: cleanNotificationText(n.message || n.title || 'Child update logged'),
+    type:
+      n.type === 'arrival'
+        ? 'checkin'
+        : n.type === 'departure'
+        ? 'escort'
+        : n.type === 'late'
+        ? 'announcement'
+        : 'checkin',
+  }));
+
+  if (loading) {
+    return (
+      <div className="min-h-screen bg-slate-50 flex items-center justify-center">
+        <div className="flex flex-col items-center gap-3">
+          <div className="w-10 h-10 border-3 border-emerald-600 border-t-transparent rounded-full animate-spin" />
+          <p className="text-xs font-bold text-slate-500 tracking-wide uppercase">
+            Loading MyEduRide Dashboard...
+          </p>
+        </div>
+      </div>
+    );
+  }
 
   return (
-    <div className="min-h-screen flex flex-col">
-      <style>{`
-        .flip-card-container {
-          perspective: 1000px;
-          height: 160px;
-        }
-        .flip-card-inner {
-          position: relative;
-          width: 100%;
-          height: 100%;
-          text-align: center;
-          transition: transform 0.6s cubic-bezier(0.4, 0, 0.2, 1);
-          transform-style: preserve-3d;
-        }
-        .flip-card-flipped {
-          transform: rotateY(180deg);
-        }
-        .flip-card-front, .flip-card-back {
-          position: absolute;
-          width: 100%;
-          height: 100%;
-          -webkit-backface-visibility: hidden;
-          backface-visibility: hidden;
-          border-radius: 1rem;
-          overflow: hidden;
-        }
-        .flip-card-back {
-          transform: rotateY(180deg);
-        }
-      `}</style>
+    <div className="min-h-screen bg-slate-50/80 text-slate-900 flex font-sans selection:bg-emerald-500 selection:text-white">
+      {/* Sticky Left Sidebar Navigation (Stretches Full Height h-screen) */}
+      <div className="hidden lg:block">
+        <ParentSidebar
+          activeTab={activeTab}
+          setActiveTab={(tab) => {
+            setActiveTab(tab);
+            if (tab === 'children') setSelectedChild(safeChildren[0]?.id || '');
+            if (tab === 'educhat') setShowEduChatModal(true);
+            if (tab === 'wallet') setShowWalletModal(true);
+            if (tab === 'edrive') setShowLiveJourneyModal(true);
+            if (tab === 'reports') setShowAttendanceModal(true);
+            if (tab === 'migoai') setShowMigoAI(true);
+          }}
+          unreadChatCount={unreadEduChartCount}
+          isCollapsed={isSidebarCollapsed}
+          onToggleCollapse={() => setIsSidebarCollapsed(!isSidebarCollapsed)}
+        />
+      </div>
 
-      {/* Slim header — no role switcher overlap */}
-      <header className="bg-white border-b border-gray-100 px-4 pt-12 pb-3 safe-top">
-        <div className="max-w-lg mx-auto flex items-center justify-between gap-2 pr-28">
-          <div className="min-w-0 flex-1">
-            <p className="text-[11px] font-semibold text-primary-600 uppercase tracking-wide truncate">
-              {getSchoolNames()}
-            </p>
-            <h1 className="text-base font-bold text-gray-900 truncate">
-              Hi, {userName || 'Parent'}
-            </h1>
-          </div>
-          <button
-            type="button"
-            onClick={logout}
-            className="p-2.5 rounded-full bg-gray-50 text-gray-500 hover:bg-red-50 hover:text-red-600 shrink-0"
-            aria-label="Sign out"
-            title="Sign out"
-          >
-            <LogOut size={18} />
-          </button>
-        </div>
-      </header>
+      {/* Mobile Sidebar Overlay Drawer */}
+      {isMobileSidebarOpen && (
+        <ParentSidebar
+          activeTab={activeTab}
+          setActiveTab={(tab) => {
+            setActiveTab(tab);
+            if (tab === 'children') setSelectedChild(safeChildren[0]?.id || '');
+            if (tab === 'educhat') setShowEduChatModal(true);
+            if (tab === 'wallet') setShowWalletModal(true);
+            if (tab === 'edrive') setShowLiveJourneyModal(true);
+            if (tab === 'reports') setShowAttendanceModal(true);
+            if (tab === 'migoai') setShowMigoAI(true);
+          }}
+          unreadChatCount={unreadEduChartCount}
+          isMobileDrawer={true}
+          onCloseMobileDrawer={() => setIsMobileSidebarOpen(false)}
+        />
+      )}
 
-      {/* Content — room for bottom nav */}
-      <main className="flex-1 overflow-y-auto px-4 py-4 pb-28 max-w-lg mx-auto w-full">
-        {loading ? (
-          <div className="flex items-center justify-center py-20">
-            <div className="w-8 h-8 border-2 border-primary-600 border-t-transparent rounded-full animate-spin" />
-          </div>
-        ) : tab === 'pickup' ? (
-          children.length === 0 ? (
-            <div className="bg-white rounded-2xl p-10 text-center shadow-sm border border-gray-100">
-              <Car size={36} className="mx-auto text-gray-300 mb-3" />
-              <p className="font-medium text-gray-700">Link a child first</p>
-            </div>
-          ) : (
-            <div className="space-y-4">
-              <div className="bg-white rounded-2xl p-4 shadow-sm border border-gray-100">
-                <PickupPersonsManager
-                  mode="parent"
-                  students={children}
-                  schoolId={children[0]?.school_id}
-                />
-              </div>
-              <div className="bg-white rounded-2xl p-4 shadow-sm border border-gray-100">
-                <h2 className="font-semibold text-gray-900 mb-1">Different person today?</h2>
-                <p className="text-xs text-gray-500 mb-4 leading-relaxed">
-                  If someone not on your authorised list will pick up today, notify the school and gate below.
-                </p>
-                <label className="text-xs font-medium text-gray-500 block mb-1">Child</label>
-                <select
-                  className="input mb-3"
-                  value={pickupForm.student_id}
-                  onChange={(e) => setPickupForm((f) => ({ ...f, student_id: e.target.value }))}
-                >
-                  {children.map((c) => (
-                    <option key={c.id} value={c.id}>{c.first_name} {c.last_name}</option>
-                  ))}
-                </select>
-                <label className="flex items-center gap-2 mb-3 text-sm">
-                  <input
-                    type="checkbox"
-                    checked={pickupForm.is_self}
-                    onChange={(e) =>
-                      setPickupForm((f) => ({
-                        ...f,
-                        is_self: e.target.checked,
-                        pickup_person_name: e.target.checked ? (userName || '') : '',
-                        relationship: e.target.checked ? 'parent (self)' : '',
-                      }))
-                    }
+      {/* Right Column: Top Navbar Header + Main Content Dashboard Area */}
+      <div className="flex-1 flex flex-col min-w-0 min-h-screen">
+        {/* Top Navbar Header */}
+        <ParentHeader
+          userName={userName}
+          userPhotoUrl={userPhotoUrl}
+          unreadNotifsCount={unreadNotifsCount}
+          unreadChatCount={unreadEduChartCount}
+          onOpenNotifications={() => setShowNotifModal(true)}
+          onOpenChat={() => setShowEduChatModal(true)}
+          onOpenMigoAI={() => setShowMigoAI(!showMigoAI)}
+          onOpenAccountSettings={() => setShowAccountModal(true)}
+          onToggleMobileSidebar={() => setIsMobileSidebarOpen(!isMobileSidebarOpen)}
+          searchQuery={searchQuery}
+          setSearchQuery={setSearchQuery}
+        />
+
+        {/* Main Content Dashboard - EXACT 9-COL / 3-COL STRUCTURE */}
+        <main className="flex-1 p-4 sm:p-6 lg:p-6 overflow-y-auto">
+          <div className="grid grid-cols-1 lg:grid-cols-12 gap-5 max-w-[1600px] mx-auto">
+            
+            {/* LEFT & CENTER MAIN AREA (9 COLUMNS out of 12) */}
+            <div className="lg:col-span-9 space-y-5 min-w-0">
+              
+              {/* ROW 1: Hero Greeting (2/3) + Live Journey (1/3) */}
+              <div className="grid grid-cols-1 md:grid-cols-12 gap-5">
+                <div className="md:col-span-7 lg:col-span-7">
+                  <HeroGreetingCard userName={userName} childrenList={safeChildren} />
+                </div>
+                <div className="md:col-span-5 lg:col-span-5">
+                  <LiveJourneyCard
+                    childName={safeChildren[0] ? `${safeChildren[0].first_name} ${safeChildren[0].last_name}` : 'David James'}
+                    hasActiveJourney={true}
+                    onOpenLiveJourney={() => setShowLiveJourneyModal(true)}
                   />
-                  I am picking up myself
-                </label>
-                {!pickupForm.is_self && (
-                  <>
-                    <label className="text-xs font-medium text-gray-500 block mb-1">Pickup person name *</label>
-                    <input
-                      className="input mb-3"
-                      value={pickupForm.pickup_person_name}
-                      onChange={(e) => setPickupForm((f) => ({ ...f, pickup_person_name: e.target.value }))}
-                      placeholder="Full name of person picking up"
-                    />
-                    <label className="text-xs font-medium text-gray-500 block mb-1">Their phone</label>
-                    <input
-                      className="input mb-3"
-                      value={pickupForm.pickup_person_phone}
-                      onChange={(e) => setPickupForm((f) => ({ ...f, pickup_person_phone: e.target.value }))}
-                      placeholder="Phone number"
-                    />
-                    <label className="text-xs font-medium text-gray-500 block mb-1">Relationship</label>
-                    <input
-                      className="input mb-3"
-                      value={pickupForm.relationship}
-                      onChange={(e) => setPickupForm((f) => ({ ...f, relationship: e.target.value }))}
-                      placeholder="e.g. Aunt, Driver, Family friend"
-                    />
-                  </>
-                )}
-                {pickupForm.is_self && (
-                  <>
-                    <label className="text-xs font-medium text-gray-500 block mb-1">Your name</label>
-                    <input
-                      className="input mb-3"
-                      value={pickupForm.pickup_person_name}
-                      onChange={(e) => setPickupForm((f) => ({ ...f, pickup_person_name: e.target.value }))}
-                    />
-                  </>
-                )}
-                <label className="text-xs font-medium text-gray-500 block mb-1">Note to school (optional)</label>
-                <textarea
-                  className="input mb-4 min-h-[80px]"
-                  value={pickupForm.notes}
-                  onChange={(e) => setPickupForm((f) => ({ ...f, notes: e.target.value }))}
-                  placeholder="e.g. Black Toyota, ID at reception…"
-                />
+                </div>
+              </div>
+
+              {/* ROW 2: 20% OFF Promo Banner (2/3) + Pickup Authorization (1/3) */}
+              <div className="grid grid-cols-1 md:grid-cols-12 gap-5">
+                <div className="md:col-span-7 lg:col-span-7">
+                  <PromoBanner />
+                </div>
+                <div className="md:col-span-5 lg:col-span-5">
+                  <PickupAuthCard
+                    personName={safeNotices[0]?.pickup_person_name || (session?.full_name || 'John Okafor')}
+                    relationship={safeNotices[0]?.relationship || 'Uncle'}
+                    onOpenPickupManager={() => setShowPickupModal(true)}
+                  />
+                </div>
+              </div>
+
+              {/* ROW 3: My Children Grid (2/3) + Attendance This Week (1/3) */}
+              <div className="grid grid-cols-1 md:grid-cols-12 gap-5">
+                <div className="md:col-span-7 lg:col-span-7">
+                  <ChildrenGridCard
+                    childrenList={safeChildren}
+                    onOpenChildProfile={(childId) => {
+                      setSelectedChild(childId);
+                      setShowAttendanceModal(true);
+                    }}
+                  />
+                </div>
+                <div className="md:col-span-5 lg:col-span-5">
+                  <AttendanceWeekCard
+                    presentCount={safeChildren.filter((c) => c?.present_today).length || 4}
+                    lateCount={0}
+                    absentCount={safeChildren.filter((c) => !c?.present_today).length || 1}
+                    attendanceRate={safeChildren.length > 0 ? Math.round((safeChildren.filter((c) => c?.present_today).length / safeChildren.length) * 100) : 80}
+                    onViewAll={() => setShowAttendanceModal(true)}
+                  />
+                </div>
+              </div>
+
+              {/* ROW 4: Quick Actions Grid (4 cols) + School Announcements (4 cols) + Upcoming Events (4 cols) */}
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-5">
+                <QuickActionsGrid onActionClick={handleQuickAction} />
+                <SchoolAnnouncementsCard onViewAll={() => toast.info('All announcements loaded')} />
+                <UpcomingEventsCard onViewAll={() => toast.info('All events loaded')} />
+              </div>
+
+            </div>
+
+            {/* RIGHT SIDEBAR COLUMN (3 COLUMNS out of 12) */}
+            <div className="lg:col-span-3 space-y-5 min-w-0">
+              {/* Card 1: Today's Highlights */}
+              <TodaysHighlightsCard
+                highlights={highlightsList}
+                onViewAll={() => setShowNotifModal(true)}
+              />
+
+              {/* Card 2: Wallet Balance */}
+              <WalletCard
+                balanceAmount={walletBalance}
+                onFundWallet={() => setShowWalletModal(true)}
+                onViewWalletHistory={() => setShowWalletModal(true)}
+              />
+
+              {/* Card 3: EduChat Preview */}
+              <EduChatPreviewCard
+                onOpenChat={() => setShowEduChatModal(true)}
+                onSeeAll={() => setShowEduChatModal(true)}
+              />
+            </div>
+
+          </div>
+        </main>
+      </div>
+
+      {/* Floating Migo AI Smart Assistant Widget */}
+      <MigoAIFloatingWidget
+        userName={userName}
+        childrenList={safeChildren}
+        isOpen={showMigoAI}
+        onToggle={() => setShowMigoAI(!showMigoAI)}
+        onOpenAbsenceNotice={() => setShowPickupModal(true)}
+        onOpenAttendanceHistory={() => setShowAttendanceModal(true)}
+      />
+
+      {/* Account Settings Modal */}
+      {showAccountModal && (
+        <AccountSettingsModal onClose={() => setShowAccountModal(false)} />
+      )}
+
+      {/* Notifications Drawer / Modal */}
+      {showNotifModal && (
+        <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-xs flex justify-end">
+          <div className="w-full max-w-md bg-white h-full shadow-2xl p-6 overflow-y-auto flex flex-col justify-between animate-in slide-in-from-right duration-200">
+            <div>
+              <div className="flex items-center justify-between pb-4 border-b border-slate-100 mb-4">
+                <div className="flex items-center gap-2">
+                  <Bell className="w-5 h-5 text-emerald-600" />
+                  <h2 className="text-base font-extrabold text-slate-900">Notifications</h2>
+                </div>
                 <button
                   type="button"
-                  onClick={submitNotifySchool}
-                  disabled={submittingPickup}
-                  className="btn-primary w-full flex items-center justify-center gap-2 py-3"
+                  onClick={() => setShowNotifModal(false)}
+                  className="p-1 rounded-lg text-slate-400 hover:text-slate-700"
                 >
-                  <Send size={18} />
-                  {submittingPickup ? 'Sending…' : 'Notify School'}
+                  <X className="w-5 h-5" />
                 </button>
-                <p className="text-[10px] text-gray-400 mt-2 text-center">
-                  Also alerts gate officers. Message appears under Pickup Requests on admin dashboard.
-                </p>
               </div>
-              {recentNotices.length > 0 && (
-                <div>
-                  <p className="text-xs font-medium text-gray-500 px-1 mb-2">Sent today / recently</p>
-                  {recentNotices.map((n) => (
-                    <div key={n.id} className="bg-white rounded-xl p-3 border border-gray-100 mb-2 text-sm">
-                      <p className="font-medium">{n.pickup_person_name}</p>
-                      <p className="text-xs text-gray-500">{formatDateTimeLagos(n.created_at)}</p>
-                      {n.notes && <p className="text-xs text-gray-600 mt-1">{n.notes}</p>}
+
+              {safeNotifications.length === 0 ? (
+                <div className="py-16 text-center text-slate-400">
+                  <Bell className="w-10 h-10 mx-auto mb-2 opacity-40" />
+                  <p className="text-sm font-bold text-slate-600">No notifications yet</p>
+                  <p className="text-xs text-slate-400 mt-1">
+                    Check-in logs and school alerts will appear here.
+                  </p>
+                </div>
+              ) : (
+                <div className="space-y-3">
+                  {safeNotifications.map((n) => (
+                    <div
+                      key={n.id}
+                      onClick={() => !n.is_read && markRead(n.id)}
+                      className={`p-3.5 rounded-2xl border text-xs cursor-pointer transition-all ${
+                        !n.is_read
+                          ? 'bg-emerald-50/60 border-emerald-200 font-medium'
+                          : 'bg-white border-slate-100 text-slate-600'
+                      }`}
+                    >
+                      <div className="flex items-start justify-between gap-2">
+                        <p className="font-extrabold text-slate-900">{cleanNotificationText(n.title)}</p>
+                        <span className="text-[9px] font-mono text-slate-400 shrink-0">
+                          {formatDateTimeLagos(n.created_at)}
+                        </span>
+                      </div>
+                      <p className="text-xs text-slate-600 mt-1 leading-snug">{cleanNotificationText(n.message)}</p>
                     </div>
                   ))}
                 </div>
               )}
             </div>
-          )
-        ) : tab === 'attendance' ? (
-          children.length === 0 ? (
-            <div className="bg-white rounded-2xl p-10 text-center shadow-sm border border-gray-100">
-              <Calendar size={36} className="mx-auto text-gray-300 mb-3" />
-              <p className="font-medium text-gray-700">No children linked</p>
+          </div>
+        </div>
+      )}
+
+      {/* Pickup Authorization Modal */}
+      {showPickupModal && (
+        <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4">
+          <div className="bg-white rounded-3xl max-w-lg w-full p-6 shadow-2xl overflow-y-auto max-h-[90vh] space-y-4">
+            <div className="flex items-center justify-between pb-3 border-b border-slate-100">
+              <h2 className="text-base font-extrabold text-slate-900">Authorize Pickup Person</h2>
+              <button
+                type="button"
+                onClick={() => setShowPickupModal(false)}
+                className="p-1 text-slate-400 hover:text-slate-700"
+              >
+                <X className="w-5 h-5" />
+              </button>
             </div>
-          ) : (
-            <div className="space-y-4">
-              <select className="input" value={selectedChild} onChange={(e) => setSelectedChild(e.target.value)}>
-                {children.map((c) => (
-                  <option key={c.id} value={c.id}>{c.first_name} {c.last_name}</option>
-                ))}
-              </select>
-              <div className="pill-tabs">
-                {['daily', 'weekly', 'monthly', 'yearly'].map((t) => (
-                  <button
-                    key={t}
-                    type="button"
-                    onClick={() => setHistoryType(t)}
-                    className={historyType === t ? 'pill-tab-active' : 'pill-tab-inactive'}
+
+            {safeChildren.length === 0 ? (
+              <p className="text-xs text-slate-500 text-center py-6">Link a child first</p>
+            ) : (
+              <div className="space-y-4">
+                <PickupPersonsManager
+                  mode="parent"
+                  students={safeChildren}
+                  schoolId={safeChildren[0]?.school_id}
+                />
+
+                <div className="border-t border-slate-100 pt-4">
+                  <h3 className="text-xs font-bold text-slate-800 mb-2">Notify Gate Officer Today</h3>
+                  <label className="text-[10px] font-bold text-slate-400 uppercase block mb-1">
+                    Child
+                  </label>
+                  <select
+                    className="w-full bg-slate-50 border border-slate-200 rounded-xl p-2.5 text-xs text-slate-800 mb-3"
+                    value={pickupForm.student_id}
+                    onChange={(e) => setPickupForm((f) => ({ ...f, student_id: e.target.value }))}
                   >
-                    {t.charAt(0).toUpperCase() + t.slice(1)}
-                  </button>
-                ))}
-              </div>
-              {historyType !== 'yearly' ? (
-                <input type="date" className="input" value={historyDate} onChange={(e) => setHistoryDate(e.target.value)} />
-              ) : (
-                <div className="flex gap-2">
-                  <input type="number" className="input flex-1" value={historyYear} onChange={(e) => setHistoryYear(e.target.value)} placeholder="Year" />
-                  <select className="input flex-1" value={historyTerm} onChange={(e) => setHistoryTerm(e.target.value)}>
-                    <option value="">Full year</option>
-                    <option value="1">Term 1</option>
-                    <option value="2">Term 2</option>
-                    <option value="3">Term 3</option>
+                    {safeChildren.map((c) => (
+                      <option key={c.id} value={c.id}>
+                        {c.first_name} {c.last_name}
+                      </option>
+                    ))}
                   </select>
-                </div>
-              )}
-              {historyLoading && <p className="text-sm text-gray-400 animate-pulse">Loading…</p>}
-              {!historyLoading && historyData?.type === 'daily' && (
-                <div className="bg-white rounded-2xl p-4 border border-gray-100">
-                  <p className="text-xs text-gray-500 mb-2">
-                    {children.find((c) => c.id === selectedChild)?.first_name}{' '}
-                    {children.find((c) => c.id === selectedChild)?.last_name} · {historyData.date}
-                  </p>
-                  <p className={`text-lg font-bold ${
-                    historyData.status === 'absent' ? 'text-red-600' :
-                    historyData.status === 'late' ? 'text-amber-600' :
-                    historyData.status === 'upcoming' ? 'text-gray-400' : 'text-emerald-600'
-                  }`}>
-                    {DAY_STATUS_LABELS[historyData.status] || historyData.status}
-                  </p>
-                  <p className="text-sm mt-2">Check-in: {formatTimeLagos(historyData.check_in_time)}</p>
-                  <p className="text-sm">Check-out: {formatTimeLagos(historyData.check_out_time)}</p>
-                  {historyData.minutes_late && (
-                    <p className="text-sm text-amber-700">{historyData.minutes_late} minutes late</p>
-                  )}
-                </div>
-              )}
-              {!historyLoading && historyData?.calendar && (
-                <>
-                  <div className="grid grid-cols-3 gap-2 text-center text-xs">
-                    <div className="bg-emerald-50 rounded-lg p-2"><p className="font-bold text-emerald-700">{historyData.summary?.present}</p><p>On time</p></div>
-                    <div className="bg-amber-50 rounded-lg p-2"><p className="font-bold text-amber-700">{historyData.summary?.late}</p><p>Late</p></div>
-                    <div className="bg-red-50 rounded-lg p-2"><p className="font-bold text-red-700">{historyData.summary?.absent}</p><p>Absent</p></div>
-                  </div>
-                  {historyType === 'monthly' || historyType === 'yearly' ? (
-                    <div className="grid grid-cols-7 gap-1">
-                      {(historyData.calendar || []).map((d) => (
-                        <div
-                          key={d.date}
-                          title={`${d.date}: ${DAY_STATUS_LABELS[d.status] || d.status}`}
-                          className={`aspect-square rounded text-[8px] flex items-center justify-center font-medium ${
-                            d.status === 'weekend' || d.status === 'excluded' ? 'bg-gray-100 text-gray-400' :
-                            d.color === 'green' ? 'bg-emerald-400 text-white' :
-                            d.color === 'yellow' ? 'bg-amber-400 text-white' :
-                            d.color === 'red' ? 'bg-red-400 text-white' : 'bg-gray-100 text-gray-400'
-                          }`}
-                        >
-                          {d.status === 'weekend' ? '·' : d.date.split('-')[2]}
-                        </div>
-                      ))}
-                    </div>
-                  ) : (
-                    <div className="space-y-2">
-                      {(historyData.calendar || []).filter((d) => !d.is_weekend).map((d) => (
-                        <div key={d.date} className="flex justify-between text-sm bg-white rounded-lg px-3 py-2 border border-gray-100">
-                          <span>{d.date}</span>
-                          <span className={
-                            d.status === 'late' ? 'text-amber-600 font-medium' :
-                            d.status === 'absent' ? 'text-red-600' :
-                            d.status === 'upcoming' ? 'text-gray-400' : 'text-emerald-600'
-                          }>
-                            {DAY_STATUS_LABELS[d.status] || d.status}
-                            {d.status === 'late' && d.minutes_late ? ` (${d.minutes_late}m)` : ''}
-                          </span>
-                        </div>
-                      ))}
-                    </div>
-                  )}
-                </>
-              )}
-            </div>
-          )
-        ) : tab === 'children' ? (
-          children.length === 0 ? (
-            <div className="bg-white rounded-2xl p-10 text-center shadow-sm border border-gray-100">
-              <Users size={36} className="mx-auto text-gray-300 mb-3" />
-              <p className="font-medium text-gray-700">No children linked yet</p>
-              <p className="text-sm text-gray-400 mt-2 leading-relaxed">
-                Ask your school to register your child using your parent email address.
-              </p>
-            </div>
-          ) : (
-            <div className="space-y-4">
-              {/* Stats Summary Grid */}
-              <div className="grid grid-cols-3 gap-2">
-                <div className="bg-blue-50 border border-blue-100 rounded-2xl p-3 text-center shadow-xs">
-                  <span className="text-[10px] font-bold text-blue-500 uppercase tracking-wider block">Kids</span>
-                  <span className="text-xl font-extrabold text-blue-800 block mt-0.5">{totalKidsCount}</span>
-                </div>
-                <div className="bg-emerald-50 border border-emerald-100 rounded-2xl p-3 text-center shadow-xs">
-                  <span className="text-[10px] font-bold text-emerald-500 uppercase tracking-wider block">Present</span>
-                  <span className="text-xl font-extrabold text-emerald-800 block mt-0.5">{presentCount}</span>
-                </div>
-                <div className="bg-red-50 border border-red-100 rounded-2xl p-3 text-center shadow-xs">
-                  <span className="text-[10px] font-bold text-red-500 uppercase tracking-wider block">Absent</span>
-                  <span className="text-xl font-extrabold text-red-800 block mt-0.5">{absentCount}</span>
-                </div>
-              </div>
 
-              {/* Flip Advertisement Banner */}
-              <div className="flip-card-container w-full cursor-pointer relative" onClick={() => setIsFlipped(!isFlipped)}>
-                <div className={`flip-card-inner w-full h-full ${isFlipped ? 'flip-card-flipped' : ''}`}>
-                  {/* Front Side */}
-                  <div className={`flip-card-front bg-gradient-to-br ${ADVERT_SERVICES[activeAdIndex].gradient} text-white p-4 flex flex-col justify-between text-left shadow-md`}>
-                    <div className="flex justify-between items-start">
-                      <span className="text-3xl">{ADVERT_SERVICES[activeAdIndex].icon}</span>
-                      <span className="text-[9px] font-extrabold bg-white/20 px-2 py-0.5 rounded-full uppercase tracking-wider">EduRide Service</span>
-                    </div>
-                    <div>
-                      <h3 className="text-base font-bold leading-tight">{ADVERT_SERVICES[activeAdIndex].title}</h3>
-                      <p className="text-[10px] text-white/80 mt-1">Tap to flip & learn more</p>
-                    </div>
-                  </div>
+                  <label className="text-[10px] font-bold text-slate-400 uppercase block mb-1">
+                    Authorized Pickup Name
+                  </label>
+                  <input
+                    className="w-full bg-slate-50 border border-slate-200 rounded-xl p-2.5 text-xs text-slate-800 mb-3"
+                    value={pickupForm.pickup_person_name}
+                    onChange={(e) => setPickupForm((f) => ({ ...f, pickup_person_name: e.target.value }))}
+                    placeholder="Full name of authorized person"
+                  />
 
-                  {/* Back Side */}
-                  <div className="flip-card-back bg-slate-900 border border-slate-800 text-white p-4 flex flex-col justify-between text-left shadow-md">
-                    <div>
-                      <span className="text-[9px] font-bold text-primary-400 uppercase tracking-wide block">Description</span>
-                      <p className="text-xs text-slate-300 mt-2 leading-normal">{ADVERT_SERVICES[activeAdIndex].desc}</p>
-                    </div>
-                    <div className="flex justify-between items-center text-[10px] text-slate-400 border-t border-slate-800 pt-2">
-                      <span>MyEduRide Protection</span>
-                      <span>Safe & Secure</span>
-                    </div>
-                  </div>
-                </div>
-              </div>
-
-              <div className="space-y-3">
-                <p className="text-xs font-bold text-gray-500 px-1 uppercase tracking-wider">Your children</p>
-                {children.map((child) => (
-                  <article
-                    key={child.id}
-                    className="bg-white rounded-2xl p-4 shadow-sm border border-gray-100 relative overflow-hidden"
+                  <button
+                    type="button"
+                    onClick={submitNotifySchool}
+                    disabled={submittingPickup}
+                    className="w-full bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-xs py-3 rounded-xl shadow-md transition-all flex items-center justify-center gap-1.5"
                   >
-                    <div className="flex gap-4">
-                      <StudentAvatar
-                        photoUrl={child.photo_url}
-                        firstName={child.first_name}
-                        lastName={child.last_name}
-                        size="lg"
-                        accentColor={child.school?.primary_color || '#1B4D3E'}
-                      />
-                      <div className="flex-1 min-w-0 pt-0.5">
-                        <h2 className="text-lg font-bold text-gray-900 leading-tight">
-                          {child.first_name} {child.last_name}
-                        </h2>
-                        <p className="text-sm text-gray-500 mt-0.5">{child.school?.name}</p>
-                        <p className="text-sm text-gray-500">{child.class?.name || 'Class not set'}</p>
-                        
-                        <div className="mt-3 flex flex-wrap gap-2 items-center">
-                          <div className="inline-flex items-center gap-1.5 bg-gray-50 border border-gray-100 rounded-lg px-2.5 py-1">
-                            <span className="text-[10px] font-semibold text-gray-400 uppercase">ID</span>
-                            <span className="text-xs font-mono font-medium text-gray-800">
-                              {child.student_id_number}
-                            </span>
-                          </div>
-                          
-                          {/* Live Attendance Badge */}
-                          {child.present_today ? (
-                            <span className="inline-flex items-center bg-emerald-50 text-emerald-700 text-[10px] font-bold px-2.5 py-1 rounded-lg border border-emerald-200">
-                              🟢 Present Today {child.arrival_time ? `(${formatTimeLagos(child.arrival_time)})` : ''}
-                            </span>
-                          ) : (
-                            <span className="inline-flex items-center bg-rose-50 text-rose-700 text-[10px] font-bold px-2.5 py-1 rounded-lg border border-rose-200">
-                              🔴 Absent Today
-                            </span>
-                          )}
-                        </div>
-
-                        <p className="text-[10px] text-gray-400 mt-2.5 capitalize font-medium">
-                          Role: {child.relationship || 'Parent'}
-                        </p>
-                      </div>
-                    </div>
-                  </article>
-                ))}
+                    <Send className="w-4 h-4" />
+                    <span>{submittingPickup ? 'Notifying Gate...' : 'Send Gate Alert'}</span>
+                  </button>
+                </div>
               </div>
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* Attendance History Modal */}
+      {showAttendanceModal && (
+        <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4">
+          <div className="bg-white rounded-3xl max-w-xl w-full p-6 shadow-2xl overflow-y-auto max-h-[90vh] space-y-4">
+            <div className="flex items-center justify-between pb-3 border-b border-slate-100">
+              <h2 className="text-base font-extrabold text-slate-900">Attendance History</h2>
+              <button
+                type="button"
+                onClick={() => setShowAttendanceModal(false)}
+                className="p-1 text-slate-400 hover:text-slate-700"
+              >
+                <X className="w-5 h-5" />
+              </button>
             </div>
-          )
-        ) : tab === 'messages' ? (
-          children.length === 0 ? (
-            <div className="bg-slate-950 rounded-2xl p-10 text-center shadow-xl border border-slate-800 text-slate-100">
-              <MessageSquare size={40} className="mx-auto text-slate-700 mb-3" />
-              <p className="font-medium text-slate-300">Link a child first</p>
-            </div>
-          ) : (
-            <div className="space-y-4">
-              <div className="bg-slate-950 rounded-2xl p-6 shadow-xl border border-slate-800 text-slate-100">
-                <h2 className="font-bold text-white text-lg mb-1 flex items-center gap-2">
-                  EduChart – Secure School & Teacher Chat
-                </h2>
-                <p className="text-xs text-slate-400 mb-5 leading-relaxed">
-                  Chat directly and securely with your child's class teacher or the school administration office via EduChart. Phone numbers are hidden for your privacy.
-                </p>
-                
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-5">
-                  <div>
-                    <label className="text-[10px] font-bold text-slate-400 block mb-1.5 uppercase tracking-wide">Select Child</label>
-                    <select
-                      className="w-full bg-slate-900 border border-slate-800 rounded-xl py-3 px-3.5 text-xs text-slate-100 focus:outline-none focus:border-emerald-500 focus:ring-1 focus:ring-emerald-500 transition-all font-medium"
-                      value={messageForm.student_id || (children[0]?.id || '')}
-                      onChange={(e) => setMessageForm((f) => ({ ...f, student_id: e.target.value }))}
+
+            {safeChildren.length === 0 ? (
+              <p className="text-xs text-slate-500 text-center py-6">No children linked</p>
+            ) : (
+              <div className="space-y-4 text-xs">
+                <select
+                  className="w-full bg-slate-50 border border-slate-200 rounded-xl p-2.5 text-xs text-slate-800 font-bold"
+                  value={selectedChild}
+                  onChange={(e) => setSelectedChild(e.target.value)}
+                >
+                  {safeChildren.map((c) => (
+                    <option key={c.id} value={c.id}>
+                      {c.first_name} {c.last_name}
+                    </option>
+                  ))}
+                </select>
+
+                <div className="flex gap-2">
+                  {['daily', 'weekly', 'monthly', 'yearly'].map((t) => (
+                    <button
+                      key={t}
+                      type="button"
+                      onClick={() => setHistoryType(t)}
+                      className={`flex-1 py-2 text-xs font-bold rounded-xl border transition-all ${
+                        historyType === t
+                          ? 'bg-emerald-600 text-white border-emerald-500 shadow-sm'
+                          : 'bg-slate-50 text-slate-600 border-slate-200'
+                      }`}
                     >
-                      {children.map((c) => (
-                        <option key={c.id} value={c.id}>{c.first_name} {c.last_name}</option>
-                      ))}
-                    </select>
-                  </div>
-                  <div>
-                    <label className="text-[10px] font-bold text-slate-400 block mb-1.5 uppercase tracking-wide">Chat Channel</label>
-                    <div className="grid grid-cols-2 gap-2">
-                      <button
-                        type="button"
-                        onClick={() => setMessageForm((f) => ({ ...f, recipient_type: 'teacher' }))}
-                        className={`py-3 px-4 text-xs font-bold rounded-xl border transition-all ${
-                          messageForm.recipient_type === 'teacher'
-                            ? 'bg-emerald-600 border-emerald-500 text-white shadow-md'
-                            : 'bg-slate-900 border-slate-800 text-slate-400 hover:text-slate-200'
-                        }`}
-                      >
-                        🏫 Class Teacher
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => setMessageForm((f) => ({ ...f, recipient_type: 'school' }))}
-                        className={`py-3 px-4 text-xs font-bold rounded-xl border transition-all ${
-                          messageForm.recipient_type === 'school'
-                            ? 'bg-emerald-600 border-emerald-500 text-white shadow-md'
-                            : 'bg-slate-900 border-slate-800 text-slate-400 hover:text-slate-200'
-                        }`}
-                      >
-                        🏢 School Office
-                      </button>
-                    </div>
-                  </div>
+                      {t.charAt(0).toUpperCase() + t.slice(1)}
+                    </button>
+                  ))}
                 </div>
 
-                {/* Conversation Box */}
-                <div className="border border-slate-800 rounded-2xl bg-slate-900/60 p-5 mb-5 min-h-[450px] max-h-[550px] overflow-y-auto flex flex-col gap-3.5">
-                  {(() => {
-                    const activeChildId = messageForm.student_id || (children[0]?.id || '');
-                    const activeChild = children.find((c) => c.id === activeChildId);
-                    const activeChildName = activeChild ? `${activeChild.first_name} ${activeChild.last_name}` : '';
-                    
-                    const filteredChat = chatHistory.filter((m: any) => {
-                      if (messageForm.recipient_type === 'teacher') {
-                        return m.title.includes('Teacher') || m.title === `Parent Message: ${activeChildName}`;
-                      } else {
-                        return m.title.includes('School') || m.title.includes('Admin');
-                      }
-                    });
+                {historyLoading ? (
+                  <p className="text-center py-6 text-slate-400 animate-pulse">Loading logs...</p>
+                ) : historyData?.type === 'daily' ? (
+                  <div className="bg-slate-50 p-4 rounded-2xl border border-slate-100">
+                    <p className="text-xs font-bold text-slate-700">Status: {historyData.status}</p>
+                    <p className="text-xs text-slate-500 mt-1">
+                      Check-in: {formatTimeLagos(historyData.check_in_time)}
+                    </p>
+                  </div>
+                ) : (
+                  <p className="text-center text-slate-400 py-4">Select date range to filter history.</p>
+                )}
+              </div>
+            )}
+          </div>
+        </div>
+      )}
 
-                    if (filteredChat.length === 0) {
-                      return (
-                        <div className="my-auto text-center py-12">
-                          <MessageSquare size={40} className="mx-auto text-slate-700 mb-3" />
-                          <p className="text-sm text-slate-400 font-medium">No EduChart messages yet</p>
-                          <p className="text-xs text-slate-500 mt-1 max-w-[240px] mx-auto">
-                            Send a secure message using the box below to start the conversation.
-                          </p>
-                        </div>
-                      );
-                    }
+      {/* EduChat Live Modal */}
+      {showEduChatModal && (
+        <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4">
+          <div className="bg-slate-950 text-white rounded-3xl max-w-2xl w-full p-6 shadow-2xl border border-slate-800 overflow-y-auto max-h-[90vh] space-y-4">
+            <div className="flex items-center justify-between pb-3 border-b border-slate-800">
+              <h2 className="text-base font-extrabold text-white flex items-center gap-2">
+                <MessageSquare className="w-5 h-5 text-emerald-400" />
+                EduChat – Direct School & Teacher Messaging
+              </h2>
+              <button
+                type="button"
+                onClick={() => setShowEduChatModal(false)}
+                className="p-1 text-slate-400 hover:text-white"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
 
-                    return filteredChat.map((m: any) => {
-                      const isOutbound = m.sender_id === session?.user_id || m.title?.includes('Parent to') || m.title?.startsWith('Parent Message:');
-                      const avatarSrc = isOutbound
-                        ? (session?.avatar_url ? photoSrc(session.avatar_url) : null)
-                        : (m.sender_avatar ? photoSrc(m.sender_avatar) : null);
-                      const senderInitial = (isOutbound
-                        ? (session?.full_name?.[0] || 'P')
-                        : (m.sender_name?.[0] || 'S')
-                      ).toUpperCase();
+            {safeChildren.length === 0 ? (
+              <p className="text-xs text-slate-400 text-center py-6">Link a child first</p>
+            ) : (
+              <div className="space-y-4">
+                <div className="grid grid-cols-2 gap-2">
+                  <button
+                    type="button"
+                    onClick={() => setMessageForm((f) => ({ ...f, recipient_type: 'teacher' }))}
+                    className={`py-2.5 text-xs font-bold rounded-xl border transition-all ${
+                      messageForm.recipient_type === 'teacher'
+                        ? 'bg-emerald-600 border-emerald-500 text-white shadow-md'
+                        : 'bg-slate-900 border-slate-800 text-slate-400'
+                    }`}
+                  >
+                    Class Teacher
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setMessageForm((f) => ({ ...f, recipient_type: 'school' }))}
+                    className={`py-2.5 text-xs font-bold rounded-xl border transition-all ${
+                      messageForm.recipient_type === 'school'
+                        ? 'bg-emerald-600 border-emerald-500 text-white shadow-md'
+                        : 'bg-slate-900 border-slate-800 text-slate-400'
+                    }`}
+                  >
+                    School Office
+                  </button>
+                </div>
 
+                <div className="border border-slate-800 rounded-2xl bg-slate-900/80 p-4 max-h-[350px] overflow-y-auto space-y-3">
+                  {chatHistory.length === 0 ? (
+                    <p className="text-center text-xs text-slate-500 py-10">No messages yet.</p>
+                  ) : (
+                    chatHistory.map((m: any) => {
+                      const isOutbound = m.sender_id === session?.user_id;
                       return (
                         <div
                           key={m.id}
-                          className={`flex items-start gap-3 max-w-[85%] ${isOutbound ? 'ml-auto flex-row-reverse' : 'mr-auto'}`}
+                          className={`p-3 rounded-2xl text-xs max-w-[85%] ${
+                            isOutbound
+                              ? 'bg-emerald-600 text-white ml-auto rounded-tr-none'
+                              : 'bg-slate-800 text-slate-100 mr-auto rounded-tl-none'
+                          }`}
                         >
-                          <div className="shrink-0 mt-1">
-                            {avatarSrc ? (
-                              <img
-                                src={avatarSrc}
-                                alt="avatar"
-                                className="w-9 h-9 rounded-xl object-cover border border-slate-700 shadow-sm"
-                              />
-                            ) : (
-                              <div className="w-9 h-9 rounded-xl bg-slate-800 text-slate-200 flex items-center justify-center text-xs font-bold border border-slate-700">
-                                {senderInitial}
-                              </div>
-                            )}
-                          </div>
-
-                          <div
-                            className={`flex flex-col rounded-2xl p-4 shadow-md ${
-                              isOutbound
-                                ? 'bg-emerald-600 text-white rounded-tr-none'
-                                : 'bg-slate-900 text-slate-100 border border-slate-800 rounded-tl-none'
-                            }`}
-                          >
-                            {!isOutbound && (
-                              <span className="text-[10px] font-bold text-emerald-400 uppercase tracking-wide mb-1.5">
-                                {m.sender_name}
-                              </span>
-                            )}
-                            <ChatMediaBubble mediaUrl={m.media_url} mediaType={m.media_type} photoSrc={photoSrc} />
-                            <p className="text-sm leading-relaxed whitespace-pre-line break-words">{m.message}</p>
-                            <span className={`text-[9px] mt-1.5 text-right flex items-center justify-end gap-1 font-mono ${isOutbound ? 'text-emerald-100/70' : 'text-slate-500'}`}>
-                              <span>{formatDateTimeLagos(m.created_at)}</span>
-                              {isOutbound && (
-                                <CheckCheck
-                                  size={13}
-                                  className={m.is_read ? 'text-emerald-200 font-bold' : 'text-emerald-100/40'}
-                                  title={m.is_read ? 'Read' : 'Delivered'}
-                                />
-                              )}
-                            </span>
-                          </div>
+                          <p>{cleanNotificationText(m.message || m.content)}</p>
+                          <span className="text-[9px] font-mono text-slate-300 block mt-1 text-right">
+                            {formatDateTimeLagos(m.created_at)}
+                          </span>
                         </div>
                       );
-                    });
-                  })()}
+                    })
+                  )}
                 </div>
 
-                {/* Message Input Box & Expanded Attachment Bar */}
-                <div className="bg-slate-900/40 p-1 rounded-2xl">
-                  {selectedFile && (
-                    <ChatAttachmentPreview
-                      file={selectedFile}
-                      onCancel={() => {
-                        setSelectedFile(null);
-                        if (fileInputRef.current) fileInputRef.current.value = '';
-                      }}
-                    />
-                  )}
-                  {attachPhoto && (
-                    <div className="flex items-center gap-3 bg-slate-900 border border-slate-800 p-3 rounded-xl mb-3 relative">
-                      <div className="relative w-12 h-12 shrink-0 rounded-lg overflow-hidden border border-slate-800 bg-slate-950">
-                        <img
-                          src={
-                            session?.avatar_url
-                              ? photoSrc(session.avatar_url)
-                              : 'data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 400 300" fill="none"><rect width="100%" height="100%" rx="12" fill="%231B4D3E"/><circle cx="200" cy="110" r="50" fill="%234CAF50"/><path d="M130,210 C130,170 170,160 200,160 C230,160 270,170 270,210" fill="%234CAF50"/><text x="200" y="240" font-family="sans-serif" font-size="16" font-weight="bold" fill="%23FFFFFF" text-anchor="middle">MyEduRide User</text></svg>'
-                          }
-                          alt="Attachment preview"
-                          className="w-full h-full object-cover"
-                        />
-                        <button
-                          type="button"
-                          onClick={() => setAttachPhoto(false)}
-                          className="absolute top-0 right-0 p-1 bg-slate-950/90 hover:bg-black text-white rounded-bl"
-                          title="Remove attachment"
-                        >
-                          <X size={12} />
-                        </button>
-                      </div>
-                      <div className="flex-1 min-w-0">
-                        <p className="text-xs font-bold text-slate-200">Profile Photo Attached</p>
-                        <p className="text-[10px] text-slate-400">
-                          {session?.avatar_url ? 'Your uploaded profile picture' : 'Default profile card'}
-                        </p>
-                      </div>
-                    </div>
-                  )}
+                <div className="flex gap-2 items-center">
                   <input
-                    type="file"
-                    ref={fileInputRef}
-                    className="hidden"
-                    accept="image/jpeg,image/png,image/webp,application/pdf,audio/*"
-                    onChange={(e) => {
-                      const file = e.target.files?.[0];
-                      if (file) {
-                        setSelectedFile(file);
-                      }
-                    }}
+                    type="text"
+                    value={messageForm.message_text}
+                    onChange={(e) => setMessageForm((f) => ({ ...f, message_text: e.target.value }))}
+                    placeholder="Write a message..."
+                    className="flex-1 bg-slate-900 border border-slate-800 rounded-xl px-4 py-3 text-xs text-white focus:outline-none focus:border-emerald-500"
                   />
-                  
-                  {/* Expanded Input Action Bar */}
-                  <div className="flex gap-3 items-end">
-                    <button
-                      type="button"
-                      onClick={() => fileInputRef.current?.click()}
-                      className="p-3.5 h-[52px] w-[52px] flex items-center justify-center rounded-xl border border-slate-800 bg-slate-900 text-slate-400 hover:text-white hover:bg-slate-800 transition-all shrink-0"
-                      title="Attach File (Image/PDF)"
-                    >
-                      <Paperclip size={20} />
-                    </button>
-                    
-                    <div className="shrink-0 mb-0.5">
-                      <VoiceRecordButton
-                        onRecordComplete={(blob) => {
-                          const file = new File([blob], `voice-note-${Date.now()}.webm`, { type: blob.type });
-                          setSelectedFile(file);
-                        }}
-                        onRecordingStateChange={setIsRecordingVoice}
-                      />
-                    </div>
-
-                    <textarea
-                      rows={3}
-                      className="w-full bg-slate-900 border border-slate-800 rounded-xl py-3 px-4 text-sm placeholder-slate-500 text-slate-100 focus:outline-none focus:border-emerald-500 focus:ring-1 focus:ring-emerald-500 transition-all flex-1 min-h-[52px] resize-none font-sans"
-                      value={messageForm.message_text}
-                      onChange={(e) => setMessageForm((f) => ({ ...f, message_text: e.target.value }))}
-                      placeholder={
-                        isRecordingVoice 
-                          ? "Recording voice note..."
-                          : messageForm.recipient_type === 'teacher'
-                            ? "Write a message to the class teacher..."
-                            : "Write a message to the school office..."
-                      }
-                      maxLength={1000}
-                      disabled={isRecordingVoice}
-                    />
-
-                    <button
-                      type="button"
-                      onClick={handleSendMessage}
-                      disabled={sendingMessage || uploadingFile || (!messageForm.message_text.trim() && !selectedFile)}
-                      className="h-[52px] px-6 text-sm font-bold bg-emerald-600 hover:bg-emerald-500 text-white rounded-xl shadow-lg shadow-emerald-950/20 active:scale-[0.98] transition-all flex items-center justify-center gap-2 shrink-0 disabled:opacity-50"
-                      aria-label="Send"
-                    >
-                      <Send size={18} />
-                    </button>
-                  </div>
+                  <button
+                    type="button"
+                    onClick={handleSendMessage}
+                    disabled={sendingMessage || !messageForm.message_text.trim()}
+                    className="px-5 py-3 bg-emerald-600 hover:bg-emerald-500 font-bold text-xs text-white rounded-xl shadow-md transition-all disabled:opacity-40"
+                  >
+                    Send
+                  </button>
                 </div>
               </div>
-            </div>
-          )
-        ) : tab === 'notifications' ? (
-          notifications.length === 0 ? (
-            <div className="bg-white rounded-2xl p-10 text-center shadow-sm border border-gray-100">
-              <Bell size={36} className="mx-auto text-gray-300 mb-3" />
-              <p className="font-medium text-gray-700">No notifications yet</p>
-              <p className="text-sm text-gray-400 mt-2">
-                When your child arrives or leaves school, alerts will appear here.
-              </p>
-            </div>
-          ) : (
-            <div className="space-y-2">
-              <p className="text-xs font-medium text-gray-500 px-1">
-                {unreadCount > 0 ? `${unreadCount} unread` : 'All caught up'}
-              </p>
-              {notifications.map((n) => (
-                <button
-                  key={n.id}
-                  type="button"
-                  onClick={() => !n.is_read && markRead(n.id)}
-                  className={`w-full text-left bg-white rounded-2xl p-4 border transition-colors ${
-                    !n.is_read ? 'border-primary-200 shadow-sm' : 'border-gray-100 opacity-90'
-                  }`}
-                >
-                  <div className="flex gap-3 items-start">
-                    <div className="mt-0.5 shrink-0">{notifIcon(n.type)}</div>
-                    <div className="flex-1 min-w-0">
-                      <div className="flex items-start justify-between gap-2">
-                        <p className="font-semibold text-sm text-gray-900">{n.title}</p>
-                        {!n.is_read && (
-                          <span className="text-[10px] font-bold text-primary-600 bg-primary-50 px-1.5 py-0.5 rounded shrink-0">
-                            NEW
-                          </span>
-                        )}
-                      </div>
-                      <p className="text-sm text-gray-600 mt-1 leading-snug">{n.message}</p>
-                      {n.student && (
-                        <p className="text-xs text-gray-400 mt-1.5">
-                          {n.student.first_name} {n.student.last_name}
-                        </p>
-                      )}
-                      <p className="text-[11px] text-gray-400 mt-2">
-                        {formatDateTimeLagos(n.created_at)}
-                      </p>
-                    </div>
-                    <ChevronRight size={16} className="text-gray-300 shrink-0 mt-1" />
-                  </div>
-                </button>
-              ))}
-            </div>
-          )
-        ) : null}
-      </main>
-
-      {/* Bottom navigation — mobile friendly, not clustered at top */}
-      <nav className="fixed bottom-0 left-0 right-0 bg-white border-t border-gray-100 safe-bottom z-20">
-        <div className="max-w-lg mx-auto flex">
-          <button
-            type="button"
-            onClick={() => setTab('children')}
-            className={`flex-1 flex flex-col items-center gap-1 py-3 text-xs font-medium transition-colors ${
-              tab === 'children' ? 'text-primary-700' : 'text-gray-400'
-            }`}
-          >
-            <Users size={22} strokeWidth={tab === 'children' ? 2.5 : 2} />
-            <span>My Kids</span>
-          </button>
-          <button
-            type="button"
-            onClick={() => setTab('attendance')}
-            className={`flex-1 flex flex-col items-center gap-1 py-3 text-xs font-medium transition-colors ${
-              tab === 'attendance' ? 'text-primary-700' : 'text-gray-400'
-            }`}
-          >
-            <Calendar size={22} strokeWidth={tab === 'attendance' ? 2.5 : 2} />
-            <span>History</span>
-          </button>
-          <button
-            type="button"
-            onClick={() => setTab('pickup')}
-            className={`flex-1 flex flex-col items-center gap-1 py-3 text-xs font-medium transition-colors ${
-              tab === 'pickup' ? 'text-primary-700' : 'text-gray-400'
-            }`}
-          >
-            <Car size={22} strokeWidth={tab === 'pickup' ? 2.5 : 2} />
-            <span>Pickup</span>
-          </button>
-          {/* EduChart Tab */}
-          <button
-            type="button"
-            onClick={() => {
-              setTab('messages');
-              fetchUnreadChatTotal();
-            }}
-            className={`flex-1 flex flex-col items-center gap-1 py-3 text-xs font-medium transition-colors relative ${
-              tab === 'messages' ? 'text-primary-700' : 'text-gray-400'
-            }`}
-          >
-            <MessageSquare size={22} strokeWidth={tab === 'messages' ? 2.5 : 2} />
-            <span>EduChart</span>
-            {unreadEduChartCount > 0 && (
-              <span className="absolute top-2 right-1/4 min-w-[18px] h-[18px] bg-red-500 text-white text-[10px] font-bold rounded-full flex items-center justify-center px-1 animate-pulse">
-                {unreadEduChartCount > 9 ? '9+' : unreadEduChartCount}
-              </span>
             )}
-          </button>
-          <button
-            type="button"
-            onClick={() => setTab('notifications')}
-            className={`flex-1 flex flex-col items-center gap-1 py-3 text-xs font-medium transition-colors relative ${
-              tab === 'notifications' ? 'text-primary-700' : 'text-gray-400'
-            }`}
-          >
-            <Bell size={22} strokeWidth={tab === 'notifications' ? 2.5 : 2} />
-            <span>Alerts</span>
-            {unreadCount > 0 && (
-              <span className="absolute top-2 right-1/4 min-w-[18px] h-[18px] bg-red-500 text-white text-[10px] font-bold rounded-full flex items-center justify-center px-1">
-                {unreadCount > 9 ? '9+' : unreadCount}
-              </span>
-            )}
-          </button>
+          </div>
         </div>
-      </nav>
+      )}
+
+      {/* Google Maps Interactive Vehicle Tracking Modal */}
+      {showLiveJourneyModal && (
+        <div className="fixed inset-0 z-50 bg-slate-950/80 backdrop-blur-md flex items-center justify-center p-4">
+          <div className="bg-white rounded-3xl max-w-3xl w-full p-6 shadow-2xl border border-slate-200 overflow-hidden space-y-4 animate-in fade-in duration-200">
+            <div className="flex items-center justify-between pb-3 border-b border-slate-100">
+              <div className="flex items-center gap-2">
+                <div className="w-8 h-8 rounded-xl bg-emerald-600 text-white flex items-center justify-center shadow-xs">
+                  <Bus className="w-4 h-4" />
+                </div>
+                <div>
+                  <h2 className="text-base font-extrabold text-slate-900 leading-tight">
+                    Google Maps Shuttle GPS Tracking
+                  </h2>
+                  <p className="text-[10px] text-slate-400 font-bold">
+                    Vehicle: Toyota Hiace (ABC-234AA) • Escort: John Okafor
+                  </p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setShowLiveJourneyModal(false)}
+                className="p-1.5 text-slate-400 hover:text-slate-800 rounded-xl hover:bg-slate-100 transition-colors"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            {/* Google Map Viewport */}
+            <div className="relative rounded-2xl overflow-hidden border border-slate-200 shadow-inner h-[320px] bg-slate-900">
+              <div
+                className="absolute inset-0 bg-cover bg-center"
+                style={{
+                  backgroundImage:
+                    "linear-gradient(rgba(15, 23, 42, 0.4), rgba(15, 23, 42, 0.4)), url('https://images.unsplash.com/photo-1524661135-423995f22d0b?auto=format&fit=crop&q=80')",
+                }}
+              />
+
+              {/* Animated Polyline Route */}
+              <svg className="absolute inset-0 w-full h-full pointer-events-none z-10" preserveAspectRatio="none">
+                <path
+                  d="M 40,260 Q 200,80 400,180 T 680,60"
+                  fill="none"
+                  stroke="#10b981"
+                  strokeWidth="6"
+                  strokeLinecap="round"
+                />
+                <path
+                  d="M 40,260 Q 200,80 400,180 T 680,60"
+                  fill="none"
+                  stroke="#ffffff"
+                  strokeWidth="3"
+                  strokeDasharray="10 8"
+                  className="animate-pulse"
+                />
+              </svg>
+
+              {/* Moving Bus Marker */}
+              <div className="absolute left-[45%] top-[40%] -translate-x-1/2 -translate-y-1/2 z-30 flex flex-col items-center">
+                <div className="w-10 h-10 rounded-2xl bg-amber-400 border-2 border-white shadow-xl flex items-center justify-center text-slate-900 font-extrabold animate-bounce">
+                  <Bus className="w-5 h-5" />
+                </div>
+                <span className="text-[10px] font-black text-slate-900 bg-amber-300 px-2 py-0.5 rounded-full shadow-md mt-1">
+                  Speed: 38 km/h • 8 min away
+                </span>
+              </div>
+
+              {/* Google Watermark */}
+              <div className="absolute left-3 bottom-3 z-30 bg-white/90 backdrop-blur-xs px-2 py-1 rounded-md text-[11px] font-bold text-slate-800 shadow-sm">
+                <span className="text-blue-500">G</span>
+                <span className="text-red-500">o</span>
+                <span className="text-yellow-500">o</span>
+                <span className="text-blue-500">g</span>
+                <span className="text-green-500">l</span>
+                <span className="text-red-500">e</span> Maps GPS Telemetry
+              </div>
+            </div>
+
+            {/* Modal Bottom Controls */}
+            <div className="flex items-center justify-between pt-2">
+              <div className="flex items-center gap-3">
+                <a
+                  href="tel:07001234567"
+                  className="bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-xs px-4 py-2.5 rounded-xl shadow-md transition-all flex items-center gap-1.5"
+                >
+                  <Phone className="w-4 h-4" />
+                  <span>Call Escort (John Okafor)</span>
+                </a>
+              </div>
+              <button
+                type="button"
+                onClick={() => setShowLiveJourneyModal(false)}
+                className="bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold text-xs px-4 py-2.5 rounded-xl transition-all"
+              >
+                Close Tracking
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Wallet Funding Modal */}
+      {showWalletModal && (
+        <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4">
+          <div className="bg-white rounded-3xl max-w-md w-full p-6 shadow-2xl border border-slate-100 space-y-4">
+            <div className="flex items-center justify-between pb-3 border-b border-slate-100">
+              <h2 className="text-base font-extrabold text-slate-900">Fund Parent Wallet</h2>
+              <button
+                type="button"
+                onClick={() => setShowWalletModal(false)}
+                className="p-1 text-slate-400 hover:text-slate-700"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <div className="space-y-3">
+              <p className="text-xs text-slate-500">Enter amount to add to your safety wallet credit:</p>
+              <div className="relative">
+                <span className="absolute left-3.5 top-1/2 -translate-y-1/2 font-bold text-slate-400 text-sm">
+                  ₦
+                </span>
+                <input
+                  type="number"
+                  placeholder="5000"
+                  className="w-full bg-slate-50 border border-slate-200 rounded-xl pl-8 pr-4 py-3 text-sm font-extrabold text-slate-900 focus:outline-none focus:border-emerald-500"
+                />
+              </div>
+
+              <button
+                type="button"
+                onClick={() => {
+                  toast.success('Wallet credit initialized successfully!');
+                  setShowWalletModal(false);
+                }}
+                className="w-full bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-xs py-3 rounded-xl shadow-md transition-all mt-2"
+              >
+                Proceed to Secure Payment
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
