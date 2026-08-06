@@ -1,52 +1,69 @@
 'use client';
 
-import Link from 'next/link';
-import { usePathname } from 'next/navigation';
-import { LayoutDashboard, Building2, CreditCard, ClipboardList, KeyRound, User } from 'lucide-react';
+import { useSearchParams, useRouter } from 'next/navigation';
 import { RouteGuard } from '@/components/shared/RouteGuard';
+import SuperAdminSidebar from '@/components/super-admin/SuperAdminSidebar';
+import SuperAdminHeader from '@/components/super-admin/SuperAdminHeader';
+import UnderDevelopment from '@/components/super-admin/UnderDevelopment';
+import ParentsManagementView from '@/components/super-admin/ParentsManagementView';
+import StudentsDirectoryView from '@/components/super-admin/StudentsDirectoryView';
 
-const LOGO_URL = '/images/eduride_logo.png';
-
-const navItems = [
-  { label: 'Dashboard', href: '/dashboard/super-admin', icon: <LayoutDashboard size={18} /> },
-  { label: 'Schools', href: '/dashboard/super-admin/schools', icon: <Building2 size={18} /> },
-  { label: 'Passwords', href: '/dashboard/super-admin/passwords', icon: <KeyRound size={18} /> },
-  { label: 'ID Cards', href: '/dashboard/super-admin/id-cards', icon: <CreditCard size={18} /> },
-  { label: 'Reports', href: '/dashboard/super-admin/reports', icon: <ClipboardList size={18} /> },
-  { label: 'Account', href: '/dashboard/account', icon: <User size={18} /> },
-];
+const VIEW_TITLES: Record<string, string> = {
+  'school-escorts': 'School Escorts',
+  'shared-ride-escorts': 'Shared Ride Escorts',
+  'executive-ride-escorts': 'Executive Ride Escorts',
+  'fleet-owners': 'Fleet Owners',
+  'school-staff': 'School Staff Management',
+  'city-managers': 'City Managers',
+  'general-city-managers': 'General City Managers',
+  'disc-staff': 'DISC Staff Administration',
+  'staff-admin': 'Staff Administration',
+  'role-permissions': 'Role & Permission Centre',
+  'operations-centre': 'Operations Centre',
+  'financial-centre': 'Financial Centre',
+  'invoice-management': 'Invoice Management',
+  'wallet-admin': 'Wallet Administration',
+  'edusave-admin': 'EduSave Administration',
+  'eduinsured-admin': 'EduInsured Administration',
+  'communication-centre': 'Communication Centre',
+  'customer-support': 'Customer Support Centre',
+  'city-management': 'City Management',
+  'workflow-approval': 'Workflow & Approval Centre',
+  'security-centre': 'Security Centre',
+  'document-centre': 'Document Centre',
+};
 
 export default function SuperAdminLayout({ children }: { children: React.ReactNode }) {
-  const pathname = usePathname();
+  const searchParams = useSearchParams();
+  const router = useRouter();
+  const currentView = searchParams.get('view');
+
+  const isUnderDevView = currentView && VIEW_TITLES[currentView];
 
   return (
     <RouteGuard requiredRole="super_admin">
-      <div className="flex min-h-screen">
-        <aside className="hidden md:flex fixed left-0 top-0 bottom-0 w-56 bg-white border-r border-gray-100 flex-col z-20">
-          <div className="p-5">
-            <Link href="/dashboard/super-admin" className="flex items-center gap-2">
-              <img src={LOGO_URL} alt="MyEduRide" className="h-8 w-auto object-contain" />
-              <div>
-                <p className="text-[10px] font-semibold text-gray-500 uppercase tracking-wider">Super Admin</p>
-              </div>
-            </Link>
-          </div>
-          <nav className="flex-1 px-3 space-y-1">
-            {navItems.map(item => {
-              const isActive = pathname === item.href || (item.href !== '/dashboard/super-admin' && pathname.startsWith(item.href));
-              return (
-                <Link key={item.href} href={item.href}
-                  className={`flex items-center gap-3 px-3 py-2.5 rounded-xl text-[13px] font-medium transition-all ${
-                    isActive ? 'bg-primary-50 text-primary-700' : 'text-gray-500 hover:bg-gray-50 hover:text-gray-800'
-                  }`}>
-                  <span className={isActive ? 'text-primary-600' : 'text-gray-400'}>{item.icon}</span>
-                  {item.label}
-                </Link>
-              );
-            })}
-          </nav>
-        </aside>
-        <main className="flex-1 md:ml-56 min-h-screen overflow-y-auto">{children}</main>
+      <div className="flex min-h-screen bg-slate-50 font-sans antialiased text-slate-900">
+        {/* Left Sidebar */}
+        <SuperAdminSidebar />
+
+        {/* Main Content Area */}
+        <div className="flex-1 md:ml-60 flex flex-col min-h-screen">
+          <SuperAdminHeader />
+          <main className="flex-1 p-4 sm:p-6 lg:p-8 max-w-[1600px] mx-auto w-full">
+            {currentView === 'parents' ? (
+              <ParentsManagementView />
+            ) : currentView === 'students' ? (
+              <StudentsDirectoryView />
+            ) : isUnderDevView ? (
+              <UnderDevelopment
+                title={VIEW_TITLES[currentView] || 'Module'}
+                onBack={() => router.push('/dashboard/super-admin')}
+              />
+            ) : (
+              children
+            )}
+          </main>
+        </div>
       </div>
     </RouteGuard>
   );
