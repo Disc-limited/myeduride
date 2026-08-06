@@ -1,8 +1,8 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { Search, Bell, Mail, Maximize2, ShieldCheck, Clock, User, ChevronDown } from 'lucide-react';
-import { getSession } from '@/lib/api';
+import { Search, Bell, Mail, Maximize2, ShieldCheck, Clock, User, ChevronDown, LogOut } from 'lucide-react';
+import { getSession, logout } from '@/lib/api';
 
 interface SuperAdminHeaderProps {
   onSearchChange?: (query: string) => void;
@@ -163,7 +163,6 @@ export default function SuperAdminHeader({ onSearchChange, searchQuery = '' }: S
                 alt="Admin Profile"
                 className="w-full h-full object-cover"
                 onError={(e) => {
-                  // Fallback avatar icon if image error
                   e.currentTarget.style.display = 'none';
                 }}
               />
@@ -180,6 +179,18 @@ export default function SuperAdminHeader({ onSearchChange, searchQuery = '' }: S
             </p>
           </div>
         </div>
+
+        {/* Sign Out Button */}
+        <button
+          type="button"
+          onClick={() => logout()}
+          className="p-2 rounded-xl text-slate-500 hover:text-red-600 hover:bg-red-50 border border-transparent hover:border-red-100 transition-colors flex items-center gap-1.5 font-bold text-xs"
+          title="Sign out"
+          aria-label="Sign out"
+        >
+          <LogOut size={16} />
+          <span className="hidden sm:inline">Logout</span>
+        </button>
       </div>
     </header>
   );

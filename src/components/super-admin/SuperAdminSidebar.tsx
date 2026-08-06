@@ -36,7 +36,9 @@ import {
   CheckCircle2,
   Menu,
   X,
+  LogOut,
 } from 'lucide-react';
+import { logout } from '@/lib/api';
 
 interface SidebarItem {
   id: string;
@@ -205,8 +207,8 @@ export default function SuperAdminSidebar() {
         </div>
       </div>
 
-      {/* Bottom Company Branding Box */}
-      <div className="p-3 border-t border-slate-800 bg-[#08121d]">
+      {/* Bottom Company Branding Box & Logout Button */}
+      <div className="p-3 border-t border-slate-800 bg-[#08121d] space-y-2">
         <div className="bg-slate-900/90 border border-slate-800 rounded-xl p-2.5 flex items-center gap-2.5">
           <div className="w-7 h-7 rounded-lg bg-emerald-500/20 border border-emerald-500/30 flex items-center justify-center shrink-0">
             <span className="text-[10px] font-bold text-emerald-400">DISC</span>
@@ -223,6 +225,15 @@ export default function SuperAdminSidebar() {
             </p>
           </div>
         </div>
+
+        <button
+          type="button"
+          onClick={() => logout()}
+          className="w-full flex items-center justify-center gap-2 py-2 px-3 rounded-xl bg-red-500/10 hover:bg-red-500/20 text-red-400 border border-red-500/20 font-bold text-xs transition-colors"
+        >
+          <LogOut size={15} />
+          <span>Sign Out</span>
+        </button>
       </div>
     </div>
   );
