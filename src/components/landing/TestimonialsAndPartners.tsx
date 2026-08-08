@@ -1,7 +1,7 @@
 'use client';
 
-import { useState } from 'react';
-import { ChevronLeft, ChevronRight, Quote } from 'lucide-react';
+import { useEffect, useState } from 'react';
+import { ChevronLeft, ChevronRight, Quote, Shield } from 'lucide-react';
 
 export default function TestimonialsAndPartners() {
   const testimonials = [
@@ -19,7 +19,65 @@ export default function TestimonialsAndPartners() {
     },
   ];
 
+  const defaultRegisteredSchools = [
+    {
+      name: 'FORTUNE SPRINGS MONTESSORI',
+      city: 'Idimu Ikotun, Lagos',
+      badge: '/api/photo?path=logos/cc1928a7-caac-4b17-8142-57e11351a593.png',
+    },
+    {
+      name: 'CANAAN GATE SCHOOLS',
+      city: 'Shasha, Akowonjo, Lagos',
+      badge: '/api/photo?path=logos/92664733-5f60-4bdc-9b0f-0f9ab6dff1e4.png',
+    },
+    {
+      name: 'UNIQUE INTEGRITY COLLEGE',
+      city: 'Bammeke Shasha, Lagos',
+      badge: '/api/photo?path=logos/1c7770ae-ab6d-4447-82d1-fa3b118aa8c8.jpg',
+    },
+    {
+      name: 'CRADLE HOME CHILDREN SCHOOL',
+      city: 'Idimu Titun, Lagos',
+      badge: '/api/photo?path=logos/a4dad90e-726a-48d4-86c5-26aa440be864.png',
+    },
+    {
+      name: 'DAMZY SCHOOL',
+      city: 'Orisunbare, Idimu, Lagos',
+      badge: '/api/photo?path=logos/b9e6ba87-d471-4081-b10f-759e139ccdc9.jpg',
+    },
+    {
+      name: 'Solid Stone Kiddies Academy',
+      city: 'Idimu, Lagos',
+      badge: '/api/photo?path=logos/c1ac8ead-c011-4f03-a216-28d6b354e12a.png',
+    },
+  ];
+
+  const [partnerSchools, setPartnerSchools] = useState(defaultRegisteredSchools);
   const [currentIndex, setCurrentIndex] = useState(0);
+
+  useEffect(() => {
+    (async () => {
+      try {
+        const res = await fetch('/api/public/schools');
+        const data = await res.json();
+        if (res.ok && Array.isArray(data.schools) && data.schools.length > 0) {
+          const formatted = data.schools
+            .filter((s: any) => s.name && !/^[a-zA-Z]{15,}$/.test(s.name))
+            .map((s: any) => ({
+              name: s.name,
+              city: s.city || 'Lagos',
+              badge: s.logo_url || '/images/landing/school_badge_1.png',
+            }));
+
+          if (formatted.length > 0) {
+            setPartnerSchools(formatted);
+          }
+        }
+      } catch (err) {
+        console.error('Failed to fetch public schools list:', err);
+      }
+    })();
+  }, []);
 
   const prevSlide = () => {
     setCurrentIndex((prev) => (prev === 0 ? testimonials.length - 1 : prev - 1));
@@ -29,26 +87,16 @@ export default function TestimonialsAndPartners() {
     setCurrentIndex((prev) => (prev === testimonials.length - 1 ? 0 : prev + 1));
   };
 
-  const partnerSchools = [
-    { name: 'Oakwood Academia', city: 'Lekki, Lagos', badge: '/images/landing/school_badge_1.png' },
-    { name: 'Lyceum of Learning', city: 'Ikoyi, Lagos', badge: '/images/landing/school_badge_2.png' },
-    { name: "St. Andrew's Prep", city: 'Victoria Island', badge: '/images/landing/school_badge_3.png' },
-    { name: 'Riverdale High', city: 'Ikeja GRA, Lagos', badge: '/images/landing/school_badge_4.png' },
-    { name: 'Montserrat College', city: 'Anthony, Lagos', badge: '/images/landing/school_badge_5.png' },
-    { name: 'Beacon Academy', city: 'Surulere, Lagos', badge: '/images/landing/school_badge_6.png' },
-  ];
-
   return (
     <section className="py-20 bg-slate-50 border-y border-slate-200/80">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
         <div className="grid grid-cols-1 lg:grid-cols-12 gap-12 items-center">
-          
           {/* Testimonials Column */}
           <div className="lg:col-span-6 space-y-6">
-            <span className="text-xs font-extrabold uppercase tracking-widest text-brand-green bg-emerald-50 px-3.5 py-1.5 rounded-full border border-emerald-100">
+            <span className="text-xs font-extrabold uppercase tracking-widest text-emerald-700 bg-emerald-50 px-3.5 py-1.5 rounded-full border border-emerald-100">
               Community Testimonials
             </span>
-            <h2 className="text-3xl font-extrabold text-navy-900 font-poppins">
+            <h2 className="text-3xl font-extrabold text-slate-900 font-poppins">
               What Parents & Schools Say
             </h2>
 
@@ -65,10 +113,10 @@ export default function TestimonialsAndPartners() {
                   <img
                     src={testimonials[currentIndex].avatar}
                     alt={testimonials[currentIndex].name}
-                    className="w-11 h-11 rounded-full object-cover border-2 border-brand-green shadow-sm"
+                    className="w-11 h-11 rounded-full object-cover border-2 border-emerald-500 shadow-sm"
                   />
                   <div>
-                    <h4 className="text-xs font-bold text-navy-900 font-poppins">
+                    <h4 className="text-xs font-bold text-slate-900 font-poppins">
                       {testimonials[currentIndex].name}
                     </h4>
                     <span className="text-[10px] font-semibold text-slate-500">
@@ -96,29 +144,37 @@ export default function TestimonialsAndPartners() {
             </div>
           </div>
 
-          {/* Trusted Partners Badges Grid with Generated School Crests */}
+          {/* Trusted Partners Badges Grid with Real Registered Schools */}
           <div className="lg:col-span-6 space-y-6">
-            <span className="text-xs font-extrabold uppercase tracking-widest text-navy-900 bg-white px-3.5 py-1.5 rounded-full border border-slate-200 shadow-sm">
+            <span className="text-xs font-extrabold uppercase tracking-widest text-slate-900 bg-white px-3.5 py-1.5 rounded-full border border-slate-200 shadow-sm">
               Extensive Institution Reach
             </span>
-            <h2 className="text-3xl font-extrabold text-navy-900 font-poppins">
+            <h2 className="text-3xl font-extrabold text-slate-900 font-poppins">
               Trusted by Leading Schools & Partners
             </h2>
 
             <div className="grid grid-cols-2 sm:grid-cols-3 gap-4">
-              {partnerSchools.map((school, i) => (
+              {partnerSchools.slice(0, 6).map((school, i) => (
                 <div
                   key={i}
                   className="bg-white rounded-2xl p-4 border border-slate-200/80 shadow-sm hover:shadow-md transition-all flex flex-col items-center text-center group"
                 >
-                  <div className="w-14 h-14 rounded-xl p-1 bg-slate-50 flex items-center justify-center border border-slate-100 mb-2 group-hover:scale-105 transition-transform">
-                    <img
-                      src={school.badge}
-                      alt={school.name}
-                      className="w-full h-full object-contain"
-                    />
+                  <div className="w-14 h-14 rounded-xl p-1 bg-slate-50 flex items-center justify-center border border-slate-100 mb-2 group-hover:scale-105 transition-transform overflow-hidden">
+                    {school.badge ? (
+                      <img
+                        src={school.badge}
+                        alt={school.name}
+                        className="w-full h-full object-contain"
+                        onError={(e) => {
+                          // Fallback if image load fails
+                          (e.target as HTMLElement).style.display = 'none';
+                        }}
+                      />
+                    ) : (
+                      <Shield className="w-8 h-8 text-emerald-600" />
+                    )}
                   </div>
-                  <div className="text-xs font-bold text-navy-900 font-poppins line-clamp-1">
+                  <div className="text-xs font-bold text-slate-900 font-poppins line-clamp-1">
                     {school.name}
                   </div>
                   <div className="text-[10px] font-semibold text-slate-400">
@@ -128,7 +184,6 @@ export default function TestimonialsAndPartners() {
               ))}
             </div>
           </div>
-
         </div>
       </div>
     </section>
