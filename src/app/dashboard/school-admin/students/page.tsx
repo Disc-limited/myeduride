@@ -3,12 +3,13 @@
 
 import { useEffect, useState } from 'react';
 import { fetchData } from '@/lib/api';
-import { Search, Plus, Trash2, Edit, X, ArrowUpCircle } from 'lucide-react';
+import { Search, Plus, Trash2, Edit, X, ArrowUpCircle, CreditCard } from 'lucide-react';
 import Link from 'next/link';
 import { toast } from 'sonner';
 import StudentAvatar from '@/components/shared/StudentAvatar';
 import FaceCapture from '@/components/shared/FaceCapture';
 import { todayInLagos } from '@/lib/timezone';
+import { downloadIdCardsPdf } from '@/lib/id-card/download';
 
 export default function StudentsListPage() {
   const [students, setStudents] = useState([]);
@@ -149,7 +150,7 @@ export default function StudentsListPage() {
   if (loading) return <div className="page-shell flex items-center justify-center"><div className="animate-pulse text-primary-600">Loading...</div></div>;
 
   return (
-    <div className="page-shell max-w-5xl">
+    <div className="page-shell w-full max-w-full">
       <div className="page-header">
         <div>
           <p className="page-badge">Students</p>
@@ -179,7 +180,7 @@ export default function StudentsListPage() {
         >
           <option value="">All classes</option>
           {classes.map((c) => (
-            <option key={c.id} value={c.id}>{c.name}</option>
+            <option key={c.id} value={c.id}>{c.name}{c.section ? ` · Arm ${c.section}` : ''}</option>
           ))}
         </select>
       </div>
@@ -187,9 +188,27 @@ export default function StudentsListPage() {
       {selectedIds.length > 0 && (
         <div className="alert-info flex flex-wrap items-center justify-between gap-2 mb-4">
           <span className="text-sm font-medium">{selectedIds.length} selected</span>
-          <button type="button" onClick={() => openPromote()} className="btn-primary text-sm min-h-[44px] px-4">
-            <ArrowUpCircle size={16} className="inline mr-1" /> Promote selected
-          </button>
+          <div className="flex items-center gap-2">
+            <button
+              type="button"
+              onClick={async () => {
+                toast.info('Generating PDF ID cards...');
+                const res = await downloadIdCardsPdf({
+                  school_id: schoolId,
+                  student_ids: selectedIds,
+                  fileName: `student_id_cards_${new Date().toISOString().split('T')[0]}.pdf`,
+                });
+                if (res.ok) toast.success('ID cards downloaded!');
+                else toast.error(res.error);
+              }}
+              className="px-3 py-2 bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold rounded-xl flex items-center gap-1.5 shadow-sm min-h-[44px]"
+            >
+              <CreditCard size={16} /> Download ID Cards ({selectedIds.length})
+            </button>
+            <button type="button" onClick={() => openPromote()} className="btn-primary text-xs min-h-[44px] px-4">
+              <ArrowUpCircle size={16} className="inline mr-1" /> Promote selected
+            </button>
+          </div>
         </div>
       )}
 

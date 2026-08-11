@@ -787,7 +787,7 @@ export default function StaffDashboardPage() {
           </header>
 
           {/* MAIN TAB CONTENT CONTAINER */}
-          <div className="p-4 md:p-6 max-w-7xl w-full mx-auto space-y-6">
+          <div className="p-4 md:p-6 w-full max-w-full mx-auto space-y-6">
             {/* NOTIFICATIONS DROPDOWN POPUP */}
             {notificationsOpen && (
               <div className="bg-white rounded-2xl shadow-xl border border-slate-200 p-4 max-w-sm w-full absolute right-6 top-20 z-50 space-y-3">

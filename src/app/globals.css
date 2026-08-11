@@ -80,7 +80,7 @@
   }
 
   .page-shell {
-    @apply min-h-screen px-4 pb-8 pt-16 md:px-8 md:pt-8 max-w-5xl mx-auto;
+    @apply min-h-screen px-4 pb-8 pt-16 md:px-8 md:pt-8 w-full max-w-full mx-auto;
   }
 
   .page-header {

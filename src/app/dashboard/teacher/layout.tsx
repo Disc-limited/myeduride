@@ -36,7 +36,7 @@ export default function TeacherLayout({ children }: { children: React.ReactNode 
           />
 
           {/* Teacher Page Shell */}
-          <main className="flex-1 p-3 sm:p-5 lg:p-6 max-w-[1600px] w-full mx-auto">
+          <main className="flex-1 p-3 sm:p-5 lg:p-6 w-full max-w-full mx-auto">
             {children}
           </main>
         </div>

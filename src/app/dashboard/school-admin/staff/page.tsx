@@ -5,7 +5,7 @@ import { useEffect, useState } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import Link from 'next/link';
 import { fetchData } from '@/lib/api';
-import { Plus, Trash2, GraduationCap, DoorOpen, Shield, User, Briefcase, Pencil } from 'lucide-react';
+import { Plus, Trash2, GraduationCap, DoorOpen, Shield, User, Briefcase, Pencil, CreditCard } from 'lucide-react';
 import { toast } from 'sonner';
 import StudentAvatar from '@/components/shared/StudentAvatar';
 import EditStaffModal from '@/components/school-admin/EditStaffModal';
@@ -100,7 +100,7 @@ export default function StaffManagementPage() {
   }
 
   return (
-    <div className="p-6 min-h-screen md:ml-56 pt-14 md:pt-6 max-w-4xl">
+    <div className="p-6 min-h-screen pt-14 md:pt-6 w-full max-w-full">
       <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-4 mb-6 pr-12 md:pr-0">
         <div className="min-w-0">
           <h1 className="text-2xl font-bold text-slate-900">Staff list ({staff.length})</h1>
@@ -108,12 +108,20 @@ export default function StaffManagementPage() {
             All staff at your school. Use Add staff to create new members.
           </p>
         </div>
-        <Link
-          href="/dashboard/school-admin/staff/new"
-          className="btn-primary flex items-center justify-center gap-2 text-sm shrink-0 w-full sm:w-auto"
-        >
-          <Plus size={16} /> Add staff
-        </Link>
+        <div className="flex items-center gap-2">
+          <Link
+            href="/dashboard/school-admin/id-cards"
+            className="px-3.5 py-2 bg-slate-100 hover:bg-slate-200 text-slate-800 text-xs font-bold rounded-xl flex items-center gap-1.5 transition-colors border border-slate-300 shadow-xs"
+          >
+            <CreditCard size={16} /> ID Cards
+          </Link>
+          <Link
+            href="/dashboard/school-admin/staff/new"
+            className="btn-primary flex items-center justify-center gap-2 text-xs font-bold shrink-0 w-full sm:w-auto px-4 py-2"
+          >
+            <Plus size={16} /> Add staff
+          </Link>
+        </div>
       </div>
 
       <CustomRolesPanel schoolId={schoolId} roles={customRoles} onChange={loadStaff} />

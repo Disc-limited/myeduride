@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { Search, Bell, Mail, Maximize2, ShieldCheck, Clock, User, ChevronDown, LogOut } from 'lucide-react';
+import { Search, Bell, Mail, Maximize2, ShieldCheck, Clock, User, ChevronDown, LogOut as LogOutIcon } from 'lucide-react';
 import { getSession, logout } from '@/lib/api';
 
 interface SuperAdminHeaderProps {
@@ -188,7 +188,7 @@ export default function SuperAdminHeader({ onSearchChange, searchQuery = '' }: S
           title="Sign out"
           aria-label="Sign out"
         >
-          <LogOut size={16} />
+          <LogOutIcon size={16} />
           <span className="hidden sm:inline">Logout</span>
         </button>
       </div>

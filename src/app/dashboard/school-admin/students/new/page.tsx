@@ -71,11 +71,18 @@ export default function AddStudentPage() {
 
   const loadConfig = async () => {
     try {
+      const searchParams = new URLSearchParams(window.location.search);
+      const urlClassId = searchParams.get('class_id');
       const schoolData = await fetchData('get_school_admin_data', { role: 'school_admin' });
       if (!schoolData.school_id) { setPageLoading(false); return; }
       setSchoolId(schoolData.school_id);
       const { classes: classData } = await fetchData('get_classes', { school_id: schoolData.school_id });
       setClasses(classData || []);
+      if (urlClassId && (classData || []).some((c: any) => c.id === urlClassId)) {
+        setForm((f) => ({ ...f, class_id: urlClassId }));
+      } else if (classData?.length > 0) {
+        setForm((f) => ({ ...f, class_id: f.class_id || classData[0].id }));
+      }
     } catch (err) { console.error(err); }
     setPageLoading(false);
   };
@@ -202,18 +209,29 @@ export default function AddStudentPage() {
               <div><label className="block text-xs font-medium text-gray-600 mb-1">First Name *</label><input type="text" value={form.first_name} onChange={e => setForm({...form, first_name: e.target.value})} className="input" /></div>
               <div><label className="block text-xs font-medium text-gray-600 mb-1">Last Name *</label><input type="text" value={form.last_name} onChange={e => setForm({...form, last_name: e.target.value})} className="input" /></div>
               <div className="col-span-2"><label className="block text-xs font-medium text-gray-600 mb-1">Address</label><input type="text" value={form.address} onChange={e => setForm({...form, address: e.target.value})} className="input" placeholder="Home address" /></div>
-              {classes.length > 0 && (
-                <div className="col-span-2"><label className="block text-xs font-medium text-gray-600 mb-1">Class</label>
-                  <select value={form.class_id} onChange={e => setForm({...form, class_id: e.target.value})} className="input">
-                    <option value="">Select class...</option>
-                    {classes.map(c => (
-                      <option key={c.id} value={c.id}>
-                        {c.name}{c.section ? ` · Arm ${c.section}` : ''}
-                      </option>
-                    ))}
+              <div className="col-span-2">
+                <label className="block text-xs font-semibold text-slate-700 mb-1">Classroom Arm *</label>
+                {classes.length > 0 ? (
+                  <select value={form.class_id} onChange={e => setForm({...form, class_id: e.target.value})} className="input text-xs">
+                    <option value="">Select classroom arm...</option>
+                    {classes.map(c => {
+                      const tName = c.assigned_teacher?.user?.full_name || Array.isArray(c.assigned_teacher?.user) ? c.assigned_teacher?.user?.[0]?.full_name : null;
+                      return (
+                        <option key={c.id} value={c.id}>
+                          {c.name}{c.section ? ` · Arm ${c.section}` : ''} {tName ? ` (Homeroom: ${tName})` : ' (No teacher attached)'}
+                        </option>
+                      );
+                    })}
                   </select>
-                </div>
-              )}
+                ) : (
+                  <div className="p-3 bg-amber-50 border border-amber-200 rounded-xl text-xs text-amber-900 flex items-center justify-between">
+                    <span>No active classroom arms found.</span>
+                    <Link href="/dashboard/school-admin/classes" className="font-bold underline text-amber-700 hover:text-amber-900">
+                      Create Classroom
+                    </Link>
+                  </div>
+                )}
+              </div>
             </div>
           </div>
 

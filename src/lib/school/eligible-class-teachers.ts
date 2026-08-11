@@ -6,7 +6,7 @@ export type EligibleClassTeacher = {
   full_name: string;
 };
 
-/** Users with app role `teacher`, or staff whose job role allows class assignment. */
+/** Users with teacher profile or app role `teacher` / `staff` in the school. */
 export async function fetchEligibleClassTeachers(
   supabase: SupabaseClient,
   schoolId: string
@@ -23,47 +23,8 @@ export async function fetchEligibleClassTeachers(
 
   if (!profiles?.length) return [];
 
-  const userIds = profiles.map((p) => p.user_id).filter(Boolean);
-  const { data: roles, error: rolesErr } = await supabase
-    .from('user_school_roles')
-    .select('user_id, role')
-    .eq('school_id', schoolId)
-    .in('user_id', userIds)
-    .eq('is_active', true);
-
-  if (rolesErr) {
-    console.error('[eligible-class-teachers]', rolesErr.message);
-    return [];
-  }
-
-  const { data: classJobRoles } = await supabase
-    .from('school_custom_roles')
-    .select('id')
-    .eq('school_id', schoolId)
-    .eq('can_assign_class', true)
-    .eq('is_active', true);
-
-  const classJobRoleIds = new Set((classJobRoles || []).map((r) => r.id));
-  const rolesByUser = new Map<string, string[]>();
-  for (const r of roles || []) {
-    const list = rolesByUser.get(r.user_id) || [];
-    list.push(r.role);
-    rolesByUser.set(r.user_id, list);
-  }
-
   const eligible: EligibleClassTeacher[] = [];
   for (const p of profiles) {
-    const userRoles = rolesByUser.get(p.user_id) || [];
-    const isClassTeacher =
-      p.teacher_responsibility === 'class_teacher' ||
-      p.teacher_responsibility === 'both';
-    const isClassStaff =
-      userRoles.includes('staff') &&
-      p.custom_role_id &&
-      classJobRoleIds.has(p.custom_role_id);
-
-    if (!isClassTeacher && !isClassStaff) continue;
-
     const user = Array.isArray(p.user) ? p.user[0] : p.user;
     eligible.push({
       id: p.id as string,
@@ -84,48 +45,11 @@ export async function isEligibleClassTeacherProfile(
 
   const { data: profile } = await supabase
     .from('teacher_profiles')
-    .select('user_id, custom_role_id, teacher_responsibility')
+    .select('id')
     .eq('id', teacherProfileId)
     .eq('school_id', schoolId)
     .maybeSingle();
 
-  if (profile?.teacher_responsibility === 'class_teacher' || profile?.teacher_responsibility === 'both') {
-    return true;
-  }
-
-  if (!profile?.user_id) return false;
-
-  const { data: teacherRole } = await supabase
-    .from('user_school_roles')
-    .select('id')
-    .eq('user_id', profile.user_id)
-    .eq('school_id', schoolId)
-    .eq('role', 'teacher')
-    .eq('is_active', true)
-    .maybeSingle();
-
-  if (teacherRole) return true;
-
-  if (!profile.custom_role_id) return false;
-
-  const { data: customRole } = await supabase
-    .from('school_custom_roles')
-    .select('can_assign_class')
-    .eq('id', profile.custom_role_id)
-    .eq('school_id', schoolId)
-    .eq('is_active', true)
-    .maybeSingle();
-
-  if (!customRole?.can_assign_class) return false;
-
-  const { data: staffRole } = await supabase
-    .from('user_school_roles')
-    .select('id')
-    .eq('user_id', profile.user_id)
-    .eq('school_id', schoolId)
-    .eq('role', 'staff')
-    .eq('is_active', true)
-    .maybeSingle();
-
-  return !!staffRole;
+  return !!profile;
 }
+

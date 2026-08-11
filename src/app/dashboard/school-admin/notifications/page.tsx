@@ -20,7 +20,7 @@ export default function AdminNotificationsPage() {
   }
 
   return (
-    <div className="p-6 pt-14 md:pt-6 max-w-2xl">
+    <div className="p-6 pt-14 md:pt-6 w-full max-w-full">
       <h1 className="text-2xl font-bold mb-1">Notifications</h1>
       <p className="text-sm text-gray-500 mb-4">
         Pickup requests, new authorised pickup persons, attendance, and dismissals.

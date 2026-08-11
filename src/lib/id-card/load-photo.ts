@@ -2,10 +2,12 @@ import type { SupabaseClient } from '@supabase/supabase-js';
 
 export function extractStoragePath(input: string): string | null {
   try {
+    if (!input || typeof input !== 'string') return null;
+    if (input.startsWith('data:')) return null;
     const decoded = decodeURIComponent(input);
-    const publicMatch = decoded.match(/\/storage\/v1\/object\/public\/photos\/(.+)$/);
+    const publicMatch = decoded.match(/\/storage\/v1\/object\/public\/(?:photos\/)?(.+)$/);
     if (publicMatch) return publicMatch[1];
-    const signedMatch = decoded.match(/\/storage\/v1\/object\/sign\/photos\/(.+?)(\?|$)/);
+    const signedMatch = decoded.match(/\/storage\/v1\/object\/sign\/(?:photos\/)?(.+?)(\?|$)/);
     if (signedMatch) return signedMatch[1];
     if (!decoded.includes('://') && !decoded.startsWith('/')) return decoded;
   } catch {
@@ -21,17 +23,29 @@ export async function loadPhotoDataUrl(
 ): Promise<string | null> {
   if (!photoUrl) return null;
 
+  // If already a base64 data URL, return as-is
+  if (typeof photoUrl === 'string' && photoUrl.startsWith('data:image/')) {
+    return photoUrl;
+  }
+
   const path = extractStoragePath(photoUrl);
   if (!path) return null;
 
-  const { data, error } = await supabase.storage.from('photos').download(path);
-  if (error || !data) {
-    console.error('[id-card] photo download failed:', error?.message, path);
+  try {
+    const cleanPath = path.startsWith('photos/') ? path.replace(/^photos\//, '') : path;
+    const { data, error } = await supabase.storage.from('photos').download(cleanPath);
+    if (error || !data) {
+      console.error('[id-card] photo download failed:', error?.message, cleanPath);
+      return null;
+    }
+
+    const buffer = Buffer.from(await data.arrayBuffer());
+    const base64 = buffer.toString('base64');
+    const mime = cleanPath.endsWith('.png') ? 'image/png' : 'image/jpeg';
+    return `data:${mime};base64,${base64}`;
+  } catch (err: any) {
+    console.error('[id-card] loadPhotoDataUrl exception:', err?.message || err);
     return null;
   }
-
-  const buffer = Buffer.from(await data.arrayBuffer());
-  const base64 = buffer.toString('base64');
-  const mime = path.endsWith('.png') ? 'image/png' : 'image/jpeg';
-  return `data:${mime};base64,${base64}`;
 }
+

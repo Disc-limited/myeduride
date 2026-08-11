@@ -36,7 +36,7 @@ import {
   CheckCircle2,
   Menu,
   X,
-  LogOut,
+  LogOut as LogOutIcon,
 } from 'lucide-react';
 import { logout } from '@/lib/api';
 
@@ -231,7 +231,7 @@ export default function SuperAdminSidebar() {
           onClick={() => logout()}
           className="w-full flex items-center justify-center gap-2 py-2 px-3 rounded-xl bg-red-500/10 hover:bg-red-500/20 text-red-400 border border-red-500/20 font-bold text-xs transition-colors"
         >
-          <LogOut size={15} />
+          <LogOutIcon size={15} />
           <span>Sign Out</span>
         </button>
       </div>

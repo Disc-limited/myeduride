@@ -44,7 +44,7 @@ export default function AttendanceReportsPage() {
   }
 
   return (
-    <div className="p-6 min-h-screen md:ml-56 pt-14 md:pt-6 max-w-5xl">
+    <div className="p-6 min-h-screen pt-14 md:pt-6 w-full max-w-full">
       <h1 className="text-2xl font-bold text-slate-900 mb-1">Attendance</h1>
       <p className="text-sm text-slate-500 mb-6">
         Daily, weekly, and monthly reports for students and staff. For gate sign-in/out, open the{' '}

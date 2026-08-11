@@ -94,7 +94,7 @@ export default function ParentsListPage() {
   }
 
   return (
-    <div className="page-shell max-w-5xl">
+    <div className="page-shell w-full max-w-full">
       <div className="page-header">
         <div>
           <p className="page-badge">Parents</p>

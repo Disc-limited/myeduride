@@ -31,7 +31,7 @@ export default function AdminPickupPersonsPage() {
   }
 
   return (
-    <div className="p-6 pt-14 md:pt-6 max-w-3xl">
+    <div className="p-6 pt-14 md:pt-6 w-full max-w-full">
       <h1 className="text-2xl font-bold mb-1">Pickup management</h1>
       <p className="text-sm text-gray-500 mb-6">
         Authorised pickup persons per child. Parents can add more with photos; you can create or remove entries here.

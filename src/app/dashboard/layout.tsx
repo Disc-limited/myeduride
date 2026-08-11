@@ -96,54 +96,67 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
     return null;
   }
 
+  // Hide fixed floating header controls on dashboards that provide their own custom headers
+  const hasCustomHeader = [
+    '/dashboard/escort',
+    '/dashboard/school-admin',
+    '/dashboard/super-admin',
+    '/dashboard/staff',
+    '/dashboard/teacher',
+    '/dashboard/parent',
+    '/dashboard/gate',
+  ].some((prefix) => pathname.startsWith(prefix));
+
   return (
     <div className="min-h-screen bg-transparent">
       {/* Wrapped in a try/catch architecture implicitly using conditional rendering states */}
       <SessionIdleGuard />
       <PresenceGuard />
       
-      <div className="fixed top-3 right-3 z-30 flex items-center gap-1">
-        {/* RoleSwitcher handles dropdown rendering; safely mounted now */}
-        <RoleSwitcher showLogout={false} />
+      {!hasCustomHeader && (
+        <div className="fixed top-3 right-3 z-30 flex items-center gap-1">
+          {/* RoleSwitcher handles dropdown rendering; safely mounted now */}
+          <RoleSwitcher showLogout={false} />
 
-        {showChatButton && (
-          <Link
-            href="/dashboard/staff-chat"
-            className="relative p-2 rounded-full bg-white border shadow-sm text-gray-500 hover:text-primary-700 hover:border-primary-100 flex items-center justify-center transition-colors"
-            title="Staff Private Chat & EduChart"
-            aria-label="Staff Private Chat & EduChart"
-          >
-            <MessageSquare size={18} />
-            {unreadChatCount > 0 && (
-              <span className="absolute -top-1 -right-1 min-w-[16px] h-[16px] bg-red-500 text-white text-[9px] font-bold rounded-full flex items-center justify-center px-0.5 animate-pulse">
-                {unreadChatCount > 9 ? '9+' : unreadChatCount}
-              </span>
-            )}
-          </Link>
-        )}
-        
-        <button
-          type="button"
-          onClick={() => setShowAccount(true)}
-          className="p-2 rounded-full bg-white border shadow-sm text-gray-500 hover:text-primary-700 hover:border-primary-100"
-          title="Account settings"
-          aria-label="Account settings"
-        >
-          <KeyRound size={18} />
-        </button>
-        
-        {!isSchoolAdmin && !isParent && (
+          {showChatButton && (
+            <Link
+              href="/dashboard/staff-chat"
+              className="relative p-2 rounded-full bg-white border shadow-sm text-gray-500 hover:text-primary-700 hover:border-primary-100 flex items-center justify-center transition-colors"
+              title="Staff Private Chat & EduChart"
+              aria-label="Staff Private Chat & EduChart"
+            >
+              <MessageSquare size={18} />
+              {unreadChatCount > 0 && (
+                <span className="absolute -top-1 -right-1 min-w-[16px] h-[16px] bg-red-500 text-white text-[9px] font-bold rounded-full flex items-center justify-center px-0.5 animate-pulse">
+                  {unreadChatCount > 9 ? '9+' : unreadChatCount}
+                </span>
+              )}
+            </Link>
+          )}
+          
           <button
             type="button"
-            onClick={logout}
-            className="p-2 rounded-full bg-white border shadow-sm text-gray-500 hover:text-red-600 hover:border-red-100"
-            title="Sign out"
-            aria-label="Sign out"
+            onClick={() => setShowAccount(true)}
+            className="p-2 rounded-full bg-white border shadow-sm text-gray-500 hover:text-primary-700 hover:border-primary-100"
+            title="Account settings"
+            aria-label="Account settings"
           >
-            <LogOut size={18} />
+            <KeyRound size={18} />
           </button>
-        )}
-      </div>
+          
+          {!isSchoolAdmin && !isParent && (
+            <button
+              type="button"
+              onClick={logout}
+              className="p-2 rounded-full bg-white border shadow-sm text-gray-500 hover:text-red-600 hover:border-red-100"
+              title="Sign out"
+              aria-label="Sign out"
+            >
+              <LogOut size={18} />
+            </button>
+          )}
+        </div>
+      )}
 
       {showAccount && (
         <AccountSettingsModal onClose={() => setShowAccount(false)} />

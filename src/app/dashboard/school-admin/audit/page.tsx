@@ -46,7 +46,7 @@ export default function AuditLogPage() {
   }
 
   return (
-    <div className="page-shell max-w-3xl">
+    <div className="page-shell w-full max-w-full">
       <div className="flex items-center gap-3 mb-6">
         <Shield className="text-primary-600" size={28} />
         <div>

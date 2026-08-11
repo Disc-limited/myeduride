@@ -31,6 +31,7 @@ import {
   X,
   ChevronDown,
   ChevronRight,
+  ChevronLeft,
   Sparkles,
 } from 'lucide-react';
 import { logout } from '@/lib/api';
@@ -51,9 +52,13 @@ interface NavSection {
 export function AdminSidebar({
   mobileOpen = false,
   onMobileClose,
+  isCollapsed = false,
+  onToggleCollapse,
 }: {
   mobileOpen?: boolean;
   onMobileClose?: () => void;
+  isCollapsed?: boolean;
+  onToggleCollapse?: () => void;
 }) {
   const pathname = usePathname();
   const [openSubmenus, setOpenSubmenus] = useState<Record<string, boolean>>({
@@ -80,6 +85,7 @@ export function AdminSidebar({
           ],
         },
         { label: 'Classes', href: '/dashboard/school-admin/classes', icon: <School size={18} /> },
+        { label: 'ID Cards Generator', href: '/dashboard/school-admin/id-cards', icon: <CreditCard size={18} /> },
         {
           label: 'Staff',
           href: '/dashboard/school-admin/staff',
@@ -94,8 +100,8 @@ export function AdminSidebar({
     {
       title: 'TRANSPORT & SAFETY',
       items: [
-        { label: 'MyEduRide Escort', href: '/dashboard/school-admin/escort', icon: <Shield size={18} /> },
-        { label: 'School Escort', href: '/dashboard/school-admin/school-escort', icon: <UserCheck size={18} /> },
+        { label: 'Escort Dashboard', href: '/dashboard/escort', icon: <UserCheck size={18} /> },
+        { label: 'MyEduRide Escort', href: '/dashboard/escort', icon: <Shield size={18} /> },
         { label: 'Live Vehicle Movement', href: '/dashboard/school-admin/live-tracking', icon: <Navigation size={18} /> },
         { label: 'Pickup List', href: '/dashboard/school-admin/pickup-persons', icon: <Car size={18} /> },
         { label: 'Vehicles', href: '/dashboard/school-admin/vehicles', icon: <Car size={18} /> },
@@ -162,6 +168,7 @@ export function AdminSidebar({
     '/dashboard/school-admin/students',
     '/dashboard/school-admin/students/new',
     '/dashboard/school-admin/classes',
+    '/dashboard/school-admin/id-cards',
     '/dashboard/school-admin/staff',
     '/dashboard/school-admin/staff/new',
     '/dashboard/school-admin/parents',
@@ -218,10 +225,21 @@ export function AdminSidebar({
 
       {/* Sidebar Container */}
       <aside
-        className={`fixed top-0 left-0 bottom-0 z-50 w-64 bg-[#0B192C] text-slate-300 flex flex-col transition-transform duration-300 ease-in-out border-r border-slate-800/80 shadow-2xl ${
+        className={`fixed top-0 left-0 bottom-0 z-50 ${isCollapsed ? 'w-20' : 'w-64'} bg-[#0B192C] text-slate-300 flex flex-col transition-all duration-300 ease-in-out border-r border-slate-800/80 shadow-2xl ${
           mobileOpen ? 'translate-x-0' : '-translate-x-full lg:translate-x-0'
         }`}
       >
+        {/* Floating Collapse Toggle Button */}
+        {onToggleCollapse && (
+          <button
+            type="button"
+            onClick={onToggleCollapse}
+            className="hidden lg:flex absolute -right-3.5 top-16 z-50 w-7 h-7 rounded-xl bg-slate-800 border border-slate-700 text-slate-200 hover:bg-slate-700 hover:text-white items-center justify-center shadow-lg transition-transform hover:scale-110"
+            title={isCollapsed ? 'Expand Full View' : 'Collapse Sidebar'}
+          >
+            {isCollapsed ? <ChevronRight className="w-4 h-4" /> : <ChevronLeft className="w-4 h-4" />}
+          </button>
+        )}
         {/* Top Logo & Brand Area */}
         <div className="p-4 sm:p-5 flex items-center justify-between border-b border-slate-800/70 bg-[#071324]">
           <Link href="/dashboard/school-admin" className="flex flex-col gap-1 group">

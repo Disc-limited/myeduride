@@ -404,7 +404,7 @@ export default function SuperAdminPasswordsPage() {
 
   return (
     <div className="min-h-screen bg-gray-50">
-      <main className="p-4 sm:p-6 max-w-7xl mx-auto pb-12">
+      <main className="p-4 sm:p-6 w-full max-w-full mx-auto pb-12">
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-6">
           <div>
             <h1 className="text-2xl font-bold text-gray-900 flex items-center gap-2">

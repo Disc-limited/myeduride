@@ -9,14 +9,18 @@ import {
   Mail,
   HelpCircle,
   ChevronDown,
+  Maximize2,
+  Minimize2,
 } from 'lucide-react';
 import Link from 'next/link';
 
 interface AdminHeaderProps {
   onMenuClick?: () => void;
+  isFullSize?: boolean;
+  onToggleFullSize?: () => void;
 }
 
-export function AdminHeader({ onMenuClick }: AdminHeaderProps) {
+export function AdminHeader({ onMenuClick, isFullSize = false, onToggleFullSize }: AdminHeaderProps) {
   const [userName, setUserName] = useState('School Admin');
   const [schoolName, setSchoolName] = useState('Greenfield International School');
   const [unreadNotifications, setUnreadNotifications] = useState(8);
@@ -119,6 +123,22 @@ export function AdminHeader({ onMenuClick }: AdminHeaderProps) {
         >
           <HelpCircle size={20} />
         </button>
+
+        {/* Full Size / Expand View Toggle */}
+        {onToggleFullSize && (
+          <button
+            type="button"
+            onClick={onToggleFullSize}
+            className={`p-2 rounded-xl transition-colors hidden sm:block ${
+              isFullSize
+                ? 'bg-emerald-100 text-emerald-700 font-bold border border-emerald-300'
+                : 'text-slate-500 hover:text-slate-800 hover:bg-slate-100'
+            }`}
+            title={isFullSize ? 'Exit Full Size View' : 'Expand Module to Full Size'}
+          >
+            {isFullSize ? <Minimize2 size={20} /> : <Maximize2 size={20} />}
+          </button>
+        )}
 
         {/* Admin User Profile Pill */}
         <Link
