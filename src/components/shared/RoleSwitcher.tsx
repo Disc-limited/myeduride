@@ -3,11 +3,12 @@
 import { useState, useEffect } from 'react';
 import { usePathname } from 'next/navigation';
 import { getSession } from '@/lib/api';
-import { ChevronDown, Shield, GraduationCap, DoorOpen, Users, User, Check, KeyRound, UserCheck } from 'lucide-react';
+import { ChevronDown, Shield, GraduationCap, DoorOpen, Users, User, Check, KeyRound, UserCheck, Navigation } from 'lucide-react';
 import Link from 'next/link';
 
 const ROLE_CONFIG: Record<string, { label: string; href: string; icon: React.ReactNode }> = {
   super_admin: { label: 'Super Admin', href: '/dashboard/super-admin', icon: <Shield size={14} /> },
+  city_manager: { label: 'City Manager', href: '/dashboard/city-manager', icon: <Navigation size={14} /> },
   school_admin: { label: 'School Admin', href: '/dashboard/school-admin', icon: <GraduationCap size={14} /> },
   teacher: { label: 'Teacher', href: '/dashboard/teacher', icon: <Users size={14} /> },
   gate_officer: { label: 'Gate Officer', href: '/dashboard/gate', icon: <DoorOpen size={14} /> },

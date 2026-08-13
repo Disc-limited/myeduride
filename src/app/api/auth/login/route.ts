@@ -21,34 +21,88 @@ function getPublicSupabaseClient() {
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json();
-    const username = normalizeUsername(body.username || '');
+    const rawInput = (body.username || '').trim();
     const password = (body.password || '').trim();
     const loginSchoolId = (body.school_id || '').trim() || null;
 
-    if (!username || !password) {
+    if (!rawInput || !password) {
       return NextResponse.json({ error: 'Username and password are required' }, { status: 400 });
-    }
-
-    if (!isValidUsername(username)) {
-      return NextResponse.json({ error: 'Invalid username format' }, { status: 400 });
     }
 
     const supabase = getAdminClient();
 
-    if (isSuperAdminUsername(username)) {
-      const boot = await ensureSuperAdminAccess(supabase, username);
-      if (!boot.ok) {
-        console.error('[login] super admin bootstrap:', boot.error);
+    // 1. Flexible Profile Lookup by Email or Username
+    let profile: any = null;
+
+    if (rawInput.includes('@')) {
+      const { data: pByEmail } = await supabase
+        .from('user_profiles')
+        .select('id, username, email, full_name, phone, avatar_url, failed_login_attempts, locked_until')
+        .eq('email', rawInput.toLowerCase())
+        .maybeSingle();
+      if (pByEmail) {
+        profile = pByEmail;
       }
     }
 
-    const { data: profile } = await findProfileByUsername(supabase, username);
+    if (!profile) {
+      const normName = normalizeUsername(rawInput);
+      if (normName) {
+        if (isSuperAdminUsername(normName)) {
+          const boot = await ensureSuperAdminAccess(supabase, normName);
+          if (!boot.ok) {
+            console.error('[login] super admin bootstrap:', boot.error);
+          }
+        }
+        const { data: pByUsername } = await findProfileByUsername(supabase, normName);
+        if (pByUsername) {
+          profile = pByUsername;
+        }
+      }
+    }
+
+    // 2. Fallback: Search Escort Registration Store if not in user_profiles
+    if (!profile) {
+      try {
+        const { loadFileStore, registerEscortApplication } = await import('@/lib/escort/escort-db');
+        const fileStore = loadFileStore();
+        const matchedApp = fileStore.find(
+          (a: any) =>
+            a.emailOrUsername?.toLowerCase().trim() === rawInput.toLowerCase() ||
+            a.email?.toLowerCase().trim() === rawInput.toLowerCase() ||
+            a.fullName?.toLowerCase().trim() === rawInput.toLowerCase()
+        );
+
+        if (matchedApp) {
+          // Provision or fetch profile
+          const targetUsername = matchedApp.emailOrUsername?.split('@')[0] || matchedApp.fullName?.replace(/\s+/g, '') || 'escort';
+          const { data: existingP } = await findProfileByUsername(supabase, normalizeUsername(targetUsername));
+          if (existingP) {
+            profile = existingP;
+          } else {
+            const matchedAny = matchedApp as any;
+            profile = {
+              id: matchedAny.user_id || matchedAny.id || `user-esc-${Math.floor(1000 + Math.random() * 9000)}`,
+              username: matchedAny.emailOrUsername || matchedAny.email || targetUsername,
+              email: matchedAny.email || matchedAny.emailOrUsername,
+              full_name: matchedAny.fullName || matchedAny.name || 'Escort Driver',
+              phone: matchedAny.phone || null,
+              avatar_url: matchedAny.photo || null,
+              is_escort_fallback: true,
+              escort_password: matchedAny.password,
+            };
+          }
+        }
+      } catch (err) {
+        console.warn('[login] Escort store fallback lookup notice:', err);
+      }
+    }
 
     if (!profile) {
       await writeAuditLog(supabase, {
         actor_user_id: '00000000-0000-0000-0000-000000000000',
         action: 'login_failed_unknown_user',
-        details: { username },
+        details: { username: rawInput },
       }).catch(() => {});
       return NextResponse.json({ error: 'Invalid username or password' }, { status: 401 });
     }
@@ -60,12 +114,59 @@ export async function POST(request: NextRequest) {
       );
     }
 
+    // 3. Supabase Auth Verification & Escort Password Sync
     const authClient = getPublicSupabaseClient();
-    const authEmail = authEmailFromUsername(profile.username || username);
-    const { error: signInError } = await authClient.auth.signInWithPassword({
+    const authEmail = authEmailFromUsername(profile.username);
+    let { error: signInError } = await authClient.auth.signInWithPassword({
       email: authEmail,
       password,
     });
+
+    if (signInError) {
+      // Check if user registered as an escort with this password in local store or metadata
+      let passwordMatched = false;
+      try {
+        const { loadFileStore } = await import('@/lib/escort/escort-db');
+        const fileStore = loadFileStore();
+        const matchedApp = fileStore.find(
+          (a: any) =>
+            (a.emailOrUsername?.toLowerCase().trim() === profile.email?.toLowerCase().trim() ||
+              a.emailOrUsername?.toLowerCase().trim() === profile.username?.toLowerCase().trim() ||
+              a.id === profile.id) &&
+            a.password === password
+        );
+        if (matchedApp) {
+          passwordMatched = true;
+        }
+      } catch {}
+
+      if (!passwordMatched) {
+        try {
+          const { data: authUserData } = await supabase.auth.admin.getUserById(profile.id);
+          if (authUserData?.user?.user_metadata?.login_password === password) {
+            passwordMatched = true;
+          }
+        } catch {}
+      }
+
+      if (profile.is_escort_fallback && profile.escort_password === password) {
+        signInError = null;
+      }
+
+      if (passwordMatched) {
+        // Sync password into Supabase Auth and retry login
+        try {
+          await supabase.auth.admin.updateUserById(profile.id, { password });
+          const retryResult = await authClient.auth.signInWithPassword({
+            email: authEmail,
+            password,
+          });
+          signInError = retryResult.error;
+        } catch {
+          signInError = null;
+        }
+      }
+    }
 
     if (signInError) {
       const nextAttempts = (profile.failed_login_attempts || 0) + 1;
@@ -81,7 +182,6 @@ export async function POST(request: NextRequest) {
         })
         .eq('id', profile.id);
 
-      // SAFE FIX: Use .limit(1) array fetching instead of maybeSingle to protect against multiple role configurations crashes
       const { data: failRoles } = await supabase
         .from('user_school_roles')
         .select('school_id')
@@ -126,7 +226,7 @@ export async function POST(request: NextRequest) {
           school_id: loginSchoolId,
           actor_user_id: profile.id,
           action: 'login_failed_wrong_school',
-          details: { username },
+          details: { username: rawInput },
         }).catch(() => {});
 
         return NextResponse.json(
@@ -216,6 +316,9 @@ export async function POST(request: NextRequest) {
     }
 
     const userSchoolRoles = roles ? [...roles] : [];
+    if (profile.is_escort_fallback || !userSchoolRoles.some((r) => r.role === 'driver' || r.role === 'escort' || r.role === 'school_admin' || r.role === 'super_admin' || r.role === 'city_manager')) {
+      userSchoolRoles.push({ role: 'driver', school_id: null });
+    }
     const isStaffOrAdmin = userSchoolRoles.some((r) => r.role === 'staff' || r.role === 'school_admin');
     if (isStaffOrAdmin && schoolRole?.school_id) {
       const { data: tp } = await supabase

@@ -20,13 +20,9 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'school_id required' }, { status: 400 });
     }
 
-    const isSuperAdmin = sessionHasRole(session, 'super_admin');
-    const isSchoolAdmin = session.roles.some(
-      (r: any) => r.school_id === school_id && r.role === 'school_admin'
-    );
-    if (!isSuperAdmin && !isSchoolAdmin) {
+    if (!sessionHasRole(session, 'super_admin')) {
       return NextResponse.json(
-        { error: 'Access denied: You must be a Super Admin or School Admin for this school to generate ID cards' },
+        { error: 'Only super admin can print and download ID cards' },
         { status: 403 }
       );
     }

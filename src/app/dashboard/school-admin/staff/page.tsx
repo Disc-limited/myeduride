@@ -108,20 +108,12 @@ export default function StaffManagementPage() {
             All staff at your school. Use Add staff to create new members.
           </p>
         </div>
-        <div className="flex items-center gap-2">
-          <Link
-            href="/dashboard/school-admin/id-cards"
-            className="px-3.5 py-2 bg-slate-100 hover:bg-slate-200 text-slate-800 text-xs font-bold rounded-xl flex items-center gap-1.5 transition-colors border border-slate-300 shadow-xs"
-          >
-            <CreditCard size={16} /> ID Cards
-          </Link>
-          <Link
-            href="/dashboard/school-admin/staff/new"
-            className="btn-primary flex items-center justify-center gap-2 text-xs font-bold shrink-0 w-full sm:w-auto px-4 py-2"
-          >
-            <Plus size={16} /> Add staff
-          </Link>
-        </div>
+        <Link
+          href="/dashboard/school-admin/staff/new"
+          className="btn-primary flex items-center justify-center gap-2 text-sm shrink-0 w-full sm:w-auto"
+        >
+          <Plus size={16} /> Add staff
+        </Link>
       </div>
 
       <CustomRolesPanel schoolId={schoolId} roles={customRoles} onChange={loadStaff} />

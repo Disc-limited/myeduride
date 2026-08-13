@@ -10,7 +10,10 @@ const LOGO_URL = '/images/eduride_logo.png';
 
 const ROLE_CONFIG: Record<string, { label: string; desc: string; href: string; icon: any; gradient: string }> = {
   super_admin: { label: 'Super Admin', desc: 'Manage all schools, students, and platform settings', href: '/dashboard/super-admin', icon: <Shield size={22} />, gradient: 'from-purple-500 to-indigo-600' },
+  city_manager: { label: 'City Manager', desc: 'Approve escort applications and monitor city transit', href: '/dashboard/city-manager', icon: <Shield size={22} />, gradient: 'from-emerald-600 to-teal-700' },
   school_admin: { label: 'School Admin', desc: 'Manage your school, students, teachers, and reports', href: '/dashboard/school-admin', icon: <GraduationCap size={22} />, gradient: 'from-blue-500 to-cyan-600' },
+  driver: { label: 'Shared Escort / Driver', desc: 'Manage active student trips, live tracking, and earnings', href: '/dashboard/escort', icon: <DoorOpen size={22} />, gradient: 'from-emerald-500 to-teal-600' },
+  escort: { label: 'Escort Driver', desc: 'Manage active student trips, live tracking, and earnings', href: '/dashboard/escort', icon: <DoorOpen size={22} />, gradient: 'from-emerald-500 to-teal-600' },
   teacher: { label: 'Teacher', desc: 'View class attendance and manage student dismissals', href: '/dashboard/teacher', icon: <Users size={22} />, gradient: 'from-green-500 to-emerald-600' },
   gate_officer: { label: 'Gate Officer', desc: 'Scan and verify students at the school gate', href: '/dashboard/gate', icon: <DoorOpen size={22} />, gradient: 'from-orange-500 to-amber-600' },
   parent: { label: 'Parent', desc: 'View your children attendance and notifications', href: '/dashboard/parent', icon: <User size={22} />, gradient: 'from-pink-500 to-rose-600' },
@@ -21,7 +24,7 @@ const ROLE_CONFIG: Record<string, { label: string; desc: string; href: string; i
 const FALLBACK_CONFIG = {
   label: 'Portal User',
   desc: 'Access standard dashboard navigation options',
-  href: '/dashboard/staff',
+  href: '/dashboard/escort',
   icon: <User size={22} />,
   gradient: 'from-slate-500 to-slate-700'
 };
@@ -54,14 +57,24 @@ export default function DashboardRouter() {
       setSchoolWelcome(welcomeMsg);
     }
 
-    // Filter out undefined, empty, or unmapped array types safely
+    // Filter out undefined, empty, or unmapped array types safely (string or object format)
     const userRoles = [...new Set((session.roles || [])
-      .map((r: any) => r?.role)
+      .map((r: any) => (typeof r === 'string' ? r : r?.role))
       .filter(Boolean)
     )] as string[];
     
-    if (userRoles.length === 0) {
-      router.push('/auth/login');
+    if (userRoles.length === 0 || userRoles.includes('driver') || userRoles.includes('escort') || userRoles.includes('portal_user')) {
+      router.push('/dashboard/escort');
+      return;
+    }
+
+    if (userRoles.length === 1) {
+      const singleRole = userRoles[0];
+      const targetHref = ROLE_CONFIG[singleRole]?.href || '/dashboard/escort';
+      router.push(targetHref);
+      return;
+    } else if (userRoles.includes('city_manager')) {
+      router.push('/dashboard/city-manager');
       return;
     }
 

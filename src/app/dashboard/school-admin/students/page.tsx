@@ -188,27 +188,9 @@ export default function StudentsListPage() {
       {selectedIds.length > 0 && (
         <div className="alert-info flex flex-wrap items-center justify-between gap-2 mb-4">
           <span className="text-sm font-medium">{selectedIds.length} selected</span>
-          <div className="flex items-center gap-2">
-            <button
-              type="button"
-              onClick={async () => {
-                toast.info('Generating PDF ID cards...');
-                const res = await downloadIdCardsPdf({
-                  school_id: schoolId,
-                  student_ids: selectedIds,
-                  fileName: `student_id_cards_${new Date().toISOString().split('T')[0]}.pdf`,
-                });
-                if (res.ok) toast.success('ID cards downloaded!');
-                else toast.error(res.error);
-              }}
-              className="px-3 py-2 bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold rounded-xl flex items-center gap-1.5 shadow-sm min-h-[44px]"
-            >
-              <CreditCard size={16} /> Download ID Cards ({selectedIds.length})
-            </button>
-            <button type="button" onClick={() => openPromote()} className="btn-primary text-xs min-h-[44px] px-4">
-              <ArrowUpCircle size={16} className="inline mr-1" /> Promote selected
-            </button>
-          </div>
+          <button type="button" onClick={() => openPromote()} className="btn-primary text-sm min-h-[44px] px-4">
+            <ArrowUpCircle size={16} className="inline mr-1" /> Promote selected
+          </button>
         </div>
       )}
 

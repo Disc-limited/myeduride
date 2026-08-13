@@ -98,6 +98,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
 
   // Hide fixed floating header controls on dashboards that provide their own custom headers
   const hasCustomHeader = [
+    '/dashboard/city-manager',
     '/dashboard/escort',
     '/dashboard/school-admin',
     '/dashboard/super-admin',

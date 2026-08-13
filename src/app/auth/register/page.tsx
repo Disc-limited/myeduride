@@ -27,6 +27,7 @@ import {
 import { toast } from 'sonner';
 import MigoChatModal from '@/components/landing/MigoChatModal';
 import ParentRegistrationWizard from '@/components/auth/ParentRegistrationWizard';
+import EscortRegistrationWizard from '@/components/auth/EscortRegistrationWizard';
 
 const LOGO_URL = '/images/eduride_logo.png';
 
@@ -102,11 +103,15 @@ const MigoMascotSvg = () => (
 function RegisterContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
-  const initialRole = searchParams.get('role') || 'parent';
-
+  const initialRole = searchParams.get('role');
+  const mode = searchParams.get('mode');
 
   const [role, setRole] = useState<'parent' | 'school' | 'driver'>(
-    initialRole === 'school' ? 'school' : initialRole === 'driver' ? 'driver' : 'parent'
+    mode === 'correction' || initialRole === 'driver' || initialRole === 'escort'
+      ? 'driver'
+      : initialRole === 'school'
+      ? 'school'
+      : 'parent'
   );
 
   const [form, setForm] = useState({
@@ -139,6 +144,12 @@ function RegisterContent() {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+
+    if (role === 'driver' || role === 'escort') {
+      // Driver/Escort signup follows the 15-Step EscortRegistrationWizard
+      setRole('driver');
+      return;
+    }
 
     if (!form.fullName.trim()) {
       toast.error('Please enter your full name');
@@ -189,7 +200,7 @@ function RegisterContent() {
 
       setRegisteredAccount({
         name: form.fullName,
-        role: role === 'school' ? 'School Administrator' : role === 'driver' ? 'Driver / Escort' : 'Parent',
+        role: role === 'school' ? 'School Administrator' : 'Parent',
       });
       setSubmitted(true);
       toast.success('Account created successfully!');
@@ -199,6 +210,14 @@ function RegisterContent() {
       setLoading(false);
     }
   };
+
+  if (role === 'driver' || role === 'escort') {
+    return <EscortRegistrationWizard onSwitchRole={(newRole) => setRole(newRole)} />;
+  }
+
+  if (role === 'parent') {
+    return <ParentRegistrationWizard onSwitchRole={(newRole) => setRole(newRole)} />;
+  }
 
   if (submitted) {
     return (
@@ -231,10 +250,6 @@ function RegisterContent() {
         </div>
       </div>
     );
-  }
-
-  if (role === 'parent') {
-    return <ParentRegistrationWizard onSwitchRole={(newRole) => setRole(newRole)} />;
   }
 
   return (

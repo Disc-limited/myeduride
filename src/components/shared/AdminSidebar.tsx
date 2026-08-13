@@ -85,7 +85,6 @@ export function AdminSidebar({
           ],
         },
         { label: 'Classes', href: '/dashboard/school-admin/classes', icon: <School size={18} /> },
-        { label: 'ID Cards Generator', href: '/dashboard/school-admin/id-cards', icon: <CreditCard size={18} /> },
         {
           label: 'Staff',
           href: '/dashboard/school-admin/staff',
@@ -168,7 +167,6 @@ export function AdminSidebar({
     '/dashboard/school-admin/students',
     '/dashboard/school-admin/students/new',
     '/dashboard/school-admin/classes',
-    '/dashboard/school-admin/id-cards',
     '/dashboard/school-admin/staff',
     '/dashboard/school-admin/staff/new',
     '/dashboard/school-admin/parents',

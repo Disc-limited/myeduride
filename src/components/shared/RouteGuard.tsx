@@ -44,6 +44,7 @@ export function RouteGuard({ requiredRole, children }: Props) {
     if (roles.length > 0) {
       const roleToPath: Record<string, string> = {
         super_admin: '/dashboard/super-admin',
+        city_manager: '/dashboard/city-manager',
         school_admin: '/dashboard/school-admin',
         teacher: '/dashboard/teacher',
         gate_officer: '/dashboard/gate',
