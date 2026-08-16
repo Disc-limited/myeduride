@@ -1451,7 +1451,8 @@ export default function EscortRegistrationWizard({ onSwitchRole }: EscortRegistr
                     className="w-4 h-4 rounded text-brand-green focus:ring-brand-green"
                   />
                   <label htmlFor="agreeTerms" className="text-xs text-slate-600">
-                    I agree to the <a href="#" className="text-brand-green font-bold hover:underline">Terms of Service</a> and <a href="#" className="text-brand-green font-bold hover:underline">Privacy Policy</a>
+                    I agree to the <a href="#" className="text-brand-green font-bold hover:underline">Terms of Service</a> and{' '}
+                    <button type="button" onClick={() => setActiveModalDoc('Privacy Policy')} className="text-brand-green font-bold hover:underline">Privacy Policy</button>
                   </label>
                 </div>
                 {renderError('agreeTerms')}
@@ -2635,7 +2636,7 @@ export default function EscortRegistrationWizard({ onSwitchRole }: EscortRegistr
                   <span className="font-semibold text-slate-800">{docName}</span>
                   <button
                     type="button"
-                    onClick={() => toast.info(`Viewing ${docName}`)}
+                    onClick={() => setActiveModalDoc(docName)}
                     className="text-brand-green font-bold hover:underline flex items-center gap-1"
                   >
                     View <ExternalLink className="w-3 h-3" />
@@ -2870,6 +2871,726 @@ export default function EscortRegistrationWizard({ onSwitchRole }: EscortRegistr
           <span>DISC Verified Partner — You are in safe hands</span>
         </div>
       </footer>
+
+      {/* ===== POLICY DOCUMENT MODAL ===== */}
+      {activeModalDoc && (
+        <div
+          className="fixed inset-0 z-[9999] flex items-start justify-center bg-black/60 backdrop-blur-sm p-4 overflow-y-auto"
+          onClick={(e) => { if (e.target === e.currentTarget) setActiveModalDoc(null); }}
+        >
+          <div className="relative bg-white rounded-3xl shadow-2xl border border-slate-200 w-full max-w-2xl my-6 animate-in fade-in slide-in-from-bottom-4">
+
+            {/* Modal Header */}
+            <div className="sticky top-0 z-10 bg-white/95 backdrop-blur-md border-b border-slate-100 rounded-t-3xl px-6 py-4 flex items-center justify-between">
+              <div className="flex items-center gap-3">
+                <div className="w-9 h-9 bg-emerald-50 rounded-xl flex items-center justify-center border border-emerald-200">
+                  <FileText className="w-5 h-5 text-brand-green" />
+                </div>
+                <div>
+                  <h2 className="text-sm font-extrabold text-slate-900">{activeModalDoc}</h2>
+                  <p className="text-[11px] text-slate-400">MyEduRide · Diasaf Industrial Services Limited</p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setActiveModalDoc(null)}
+                className="w-8 h-8 rounded-full bg-slate-100 hover:bg-red-50 hover:text-red-500 flex items-center justify-center text-slate-500 transition-colors text-xl font-bold leading-none"
+                aria-label="Close"
+              >
+                ×
+              </button>
+            </div>
+
+            {/* Modal Body */}
+            <div className="px-6 py-6 text-sm text-slate-700 space-y-6">
+              {activeModalDoc === 'Privacy Policy' ? (
+                <>
+                  {/* Effective date banner */}
+                  <div className="flex items-center gap-2 bg-emerald-50 border border-emerald-200 rounded-xl px-4 py-3 text-xs">
+                    <Info className="w-4 h-4 text-brand-green shrink-0" />
+                    <span>
+                      <span className="font-bold text-slate-900">Effective Date:</span> August 13, 2026
+                      &nbsp;·&nbsp;
+                      <span className="font-bold text-slate-900">Last Updated:</span> August 13, 2026
+                    </span>
+                  </div>
+
+                  <p className="text-slate-600 text-xs leading-relaxed">
+                    Welcome to <span className="font-bold text-slate-900">MyEduRide</span> (operated in conjunction with{' '}
+                    <span className="font-bold text-slate-900">Diasaf Industrial Services Limited</span>). We respect your privacy and are
+                    committed to protecting the personal data of our users, including parents, school administrators, shared escorts, fleet
+                    drivers, and minor students.
+                  </p>
+                  <p className="text-slate-600 text-xs leading-relaxed">
+                    This Privacy Policy explains how we collect, use, disclose, and safeguard your information when you use our mobile
+                    application, website, and student transit or shared escort services (collectively, the "Service"). Please read this
+                    privacy policy carefully. If you do not agree with the terms of this privacy policy, please do not access the Service.
+                  </p>
+
+                  {/* Section 1 */}
+                  <div>
+                    <h3 className="font-extrabold text-slate-900 text-sm mb-2 flex items-center gap-2">
+                      <span className="w-6 h-6 rounded-lg bg-brand-green text-white flex items-center justify-center text-xs font-black shrink-0">1</span>
+                      Information We Collect
+                    </h3>
+                    <p className="text-xs text-slate-500 mb-3 leading-relaxed">
+                      We collect information that identifies, relates to, describes, references, or can be linked to a particular consumer
+                      or device ("personal data"), including:
+                    </p>
+                    <ul className="space-y-2 text-xs text-slate-600">
+                      <li className="flex gap-2"><CheckCircle2 className="w-3.5 h-3.5 text-brand-green shrink-0 mt-0.5" /><span><span className="font-bold text-slate-800">Account &amp; Profile Data:</span> Full names, email addresses, phone numbers, home addresses, school affiliations, and profile photos provided during onboarding and verification.</span></li>
+                      <li className="flex gap-2"><CheckCircle2 className="w-3.5 h-3.5 text-brand-green shrink-0 mt-0.5" /><span><span className="font-bold text-slate-800">Verification &amp; Compliance Data:</span> Government-issued identification, background check details, and credentials submitted by drivers and shared escorts.</span></li>
+                      <li className="flex gap-2"><CheckCircle2 className="w-3.5 h-3.5 text-brand-green shrink-0 mt-0.5" /><span><span className="font-bold text-slate-800">Minor &amp; Transport Data:</span> Names, ages, school details, emergency contacts, and specific pickup/drop-off locations for student passengers.</span></li>
+                      <li className="flex gap-2"><CheckCircle2 className="w-3.5 h-3.5 text-brand-green shrink-0 mt-0.5" /><span><span className="font-bold text-slate-800">Location Data:</span> Real-time GPS coordinates and route tracking information generated during active transit and shared escort sessions.</span></li>
+                      <li className="flex gap-2"><CheckCircle2 className="w-3.5 h-3.5 text-brand-green shrink-0 mt-0.5" /><span><span className="font-bold text-slate-800">Transaction Data:</span> Payment details, digital wallet balances, subscription records, and transaction histories processed through our platform gateways.</span></li>
+                      <li className="flex gap-2"><CheckCircle2 className="w-3.5 h-3.5 text-brand-green shrink-0 mt-0.5" /><span><span className="font-bold text-slate-800">Technical &amp; Usage Data:</span> IP addresses, device information, operating systems, app usage statistics, cookies, mobile SDK data, and interaction logs.</span></li>
+                    </ul>
+                  </div>
+
+                  {/* Section 2 */}
+                  <div>
+                    <h3 className="font-extrabold text-slate-900 text-sm mb-2 flex items-center gap-2">
+                      <span className="w-6 h-6 rounded-lg bg-brand-green text-white flex items-center justify-center text-xs font-black shrink-0">2</span>
+                      How We Use Your Information
+                    </h3>
+                    <ul className="space-y-2 text-xs text-slate-600">
+                      <li className="flex gap-2"><CheckCircle2 className="w-3.5 h-3.5 text-brand-green shrink-0 mt-0.5" /><span>Provide, maintain, and improve the Service, ensuring seamless coordination between parents, schools, escorts, and drivers.</span></li>
+                      <li className="flex gap-2"><CheckCircle2 className="w-3.5 h-3.5 text-brand-green shrink-0 mt-0.5" /><span>Process identity verifications and background safety clearances.</span></li>
+                      <li className="flex gap-2"><CheckCircle2 className="w-3.5 h-3.5 text-brand-green shrink-0 mt-0.5" /><span>Facilitate real-time GPS tracking and transit notifications for authorized parents and school administrators.</span></li>
+                      <li className="flex gap-2"><CheckCircle2 className="w-3.5 h-3.5 text-brand-green shrink-0 mt-0.5" /><span>Manage user accounts, process payments, and distribute receipts or wallet updates.</span></li>
+                      <li className="flex gap-2"><CheckCircle2 className="w-3.5 h-3.5 text-brand-green shrink-0 mt-0.5" /><span>Communicate with you regarding updates, safety alerts, customer support, and administrative notices.</span></li>
+                      <li className="flex gap-2"><CheckCircle2 className="w-3.5 h-3.5 text-brand-green shrink-0 mt-0.5" /><span>Comply with legal obligations, resolve disputes, and enforce our platform agreements.</span></li>
+                    </ul>
+                  </div>
+
+                  {/* Section 3 */}
+                  <div>
+                    <h3 className="font-extrabold text-slate-900 text-sm mb-2 flex items-center gap-2">
+                      <span className="w-6 h-6 rounded-lg bg-brand-green text-white flex items-center justify-center text-xs font-black shrink-0">3</span>
+                      Sharing of Your Information &amp; Subprocessors
+                    </h3>
+                    <ul className="space-y-2 text-xs text-slate-600">
+                      <li className="flex gap-2"><CheckCircle2 className="w-3.5 h-3.5 text-brand-green shrink-0 mt-0.5" /><span><span className="font-bold text-slate-800">Between Platform Stakeholders:</span> Parents, school administrators, verified drivers, and shared escorts receive necessary contact and location data strictly required to coordinate student pick-ups, drop-offs, and active transit monitoring.</span></li>
+                      <li className="flex gap-2"><CheckCircle2 className="w-3.5 h-3.5 text-brand-green shrink-0 mt-0.5" /><span><span className="font-bold text-slate-800">Third-Party Service Providers &amp; Subprocessors:</span> We utilize trusted third-party vendors for cloud hosting infrastructure, mapping/GPS APIs, SMS/notification gateways, payment processors, and background check verification who handle data strictly on our behalf under contractual privacy obligations.</span></li>
+                      <li className="flex gap-2"><CheckCircle2 className="w-3.5 h-3.5 text-brand-green shrink-0 mt-0.5" /><span><span className="font-bold text-slate-800">Legal &amp; Safety Obligations:</span> When required by law, subpoena, or governmental regulation, or when we believe disclosure is necessary to protect the safety, rights, or property of MyEduRide, Diasaf Industrial Services Limited, our users, or the public.</span></li>
+                    </ul>
+                  </div>
+
+                  {/* Section 4 */}
+                  <div>
+                    <h3 className="font-extrabold text-slate-900 text-sm mb-2 flex items-center gap-2">
+                      <span className="w-6 h-6 rounded-lg bg-brand-green text-white flex items-center justify-center text-xs font-black shrink-0">4</span>
+                      Data Security &amp; Retention Timelines
+                    </h3>
+                    <ul className="space-y-2 text-xs text-slate-600">
+                      <li className="flex gap-2"><ShieldCheck className="w-3.5 h-3.5 text-brand-green shrink-0 mt-0.5" /><span><span className="font-bold text-slate-800">Security Standards:</span> We implement robust technical, administrative, and physical security measures designed to protect your personal data from unauthorized access, loss, misuse, or alteration.</span></li>
+                      <li className="flex gap-2"><ShieldCheck className="w-3.5 h-3.5 text-brand-green shrink-0 mt-0.5" /><span><span className="font-bold text-slate-800">Active Profiles &amp; Transactions:</span> Retained for the duration of your account lifespan plus a standard operational window (typically up to 5 years) to satisfy financial and legal compliance requirements.</span></li>
+                      <li className="flex gap-2"><ShieldCheck className="w-3.5 h-3.5 text-brand-green shrink-0 mt-0.5" /><span><span className="font-bold text-slate-800">Real-Time Transit GPS Logs:</span> Archived up to 90 days for safety audits and dispute resolution, then anonymized or securely deleted.</span></li>
+                      <li className="flex gap-2"><ShieldCheck className="w-3.5 h-3.5 text-brand-green shrink-0 mt-0.5" /><span><span className="font-bold text-slate-800">Minor Passenger Details:</span> Expunged or deactivated promptly upon parental account closure or school contract termination, subject to statutory record-keeping mandates.</span></li>
+                    </ul>
+                  </div>
+
+                  {/* Section 5 */}
+                  <div>
+                    <h3 className="font-extrabold text-slate-900 text-sm mb-2 flex items-center gap-2">
+                      <span className="w-6 h-6 rounded-lg bg-brand-green text-white flex items-center justify-center text-xs font-black shrink-0">5</span>
+                      Data Breach Notification Protocol
+                    </h3>
+                    <p className="text-xs text-slate-600 leading-relaxed">
+                      In the unlikely event of a security compromise resulting in unauthorized access to sensitive personal data or minor
+                      records, Diasaf Industrial Services Limited will notify affected users and relevant regulatory authorities in
+                      accordance with applicable data protection laws and statutory timelines.
+                    </p>
+                  </div>
+
+                  {/* Section 6 */}
+                  <div>
+                    <h3 className="font-extrabold text-slate-900 text-sm mb-2 flex items-center gap-2">
+                      <span className="w-6 h-6 rounded-lg bg-brand-green text-white flex items-center justify-center text-xs font-black shrink-0">6</span>
+                      Your Data Protection Rights &amp; Mechanisms
+                    </h3>
+                    <p className="text-xs text-slate-500 mb-3">Depending on your jurisdiction, you may have rights regarding your personal data, including:</p>
+                    <ul className="space-y-2 text-xs text-slate-600">
+                      <li className="flex gap-2"><CheckCircle2 className="w-3.5 h-3.5 text-brand-green shrink-0 mt-0.5" /><span><span className="font-bold text-slate-800">Access &amp; Correction:</span> The right to request access to or correction of your personal profile data stored on the platform.</span></li>
+                      <li className="flex gap-2"><CheckCircle2 className="w-3.5 h-3.5 text-brand-green shrink-0 mt-0.5" /><span><span className="font-bold text-slate-800">Deletion:</span> The right to request the deletion of your account and associated personal data, subject to legal and operational retention requirements.</span></li>
+                      <li className="flex gap-2"><CheckCircle2 className="w-3.5 h-3.5 text-brand-green shrink-0 mt-0.5" /><span><span className="font-bold text-slate-800">Consent Withdrawal:</span> The right to withdraw consent for optional data processing or marketing communications at any time.</span></li>
+                      <li className="flex gap-2"><CheckCircle2 className="w-3.5 h-3.5 text-brand-green shrink-0 mt-0.5" /><span><span className="font-bold text-slate-800">How to Exercise Rights:</span> Submit requests directly through the in-app support ticket interface or by contacting our data privacy team via the platform support channels.</span></li>
+                    </ul>
+                  </div>
+
+                  {/* Section 7 */}
+                  <div>
+                    <h3 className="font-extrabold text-slate-900 text-sm mb-2 flex items-center gap-2">
+                      <span className="w-6 h-6 rounded-lg bg-brand-green text-white flex items-center justify-center text-xs font-black shrink-0">7</span>
+                      Children's Privacy
+                    </h3>
+                    <p className="text-xs text-slate-600 leading-relaxed">
+                      MyEduRide facilitates student transportation and collects minor passenger data solely under the direct supervision,
+                      consent, and authority of their parents or legal guardians and partner schools. We do not knowingly collect personal
+                      data directly from minors without parental authorization.
+                    </p>
+                  </div>
+
+                  {/* Section 8 */}
+                  <div>
+                    <h3 className="font-extrabold text-slate-900 text-sm mb-2 flex items-center gap-2">
+                      <span className="w-6 h-6 rounded-lg bg-brand-green text-white flex items-center justify-center text-xs font-black shrink-0">8</span>
+                      Changes to This Privacy Policy
+                    </h3>
+                    <p className="text-xs text-slate-600 leading-relaxed">
+                      We may update this Privacy Policy from time to time. We will notify you of any changes by posting the new Privacy
+                      Policy on this page and updating the "Last Updated" date. You are advised to review this Privacy Policy periodically
+                      for any changes.
+                    </p>
+                  </div>
+
+                  {/* Section 9 */}
+                  <div>
+                    <h3 className="font-extrabold text-slate-900 text-sm mb-2 flex items-center gap-2">
+                      <span className="w-6 h-6 rounded-lg bg-brand-green text-white flex items-center justify-center text-xs font-black shrink-0">9</span>
+                      Contact Us
+                    </h3>
+                    <p className="text-xs text-slate-600 leading-relaxed">
+                      If you have questions, concerns, or requests regarding this Privacy Policy or our data practices, please contact our
+                      support team through the MyEduRide platform interface.
+                    </p>
+                  </div>
+                </>
+              ) : activeModalDoc === 'Safety Policy' ? (
+                <>
+                  {/* Effective date banner */}
+                  <div className="flex items-center gap-2 bg-emerald-50 border border-emerald-200 rounded-xl px-4 py-3 text-xs">
+                    <Info className="w-4 h-4 text-brand-green shrink-0" />
+                    <span>
+                      <span className="font-bold text-slate-900">Effective Date:</span> August 13, 2026
+                      &nbsp;·&nbsp;
+                      <span className="font-bold text-slate-900">Last Updated:</span> August 13, 2026
+                    </span>
+                  </div>
+
+                  <p className="text-slate-600 text-xs leading-relaxed">
+                    At <span className="font-bold text-slate-900">MyEduRide</span> (operated in conjunction with{' '}
+                    <span className="font-bold text-slate-900">Diasaf Industrial Services Limited</span>), the physical safety, security,
+                    and well-being of minor student passengers, parents, shared escorts, and fleet drivers is our highest priority.
+                  </p>
+                  <p className="text-slate-600 text-xs leading-relaxed">
+                    This Safety Policy outlines the mandatory standards, vetting procedures, vehicle requirements, and behavioral protocols
+                    enforced across our platform.
+                  </p>
+
+                  {/* Section 1 */}
+                  <div>
+                    <h3 className="font-extrabold text-slate-900 text-sm mb-2 flex items-center gap-2">
+                      <span className="w-6 h-6 rounded-lg bg-brand-green text-white flex items-center justify-center text-xs font-black shrink-0">1</span>
+                      Driver and Escort Screening &amp; Vetting
+                    </h3>
+                    <ul className="space-y-2 text-xs text-slate-600">
+                      <li className="flex gap-2"><ShieldCheck className="w-3.5 h-3.5 text-brand-green shrink-0 mt-0.5" /><span><span className="font-bold text-slate-800">Identity Verification:</span> All fleet drivers and shared escorts must undergo rigorous identity confirmation, including government-issued ID checks and residential verification during onboarding.</span></li>
+                      <li className="flex gap-2"><ShieldCheck className="w-3.5 h-3.5 text-brand-green shrink-0 mt-0.5" /><span><span className="font-bold text-slate-800">Background Checks:</span> Drivers and escorts are subject to criminal record screenings and reference checks where applicable to ensure a trusted environment for children.</span></li>
+                      <li className="flex gap-2"><ShieldCheck className="w-3.5 h-3.5 text-brand-green shrink-0 mt-0.5" /><span><span className="font-bold text-slate-800">Continuous Monitoring:</span> Ongoing compliance checks are maintained to ensure credentials remain active and valid.</span></li>
+                    </ul>
+                  </div>
+
+                  {/* Section 2 */}
+                  <div>
+                    <h3 className="font-extrabold text-slate-900 text-sm mb-2 flex items-center gap-2">
+                      <span className="w-6 h-6 rounded-lg bg-brand-green text-white flex items-center justify-center text-xs font-black shrink-0">2</span>
+                      Vehicle Safety and Maintenance Standards
+                    </h3>
+                    <ul className="space-y-2 text-xs text-slate-600">
+                      <li className="flex gap-2"><ShieldCheck className="w-3.5 h-3.5 text-brand-green shrink-0 mt-0.5" /><span><span className="font-bold text-slate-800">Roadworthiness:</span> Fleet vehicles must pass regular mechanical inspections, ensuring brakes, tires, steering, seatbelts, and air conditioning systems are fully operational.</span></li>
+                      <li className="flex gap-2"><ShieldCheck className="w-3.5 h-3.5 text-brand-green shrink-0 mt-0.5" /><span><span className="font-bold text-slate-800">Insurance and Licensing:</span> Every vehicle must carry valid comprehensive motor insurance, proper commercial transit licensing, and comply with all applicable road transport regulations.</span></li>
+                      <li className="flex gap-2"><ShieldCheck className="w-3.5 h-3.5 text-brand-green shrink-0 mt-0.5" /><span><span className="font-bold text-slate-800">Sanitation:</span> Vehicles must be cleaned regularly to maintain a hygienic environment for student passengers.</span></li>
+                    </ul>
+                  </div>
+
+                  {/* Section 3 */}
+                  <div>
+                    <h3 className="font-extrabold text-slate-900 text-sm mb-2 flex items-center gap-2">
+                      <span className="w-6 h-6 rounded-lg bg-brand-green text-white flex items-center justify-center text-xs font-black shrink-0">3</span>
+                      In-Transit Safety Protocols
+                    </h3>
+                    <ul className="space-y-2 text-xs text-slate-600">
+                      <li className="flex gap-2"><CheckCircle2 className="w-3.5 h-3.5 text-brand-green shrink-0 mt-0.5" /><span><span className="font-bold text-slate-800">Seatbelt Compliance:</span> Every student passenger must be securely fastened with an individual seatbelt before the vehicle is put into motion.</span></li>
+                      <li className="flex gap-2"><CheckCircle2 className="w-3.5 h-3.5 text-brand-green shrink-0 mt-0.5" /><span><span className="font-bold text-slate-800">Real-Time GPS Monitoring:</span> Active trips are tracked continuously via platform GPS systems, allowing operations and authorized parents to monitor route adherence in real time.</span></li>
+                      <li className="flex gap-2"><CheckCircle2 className="w-3.5 h-3.5 text-brand-green shrink-0 mt-0.5" /><span><span className="font-bold text-slate-800">Authorized Handover:</span> Drivers and escorts must strictly follow pickup and drop-off verification protocols, ensuring minors are never released to unauthorized individuals.</span></li>
+                    </ul>
+                  </div>
+
+                  {/* Section 4 */}
+                  <div>
+                    <h3 className="font-extrabold text-slate-900 text-sm mb-2 flex items-center gap-2">
+                      <span className="w-6 h-6 rounded-lg bg-brand-green text-white flex items-center justify-center text-xs font-black shrink-0">4</span>
+                      Child Safeguarding and Abuse Reporting Mandate
+                    </h3>
+                    <ul className="space-y-2 text-xs text-slate-600">
+                      <li className="flex gap-2"><AlertCircle className="w-3.5 h-3.5 text-amber-500 shrink-0 mt-0.5" /><span>Shared escorts and drivers maintain a strict duty of care regarding minor passengers.</span></li>
+                      <li className="flex gap-2"><AlertCircle className="w-3.5 h-3.5 text-amber-500 shrink-0 mt-0.5" /><span>Any observation or reasonable suspicion of child abuse, neglect, endangerment, or physical harm witnessed or disclosed during transit must be reported immediately to platform management, school authorities, and relevant law enforcement agencies in accordance with statutory child protection laws.</span></li>
+                    </ul>
+                  </div>
+
+                  {/* Section 5 */}
+                  <div>
+                    <h3 className="font-extrabold text-slate-900 text-sm mb-2 flex items-center gap-2">
+                      <span className="w-6 h-6 rounded-lg bg-brand-green text-white flex items-center justify-center text-xs font-black shrink-0">5</span>
+                      Health and Illness Policy
+                    </h3>
+                    <ul className="space-y-2 text-xs text-slate-600">
+                      <li className="flex gap-2"><CheckCircle2 className="w-3.5 h-3.5 text-brand-green shrink-0 mt-0.5" /><span>To protect all passengers, parents must not send children who are visibly ill, running a fever, or exhibiting contagious symptoms on shared transit.</span></li>
+                      <li className="flex gap-2"><CheckCircle2 className="w-3.5 h-3.5 text-brand-green shrink-0 mt-0.5" /><span>Drivers and escorts reserve the right to decline boarding to any child presenting clear signs of acute illness, with immediate notification sent to the parent and platform dispatch.</span></li>
+                    </ul>
+                  </div>
+
+                  {/* Section 6 */}
+                  <div>
+                    <h3 className="font-extrabold text-slate-900 text-sm mb-2 flex items-center gap-2">
+                      <span className="w-6 h-6 rounded-lg bg-brand-green text-white flex items-center justify-center text-xs font-black shrink-0">6</span>
+                      Severe Weather and Emergency Suspension
+                    </h3>
+                    <ul className="space-y-2 text-xs text-slate-600">
+                      <li className="flex gap-2"><CheckCircle2 className="w-3.5 h-3.5 text-brand-green shrink-0 mt-0.5" /><span>Platform operations monitor regional weather and road conditions continuously. In the event of severe storms, heavy flooding, or environmental hazards, scheduled trips may be delayed, rerouted, or temporarily suspended for safety.</span></li>
+                      <li className="flex gap-2"><CheckCircle2 className="w-3.5 h-3.5 text-brand-green shrink-0 mt-0.5" /><span>Parents and schools will be promptly notified via the platform interface if transit routes are impacted by severe weather events.</span></li>
+                    </ul>
+                  </div>
+
+                  {/* Section 7 */}
+                  <div>
+                    <h3 className="font-extrabold text-slate-900 text-sm mb-2 flex items-center gap-2">
+                      <span className="w-6 h-6 rounded-lg bg-brand-green text-white flex items-center justify-center text-xs font-black shrink-0">7</span>
+                      Driver Fatigue and Working Hours Limits
+                    </h3>
+                    <ul className="space-y-2 text-xs text-slate-600">
+                      <li className="flex gap-2"><ShieldCheck className="w-3.5 h-3.5 text-brand-green shrink-0 mt-0.5" /><span>Fleet drivers are subject to strict maximum driving time caps and mandatory rest breaks between shifts to prevent fatigue-related safety incidents.</span></li>
+                      <li className="flex gap-2"><ShieldCheck className="w-3.5 h-3.5 text-brand-green shrink-0 mt-0.5" /><span>Operating a vehicle while fatigued or exceeding maximum allowable daily driving hours is strictly prohibited under platform safety rules.</span></li>
+                    </ul>
+                  </div>
+
+                  {/* Section 8 */}
+                  <div>
+                    <h3 className="font-extrabold text-slate-900 text-sm mb-2 flex items-center gap-2">
+                      <span className="w-6 h-6 rounded-lg bg-brand-green text-white flex items-center justify-center text-xs font-black shrink-0">8</span>
+                      Zero-Tolerance Conduct Rules
+                    </h3>
+                    <ul className="space-y-2 text-xs text-slate-600">
+                      <li className="flex gap-2"><AlertCircle className="w-3.5 h-3.5 text-red-500 shrink-0 mt-0.5" /><span><span className="font-bold text-slate-800">Substance Prohibition:</span> Operating a vehicle or supervising minors under the influence of alcohol, recreational drugs, or prescription medications that impair driving ability is strictly prohibited.</span></li>
+                      <li className="flex gap-2"><AlertCircle className="w-3.5 h-3.5 text-red-500 shrink-0 mt-0.5" /><span><span className="font-bold text-slate-800">Distracted Driving Ban:</span> Drivers are forbidden from using handheld mobile devices, texting, or engaging in distracting activities while the vehicle is in motion.</span></li>
+                      <li className="flex gap-2"><AlertCircle className="w-3.5 h-3.5 text-red-500 shrink-0 mt-0.5" /><span><span className="font-bold text-slate-800">Professional Boundaries:</span> Physical contact with minors is restricted strictly to assisting with boarding, alighting, or safety adjustments. Any form of harassment, intimidation, or inappropriate behavior will result in immediate permanent deactivation and legal reporting.</span></li>
+                    </ul>
+                  </div>
+
+                  {/* Section 9 */}
+                  <div>
+                    <h3 className="font-extrabold text-slate-900 text-sm mb-2 flex items-center gap-2">
+                      <span className="w-6 h-6 rounded-lg bg-brand-green text-white flex items-center justify-center text-xs font-black shrink-0">9</span>
+                      Emergency Response and Incident Management
+                    </h3>
+                    <ul className="space-y-2 text-xs text-slate-600">
+                      <li className="flex gap-2"><ShieldCheck className="w-3.5 h-3.5 text-brand-green shrink-0 mt-0.5" /><span><span className="font-bold text-slate-800">Accident Protocol:</span> In the event of a collision or mechanical emergency, the driver and escort must immediately secure the passengers, contact emergency medical/police services, and notify platform operations.</span></li>
+                      <li className="flex gap-2"><ShieldCheck className="w-3.5 h-3.5 text-brand-green shrink-0 mt-0.5" /><span><span className="font-bold text-slate-800">Medical Emergencies:</span> Escorts are trained to handle minor first-aid situations and will coordinate emergency hospital transport when necessary, immediately notifying parents and school administrators.</span></li>
+                    </ul>
+                  </div>
+
+                  {/* Section 10 */}
+                  <div>
+                    <h3 className="font-extrabold text-slate-900 text-sm mb-2 flex items-center gap-2">
+                      <span className="w-6 h-6 rounded-lg bg-brand-green text-white flex items-center justify-center text-xs font-black shrink-0">10</span>
+                      Compliance and Reporting
+                    </h3>
+                    <p className="text-xs text-slate-600 leading-relaxed">
+                      Users, parents, escorts, and drivers are encouraged to report any safety concerns, near-misses, or policy violations
+                      immediately through the MyEduRide in-app safety reporting channel.
+                    </p>
+                  </div>
+                </>
+              ) : activeModalDoc === 'Terms of Service' ? (
+                <>
+                  {/* Effective date banner */}
+                  <div className="flex items-center gap-2 bg-emerald-50 border border-emerald-200 rounded-xl px-4 py-3 text-xs">
+                    <Info className="w-4 h-4 text-brand-green shrink-0" />
+                    <span>
+                      <span className="font-bold text-slate-900">Effective Date:</span> August 13, 2026
+                      &nbsp;·&nbsp;
+                      <span className="font-bold text-slate-900">Last Updated:</span> August 13, 2026
+                    </span>
+                  </div>
+
+                  <p className="text-slate-600 text-xs leading-relaxed">
+                    Welcome to <span className="font-bold text-slate-900">MyEduRide</span> (operated in conjunction with{' '}
+                    <span className="font-bold text-slate-900">Diasaf Industrial Services Limited</span>). Please read these Terms of
+                    Service carefully before using our mobile application, website, and student transit or shared escort services
+                    (collectively, the "Service").
+                  </p>
+                  <p className="text-slate-600 text-xs leading-relaxed">
+                    By accessing or using the Service, you agree to be bound by these Terms. If you disagree with any part of the terms,
+                    you may not access the Service.
+                  </p>
+
+                  {/* Section 1 */}
+                  <div>
+                    <h3 className="font-extrabold text-slate-900 text-sm mb-2 flex items-center gap-2">
+                      <span className="w-6 h-6 rounded-lg bg-brand-green text-white flex items-center justify-center text-xs font-black shrink-0">1</span>
+                      Acceptance of Terms
+                    </h3>
+                    <p className="text-xs text-slate-600 leading-relaxed">
+                      By registering an account, accessing, or using MyEduRide as a Parent, School Administrator, Shared Escort, or Fleet
+                      Driver, you acknowledge that you have read, understood, and agree to comply with these Terms, as well as our Privacy
+                      Policy, Transport Agreement, Safety Policy, and Driver Code of Conduct.
+                    </p>
+                  </div>
+
+                  {/* Section 2 */}
+                  <div>
+                    <h3 className="font-extrabold text-slate-900 text-sm mb-2 flex items-center gap-2">
+                      <span className="w-6 h-6 rounded-lg bg-brand-green text-white flex items-center justify-center text-xs font-black shrink-0">2</span>
+                      Eligibility &amp; Account Registration
+                    </h3>
+                    <ul className="space-y-2 text-xs text-slate-600">
+                      <li className="flex gap-2"><CheckCircle2 className="w-3.5 h-3.5 text-brand-green shrink-0 mt-0.5" /><span><span className="font-bold text-slate-800">Account Creation:</span> To use the Service, you must register for an account by providing accurate, current, and complete information during our guided onboarding process.</span></li>
+                      <li className="flex gap-2"><CheckCircle2 className="w-3.5 h-3.5 text-brand-green shrink-0 mt-0.5" /><span><span className="font-bold text-slate-800">Verification Standards:</span> Users, escorts, and drivers must successfully clear identity verification, background checks, and credential validation steps where applicable.</span></li>
+                      <li className="flex gap-2"><CheckCircle2 className="w-3.5 h-3.5 text-brand-green shrink-0 mt-0.5" /><span><span className="font-bold text-slate-800">Account Security:</span> You are responsible for safeguarding your password and for all activities that occur under your account. You agree to notify us immediately of any unauthorized use.</span></li>
+                    </ul>
+                  </div>
+
+                  {/* Section 3 */}
+                  <div>
+                    <h3 className="font-extrabold text-slate-900 text-sm mb-2 flex items-center gap-2">
+                      <span className="w-6 h-6 rounded-lg bg-brand-green text-white flex items-center justify-center text-xs font-black shrink-0">3</span>
+                      Scope of Service &amp; Child Protection
+                    </h3>
+                    <ul className="space-y-2 text-xs text-slate-600">
+                      <li className="flex gap-2"><ShieldCheck className="w-3.5 h-3.5 text-brand-green shrink-0 mt-0.5" /><span><span className="font-bold text-slate-800">Platform Role:</span> MyEduRide is a technology platform that connects parents and schools with verified fleet drivers and shared escorts to facilitate safe student transportation. We act as an intermediary coordinator for transit logistics, route tracking, and escort supervision.</span></li>
+                      <li className="flex gap-2"><ShieldCheck className="w-3.5 h-3.5 text-brand-green shrink-0 mt-0.5" /><span><span className="font-bold text-slate-800">Minor Protection &amp; Consent:</span> By using the Service on behalf of a minor, you represent and warrant that you are the parent or legal guardian with full authority to grant consent for the minor's transportation and data processing.</span></li>
+                      <li className="flex gap-2"><ShieldCheck className="w-3.5 h-3.5 text-brand-green shrink-0 mt-0.5" /><span><span className="font-bold text-slate-800">Authorized Handover:</span> Students will only be released to pre-authorized guardians or designated school personnel according to platform protocols.</span></li>
+                    </ul>
+                  </div>
+
+                  {/* Section 4 */}
+                  <div>
+                    <h3 className="font-extrabold text-slate-900 text-sm mb-2 flex items-center gap-2">
+                      <span className="w-6 h-6 rounded-lg bg-brand-green text-white flex items-center justify-center text-xs font-black shrink-0">4</span>
+                      Real-Time Tracking &amp; Monitoring
+                    </h3>
+                    <ul className="space-y-2 text-xs text-slate-600">
+                      <li className="flex gap-2"><CheckCircle2 className="w-3.5 h-3.5 text-brand-green shrink-0 mt-0.5" /><span>Vehicles and shared escorts utilize real-time GPS tracking devices and applications to ensure transparency, route compliance, and passenger safety.</span></li>
+                      <li className="flex gap-2"><CheckCircle2 className="w-3.5 h-3.5 text-brand-green shrink-0 mt-0.5" /><span>By using the Service, you consent to the collection and sharing of location data with authorized parents, school administrators, and platform safety operators during active transit windows.</span></li>
+                    </ul>
+                  </div>
+
+                  {/* Section 5 */}
+                  <div>
+                    <h3 className="font-extrabold text-slate-900 text-sm mb-2 flex items-center gap-2">
+                      <span className="w-6 h-6 rounded-lg bg-brand-green text-white flex items-center justify-center text-xs font-black shrink-0">5</span>
+                      Emergency &amp; Incident Protocols
+                    </h3>
+                    <ul className="space-y-2 text-xs text-slate-600">
+                      <li className="flex gap-2"><AlertCircle className="w-3.5 h-3.5 text-amber-500 shrink-0 mt-0.5" /><span>In the event of a vehicular accident, mechanical breakdown, or medical emergency during transit, drivers and escorts are trained to immediately contact emergency services and notify platform operations and parents according to our Safety Policy.</span></li>
+                      <li className="flex gap-2"><AlertCircle className="w-3.5 h-3.5 text-amber-500 shrink-0 mt-0.5" /><span>Alternative transport arrangements or secure holding procedures will be coordinated by Diasaf Industrial Services Limited representatives.</span></li>
+                    </ul>
+                  </div>
+
+                  {/* Section 6 */}
+                  <div>
+                    <h3 className="font-extrabold text-slate-900 text-sm mb-2 flex items-center gap-2">
+                      <span className="w-6 h-6 rounded-lg bg-brand-green text-white flex items-center justify-center text-xs font-black shrink-0">6</span>
+                      User Conduct &amp; Responsibilities
+                    </h3>
+                    <ul className="space-y-2 text-xs text-slate-600">
+                      <li className="flex gap-2"><CheckCircle2 className="w-3.5 h-3.5 text-brand-green shrink-0 mt-0.5" /><span><span className="font-bold text-slate-800">Parents/Schools:</span> Must ensure students are ready at designated pickup points at scheduled times and provide accurate emergency contact details.</span></li>
+                      <li className="flex gap-2"><CheckCircle2 className="w-3.5 h-3.5 text-brand-green shrink-0 mt-0.5" /><span><span className="font-bold text-slate-800">Escorts &amp; Drivers:</span> Must adhere strictly to the Safety Policy and Driver Code of Conduct, ensuring punctuality, professional behavior, and minor safety at all times.</span></li>
+                      <li className="flex gap-2"><AlertCircle className="w-3.5 h-3.5 text-red-500 shrink-0 mt-0.5" /><span><span className="font-bold text-slate-800">Prohibited Conduct:</span> Users shall not misuse the platform, harass other members, falsify verification data, or use the service for any illegal activities.</span></li>
+                    </ul>
+                  </div>
+
+                  {/* Section 7 */}
+                  <div>
+                    <h3 className="font-extrabold text-slate-900 text-sm mb-2 flex items-center gap-2">
+                      <span className="w-6 h-6 rounded-lg bg-brand-green text-white flex items-center justify-center text-xs font-black shrink-0">7</span>
+                      Intellectual Property Rights
+                    </h3>
+                    <ul className="space-y-2 text-xs text-slate-600">
+                      <li className="flex gap-2"><CheckCircle2 className="w-3.5 h-3.5 text-brand-green shrink-0 mt-0.5" /><span>All software, user interface designs, graphics, trademarks, logos, and proprietary technology associated with MyEduRide are the exclusive intellectual property of Diasaf Industrial Services Limited.</span></li>
+                      <li className="flex gap-2"><CheckCircle2 className="w-3.5 h-3.5 text-brand-green shrink-0 mt-0.5" /><span>Users are granted a limited, non-exclusive, non-transferable license to access and use the platform solely for its intended student transit and shared escort purposes.</span></li>
+                    </ul>
+                  </div>
+
+                  {/* Section 8 */}
+                  <div>
+                    <h3 className="font-extrabold text-slate-900 text-sm mb-2 flex items-center gap-2">
+                      <span className="w-6 h-6 rounded-lg bg-brand-green text-white flex items-center justify-center text-xs font-black shrink-0">8</span>
+                      Payments, Wallets, and Fees
+                    </h3>
+                    <ul className="space-y-2 text-xs text-slate-600">
+                      <li className="flex gap-2"><CheckCircle2 className="w-3.5 h-3.5 text-brand-green shrink-0 mt-0.5" /><span>All financial transactions, subscription plans, or transit fees must be processed through the platform's official payment gateways and digital wallets.</span></li>
+                      <li className="flex gap-2"><CheckCircle2 className="w-3.5 h-3.5 text-brand-green shrink-0 mt-0.5" /><span>Refunds, cancellations, and billing disputes are governed by our specific fee schedules and transaction terms outlined within the app.</span></li>
+                    </ul>
+                  </div>
+
+                  {/* Section 9 */}
+                  <div>
+                    <h3 className="font-extrabold text-slate-900 text-sm mb-2 flex items-center gap-2">
+                      <span className="w-6 h-6 rounded-lg bg-brand-green text-white flex items-center justify-center text-xs font-black shrink-0">9</span>
+                      Cancellations and No-Shows
+                    </h3>
+                    <ul className="space-y-2 text-xs text-slate-600">
+                      <li className="flex gap-2"><CheckCircle2 className="w-3.5 h-3.5 text-brand-green shrink-0 mt-0.5" /><span>Parents must cancel scheduled rides within the designated app timeframes to avoid late cancellation penalties.</span></li>
+                      <li className="flex gap-2"><CheckCircle2 className="w-3.5 h-3.5 text-brand-green shrink-0 mt-0.5" /><span>If a parent or authorized guardian is not present at the drop-off destination, the child will be safely retained under escort supervision or returned to a designated school facility, subject to additional waiting fees.</span></li>
+                    </ul>
+                  </div>
+
+                  {/* Section 10 */}
+                  <div>
+                    <h3 className="font-extrabold text-slate-900 text-sm mb-2 flex items-center gap-2">
+                      <span className="w-6 h-6 rounded-lg bg-brand-green text-white flex items-center justify-center text-xs font-black shrink-0">10</span>
+                      Limitation of Liability, Insurance, and Indemnification
+                    </h3>
+                    <ul className="space-y-2 text-xs text-slate-600">
+                      <li className="flex gap-2"><AlertCircle className="w-3.5 h-3.5 text-amber-500 shrink-0 mt-0.5" /><span><span className="font-bold text-slate-800">Service Availability:</span> The platform is provided on an "AS IS" and "AS AVAILABLE" basis without warranties of any kind, whether express or implied.</span></li>
+                      <li className="flex gap-2"><AlertCircle className="w-3.5 h-3.5 text-amber-500 shrink-0 mt-0.5" /><span><span className="font-bold text-slate-800">Insurance Coverage &amp; Liability Caps:</span> Transit vehicles carry statutory third-party motor and passenger liability insurance. Financial liability is strictly limited to the maximum coverage limits of active carrier policies or the total fees paid by the user for the specific transit service in dispute.</span></li>
+                      <li className="flex gap-2"><AlertCircle className="w-3.5 h-3.5 text-amber-500 shrink-0 mt-0.5" /><span><span className="font-bold text-slate-800">Transit Incidents:</span> Diasaf Industrial Services Limited and its affiliates shall not be held liable for indirect, incidental, or consequential damages arising from unforeseen transit delays, third-party actions, or force majeure events.</span></li>
+                      <li className="flex gap-2"><AlertCircle className="w-3.5 h-3.5 text-amber-500 shrink-0 mt-0.5" /><span><span className="font-bold text-slate-800">Indemnity:</span> You agree to defend, indemnify, and hold harmless MyEduRide and Diasaf Industrial Services Limited from any claims, damages, obligations, losses, liabilities, or costs arising from your violation of these Terms or misuse of the Service.</span></li>
+                    </ul>
+                  </div>
+
+                  {/* Section 11 */}
+                  <div>
+                    <h3 className="font-extrabold text-slate-900 text-sm mb-2 flex items-center gap-2">
+                      <span className="w-6 h-6 rounded-lg bg-brand-green text-white flex items-center justify-center text-xs font-black shrink-0">11</span>
+                      Force Majeure, Pandemics, and Civil Disruptions
+                    </h3>
+                    <ul className="space-y-2 text-xs text-slate-600">
+                      <li className="flex gap-2"><CheckCircle2 className="w-3.5 h-3.5 text-brand-green shrink-0 mt-0.5" /><span>Neither MyEduRide nor Diasaf Industrial Services Limited shall be held liable for any failure or delay in performing transit obligations resulting from events beyond reasonable control.</span></li>
+                      <li className="flex gap-2"><CheckCircle2 className="w-3.5 h-3.5 text-brand-green shrink-0 mt-0.5" /><span>This includes, but is not limited to, acts of God, severe weather, natural disasters, epidemics, pandemics, government-mandated lockdowns, public health crises, fuel shortages, civil unrest, or widespread labor strikes.</span></li>
+                    </ul>
+                  </div>
+
+                  {/* Section 12 */}
+                  <div>
+                    <h3 className="font-extrabold text-slate-900 text-sm mb-2 flex items-center gap-2">
+                      <span className="w-6 h-6 rounded-lg bg-brand-green text-white flex items-center justify-center text-xs font-black shrink-0">12</span>
+                      Governing Law and Dispute Resolution
+                    </h3>
+                    <ul className="space-y-2 text-xs text-slate-600">
+                      <li className="flex gap-2"><ShieldCheck className="w-3.5 h-3.5 text-brand-green shrink-0 mt-0.5" /><span>These Terms shall be governed by and construed in accordance with the laws of the <span className="font-bold text-slate-800">Federal Republic of Nigeria</span>, without regard to conflict of law principles.</span></li>
+                      <li className="flex gap-2"><ShieldCheck className="w-3.5 h-3.5 text-brand-green shrink-0 mt-0.5" /><span>Any dispute arising out of or relating to these Terms shall first be resolved through friendly good-faith negotiations. If unresolved, disputes shall be submitted to binding arbitration or courts of competent jurisdiction located within operational regional hubs.</span></li>
+                    </ul>
+                  </div>
+
+                  {/* Section 13 */}
+                  <div>
+                    <h3 className="font-extrabold text-slate-900 text-sm mb-2 flex items-center gap-2">
+                      <span className="w-6 h-6 rounded-lg bg-brand-green text-white flex items-center justify-center text-xs font-black shrink-0">13</span>
+                      Termination
+                    </h3>
+                    <p className="text-xs text-slate-600 leading-relaxed">
+                      We may terminate or suspend your account immediately, without prior notice or liability, for any reason whatsoever,
+                      including without limitation if you breach the Terms. Upon termination, your right to use the Service will cease
+                      immediately.
+                    </p>
+                  </div>
+
+                  {/* Section 14 */}
+                  <div>
+                    <h3 className="font-extrabold text-slate-900 text-sm mb-2 flex items-center gap-2">
+                      <span className="w-6 h-6 rounded-lg bg-brand-green text-white flex items-center justify-center text-xs font-black shrink-0">14</span>
+                      Changes to Terms
+                    </h3>
+                    <p className="text-xs text-slate-600 leading-relaxed">
+                      We reserve the right, at our sole discretion, to modify or replace these Terms at any time. We will provide
+                      reasonable notice of any significant changes by posting the new Terms on this page with an updated effective date.
+                    </p>
+                  </div>
+
+                  {/* Section 15 */}
+                  <div>
+                    <h3 className="font-extrabold text-slate-900 text-sm mb-2 flex items-center gap-2">
+                      <span className="w-6 h-6 rounded-lg bg-brand-green text-white flex items-center justify-center text-xs font-black shrink-0">15</span>
+                      Contact Us
+                    </h3>
+                    <p className="text-xs text-slate-600 leading-relaxed">
+                      If you have any questions about these Terms, please contact our support team through the MyEduRide platform interface.
+                    </p>
+                  </div>
+                </>
+              ) : activeModalDoc === 'Transport Agreement' ? (
+                <>
+                  {/* Effective date banner */}
+                  <div className="flex items-center gap-2 bg-emerald-50 border border-emerald-200 rounded-xl px-4 py-3 text-xs">
+                    <Info className="w-4 h-4 text-brand-green shrink-0" />
+                    <span>
+                      <span className="font-bold text-slate-900">Effective Date:</span> August 13, 2026
+                      &nbsp;·&nbsp;
+                      <span className="font-bold text-slate-900">Last Updated:</span> August 13, 2026
+                    </span>
+                  </div>
+
+                  <p className="text-slate-600 text-xs leading-relaxed">
+                    This Transport Agreement outlines the operational terms, safety protocols, and mutual responsibilities governing
+                    student transportation and shared escort services facilitated by{' '}
+                    <span className="font-bold text-slate-900">MyEduRide</span> (operated in conjunction with{' '}
+                    <span className="font-bold text-slate-900">Diasaf Industrial Services Limited</span>).
+                  </p>
+                  <p className="text-slate-600 text-xs leading-relaxed">
+                    By booking, scheduling, or participating in transit services through the platform, Parents, School Administrators,
+                    Shared Escorts, and Fleet Drivers agree to abide by the terms set forth below.
+                  </p>
+
+                  {/* Section 1 */}
+                  <div>
+                    <h3 className="font-extrabold text-slate-900 text-sm mb-2 flex items-center gap-2">
+                      <span className="w-6 h-6 rounded-lg bg-brand-green text-white flex items-center justify-center text-xs font-black shrink-0">1</span>
+                      Scope of Transit Services
+                    </h3>
+                    <ul className="space-y-2 text-xs text-slate-600">
+                      <li className="flex gap-2"><CheckCircle2 className="w-3.5 h-3.5 text-brand-green shrink-0 mt-0.5" /><span><span className="font-bold text-slate-800">Service Objective:</span> MyEduRide provides a coordinated logistical framework connecting schools and parents with vetted fleet drivers and shared escorts to ensure secure, reliable transit for students between home, school, and authorized extracurricular locations.</span></li>
+                      <li className="flex gap-2"><CheckCircle2 className="w-3.5 h-3.5 text-brand-green shrink-0 mt-0.5" /><span><span className="font-bold text-slate-800">Scheduling &amp; Routes:</span> Pick-up times, drop-off locations, and designated routes are established during the booking process. Drivers and escorts must adhere strictly to approved routes unless diverted by emergencies, road hazards, or platform dispatch instructions.</span></li>
+                    </ul>
+                  </div>
+
+                  {/* Section 2 */}
+                  <div>
+                    <h3 className="font-extrabold text-slate-900 text-sm mb-2 flex items-center gap-2">
+                      <span className="w-6 h-6 rounded-lg bg-brand-green text-white flex items-center justify-center text-xs font-black shrink-0">2</span>
+                      Responsibilities of Parents and Guardians
+                    </h3>
+                    <ul className="space-y-2 text-xs text-slate-600">
+                      <li className="flex gap-2"><CheckCircle2 className="w-3.5 h-3.5 text-brand-green shrink-0 mt-0.5" /><span><span className="font-bold text-slate-800">Punctuality &amp; Readiness:</span> Parents must ensure students are dressed, prepared, and present at the designated pick-up location at least <span className="font-bold text-slate-800">five (5) minutes</span> prior to the scheduled arrival time.</span></li>
+                      <li className="flex gap-2"><CheckCircle2 className="w-3.5 h-3.5 text-brand-green shrink-0 mt-0.5" /><span><span className="font-bold text-slate-800">Handover Protocol:</span> A parent, authorized legal guardian, or designated school official must be physically present at the drop-off destination to receive the student.</span></li>
+                      <li className="flex gap-2"><CheckCircle2 className="w-3.5 h-3.5 text-brand-green shrink-0 mt-0.5" /><span><span className="font-bold text-slate-800">Special Instructions:</span> Parents must disclose any relevant medical, behavioral, or special care instructions for the minor during onboarding to ensure appropriate escort supervision.</span></li>
+                    </ul>
+                  </div>
+
+                  {/* Section 3 */}
+                  <div>
+                    <h3 className="font-extrabold text-slate-900 text-sm mb-2 flex items-center gap-2">
+                      <span className="w-6 h-6 rounded-lg bg-brand-green text-white flex items-center justify-center text-xs font-black shrink-0">3</span>
+                      Responsibilities of Drivers and Shared Escorts
+                    </h3>
+                    <ul className="space-y-2 text-xs text-slate-600">
+                      <li className="flex gap-2"><ShieldCheck className="w-3.5 h-3.5 text-brand-green shrink-0 mt-0.5" /><span><span className="font-bold text-slate-800">Vehicle Safety &amp; Compliance:</span> Fleet drivers must ensure their vehicles are fully insured, licensed, roadworthy, clean, and compliant with all regional safety and inspection standards.</span></li>
+                      <li className="flex gap-2"><ShieldCheck className="w-3.5 h-3.5 text-brand-green shrink-0 mt-0.5" /><span><span className="font-bold text-slate-800">Escort Supervision:</span> Shared escorts must remain attentive to minor passengers throughout the entire duration of the trip, maintaining order, securing seatbelts, and managing safe boarding and alighting.</span></li>
+                      <li className="flex gap-2"><AlertCircle className="w-3.5 h-3.5 text-red-500 shrink-0 mt-0.5" /><span><span className="font-bold text-slate-800">Zero-Tolerance Standards:</span> Drivers and escorts are strictly prohibited from operating vehicles under the influence of alcohol, drugs, or distracting substances, and must comply fully with the platform's Driver Code of Conduct.</span></li>
+                    </ul>
+                  </div>
+
+                  {/* Section 4 */}
+                  <div>
+                    <h3 className="font-extrabold text-slate-900 text-sm mb-2 flex items-center gap-2">
+                      <span className="w-6 h-6 rounded-lg bg-brand-green text-white flex items-center justify-center text-xs font-black shrink-0">4</span>
+                      Passenger Conduct &amp; Disciplinary Procedures
+                    </h3>
+                    <ul className="space-y-2 text-xs text-slate-600">
+                      <li className="flex gap-2"><CheckCircle2 className="w-3.5 h-3.5 text-brand-green shrink-0 mt-0.5" /><span>Students are expected to remain seated, fasten seatbelts, and obey safety instructions given by the shared escort or driver at all times.</span></li>
+                      <li className="flex gap-2"><AlertCircle className="w-3.5 h-3.5 text-red-500 shrink-0 mt-0.5" /><span>Bullying, unruly behavior, opening vehicle doors while in motion, or distracting the driver is strictly prohibited. Repeated infractions may result in the suspension of transit privileges.</span></li>
+                    </ul>
+                  </div>
+
+                  {/* Section 5 */}
+                  <div>
+                    <h3 className="font-extrabold text-slate-900 text-sm mb-2 flex items-center gap-2">
+                      <span className="w-6 h-6 rounded-lg bg-brand-green text-white flex items-center justify-center text-xs font-black shrink-0">5</span>
+                      No-Show and Abandoned Minor Protocol
+                    </h3>
+                    <ul className="space-y-2 text-xs text-slate-600">
+                      <li className="flex gap-2"><AlertCircle className="w-3.5 h-3.5 text-amber-500 shrink-0 mt-0.5" /><span>If a parent or authorized guardian is not present at the designated drop-off destination within a reasonable waiting window (typically 5 minutes), the shared escort will attempt to contact the parent and platform support.</span></li>
+                      <li className="flex gap-2"><AlertCircle className="w-3.5 h-3.5 text-amber-500 shrink-0 mt-0.5" /><span>If unreachable, the child will not be left unattended. Instead, the child will be safely retained under escort supervision and either returned to the partner school facility or transferred to local authorities as dictated by platform safety policies, subject to applicable waiting and return fees.</span></li>
+                    </ul>
+                  </div>
+
+                  {/* Section 6 */}
+                  <div>
+                    <h3 className="font-extrabold text-slate-900 text-sm mb-2 flex items-center gap-2">
+                      <span className="w-6 h-6 rounded-lg bg-brand-green text-white flex items-center justify-center text-xs font-black shrink-0">6</span>
+                      Medical Emergency and Accident Procedures
+                    </h3>
+                    <ul className="space-y-2 text-xs text-slate-600">
+                      <li className="flex gap-2"><ShieldCheck className="w-3.5 h-3.5 text-brand-green shrink-0 mt-0.5" /><span>In the event of a vehicular accident or sudden medical emergency during transit, the driver and shared escort are trained to immediately contact emergency medical services and notify platform dispatch and parents.</span></li>
+                      <li className="flex gap-2"><ShieldCheck className="w-3.5 h-3.5 text-brand-green shrink-0 mt-0.5" /><span>By using the service, parents authorize designated medical professionals to administer emergency first-aid or transport the minor to the nearest medical facility if immediate treatment is required. Diasaf Industrial Services Limited and its affiliates disclaim liability for emergency medical decisions made in good faith by first responders.</span></li>
+                    </ul>
+                  </div>
+
+                  {/* Section 7 */}
+                  <div>
+                    <h3 className="font-extrabold text-slate-900 text-sm mb-2 flex items-center gap-2">
+                      <span className="w-6 h-6 rounded-lg bg-brand-green text-white flex items-center justify-center text-xs font-black shrink-0">7</span>
+                      Vehicle Breakdown and Contingency Transport
+                    </h3>
+                    <ul className="space-y-2 text-xs text-slate-600">
+                      <li className="flex gap-2"><CheckCircle2 className="w-3.5 h-3.5 text-brand-green shrink-0 mt-0.5" /><span>In the event of a mechanical failure or vehicle breakdown mid-route, the driver and escort will secure the vehicle in a safe location.</span></li>
+                      <li className="flex gap-2"><CheckCircle2 className="w-3.5 h-3.5 text-brand-green shrink-0 mt-0.5" /><span>Platform operations will promptly coordinate a backup transport vehicle or secondary rescue unit to safely complete the student's journey to school or home.</span></li>
+                    </ul>
+                  </div>
+
+                  {/* Section 8 */}
+                  <div>
+                    <h3 className="font-extrabold text-slate-900 text-sm mb-2 flex items-center gap-2">
+                      <span className="w-6 h-6 rounded-lg bg-brand-green text-white flex items-center justify-center text-xs font-black shrink-0">8</span>
+                      Personal Belongings and Lost Property
+                    </h3>
+                    <ul className="space-y-2 text-xs text-slate-600">
+                      <li className="flex gap-2"><CheckCircle2 className="w-3.5 h-3.5 text-brand-green shrink-0 mt-0.5" /><span>Passengers are responsible for personal items, school bags, and electronics brought into transit vehicles.</span></li>
+                      <li className="flex gap-2"><CheckCircle2 className="w-3.5 h-3.5 text-brand-green shrink-0 mt-0.5" /><span>MyEduRide and Diasaf Industrial Services Limited are not liable for lost, stolen, or damaged personal belongings, though drivers and escorts will make reasonable efforts to secure and report items left behind for recovery through support channels.</span></li>
+                    </ul>
+                  </div>
+
+                  {/* Section 9 */}
+                  <div>
+                    <h3 className="font-extrabold text-slate-900 text-sm mb-2 flex items-center gap-2">
+                      <span className="w-6 h-6 rounded-lg bg-brand-green text-white flex items-center justify-center text-xs font-black shrink-0">9</span>
+                      Delays, Traffic, and Force Majeure
+                    </h3>
+                    <ul className="space-y-2 text-xs text-slate-600">
+                      <li className="flex gap-2"><CheckCircle2 className="w-3.5 h-3.5 text-brand-green shrink-0 mt-0.5" /><span>While every effort is made to maintain strict schedules, Diasaf Industrial Services Limited and its transit partners are not liable for transit delays caused by heavy traffic, severe weather, mechanical breakdown, road closures, or other unforeseen force majeure events.</span></li>
+                      <li className="flex gap-2"><CheckCircle2 className="w-3.5 h-3.5 text-brand-green shrink-0 mt-0.5" /><span>In the event of an extended delay, parents and school administrators will be notified promptly via the platform's real-time tracking and notification system.</span></li>
+                    </ul>
+                  </div>
+
+                  {/* Section 10 */}
+                  <div>
+                    <h3 className="font-extrabold text-slate-900 text-sm mb-2 flex items-center gap-2">
+                      <span className="w-6 h-6 rounded-lg bg-brand-green text-white flex items-center justify-center text-xs font-black shrink-0">10</span>
+                      Modifications and Termination of Transport Services
+                    </h3>
+                    <ul className="space-y-2 text-xs text-slate-600">
+                      <li className="flex gap-2"><AlertCircle className="w-3.5 h-3.5 text-amber-500 shrink-0 mt-0.5" /><span>MyEduRide reserves the right to suspend, alter, or cancel transit arrangements for any route or user account in the event of safety violations, non-payment, or breach of platform policies.</span></li>
+                      <li className="flex gap-2"><CheckCircle2 className="w-3.5 h-3.5 text-brand-green shrink-0 mt-0.5" /><span>Parents may modify or cancel scheduled rides in accordance with the platform's cancellation windows and fee schedules.</span></li>
+                    </ul>
+                  </div>
+
+                  {/* Section 11 */}
+                  <div>
+                    <h3 className="font-extrabold text-slate-900 text-sm mb-2 flex items-center gap-2">
+                      <span className="w-6 h-6 rounded-lg bg-brand-green text-white flex items-center justify-center text-xs font-black shrink-0">11</span>
+                      Contact &amp; Support
+                    </h3>
+                    <p className="text-xs text-slate-600 leading-relaxed">
+                      For any transit-related emergencies, scheduling changes, or operational inquiries, users may reach out directly
+                      through the MyEduRide support interface.
+                    </p>
+                  </div>
+                </>
+              ) : (
+                <div className="text-center py-12 text-slate-400">
+                  <FileText className="w-12 h-12 mx-auto mb-3 text-slate-300" />
+                  <p className="text-sm font-semibold">{activeModalDoc}</p>
+                  <p className="text-xs mt-1">Full document coming soon.</p>
+                </div>
+              )}
+            </div>
+
+            {/* Modal Footer */}
+            <div className="border-t border-slate-100 px-6 py-4 rounded-b-3xl bg-slate-50 flex items-center justify-between gap-3">
+              <p className="text-[11px] text-slate-400">© 2026 MyEduRide · Diasaf Industrial Services Limited. All rights reserved.</p>
+              <button
+                type="button"
+                onClick={() => setActiveModalDoc(null)}
+                className="px-5 py-2 rounded-xl bg-brand-green text-white text-xs font-bold hover:bg-emerald-600 transition-colors"
+              >
+                Close
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

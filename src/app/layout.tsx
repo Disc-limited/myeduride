@@ -1,6 +1,7 @@
 import type { Metadata, Viewport } from 'next';
 import { Toaster } from 'sonner';
 import { PwaProvider } from '@/components/pwa/PwaProvider';
+import CookieConsentBanner from '@/components/shared/CookieConsentBanner';
 import './globals.css';
 
 export const viewport: Viewport = {
@@ -43,6 +44,7 @@ export default function RootLayout({
         <PwaProvider>
           {children}
         </PwaProvider>
+        <CookieConsentBanner />
         <Toaster position="top-right" richColors />
       </body>
     </html>
