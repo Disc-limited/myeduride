@@ -3,7 +3,7 @@
 import { useState, useEffect } from 'react';
 import { usePathname } from 'next/navigation';
 import { getSession } from '@/lib/api';
-import { ChevronDown, Shield, GraduationCap, DoorOpen, Users, User, Check, KeyRound, UserCheck, Navigation } from 'lucide-react';
+import { ChevronDown, Shield, GraduationCap, DoorOpen, Users, User, Check, KeyRound, UserCheck, Navigation, LayoutGrid } from 'lucide-react';
 import Link from 'next/link';
 
 const ROLE_CONFIG: Record<string, { label: string; href: string; icon: React.ReactNode }> = {
@@ -52,8 +52,15 @@ export function RoleSwitcher({ showLogout = true, className = '' }: RoleSwitcher
   const currentRole =
     Object.keys(ROLE_CONFIG).find((r) => pathname.startsWith(ROLE_CONFIG[r].href)) || '';
 
-  // Show all available dashboards so users can switch seamlessly
-  const displayRoles = Object.keys(ROLE_CONFIG);
+  // Filter ROLE_CONFIG to show ONLY the roles that this user account actually possesses
+  const rawRoles = (session?.roles || [])
+    .map((r: any) => (typeof r === 'string' ? r : r?.role))
+    .filter(Boolean);
+
+  const assignedRoleSet = new Set(userRoles.length > 0 ? userRoles : rawRoles);
+  if (assignedRoleSet.has('driver')) assignedRoleSet.add('escort');
+
+  const displayRoles = Object.keys(ROLE_CONFIG).filter((r) => assignedRoleSet.has(r));
 
   return (
     <div className={`relative ${className}`}>
@@ -78,7 +85,7 @@ export function RoleSwitcher({ showLogout = true, className = '' }: RoleSwitcher
               <p className="text-xs text-slate-500 truncate">@{session?.username || session?.email || 'myeduride'}</p>
             </div>
 
-            <div className="p-2 space-y-0.5">
+            <div className="p-2 space-y-0.5 max-h-64 overflow-y-auto custom-scrollbar">
               <p className="px-2 py-1 text-[10px] font-extrabold text-slate-400 uppercase tracking-wider">
                 Switch Dashboard
               </p>
@@ -107,14 +114,24 @@ export function RoleSwitcher({ showLogout = true, className = '' }: RoleSwitcher
               })}
             </div>
 
-            <div className="p-2 border-t border-slate-100">
+            <div className="p-2 border-t border-slate-100 space-y-0.5">
+              {displayRoles.length > 1 && (
+                <Link
+                  href="/dashboard"
+                  onClick={() => setOpen(false)}
+                  className="w-full flex items-center gap-2.5 px-2.5 py-2 rounded-lg text-xs font-medium text-slate-700 hover:bg-slate-50"
+                >
+                  <LayoutGrid size={14} className="text-emerald-600" />
+                  <span>All Accounts & Roles</span>
+                </Link>
+              )}
               <Link
                 href="/dashboard/account"
                 onClick={() => setOpen(false)}
                 className="w-full flex items-center gap-2.5 px-2.5 py-2 rounded-lg text-xs font-medium text-slate-700 hover:bg-slate-50"
               >
                 <KeyRound size={14} className="text-slate-400" />
-                Account Settings
+                <span>Account Settings</span>
               </Link>
             </div>
           </div>

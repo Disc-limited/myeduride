@@ -13,6 +13,7 @@ import {
   Minimize2,
 } from 'lucide-react';
 import Link from 'next/link';
+import { RoleSwitcher } from '@/components/shared/RoleSwitcher';
 
 interface AdminHeaderProps {
   onMenuClick?: () => void;
@@ -140,23 +141,8 @@ export function AdminHeader({ onMenuClick, isFullSize = false, onToggleFullSize 
           </button>
         )}
 
-        {/* Admin User Profile Pill */}
-        <Link
-          href="/dashboard/account"
-          className="flex items-center gap-2.5 pl-1.5 pr-3 py-1 rounded-full bg-slate-50 hover:bg-slate-100 border border-slate-200/80 transition-all cursor-pointer"
-        >
-          <div className="w-8 h-8 rounded-full bg-emerald-600 text-white flex items-center justify-center font-black text-xs shadow-sm shrink-0">
-            {userInitials}
-          </div>
-          <div className="hidden sm:flex flex-col text-left">
-            <span className="text-xs font-bold text-slate-900 leading-tight truncate max-w-[120px]">
-              {userName}
-            </span>
-            <span className="text-[10px] font-medium text-slate-500 leading-tight">
-              School Admin
-            </span>
-          </div>
-        </Link>
+        {/* Admin User Account & Role Switcher */}
+        <RoleSwitcher showLogout={false} />
       </div>
     </header>
   );

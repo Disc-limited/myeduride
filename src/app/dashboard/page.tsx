@@ -62,8 +62,8 @@ export default function DashboardRouter() {
       .map((r: any) => (typeof r === 'string' ? r : r?.role))
       .filter(Boolean)
     )] as string[];
-    
-    if (userRoles.length === 0 || userRoles.includes('driver') || userRoles.includes('escort') || userRoles.includes('portal_user')) {
+
+    if (userRoles.length === 0 || (userRoles.length === 1 && (userRoles.includes('driver') || userRoles.includes('escort') || userRoles.includes('portal_user')))) {
       router.push('/dashboard/escort');
       return;
     }
@@ -73,7 +73,7 @@ export default function DashboardRouter() {
       const targetHref = ROLE_CONFIG[singleRole]?.href || '/dashboard/escort';
       router.push(targetHref);
       return;
-    } else if (userRoles.includes('city_manager')) {
+    } else if (userRoles.includes('city_manager') && userRoles.length === 1) {
       router.push('/dashboard/city-manager');
       return;
     }

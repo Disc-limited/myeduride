@@ -4,6 +4,8 @@ import { useState, useEffect } from 'react';
 import { Search, Bell, Mail, Maximize2, ShieldCheck, Clock, User, ChevronDown, LogOut as LogOutIcon } from 'lucide-react';
 import { getSession, logout } from '@/lib/api';
 
+import { RoleSwitcher } from '@/components/shared/RoleSwitcher';
+
 interface SuperAdminHeaderProps {
   onSearchChange?: (query: string) => void;
   searchQuery?: string;
@@ -154,31 +156,8 @@ export default function SuperAdminHeader({ onSearchChange, searchQuery = '' }: S
         {/* Divider */}
         <div className="h-6 w-px bg-slate-200 mx-1 hidden sm:block" />
 
-        {/* User Profile */}
-        <div className="flex items-center gap-2.5 pl-1 cursor-pointer group">
-          <div className="relative">
-            <div className="w-8 h-8 rounded-full ring-2 ring-emerald-500/30 overflow-hidden bg-slate-800 flex items-center justify-center text-white font-semibold text-xs">
-              <img
-                src="/images/admin_avatar.png"
-                alt="Admin Profile"
-                className="w-full h-full object-cover"
-                onError={(e) => {
-                  e.currentTarget.style.display = 'none';
-                }}
-              />
-              <User size={16} />
-            </div>
-            <span className="absolute bottom-0 right-0 w-2.5 h-2.5 bg-emerald-500 border-2 border-white rounded-full" />
-          </div>
-          <div className="hidden xl:block text-left">
-            <p className="text-xs font-bold text-slate-900 leading-none group-hover:text-emerald-700 transition-colors">
-              {userName}
-            </p>
-            <p className="text-[10px] text-slate-500 font-medium leading-tight mt-0.5">
-              {userTitle}
-            </p>
-          </div>
-        </div>
+        {/* User Account & Role Switcher */}
+        <RoleSwitcher showLogout={false} />
 
         {/* Sign Out Button */}
         <button
