@@ -37,14 +37,22 @@ export async function GET(request: NextRequest) {
     ] as string[];
     const teacherById: Record<string, { id: string; user: { full_name: string } | null }> = {};
     if (teacherIds.length > 0) {
-      const { data: teachers } = await supabase
+      const { data: teacherProfiles } = await supabase
         .from('teacher_profiles')
-        .select('id, user:user_profiles(full_name)')
+        .select('id, user_id')
         .in('id', teacherIds);
-      for (const t of teachers || []) {
-        const row = t as { id: string; user?: { full_name: string } | { full_name: string }[] | null };
-        const user = Array.isArray(row.user) ? row.user[0] : row.user;
-        teacherById[row.id] = { id: row.id, user: user || null };
+
+      const userIds = [...new Set((teacherProfiles || []).map((tp) => tp.user_id).filter(Boolean))];
+      const { data: userProfiles } = await supabase
+        .from('user_profiles')
+        .select('id, full_name, username')
+        .in('id', userIds.length > 0 ? userIds : ['none']);
+
+      const userMap = new Map((userProfiles || []).map((u) => [u.id, u.full_name || u.username || 'Teacher']));
+
+      for (const tp of teacherProfiles || []) {
+        const name = userMap.get(tp.user_id) || 'Teacher';
+        teacherById[tp.id] = { id: tp.id, user: { full_name: name } };
       }
     }
 

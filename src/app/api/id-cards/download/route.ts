@@ -22,7 +22,7 @@ export async function POST(request: NextRequest) {
 
     if (!sessionHasRole(session, 'super_admin')) {
       return NextResponse.json(
-        { error: 'Only super admin can print and download ID cards' },
+        { error: 'ID card generation, download, and printing is under Super Admin / DISCL control only. Schools may view cards on screen only.' },
         { status: 403 }
       );
     }

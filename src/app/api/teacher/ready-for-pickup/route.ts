@@ -7,6 +7,7 @@ import { sendPushToUser } from '@/lib/push/send';
 import { todayInLagos } from '@/lib/timezone';
 import { fetchStudentPickupContext } from '@/lib/gate/student-pickup-context';
 import { getParentRecipientsForStudent } from '@/lib/notifications/parent-recipients';
+import { writeAuditLog } from '@/lib/audit/log';
 
 export const dynamic = 'force-dynamic';
 
@@ -91,6 +92,17 @@ export async function POST(request: NextRequest) {
       }
       return NextResponse.json({ error: dismissErr.message }, { status: 500 });
     }
+
+    // Record teacher action in audit log
+    await writeAuditLog(supabase, {
+      school_id,
+      actor_user_id: session.user_id,
+      student_id,
+      action: 'TEACHER_MARK_READY_FOR_PICKUP',
+      entity_type: 'dismissal_request',
+      entity_id: dismissal?.id || null,
+      details: { notes: notes || null },
+    });
 
     // Get student + school info for notifications
     const { data: student } = await supabase

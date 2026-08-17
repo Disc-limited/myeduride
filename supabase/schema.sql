@@ -268,6 +268,7 @@ CREATE TABLE extra_lessons (
   school_id UUID NOT NULL REFERENCES schools(id) ON DELETE CASCADE,
   teacher_user_id UUID NOT NULL REFERENCES user_profiles(id),
   lesson_end_time TIME,
+  reason TEXT,
   date DATE DEFAULT CURRENT_DATE,
   is_released BOOLEAN DEFAULT FALSE,
   released_at TIMESTAMPTZ,

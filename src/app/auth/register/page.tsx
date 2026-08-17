@@ -3,6 +3,8 @@
 
 import { useState, Suspense } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
+
+export const dynamic = 'force-dynamic';
 import { navigateBack } from '@/lib/navigation/smart-back';
 import Link from 'next/link';
 import {

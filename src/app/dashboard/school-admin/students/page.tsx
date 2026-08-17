@@ -9,7 +9,7 @@ import { toast } from 'sonner';
 import StudentAvatar from '@/components/shared/StudentAvatar';
 import FaceCapture from '@/components/shared/FaceCapture';
 import { todayInLagos } from '@/lib/timezone';
-import { downloadIdCardsPdf } from '@/lib/id-card/download';
+import { IdCardPreviewModal, IdCardPreviewData } from '@/components/id-card/IdCardPreviewModal';
 
 export default function StudentsListPage() {
   const [students, setStudents] = useState([]);
@@ -25,6 +25,10 @@ export default function StudentsListPage() {
   const [promoteClassId, setPromoteClassId] = useState('');
   const [promoting, setPromoting] = useState(false);
   const [promoteTarget, setPromoteTarget] = useState(null);
+
+  // Digital Card Preview State (Read-only for School Admins)
+  const [cardPreviewOpen, setCardPreviewOpen] = useState(false);
+  const [previewCardData, setPreviewCardData] = useState<IdCardPreviewData | null>(null);
 
   useEffect(() => { loadStudents(); }, []);
 
@@ -129,6 +133,18 @@ export default function StudentsListPage() {
   const openEditModal = (student) => {
     setEditingStudent({ ...student });
     setEditFaceData({ photos: [], face_descriptor: null });
+  };
+
+  const openCardPreview = (student: any) => {
+    setPreviewCardData({
+      kind: 'student',
+      fullName: `${student.first_name} ${student.last_name}`,
+      idNumber: student.student_id_number,
+      className: student.class?.name || 'Class',
+      photoUrl: student.photo_url,
+      qrData: student.qr_code_data || `MYEDURIDE:${student.student_id_number}`,
+    });
+    setCardPreviewOpen(true);
   };
 
   const filteredStudents = students.filter((s) => {
@@ -236,13 +252,16 @@ export default function StudentsListPage() {
                 <td className="px-4 py-3 text-sm text-gray-500 font-mono">{s.student_id_number}</td>
                 <td className="px-4 py-3 text-right">
                   <div className="flex items-center justify-end gap-1">
+                    <button type="button" onClick={() => openCardPreview(s)} className="p-2.5 rounded-lg hover:bg-emerald-50 text-gray-400 hover:text-emerald-600 min-h-[44px] min-w-[44px]" title="View Digital ID Pass (Read-Only)">
+                      <CreditCard size={16} />
+                    </button>
                     <button type="button" onClick={() => openPromote(s)} className="p-2.5 rounded-lg hover:bg-emerald-50 text-gray-400 hover:text-emerald-600 min-h-[44px] min-w-[44px]" title="Promote">
                       <ArrowUpCircle size={16} />
                     </button>
-                    <button type="button" onClick={() => openEditModal(s)} className="p-2.5 rounded-lg hover:bg-blue-50 text-gray-400 hover:text-blue-600 min-h-[44px] min-w-[44px]">
+                    <button type="button" onClick={() => openEditModal(s)} className="p-2.5 rounded-lg hover:bg-blue-50 text-gray-400 hover:text-blue-600 min-h-[44px] min-w-[44px]" title="Edit Student">
                       <Edit size={16} />
                     </button>
-                    <button type="button" onClick={() => handleDelete(s.id, `${s.first_name} ${s.last_name}`)} className="p-2.5 rounded-lg hover:bg-red-50 text-gray-400 hover:text-red-600 min-h-[44px] min-w-[44px]">
+                    <button type="button" onClick={() => handleDelete(s.id, `${s.first_name} ${s.last_name}`)} className="p-2.5 rounded-lg hover:bg-red-50 text-gray-400 hover:text-red-600 min-h-[44px] min-w-[44px]" title="Delete Student">
                       <Trash2 size={16} />
                     </button>
                   </div>
@@ -323,6 +342,13 @@ export default function StudentsListPage() {
           </div>
         </div>
       )}
+
+      {/* Read-Only Digital ID Card Preview Modal */}
+      <IdCardPreviewModal
+        isOpen={cardPreviewOpen}
+        onClose={() => setCardPreviewOpen(false)}
+        data={previewCardData}
+      />
     </div>
   );
 }

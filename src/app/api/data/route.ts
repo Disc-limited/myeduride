@@ -516,8 +516,9 @@ export async function POST(request: NextRequest) {
           .in('id', ids)
           .eq('is_active', true);
 
-        // Fetch today's arrivals for these children to compute present/absent stats
+        // Fetch today's arrivals, dismissals, and extra lessons for these children
         const { startIso, endIso } = lagosDayBounds();
+        const today = todayInLagos();
         const { data: arrivals } = await supabase
           .from('attendance_records')
           .select('student_id, status, timestamp')
@@ -526,16 +527,37 @@ export async function POST(request: NextRequest) {
           .gte('timestamp', startIso)
           .lte('timestamp', endIso);
 
+        const { data: dismissals } = await supabase
+          .from('dismissal_requests')
+          .select('student_id, status')
+          .in('student_id', ids)
+          .eq('dismissal_date', today);
+
+        const { data: extraLessons } = await supabase
+          .from('extra_lessons')
+          .select('student_id, is_released, lesson_end_time, reason')
+          .in('student_id', ids)
+          .eq('date', today);
+
         const arrivalMap = new Map(arrivals?.map((a: any) => [a.student_id, a]) || []);
+        const dismissalMap = new Map(dismissals?.map((d: any) => [d.student_id, d]) || []);
+        const extraLessonMap = new Map(extraLessons?.map((e: any) => [e.student_id, e]) || []);
 
         const children = (students || []).map((s: any) => {
           const arrival = arrivalMap.get(s.id);
+          const dismissal = dismissalMap.get(s.id);
+          const extraLesson = extraLessonMap.get(s.id);
           return {
             ...s,
             relationship: links.find((l: any) => l.student_id === s.id)?.relationship || 'parent',
             present_today: !!arrival,
             arrival_status: arrival?.status || null,
             arrival_time: arrival?.timestamp || null,
+            ready_for_pickup: !!dismissal && dismissal.status !== 'completed',
+            dismissal_status: dismissal?.status || null,
+            in_extra_lesson: !!extraLesson && !extraLesson.is_released,
+            extra_lesson_end_time: extraLesson?.lesson_end_time || null,
+            extra_lesson_reason: extraLesson?.reason || null,
           };
         });
 
@@ -551,6 +573,7 @@ export async function POST(request: NextRequest) {
         return NextResponse.json({ error: 'Endpoint deprecated. Please use /api/chat' }, { status: 410 });
       }
 
+      case 'get_teacher_class_data':
       case 'get_teacher_dashboard_full': {
         const { data: roles } = await supabase
           .from('user_school_roles')
@@ -569,8 +592,7 @@ export async function POST(request: NextRequest) {
 
         const schoolId = activeRole.school_id;
         
-        // FIXED: Replaced .single() with .maybeSingle()
-        const { data: school } = await supabase.from('schools').select('name').eq('id', schoolId).maybeSingle();
+        const { data: school } = await supabase.from('schools').select('name, dismissal_start_time, dismissal_end_time').eq('id', schoolId).maybeSingle();
 
         const { data: teacherProfile } = await supabase
           .from('teacher_profiles')
@@ -598,13 +620,28 @@ export async function POST(request: NextRequest) {
         }
 
         const isSystemTeacher = (roles || []).some((r) => r.role === 'teacher');
-        if (!isSystemTeacher && classIds.length === 0) {
-          return NextResponse.json({ error: 'No class assigned', students: [], present_count: 0, absent_count: 0 });
+        const isSchoolAdmin = (roles || []).some((r) => r.role === 'school_admin' || r.role === 'super_admin');
+
+        // If teacher is logged in but has no class assigned, return unassigned state
+        if (isSystemTeacher && !isSchoolAdmin && classIds.length === 0) {
+          return NextResponse.json({
+            school_id: schoolId,
+            school,
+            class_ids: [],
+            students: [],
+            unassigned_class: true,
+            present_count: 0,
+            absent_count: 0,
+            late_count: 0,
+            ready_count: 0,
+            extra_lesson_count: 0,
+            attendance_ui_note: ATTENDANCE_UI_NOTE,
+          });
         }
 
         let studentsQuery = supabase
           .from('students')
-          .select('*, class:school_classes(name, grade)')
+          .select('*, class:school_classes(name, grade, section)')
           .eq('school_id', schoolId)
           .eq('is_active', true)
           .order('last_name');
@@ -648,7 +685,7 @@ export async function POST(request: NextRequest) {
 
         const { data: extraLessons } = await supabase
           .from('extra_lessons')
-          .select('student_id, is_released, lesson_end_time')
+          .select('student_id, is_released, lesson_end_time, reason')
           .eq('school_id', schoolId)
           .in('student_id', studentIds.length > 0 ? studentIds : ['none'])
           .eq('date', today);
@@ -726,6 +763,7 @@ export async function POST(request: NextRequest) {
             dismissal_status: dismissal?.status || null,
             in_extra_lesson: !!extraLesson && !extraLesson.is_released,
             extra_lesson_end_time: extraLesson?.lesson_end_time || null,
+            extra_lesson_reason: extraLesson?.reason || null,
             parents: parentsMap.get(s.id) || [],
             unread_count: unreadMap.get(s.id) || 0,
             last_message: lastMsgMap.get(s.id) || null,
@@ -737,6 +775,7 @@ export async function POST(request: NextRequest) {
           school,
           class_ids: classIds,
           students: enriched,
+          unassigned_class: false,
           present_count: enriched.filter((s: any) => s.present).length,
           absent_count: enriched.filter((s: any) => !s.present).length,
           late_count: enriched.filter((s: any) => s.late).length,

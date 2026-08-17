@@ -155,7 +155,110 @@ export async function POST(request: NextRequest) {
       });
     }
 
-    return NextResponse.json({ error: 'ID not found — scan student or staff card' }, { status: 404 });
+    // 3. Parent Card / Parent QR Scan Resolution
+    let parentSearch = scan;
+    if (parentSearch.toUpperCase().startsWith('MYEDURIDE:PARENT:')) {
+      parentSearch = parentSearch.slice('MYEDURIDE:PARENT:'.length).trim();
+    }
+
+    let parentQuery = supabase
+      .from('user_profiles')
+      .select('id, full_name, username, phone, email, avatar_url');
+
+    // Check if scan is valid UUID vs username vs phone
+    const isUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(parentSearch);
+    if (isUuid) {
+      parentQuery = parentQuery.eq('id', parentSearch);
+    } else {
+      parentQuery = parentQuery.or(`username.eq.${parentSearch.toLowerCase()},phone.eq.${parentSearch}`);
+    }
+
+    const { data: parentUser } = await parentQuery.maybeSingle();
+
+    if (parentUser) {
+      const { data: links } = await supabase
+        .from('student_parents')
+        .select('student_id, relationship')
+        .eq('parent_user_id', parentUser.id);
+
+      const linkedStudentIds = (links || []).map((l: any) => l.student_id);
+
+      let childrenList: any[] = [];
+      if (linkedStudentIds.length > 0) {
+        const { data: students } = await supabase
+          .from('students')
+          .select('id, first_name, last_name, student_id_number, photo_url, class_id, class:school_classes(name)')
+          .eq('school_id', school_id)
+          .in('id', linkedStudentIds)
+          .eq('is_active', true);
+
+        const day = todayInLagos();
+
+        const { data: arrivals } = await supabase
+          .from('attendance_records')
+          .select('student_id, timestamp, status')
+          .eq('school_id', school_id)
+          .in('student_id', linkedStudentIds)
+          .eq('type', 'arrival')
+          .order('timestamp', { ascending: false });
+
+        const { data: dismissals } = await supabase
+          .from('dismissal_requests')
+          .select('student_id, status')
+          .eq('school_id', school_id)
+          .in('student_id', linkedStudentIds)
+          .eq('dismissal_date', day);
+
+        const { data: extraLessons } = await supabase
+          .from('extra_lessons')
+          .select('student_id, is_released, lesson_end_time, reason')
+          .eq('school_id', school_id)
+          .in('student_id', linkedStudentIds)
+          .eq('date', day);
+
+        const arrivalMap = new Map((arrivals || []).map((a: any) => [a.student_id, a]));
+        const dismissalMap = new Map((dismissals || []).map((d: any) => [d.student_id, d]));
+        const extraLessonMap = new Map((extraLessons || []).map((e: any) => [e.student_id, e]));
+
+        childrenList = (students || []).map((st: any) => {
+          const rel = links?.find((l: any) => l.student_id === st.id)?.relationship || 'Parent / Authorized Escort';
+          const arrival = arrivalMap.get(st.id);
+          const dismissal = dismissalMap.get(st.id);
+          const extraLesson = extraLessonMap.get(st.id);
+          const cls = Array.isArray(st.class) ? st.class[0] : st.class;
+          return {
+            id: st.id,
+            first_name: st.first_name,
+            last_name: st.last_name,
+            student_id: st.student_id_number,
+            class_name: cls?.name || 'Class',
+            photo_url: st.photo_url,
+            relationship: rel,
+            present_today: !!arrival,
+            arrival_time: arrival?.timestamp || null,
+            ready_for_pickup: !!dismissal && dismissal.status !== 'completed',
+            dismissal_status: dismissal?.status || null,
+            in_extra_lesson: !!extraLesson && !extraLesson.is_released,
+            extra_lesson_end_time: extraLesson?.lesson_end_time || null,
+            extra_lesson_reason: extraLesson?.reason || null,
+          };
+        });
+      }
+
+      return NextResponse.json({
+        type: 'parent',
+        parent: {
+          id: parentUser.id,
+          full_name: parentUser.full_name,
+          username: parentUser.username,
+          phone: parentUser.phone,
+          photo_url: parentUser.avatar_url,
+        },
+        linked_children: childrenList,
+      });
+    }
+
+    return NextResponse.json({ error: 'ID or QR code not recognized — scan a valid student, staff, or parent card' }, { status: 404 });
   } catch (err: unknown) {
     const message = err instanceof Error ? err.message : 'Scan failed';
     return NextResponse.json({ error: message }, { status: 500 });

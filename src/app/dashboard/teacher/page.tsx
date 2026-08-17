@@ -53,6 +53,15 @@ export default function TeacherDashboard() {
   const [recipientType, setRecipientType] = useState('parent');
 
   const [session, setSession] = useState(null);
+  const [isUnassigned, setIsUnassigned] = useState(false);
+
+  // Extend Release Time / Delay Modal State
+  const [delayModalOpen, setDelayModalOpen] = useState(false);
+  const [targetStudentForDelay, setTargetStudentForDelay] = useState<any>(null);
+  const [delayEndTime, setDelayEndTime] = useState('16:30');
+  const [delayReasonPreset, setDelayReasonPreset] = useState('Extra lesson / Remedial class');
+  const [delayReasonCustom, setDelayReasonCustom] = useState('');
+  const [delaySubmitting, setDelaySubmitting] = useState(false);
 
   useEffect(() => {
     setSession(getSession());
@@ -63,15 +72,16 @@ export default function TeacherDashboard() {
     try {
       const data = await fetchData('get_teacher_class_data', { role: 'teacher' });
       setStudents(data.students || []);
+      setIsUnassigned(Boolean(data.unassigned_class));
       setStats(
         data.stats || {
-          total: data.students?.length || 28,
-          present: data.students?.filter((s: any) => s.present)?.length || 24,
-          absent: data.students?.filter((s: any) => !s.present)?.length || 4,
+          total: data.students?.length || 0,
+          present: data.students?.filter((s: any) => s.present)?.length || 0,
+          absent: data.students?.filter((s: any) => !s.present)?.length || 0,
         }
       );
       setSchoolId(data.school_id || '');
-      setSchoolName(data.school_name || 'Primary 5 - Emerald');
+      setSchoolName(data.school?.name || data.school_name || 'My Class');
     } catch (e) {
       console.error(e);
       toast.error('Could not load class data');
@@ -309,22 +319,52 @@ export default function TeacherDashboard() {
     setBusyId(null);
   };
 
-  const markExtraLesson = async (studentId, studentName) => {
-    setBusyId(studentId);
+  const openDelayModal = (student: any) => {
+    setTargetStudentForDelay(student);
+    setDelayEndTime('16:30');
+    setDelayReasonPreset('Extra lesson / Remedial class');
+    setDelayReasonCustom('');
+    setDelayModalOpen(true);
+  };
+
+  const handleSaveDelay = async (e: any) => {
+    e.preventDefault();
+    if (!targetStudentForDelay || !schoolId) return;
+    const finalReason =
+      delayReasonPreset === 'Other'
+        ? delayReasonCustom.trim() || 'Teacher delay notice'
+        : `${delayReasonPreset}${delayReasonCustom.trim() ? ` — ${delayReasonCustom.trim()}` : ''}`;
+
+    setDelaySubmitting(true);
     try {
       const res = await fetch('/api/teacher/extra-lesson', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         credentials: 'include',
-        body: JSON.stringify({ student_id: studentId, school_id: schoolId, action: 'add' }),
+        body: JSON.stringify({
+          student_id: targetStudentForDelay.id,
+          school_id: schoolId,
+          action: 'add',
+          lesson_end_time: delayEndTime,
+          reason: finalReason,
+        }),
       });
-      if (!res.ok) throw new Error();
-      toast.success(`${studentName} — extra lesson`);
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || 'Failed to extend release time');
+
+      toast.success(`Release time extended for ${targetStudentForDelay.first_name}! Parents notified.`);
+      setDelayModalOpen(false);
       await loadClass();
-    } catch {
-      toast.error('Failed');
+    } catch (err: any) {
+      toast.error(err.message || 'Failed to extend release time');
+    } finally {
+      setDelaySubmitting(false);
     }
-    setBusyId(null);
+  };
+
+  const markExtraLesson = (studentId: string, studentName: string) => {
+    const st = students.find((s: any) => s.id === studentId) || { id: studentId, first_name: studentName, last_name: '' };
+    openDelayModal(st);
   };
 
   const releaseExtraLesson = async (studentId, studentName) => {
@@ -398,6 +438,21 @@ export default function TeacherDashboard() {
 
   return (
     <div className="space-y-6 pb-20 sm:pb-8">
+      {/* Unassigned Class Warning Banner */}
+      {isUnassigned && (
+        <div className="bg-amber-500/10 border border-amber-500/30 rounded-3xl p-4 sm:p-5 flex items-start gap-4 text-amber-900 shadow-sm animate-in fade-in">
+          <div className="w-10 h-10 rounded-2xl bg-amber-500 text-slate-950 flex items-center justify-center font-bold shrink-0 mt-0.5 shadow-xs">
+            <AlertTriangle size={20} />
+          </div>
+          <div className="flex-1 min-w-0">
+            <h3 className="text-sm font-black text-slate-900">No Homeroom Class Assigned Yet</h3>
+            <p className="text-xs text-slate-600 mt-1 leading-relaxed">
+              Your teacher account has not been assigned to a homeroom class in MyEduRide. Please contact your <strong>School Administrator</strong> to attach your profile to your correct class in <strong>Class Management</strong> or <strong>Staff Management</strong> so you can view and control student release during pickup.
+            </p>
+          </div>
+        </div>
+      )}
+
       {/* 1. DISC COMMUNICATION CENTER Banner Carousel (Matches Mockup) */}
       <div className="bg-gradient-to-r from-amber-50/80 via-white to-emerald-50/60 rounded-3xl p-4 sm:p-5 border border-slate-200/80 shadow-xs relative overflow-hidden">
         <div className="flex items-center gap-2 mb-3">
@@ -1262,6 +1317,122 @@ export default function TeacherDashboard() {
                 Submit Report
               </button>
             </div>
+          </div>
+        </div>
+      )}
+
+      {/* Extend Release Time / Delay Modal */}
+      {delayModalOpen && targetStudentForDelay && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/70 backdrop-blur-sm animate-in fade-in">
+          <div className="bg-white rounded-3xl p-6 w-full max-w-md shadow-2xl border border-slate-200">
+            <div className="flex items-center justify-between pb-3 border-b border-slate-100 mb-4">
+              <div className="flex items-center gap-2">
+                <div className="w-8 h-8 rounded-xl bg-amber-100 text-amber-800 flex items-center justify-center font-bold">
+                  <Clock size={18} />
+                </div>
+                <div>
+                  <h3 className="text-base font-black text-slate-900">Extend Release Time</h3>
+                  <p className="text-[11px] text-slate-500 font-semibold">
+                    {targetStudentForDelay.first_name} {targetStudentForDelay.last_name}
+                  </p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setDelayModalOpen(false)}
+                className="p-1 rounded-lg text-slate-400 hover:text-slate-600"
+              >
+                <X size={18} />
+              </button>
+            </div>
+
+            <form onSubmit={handleSaveDelay} className="space-y-4">
+              {/* New Release Time Picker & Quick Presets */}
+              <div>
+                <label className="text-xs font-extrabold text-slate-700 block mb-1">
+                  New Extended Pickup Time *
+                </label>
+                <div className="flex items-center gap-2 mb-2">
+                  <input
+                    type="time"
+                    value={delayEndTime}
+                    onChange={(e) => setDelayEndTime(e.target.value)}
+                    className="flex-1 bg-slate-50 border border-slate-200 rounded-xl p-2.5 text-xs font-bold text-slate-900 focus:outline-none focus:border-amber-500"
+                    required
+                  />
+                </div>
+                <div className="flex flex-wrap gap-1.5">
+                  {['15:30', '16:00', '16:30', '17:00', '17:30'].map((timeStr) => (
+                    <button
+                      key={timeStr}
+                      type="button"
+                      onClick={() => setDelayEndTime(timeStr)}
+                      className={`px-2.5 py-1 rounded-lg text-[10px] font-extrabold transition-all border ${
+                        delayEndTime === timeStr
+                          ? 'bg-amber-500 text-slate-950 border-amber-600 shadow-2xs'
+                          : 'bg-slate-50 text-slate-600 border-slate-200 hover:bg-slate-100'
+                      }`}
+                    >
+                      {timeStr}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              {/* Reason Preset Dropdown */}
+              <div>
+                <label className="text-xs font-extrabold text-slate-700 block mb-1">
+                  Valid Reason for Delay *
+                </label>
+                <select
+                  value={delayReasonPreset}
+                  onChange={(e) => setDelayReasonPreset(e.target.value)}
+                  className="w-full bg-slate-50 border border-slate-200 rounded-xl p-2.5 text-xs font-semibold text-slate-800 focus:outline-none focus:border-amber-500"
+                >
+                  <option value="Extra lesson / Remedial class">Extra lesson / Remedial class</option>
+                  <option value="School Sports / Athletics practice">School Sports / Athletics practice</option>
+                  <option value="Behavioral hold / Detention">Behavioral hold / Detention</option>
+                  <option value="School Event / Exhibition rehearsal">School Event / Exhibition rehearsal</option>
+                  <option value="Counseling / Guidance session">Counseling / Guidance session</option>
+                  <option value="Other">Other (custom reason)</option>
+                </select>
+              </div>
+
+              {/* Custom Reason Notes */}
+              <div>
+                <label className="text-xs font-extrabold text-slate-700 block mb-1">
+                  Teacher Notes for Parent / Escort (Optional)
+                </label>
+                <textarea
+                  rows={3}
+                  value={delayReasonCustom}
+                  onChange={(e) => setDelayReasonCustom(e.target.value)}
+                  placeholder="e.g. Completing math revision exercises. Will be ready at 4:30 PM."
+                  className="w-full bg-slate-50 border border-slate-200 rounded-xl p-2.5 text-xs text-slate-800 focus:outline-none focus:border-amber-500"
+                ></textarea>
+              </div>
+
+              <div className="bg-amber-50 border border-amber-200/80 rounded-2xl p-3 text-[11px] text-amber-900 leading-snug">
+                ℹ️ <strong>Accountability Notice</strong>: Your extended release request will be instantly pushed to the child's registered parents/escorts and recorded in the audit log.
+              </div>
+
+              <div className="pt-3 border-t border-slate-100 flex items-center justify-end gap-2">
+                <button
+                  type="button"
+                  onClick={() => setDelayModalOpen(false)}
+                  className="px-4 py-2.5 bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-bold rounded-xl"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  disabled={delaySubmitting}
+                  className="px-4 py-2.5 bg-amber-500 hover:bg-amber-600 text-slate-950 text-xs font-extrabold rounded-xl shadow-xs disabled:opacity-50 flex items-center gap-1.5"
+                >
+                  {delaySubmitting ? 'Saving...' : 'Extend & Notify Parents'}
+                </button>
+              </div>
+            </form>
           </div>
         </div>
       )}

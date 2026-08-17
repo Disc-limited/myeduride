@@ -222,7 +222,18 @@ export default function StudentIdScanPanel({
         body: JSON.stringify({ scan_data: value, school_id: schoolId }),
       });
       const data = await res.json();
-      if (!res.ok || data.type !== 'student') {
+      if (!res.ok) {
+        throw new Error(data.error || 'ID card or QR not found');
+      }
+
+      if (data.type === 'parent') {
+        stopCamera();
+        setScanned(data);
+        toast.success(`Parent Card Verified: ${data.parent?.full_name || 'Parent'}`);
+        return;
+      }
+
+      if (data.type !== 'student') {
         throw new Error(data.error || 'Student ID not found');
       }
 
@@ -377,6 +388,106 @@ export default function StudentIdScanPanel({
 
   return (
     <div className="space-y-4">
+      {/* Authorised Parent Card Gate Scan Result */}
+      {scanned?.type === 'parent' && (
+        <div className="card-elevated p-4 space-y-4 animate-in fade-in">
+          <div className="flex items-center gap-3 p-3 bg-amber-50 rounded-2xl border border-amber-200/70">
+            <StudentAvatar
+              photoUrl={scanned.parent?.photo_url}
+              firstName={scanned.parent?.full_name?.split(' ')[0] || 'Parent'}
+              lastName={scanned.parent?.full_name?.split(' ')[1] || ''}
+              size="md"
+            />
+            <div>
+              <div className="flex items-center gap-1.5">
+                <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></span>
+                <h4 className="text-sm font-black text-slate-900">{scanned.parent?.full_name}</h4>
+              </div>
+              <p className="text-xs font-bold text-emerald-800 mt-0.5">Authorised Parent / Visitor Verified</p>
+              {scanned.parent?.phone && (
+                <p className="text-[11px] font-mono text-slate-500">{scanned.parent.phone}</p>
+              )}
+            </div>
+          </div>
+
+          <div>
+            <h4 className="text-xs font-black uppercase text-slate-500 mb-2">Linked Children ({scanned.linked_children?.length || 0})</h4>
+            {(!scanned.linked_children || scanned.linked_children.length === 0) ? (
+              <p className="text-xs text-slate-400 py-3 text-center bg-slate-50 rounded-xl">No linked children found in this school</p>
+            ) : (
+              <div className="space-y-2">
+                {scanned.linked_children.map((child: any) => (
+                  <div key={child.id} className="p-3 bg-slate-50 rounded-2xl border border-slate-200 flex items-center justify-between gap-3">
+                    <div className="flex items-center gap-2.5">
+                      <StudentAvatar photoUrl={child.photo_url} firstName={child.first_name} lastName={child.last_name} size="sm" />
+                      <div>
+                        <p className="text-xs font-bold text-slate-900">{child.first_name} {child.last_name}</p>
+                        <p className="text-[11px] text-slate-500">{child.class_name} · {child.student_id}</p>
+                        {child.in_extra_lesson && (
+                          <span className="text-[10px] text-amber-800 font-bold bg-amber-100 px-1.5 py-0.5 rounded-md inline-block mt-0.5">
+                            ⏳ Extended until {child.extra_lesson_end_time || 'Later'} ({child.extra_lesson_reason || 'Extra class'})
+                          </span>
+                        )}
+                      </div>
+                    </div>
+
+                    <div>
+                      <button
+                        type="button"
+                        disabled={saving}
+                        onClick={async () => {
+                          setSaving(true);
+                          try {
+                            const res = await fetch('/api/gate/accept', {
+                              method: 'POST',
+                              headers: { 'Content-Type': 'application/json' },
+                              credentials: 'include',
+                              body: JSON.stringify({
+                                school_id: schoolId,
+                                student_id: child.id,
+                                type: 'departure',
+                                verification_method: 'parent_card_scan',
+                                person_type: 'student',
+                                from_ready_queue: true,
+                                pickup_person_name: scanned.parent.full_name,
+                                pickup_person_phone: scanned.parent.phone,
+                              }),
+                            });
+                            const data = await res.json();
+                            if (!res.ok) throw new Error(data.error || 'Failed to release student');
+                            toast.success(`${child.first_name} released to parent ${scanned.parent.full_name}!`);
+                            setScanned(null);
+                            onSuccess?.();
+                            startCamera();
+                          } catch (e: any) {
+                            toast.error(e.message || 'Release failed');
+                          } finally {
+                            setSaving(false);
+                          }
+                        }}
+                        className="px-3 py-2 bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-black rounded-xl shadow-xs shrink-0"
+                      >
+                        {saving ? 'Saving…' : 'Release Child'}
+                      </button>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+
+          <button
+            type="button"
+            className="btn-secondary w-full text-xs font-bold"
+            onClick={() => {
+              setScanned(null);
+              startCamera();
+            }}
+          >
+            Close Scan
+          </button>
+        </div>
+      )}
       {scanned?.person && !autoConfirm && (
         <div className="card-elevated p-4 space-y-4">
           <div className="flex items-center gap-3">

@@ -11,6 +11,11 @@ export interface ChildStudent {
   present_today?: boolean;
   arrival_status?: string | null;
   arrival_time?: string | null;
+  ready_for_pickup?: boolean;
+  dismissal_status?: string | null;
+  in_extra_lesson?: boolean;
+  extra_lesson_end_time?: string | null;
+  extra_lesson_reason?: string | null;
   school?: { name?: string; primary_color?: string };
   class?: { name?: string; grade?: string };
   escort_name?: string;
@@ -65,6 +70,8 @@ export default function ChildrenGridCard({
           const fullName = `${child.first_name || 'Child'} ${child.last_name || ''}`.trim();
           const classNameStr = child.class?.name || 'Class not set';
           const isPresent = Boolean(child.present_today);
+          const isReady = Boolean(child.ready_for_pickup);
+          const isDelayed = Boolean(child.in_extra_lesson);
           const escort = child.escort_name || 'John Okafor';
           const route = child.route_name || 'Route A';
           const vehicle = child.vehicle_model || 'Toyota Hiace';
@@ -100,23 +107,44 @@ export default function ChildrenGridCard({
                   </div>
                 </div>
 
-                {/* Status Badge - Hover title displays full status details */}
-                <div className="shrink-0">
-                  {isPresent ? (
+                {/* Status Badge - Pickup state & Attendance */}
+                <div className="shrink-0 flex flex-col items-end gap-1">
+                  {isReady ? (
+                    <span
+                      title="Child has been marked ready for pickup by teacher and is waiting at gate"
+                      className="text-[10px] font-extrabold bg-emerald-50 text-emerald-800 border border-emerald-300 px-2.5 py-1 rounded-full flex items-center gap-1.5 whitespace-nowrap animate-pulse"
+                    >
+                      <span className="w-1.5 h-1.5 rounded-full bg-emerald-600 shrink-0" />
+                      🚗 Ready for Pickup
+                    </span>
+                  ) : isDelayed ? (
+                    <span
+                      title={`Release time extended ${child.extra_lesson_end_time ? `until ${child.extra_lesson_end_time}` : ''}. Reason: ${child.extra_lesson_reason || 'Teacher notice'}`}
+                      className="text-[10px] font-extrabold bg-amber-50 text-amber-800 border border-amber-300 px-2.5 py-1 rounded-full flex items-center gap-1.5 whitespace-nowrap"
+                    >
+                      <span className="w-1.5 h-1.5 rounded-full bg-amber-600 shrink-0" />
+                      ⏳ Extended {child.extra_lesson_end_time ? `until ${child.extra_lesson_end_time}` : ''}
+                    </span>
+                  ) : isPresent ? (
                     <span
                       title="Child has safely checked in at school today"
-                      className="text-[10px] font-extrabold bg-emerald-50 text-emerald-700 border border-emerald-200/80 px-2.5 py-1 rounded-full flex items-center gap-1.5 whitespace-nowrap cursor-help"
+                      className="text-[10px] font-extrabold bg-blue-50 text-blue-700 border border-blue-200 px-2.5 py-1 rounded-full flex items-center gap-1.5 whitespace-nowrap"
                     >
-                      <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 shrink-0" />
+                      <span className="w-1.5 h-1.5 rounded-full bg-blue-500 shrink-0" />
                       At School
                     </span>
                   ) : (
                     <span
                       title="Child has not checked in at school yet today"
-                      className="text-[10px] font-extrabold bg-amber-50 text-amber-700 border border-amber-200/80 px-2.5 py-1 rounded-full flex items-center gap-1.5 whitespace-nowrap cursor-help"
+                      className="text-[10px] font-extrabold bg-slate-50 text-slate-600 border border-slate-200 px-2.5 py-1 rounded-full flex items-center gap-1.5 whitespace-nowrap"
                     >
-                      <span className="w-1.5 h-1.5 rounded-full bg-amber-500 shrink-0" />
+                      <span className="w-1.5 h-1.5 rounded-full bg-slate-400 shrink-0" />
                       Not Checked In
+                    </span>
+                  )}
+                  {isDelayed && child.extra_lesson_reason && (
+                    <span className="text-[9px] font-semibold text-amber-700 max-w-[140px] truncate text-right">
+                      Reason: {child.extra_lesson_reason}
                     </span>
                   )}
                 </div>
