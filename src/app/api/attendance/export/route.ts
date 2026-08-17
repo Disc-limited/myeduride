@@ -1,12 +1,12 @@
 import { NextRequest, NextResponse } from 'next/server';
-
-export const dynamic = 'force-dynamic';
 import { getAdminClient } from '@/lib/supabase/admin';
 import { getSessionFromRequest } from '@/lib/session';
 import { resolveAttendanceAccess } from '@/lib/attendance/access';
 import { attendanceRecordsToCsv } from '@/lib/attendance/csv';
 import { lagosDayBoundsFromDateStr } from '@/lib/attendance/lagos-dates';
 import { todayInLagos } from '@/lib/timezone';
+
+export const dynamic = 'force-dynamic';
 
 const PAGE_SIZE = 1000;
 

@@ -3,8 +3,6 @@
 
 import { useState, Suspense } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
-
-export const dynamic = 'force-dynamic';
 import { navigateBack } from '@/lib/navigation/smart-back';
 import Link from 'next/link';
 import {
@@ -30,6 +28,8 @@ import { toast } from 'sonner';
 import MigoChatModal from '@/components/landing/MigoChatModal';
 import ParentRegistrationWizard from '@/components/auth/ParentRegistrationWizard';
 import EscortRegistrationWizard from '@/components/auth/EscortRegistrationWizard';
+
+export const dynamic = 'force-dynamic';
 
 const LOGO_URL = '/images/eduride_logo.png';
 

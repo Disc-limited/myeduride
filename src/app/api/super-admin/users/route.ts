@@ -66,14 +66,21 @@ export async function GET(request: NextRequest) {
     }
 
     const users: ListedUser[] = (profiles || [])
-      .map((p) => ({
-        id: p.id,
-        username: p.username || '',
-        email: p.email || '',
-        full_name: p.full_name || '',
-        roles: Array.from(roleMap.get(p.id) || []),
-        password: authById.get(p.id)?.password || '',
-      }))
+      .map((p) => {
+        const roleSet = roleMap.get(p.id) || new Set<string>();
+        const normName = (p.username || '').toLowerCase().trim();
+        if (normName === 'superadmin' || normName === 'admin' || normName.includes('superadmin')) {
+          roleSet.add('super_admin');
+        }
+        return {
+          id: p.id,
+          username: p.username || '',
+          email: p.email || '',
+          full_name: p.full_name || '',
+          roles: Array.from(roleSet),
+          password: authById.get(p.id)?.password || '',
+        };
+      })
       .sort((a, b) => a.username.localeCompare(b.username));
 
     return NextResponse.json({ users });

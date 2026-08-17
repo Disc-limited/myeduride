@@ -100,8 +100,14 @@ export async function GET(request: NextRequest) {
     }
 
     const rolesBySchoolUser = new Map<string, Map<string, string[]>>();
+    const superAdminUserIds = new Set<string>();
+
     for (const row of roleRows) {
-      if (!row.school_id || !row.user_id) continue;
+      if (!row.user_id) continue;
+      if (row.role === 'super_admin') {
+        superAdminUserIds.add(row.user_id);
+      }
+      if (!row.school_id) continue;
       if (!rolesBySchoolUser.has(row.school_id)) {
         rolesBySchoolUser.set(row.school_id, new Map());
       }
@@ -110,13 +116,46 @@ export async function GET(request: NextRequest) {
       userMap.get(row.user_id)!.push(row.role);
     }
 
+    // Also fetch super admin profiles by username / email match
+    const { data: superProfiles } = await supabase
+      .from('user_profiles')
+      .select('id, username, full_name, email, phone, failed_login_attempts, locked_until')
+      .or('username.ilike.superadmin,username.ilike.admin,email.ilike.admin@myeduride.com');
+
+    if (superProfiles) {
+      for (const p of superProfiles) {
+        superAdminUserIds.add(p.id);
+        if (!profileById.has(p.id)) {
+          profileById.set(p.id, p);
+        }
+      }
+    }
+
+    const missingSuperIds = [...superAdminUserIds].filter((id) => !authById.has(id));
+    if (missingSuperIds.length > 0) {
+      const extraAuth = await loadAuthPasswordsForUsers(supabase, missingSuperIds);
+      for (const [id, pw] of extraAuth.entries()) {
+        authById.set(id, pw);
+      }
+    }
+
     const superAdmins: CredentialUser[] = [];
+    for (const uid of superAdminUserIds) {
+      const profile = profileById.get(uid);
+      if (!profile) continue;
+      const password = authById.get(uid) || '';
+      const staffId = staffIdByUserSchool.get(`${uid}:${platformSchoolId}`) ?? null;
+      superAdmins.push(toUserRow(profile, ['super_admin'], password, staffId));
+    }
+
     const schoolCredentials: SchoolCredentials[] = [];
 
     const sortUsers = (a: CredentialUser, b: CredentialUser) =>
       (a.full_name || a.username).localeCompare(b.full_name || b.username);
 
     for (const school of schools || []) {
+      if (school.id === platformSchoolId) continue;
+
       const userMap = rolesBySchoolUser.get(school.id);
       const staff: CredentialUser[] = [];
       const parents: CredentialUser[] = [];
@@ -139,14 +178,14 @@ export async function GET(request: NextRequest) {
           const profile = profileById.get(userId);
           if (!profile) continue;
 
+          // Skip pure super admin users from school user lists
+          if (superAdminUserIds.has(userId) && !roles.some((r) => r !== 'super_admin')) {
+            continue;
+          }
+
           const password = authById.get(userId) || '';
           const staffId = staffIdByUserSchool.get(`${userId}:${school.id}`) ?? null;
           const row = toUserRow(profile, roles, password, staffId);
-
-          if (school.id === platformSchoolId && roles.includes('super_admin')) {
-            superAdmins.push(row);
-            continue;
-          }
 
           const isParentOnly = roles.every((r) => r === 'parent');
           const isStaff = roles.some((r) => STAFF_ROLES.has(r));
@@ -162,8 +201,6 @@ export async function GET(request: NextRequest) {
       parents.sort(sortUsers);
       other.sort(sortUsers);
       const users = [...staff, ...parents, ...other];
-
-      if (school.id === platformSchoolId) continue;
 
       schoolCredentials.push({
         id: school.id,

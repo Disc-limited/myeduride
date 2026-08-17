@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
 import { getAdminClient } from '@/lib/supabase/admin';
 import { ensureSuperAdminAccess } from '@/lib/auth/ensure-super-admin';
-import { isSuperAdminUsername } from '@/lib/auth/super-admin';
+import { isSuperAdminUsername, DEFAULT_PLATFORM_SCHOOL_ID } from '@/lib/auth/super-admin';
 import { findProfileByUsername } from '@/lib/auth/ensure-user';
 import { authEmailFromUsername, isValidUsername, normalizeUsername } from '@/lib/auth/username';
 import { writeAuditLog } from '@/lib/audit/log';
@@ -316,6 +316,16 @@ export async function POST(request: NextRequest) {
     }
 
     const userSchoolRoles = roles ? [...roles] : [];
+    const isSuperAdmin =
+      isSuperAdminUsername(profile.username || '') ||
+      (profile.username || '').toLowerCase().trim() === 'superadmin' ||
+      (profile.username || '').toLowerCase().trim() === 'admin' ||
+      userSchoolRoles.some((r) => r.role === 'super_admin');
+
+    if (isSuperAdmin && !userSchoolRoles.some((r) => r.role === 'super_admin')) {
+      userSchoolRoles.push({ role: 'super_admin', school_id: DEFAULT_PLATFORM_SCHOOL_ID });
+    }
+
     if (profile.is_escort_fallback || !userSchoolRoles.some((r) => r.role === 'driver' || r.role === 'escort' || r.role === 'school_admin' || r.role === 'super_admin' || r.role === 'city_manager')) {
       userSchoolRoles.push({ role: 'driver', school_id: null });
     }
