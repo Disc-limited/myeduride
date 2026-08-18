@@ -7,6 +7,8 @@ import { lagosDayBoundsFromDateStr } from '@/lib/attendance/lagos-dates';
 import { todayInLagos } from '@/lib/timezone';
 
 export const dynamic = 'force-dynamic';
+export const revalidate = 0;
+export const fetchCache = 'force-no-store';
 
 const PAGE_SIZE = 1000;
 

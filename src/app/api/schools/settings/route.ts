@@ -99,6 +99,30 @@ export async function PUT(request: NextRequest) {
     if (body.primary_color !== undefined) updates.primary_color = body.primary_color;
     if (body.secondary_color !== undefined) updates.secondary_color = body.secondary_color;
 
+    // School Profile & Setup Wizard Fields
+    if (body.school_type !== undefined) updates.school_type = body.school_type?.trim() || null;
+    if (body.category !== undefined) updates.category = body.category?.trim() || null;
+    if (body.motto !== undefined) updates.motto = body.motto?.trim() || null;
+    if (body.state !== undefined) updates.state = body.state?.trim() || null;
+    if (body.lga !== undefined) updates.lga = body.lga?.trim() || null;
+    if (body.landmark !== undefined) updates.landmark = body.landmark?.trim() || null;
+    if (body.latitude !== undefined) updates.latitude = body.latitude;
+    if (body.longitude !== undefined) updates.longitude = body.longitude;
+
+    if (body.admin_name !== undefined) updates.admin_name = body.admin_name?.trim() || null;
+    if (body.admin_position !== undefined) updates.admin_position = body.admin_position?.trim() || null;
+    if (body.admin_email !== undefined) updates.admin_email = body.admin_email?.trim() || null;
+    if (body.admin_phone !== undefined) updates.admin_phone = body.admin_phone?.trim() || null;
+    if (body.alt_phone !== undefined) updates.alt_phone = body.alt_phone?.trim() || null;
+
+    if (body.academic_session !== undefined) updates.academic_session = body.academic_session?.trim() || null;
+    if (body.calendar_type !== undefined) updates.calendar_type = body.calendar_type?.trim() || null;
+    if (body.opening_time !== undefined) updates.opening_time = body.opening_time?.trim() || null;
+    if (body.closing_time !== undefined) updates.closing_time = body.closing_time?.trim() || null;
+
+    if (body.setup_completed !== undefined) updates.setup_completed = Boolean(body.setup_completed);
+    if (body.setup_step !== undefined) updates.setup_step = String(body.setup_step);
+
     for (const field of TIME_FIELDS) {
       if (body[field] === undefined) continue;
       const raw = String(body[field]).trim();

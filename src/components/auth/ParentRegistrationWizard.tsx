@@ -669,9 +669,13 @@ export default function ParentRegistrationWizard({ onSwitchRole }: ParentRegistr
                 <div>
                   <label className="block text-[11px] font-semibold text-slate-700 mb-1.5">I am signing up as</label>
                   <div className="grid grid-cols-4 gap-1 sm:gap-1.5 text-center text-[10px] sm:text-xs font-semibold">
-                    <div className="p-2 rounded-xl bg-emerald-50 border border-[#28A745] text-emerald-800">
+                    <button
+                      type="button"
+                      onClick={() => onSwitchRole?.('parent')}
+                      className="p-2 rounded-xl bg-emerald-50 border border-[#28A745] text-emerald-800 font-bold cursor-pointer"
+                    >
                       Parent
-                    </div>
+                    </button>
                     <button
                       type="button"
                       onClick={() => onSwitchRole?.('school')}
