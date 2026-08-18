@@ -14,7 +14,7 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Not authenticated' }, { status: 401 });
     }
 
-    const { school_id, student_ids, staff_role_ids } = await request.json();
+    const { school_id, student_ids, staff_role_ids, primary_color, accent_color, photo_bg_color } = await request.json();
 
     if (!school_id) {
       return NextResponse.json({ error: 'school_id required' }, { status: 400 });
@@ -47,7 +47,9 @@ export async function POST(request: NextRequest) {
       address: school.address,
       logoUrl: logoDataUrl || school.logo_url,
       signatureUrl: signatureDataUrl || school.principal_signature_url,
-      primaryColor: school.primary_color,
+      primaryColor: primary_color || school.primary_color || '#0D4A71',
+      accentColor: accent_color || '#28A745',
+      photoBgColor: photo_bg_color || '#FFFFFF',
     };
 
     const persons: IdCardPerson[] = [];

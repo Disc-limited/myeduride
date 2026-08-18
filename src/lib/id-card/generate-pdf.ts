@@ -20,6 +20,8 @@ export type SchoolBranding = {
   logoUrl?: string | null;
   signatureUrl?: string | null;
   primaryColor?: string | null;
+  accentColor?: string | null;
+  photoBgColor?: string | null;
 };
 
 const CARD_W = 85.6;
@@ -112,6 +114,11 @@ async function drawFront(
   const photoY = bannerTop + 7.5;
   const photoW = 19.5;
   const photoH = 23.0;
+
+  const photoBgRgb = hexToRgb(school.photoBgColor || '#FFFFFF');
+  doc.setFillColor(photoBgRgb[0], photoBgRgb[1], photoBgRgb[2]);
+  doc.roundedRect(photoX, photoY, photoW, photoH, 2, 2, 'F');
+
   doc.setDrawColor(navy[0], navy[1], navy[2]);
   doc.setLineWidth(0.35);
   doc.roundedRect(photoX, photoY, photoW, photoH, 2, 2, 'S');

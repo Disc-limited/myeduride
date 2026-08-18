@@ -4,6 +4,9 @@ export async function downloadIdCardsPdf(params: {
   student_ids?: string[];
   staff_role_ids?: string[];
   fileName?: string;
+  primary_color?: string;
+  accent_color?: string;
+  photo_bg_color?: string;
 }): Promise<{ ok: boolean; error?: string }> {
   const res = await fetch('/api/id-cards/download', {
     method: 'POST',
@@ -13,6 +16,9 @@ export async function downloadIdCardsPdf(params: {
       school_id: params.school_id,
       student_ids: params.student_ids || [],
       staff_role_ids: params.staff_role_ids || [],
+      primary_color: params.primary_color,
+      accent_color: params.accent_color,
+      photo_bg_color: params.photo_bg_color,
     }),
   });
 
