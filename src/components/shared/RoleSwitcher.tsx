@@ -60,8 +60,8 @@ export function RoleSwitcher({ showLogout = true, className = '' }: RoleSwitcher
   const assignedRoleSet = new Set(userRoles.length > 0 ? userRoles : rawRoles);
   if (assignedRoleSet.has('driver')) assignedRoleSet.add('escort');
 
-  // Super Admin accounts have full platform access to switch to any dashboard
-  if (assignedRoleSet.has('super_admin')) {
+  // Super Admin accounts or development mode have full platform access to switch to any dashboard
+  if (assignedRoleSet.has('super_admin') || process.env.NODE_ENV === 'development') {
     Object.keys(ROLE_CONFIG).forEach((r) => assignedRoleSet.add(r));
   }
 

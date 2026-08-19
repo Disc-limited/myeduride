@@ -95,11 +95,8 @@ export function CityManagerSidebar({
 
   const handleNavClick = (id: string) => {
     if (onSelectSection) onSelectSection(id);
-    if (id === 'tasks-approvals') {
-      router.push('/dashboard/city-manager?section=tasks-approvals');
-    } else if (id === 'dashboard') {
-      router.push('/dashboard/city-manager?section=dashboard');
-    } else if (typeof window !== 'undefined') {
+    router.push(`/dashboard/city-manager?section=${id}`);
+    if (typeof window !== 'undefined') {
       const url = new URL(window.location.href);
       url.searchParams.set('section', id);
       window.history.pushState({}, '', url.toString());

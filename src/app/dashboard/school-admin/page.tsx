@@ -218,7 +218,8 @@ export default function SchoolAdminDashboard() {
   const quickActions = [
     { label: 'Add Student', icon: <Plus size={18} />, color: 'bg-emerald-100 text-emerald-700', href: '/dashboard/school-admin/students/new' },
     { label: 'Add Staff', icon: <Plus size={18} />, color: 'bg-purple-100 text-purple-700', href: '/dashboard/school-admin/staff/new' },
-    { label: 'Register Escort', icon: <Shield size={18} />, color: 'bg-teal-100 text-teal-700', href: '/dashboard/school-admin/escort' },
+    { label: 'Add School Escort', icon: <Shield size={18} />, color: 'bg-[#00A859] text-white font-extrabold shadow-sm', href: '/dashboard/school-admin/transport/escorts/add' },
+    { label: 'School Escorts', icon: <Users size={18} />, color: 'bg-teal-100 text-teal-700', href: '/dashboard/school-admin/transport/escorts' },
     { label: 'Pickup List', icon: <Car size={18} />, color: 'bg-blue-100 text-blue-700', href: '/dashboard/school-admin/pickup-persons' },
     { label: 'Add Vehicle', icon: <Car size={18} />, color: 'bg-emerald-100 text-emerald-700', href: '/dashboard/school-admin/vehicles' },
     { label: 'Send Notice', icon: <Send size={18} />, color: 'bg-sky-100 text-sky-700', href: '/dashboard/school-admin/messages' },

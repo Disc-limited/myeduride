@@ -141,7 +141,7 @@
       }
     },
     "id": "APP-ESC-965",
-    "status": "CITY_MANAGER_APPROVED",
+    "status": "ACTIVATED",
     "createdAt": "2026-08-13",
     "notes": "",
     "isResubmitted": true

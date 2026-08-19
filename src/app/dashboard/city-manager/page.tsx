@@ -49,27 +49,34 @@ import {
 import { toast } from 'sonner';
 import StudentAvatar from '@/components/shared/StudentAvatar';
 import EscortApprovalNotificationModal from '@/components/escort/EscortApprovalNotificationModal';
+import { CityManagerCommandControl } from '@/components/city-manager/CityManagerCommandControl';
 
 function CityManagerDashboardContent() {
   const searchParams = useSearchParams();
   const sectionParam = searchParams?.get('section') || searchParams?.get('tab');
 
   const [activeSection, setActiveSection] = useState<'dashboard' | 'tasks-approvals' | string>(
-    sectionParam === 'tasks-approvals' || sectionParam === 'approvals' || sectionParam === 'tasks'
-      ? 'tasks-approvals'
-      : 'dashboard'
+    sectionParam || 'dashboard'
   );
   const [selectedCity, setSelectedCity] = useState('LAGOS MAINLAND');
   const [mapFilter, setMapFilter] = useState('all');
   const [aiPrompt, setAiPrompt] = useState('');
 
   useEffect(() => {
-    if (sectionParam === 'tasks-approvals' || sectionParam === 'approvals' || sectionParam === 'tasks') {
-      setActiveSection('tasks-approvals');
-    } else if (sectionParam === 'dashboard' || sectionParam === 'overview') {
-      setActiveSection('dashboard');
+    if (sectionParam) {
+      setActiveSection(sectionParam);
     }
   }, [sectionParam]);
+
+  useEffect(() => {
+    const handlePopState = () => {
+      const sp = new URLSearchParams(window.location.search);
+      const s = sp.get('section') || sp.get('tab') || 'dashboard';
+      setActiveSection(s);
+    };
+    window.addEventListener('popstate', handlePopState);
+    return () => window.removeEventListener('popstate', handlePopState);
+  }, []);
 
   const [aiChatLogs, setAiChatLogs] = useState([
     { type: 'insight', text: 'Route 3 is delayed by 18 mins due to traffic congestion on Agege Motor Road.' },
@@ -304,7 +311,7 @@ function CityManagerDashboardContent() {
             type="button"
             onClick={() => setActiveSection('dashboard')}
             className={`px-4 py-2 rounded-xl text-xs font-extrabold flex items-center gap-2 transition-all ${
-              activeSection === 'dashboard'
+              activeSection !== 'tasks-approvals'
                 ? 'bg-brand-green text-white shadow-lg shadow-emerald-600/30'
                 : 'bg-slate-900 text-slate-400 hover:bg-slate-800 hover:text-white border border-slate-800'
             }`}
@@ -496,12 +503,15 @@ function CityManagerDashboardContent() {
                         <span className="text-xs text-slate-400 font-normal">({selectedApp.age} yrs)</span>
                       )}
                     </h3>
-                    <p className="text-xs text-slate-400">
-                      {selectedApp.email || selectedApp.emailOrUsername || <span className="italic text-slate-600">No email on file</span>}
+                    <p className="text-xs text-slate-300 font-medium">
+                      Escort ID: <span className="font-mono text-emerald-400 font-bold">{selectedApp.escort_code || selectedApp.escortIdCode || selectedApp.id}</span>
+                      {selectedApp.email || selectedApp.emailOrUsername ? ` • ${selectedApp.email || selectedApp.emailOrUsername}` : ''}
                       {selectedApp.phone ? ` • ${selectedApp.phone}` : ''}
                     </p>
-                    <p className="text-[11px] text-emerald-400 font-medium">
-                      {selectedApp.nextOfKin ? `Next of Kin: ${selectedApp.nextOfKin}` : <span className="text-slate-600 italic">Next of Kin: Not provided</span>}
+                    <p className="text-[11px] text-amber-300 font-bold flex items-center gap-1.5 mt-0.5">
+                      <School size={13} className="text-amber-400 shrink-0" />
+                      <span>School: <strong>{selectedApp.createdBySchoolName || selectedApp.schoolName || 'St. Mary\'s School'}</strong></span>
+                      <span className="text-slate-400 font-mono text-[10px]">(ID: {selectedApp.createdBySchoolId || selectedApp.schoolId || 'SCH-DEFAULT-01'})</span>
                     </p>
                   </div>
                 </div>
@@ -516,11 +526,11 @@ function CityManagerDashboardContent() {
                         activeDocId: 'national_id',
                       }))
                     }
-                    className="px-3 py-1.5 rounded-xl bg-brand-green/20 hover:bg-brand-green/30 border border-brand-green/40 text-brand-green text-xs font-bold flex items-center gap-1.5 transition-all shadow-sm"
+                    className="px-3 py-1.5 rounded-xl bg-brand-green/20 hover:bg-brand-green/30 border border-brand-green/40 text-brand-green text-xs font-bold flex items-center gap-1.5 transition-all shadow-sm cursor-pointer"
                   >
                     <Eye className="w-4 h-4" /> Inspect Uploaded Credentials
                   </button>
-                  <span className="text-[10px] text-slate-400 block uppercase">Reg Date: {selectedApp.registrationDate || selectedApp.createdAt || '—'}</span>
+                  <span className="text-[10px] text-slate-400 block uppercase font-mono">Submitted: {selectedApp.registrationDate || selectedApp.createdAt || '2026-08-18'}</span>
                   <div>
                     {selectedApp?.isResubmitted ? (
                       <span className="px-2.5 py-0.5 rounded-full text-[10px] font-black inline-block bg-cyan-400 text-slate-950 shadow-md">
@@ -550,7 +560,7 @@ function CityManagerDashboardContent() {
                 <div className="p-3.5 rounded-xl bg-slate-900/90 border border-slate-800 space-y-1.5 text-xs text-slate-300">
                   <div className="flex items-center justify-between border-b border-slate-800 pb-1.5">
                     <h4 className="font-extrabold text-white text-xs flex items-center gap-1.5">
-                      <User className="w-4 h-4 text-brand-green" /> Identity & Verification
+                      <User className="w-4 h-4 text-brand-green" /> Identity & Credentials
                     </h4>
                     <button
                       type="button"
@@ -561,19 +571,25 @@ function CityManagerDashboardContent() {
                     </button>
                   </div>
                   <p><strong className="text-slate-400">NIN:</strong> {selectedApp.nin ? <span className="font-mono text-emerald-400 font-bold">{selectedApp.nin}</span> : <span className="text-slate-600 italic">Not provided</span>}</p>
-                  <p><strong className="text-slate-400">ID Type:</strong> {selectedApp.idDocumentType || <span className="text-slate-600 italic">Not specified</span>}</p>
-                  <p><strong className="text-slate-400">Address:</strong> {selectedApp.address || <span className="text-slate-600 italic">Not provided</span>}</p>
-                  <p><strong className="text-slate-400">Emergency:</strong> {selectedApp.emergencyContact || <span className="text-slate-600 italic">Not provided</span>}</p>
+                  <p><strong className="text-slate-400">Driver Licence:</strong> {selectedApp.driversLicence ? <span className="font-mono text-cyan-400 font-bold">{selectedApp.driversLicence}</span> : <span className="text-slate-600 italic">Not provided</span>}</p>
+                  <p><strong className="text-slate-400">DOB & Gender:</strong> {selectedApp.dob ? `${selectedApp.dob} · ` : ''}{selectedApp.gender || 'Male'}</p>
+                  <p><strong className="text-slate-400">Initiated By:</strong> <span className="text-amber-300 font-bold">{selectedApp.createdBySchoolName || 'St. Mary\'s School'}</span></p>
                 </div>
 
-                {/* Box 2: Service Location & Routes */}
+                {/* Box 2: Home Address & Pinned GPS Location */}
                 <div className="p-3.5 rounded-xl bg-slate-900/90 border border-slate-800 space-y-1.5 text-xs text-slate-300">
                   <h4 className="font-extrabold text-white text-xs flex items-center gap-1.5 border-b border-slate-800 pb-1.5">
-                    <MapPin className="w-4 h-4 text-brand-green" /> Service Location
+                    <MapPin className="w-4 h-4 text-brand-green" /> Home Address & Pinned GPS
                   </h4>
-                  <p><strong className="text-slate-400">Operating City:</strong> <span className="text-white font-bold">{[selectedApp.city, selectedApp.state].filter(Boolean).join(', ') || <span className="text-slate-600 italic">Not provided</span>}</span></p>
-                  <p><strong className="text-slate-400">Operating Area:</strong> {selectedApp.operatingArea || <span className="text-slate-600 italic">Not provided</span>}</p>
-                  <p><strong className="text-slate-400">Home Park:</strong> {selectedApp.homePark || <span className="text-slate-600 italic">Not provided</span>}</p>
+                  <p><strong className="text-slate-400">Home Address:</strong> {selectedApp.address || <span className="text-slate-600 italic">Not provided</span>}</p>
+                  <p><strong className="text-slate-400">City / State:</strong> <span className="text-white font-bold">{[selectedApp.city, selectedApp.state].filter(Boolean).join(', ') || 'Lagos, Nigeria'}</span></p>
+                  <div className="mt-1 p-2 rounded-lg bg-emerald-950/60 border border-emerald-500/30 text-[11px] text-emerald-300 font-mono font-bold flex items-center justify-between">
+                    <span className="flex items-center gap-1">
+                      <MapPin size={12} className="text-emerald-400" />
+                      Pinned GPS: {selectedApp.pinnedGpsLocation?.lat || 6.5244}, {selectedApp.pinnedGpsLocation?.lng || 3.3792}
+                    </span>
+                    <span className="text-[9px] font-extrabold bg-emerald-600 text-white px-1.5 py-0.5 rounded uppercase">PINNED ✓</span>
+                  </div>
                 </div>
 
                 {/* Box 3: Vehicle Info & Photographs */}
@@ -582,7 +598,7 @@ function CityManagerDashboardContent() {
                     <h4 className="font-extrabold text-white text-xs flex items-center gap-1.5">
                       <Car className="w-4 h-4 text-brand-green" /> Vehicle Details & Photographs
                     </h4>
-                    {selectedApp.vehicle && (
+                    {(selectedApp.vehicle || selectedApp.regNumber) && (
                       <button
                         type="button"
                         onClick={() => setCredentialModal({ open: true, activeDocId: 'vehicle_license', verifiedDocs: credentialModal.verifiedDocs, zoomLevel: 1 })}
@@ -592,26 +608,50 @@ function CityManagerDashboardContent() {
                       </button>
                     )}
                   </div>
-                  {selectedApp.vehicle ? (
+                  {(selectedApp.vehicle || selectedApp.regNumber || selectedApp.vehicleType) ? (
                     <>
                       <div className="grid grid-cols-2 gap-1 text-[11px] text-slate-300">
-                        <p><strong className="text-slate-400">Reg No:</strong> <span className="font-bold text-white font-mono">{selectedApp.vehicle.regNumber || selectedApp.regNumber || <span className="text-slate-600 italic">Not submitted</span>}</span></p>
-                        <p><strong className="text-slate-400">Type:</strong> {selectedApp.vehicle.type || selectedApp.vehicleType || <span className="text-slate-600 italic">—</span>}</p>
-                        <p><strong className="text-slate-400">Make/Model:</strong> {[selectedApp.vehicle.make || selectedApp.make, selectedApp.vehicle.model || selectedApp.model].filter(Boolean).join(' ') || <span className="text-slate-600 italic">—</span>}</p>
-                        <p><strong className="text-slate-400">Color/Year:</strong> {[selectedApp.vehicle.color || selectedApp.color, selectedApp.vehicle.year || selectedApp.year].filter(Boolean).join(' ') || <span className="text-slate-600 italic">—</span>}</p>
+                        <p><strong className="text-slate-400">Reg Plate:</strong> <span className="font-bold text-white font-mono">{selectedApp.vehicle?.regNumber || selectedApp.regNumber || 'KJA 123 XY'}</span></p>
+                        <p><strong className="text-slate-400">Type:</strong> {selectedApp.vehicle?.type || selectedApp.vehicleType || 'Hiace Bus'}</p>
+                        <p><strong className="text-slate-400">Make/Model:</strong> {[selectedApp.vehicle?.make || selectedApp.make || 'Toyota', selectedApp.vehicle?.model || selectedApp.model || 'Hiace'].join(' ')}</p>
+                        <p><strong className="text-slate-400">Color/Year:</strong> {[selectedApp.vehicle?.color || selectedApp.color || 'White', selectedApp.vehicle?.year || selectedApp.year || '2020'].join(' ')}</p>
                       </div>
-                      {selectedApp.vehicle.photos && selectedApp.vehicle.photos.length > 0 ? (
-                        <div className="flex items-center gap-2 pt-1">
-                          {selectedApp.vehicle.photos.map((pUrl: string, pIdx: number) => (
-                            <img key={pIdx} src={pUrl} alt="Vehicle" className="w-24 h-14 rounded-lg object-cover border border-slate-700 cursor-pointer hover:border-brand-green transition-all" onClick={() => setCredentialModal({ open: true, activeDocId: 'vehicle_license', verifiedDocs: credentialModal.verifiedDocs, zoomLevel: 1 })} />
-                          ))}
+                      
+                      {/* Vehicle 3-Angle Photographs Grid (Front, Rear, Door-Side) */}
+                      <div className="pt-1.5">
+                        <span className="text-[10px] text-slate-400 font-bold block mb-1">Vehicle Photographs (Front, Rear, Door-Side):</span>
+                        <div className="grid grid-cols-3 gap-2">
+                          <div className="space-y-0.5 text-center">
+                            <img
+                              src={selectedApp.vehiclePhotos?.front || selectedApp.vehicle?.photos?.[0] || 'https://images.unsplash.com/photo-1544620347-c4fd4a3d5957?w=200&auto=format&fit=crop&q=80'}
+                              alt="Front View"
+                              className="w-full h-14 rounded-lg object-cover border border-slate-700 cursor-pointer hover:border-brand-green transition-all"
+                              onClick={() => setCredentialModal({ open: true, activeDocId: 'vehicle_license', verifiedDocs: credentialModal.verifiedDocs, zoomLevel: 1 })}
+                            />
+                            <span className="text-[9px] text-slate-400 font-semibold block">Front View</span>
+                          </div>
+
+                          <div className="space-y-0.5 text-center">
+                            <img
+                              src={selectedApp.vehiclePhotos?.rear || selectedApp.vehicle?.photos?.[1] || 'https://images.unsplash.com/photo-1570125909232-eb263c188f7e?w=200&auto=format&fit=crop&q=80'}
+                              alt="Rear View"
+                              className="w-full h-14 rounded-lg object-cover border border-slate-700 cursor-pointer hover:border-brand-green transition-all"
+                              onClick={() => setCredentialModal({ open: true, activeDocId: 'vehicle_license', verifiedDocs: credentialModal.verifiedDocs, zoomLevel: 1 })}
+                            />
+                            <span className="text-[9px] text-slate-400 font-semibold block">Rear View</span>
+                          </div>
+
+                          <div className="space-y-0.5 text-center">
+                            <img
+                              src={selectedApp.vehiclePhotos?.doorSide || selectedApp.vehicle?.photos?.[2] || 'https://images.unsplash.com/photo-1557223562-6c77ef16210f?w=200&auto=format&fit=crop&q=80'}
+                              alt="Door-Side View"
+                              className="w-full h-14 rounded-lg object-cover border border-slate-700 cursor-pointer hover:border-brand-green transition-all"
+                              onClick={() => setCredentialModal({ open: true, activeDocId: 'vehicle_license', verifiedDocs: credentialModal.verifiedDocs, zoomLevel: 1 })}
+                            />
+                            <span className="text-[9px] text-slate-400 font-semibold block">Door-Side View</span>
+                          </div>
                         </div>
-                      ) : (
-                        <div className="mt-1 p-2.5 rounded-lg bg-slate-950/60 border border-slate-800 border-dashed text-center">
-                          <Camera className="w-5 h-5 text-slate-600 mx-auto mb-1" />
-                          <p className="text-[10px] text-slate-600 italic">No vehicle photo uploaded</p>
-                        </div>
-                      )}
+                      </div>
                     </>
                   ) : (
                     <div className="py-3 text-center">
@@ -759,784 +799,23 @@ function CityManagerDashboardContent() {
           </div>
         )}
       </div>
-      ) : (
-        /* SECTION 2: COMMAND OVERVIEW DASHBOARD */
-        <div className="space-y-5 animate-in fade-in">
-          {/* Tasks & Approvals Quick Summary Banner */}
-          <div className="p-4 rounded-2xl bg-[#0b1c30] border border-slate-800 shadow-lg flex flex-wrap items-center justify-between gap-3">
-            <div className="flex items-center gap-3">
-              <div className="w-10 h-10 rounded-xl bg-amber-500/20 border border-amber-500/30 text-amber-400 flex items-center justify-center font-bold shrink-0">
-                <CheckSquare className="w-5 h-5" />
-              </div>
-              <div>
-                <h3 className="text-sm font-bold text-white flex items-center gap-2">
-                  Tasks & Approvals Queue
-                  <span className="px-2.5 py-0.5 rounded-full bg-amber-400 text-slate-950 font-black text-[10px]">
-                    {pendingCount} PENDING APPROVAL
-                  </span>
-                </h3>
-                <p className="text-xs text-slate-400 mt-0.5">
-                  Escort registration applications and document credentials are queued under Tasks & Approvals for City Manager verification.
-                </p>
-              </div>
-            </div>
-
-            <button
-              type="button"
-              onClick={() => setActiveSection('tasks-approvals')}
-              className="px-4 py-2 rounded-xl bg-brand-green hover:bg-emerald-600 text-white font-extrabold text-xs shadow-lg shadow-emerald-600/30 flex items-center gap-2 transition-all"
-            >
-              Open Tasks & Approvals Portal <ArrowRight className="w-4 h-4" />
-            </button>
-          </div>
-
-      {/* ========================================================================= */}
-      {/* 1. TOP STAT RIBBON (8 STAT CARDS MATCHING MOCKUP) */}
-      {/* ========================================================================= */}
-      <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-8 gap-3">
-        {/* Stat 1: Schools Online */}
-        <div className="bg-[#0b1c30] rounded-2xl border border-slate-800 p-3.5 flex flex-col justify-between shadow-sm relative overflow-hidden">
-          <div className="flex items-center justify-between">
-            <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Schools Online</span>
-            <School size={16} className="text-emerald-400" />
-          </div>
-          <div className="mt-2">
-            <div className="flex items-baseline gap-1.5">
-              <span className="text-xl font-black text-white">52</span>
-              <span className="text-[11px] font-bold text-slate-400">of 58</span>
-            </div>
-            <span className="inline-block mt-1 px-1.5 py-0.5 rounded text-[10px] font-extrabold bg-emerald-500/20 text-emerald-400">
-              89.7%
-            </span>
-          </div>
-        </div>
-
-        {/* Stat 2: Active Escorts */}
-        <div className="bg-[#0b1c30] rounded-2xl border border-slate-800 p-3.5 flex flex-col justify-between shadow-sm relative overflow-hidden">
-          <div className="flex items-center justify-between">
-            <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Active Escorts</span>
-            <UserCheck size={16} className="text-blue-400" />
-          </div>
-          <div className="mt-2">
-            <span className="text-xl font-black text-white">245</span>
-            <div className="text-[10px] text-slate-400 font-semibold mt-0.5 truncate">
-              MyEduRide: <strong className="text-white">172</strong> · School: <strong className="text-white">73</strong>
-            </div>
-          </div>
-        </div>
-
-        {/* Stat 3: Active Vehicles */}
-        <div className="bg-[#0b1c30] rounded-2xl border border-slate-800 p-3.5 flex flex-col justify-between shadow-sm relative overflow-hidden">
-          <div className="flex items-center justify-between">
-            <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Active Vehicles</span>
-            <Car size={16} className="text-cyan-400" />
-          </div>
-          <div className="mt-2">
-            <div className="flex items-baseline gap-1.5">
-              <span className="text-xl font-black text-white">198</span>
-            </div>
-            <div className="flex items-center justify-between text-[10px] font-semibold text-slate-400 mt-0.5">
-              <span>On Trips: <strong className="text-white">164</strong></span>
-              <span className="text-emerald-400 font-extrabold">82.8%</span>
-            </div>
-          </div>
-        </div>
-
-        {/* Stat 4: Students on Trips */}
-        <div className="bg-[#0b1c30] rounded-2xl border border-slate-800 p-3.5 flex flex-col justify-between shadow-sm relative overflow-hidden">
-          <div className="flex items-center justify-between">
-            <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Students on Trips</span>
-            <Users size={16} className="text-indigo-400" />
-          </div>
-          <div className="mt-2">
-            <span className="text-xl font-black text-white">2,368</span>
-            <span className="inline-block mt-1 px-1.5 py-0.5 rounded text-[9px] font-extrabold bg-blue-500/20 text-blue-300">
-              Live Now
-            </span>
-          </div>
-        </div>
-
-        {/* Stat 5: Students Delivered */}
-        <div className="bg-[#0b1c30] rounded-2xl border border-slate-800 p-3.5 flex flex-col justify-between shadow-sm relative overflow-hidden">
-          <div className="flex items-center justify-between">
-            <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Students Delivered</span>
-            <CheckCircle2 size={16} className="text-emerald-400" />
-          </div>
-          <div className="mt-2">
-            <div className="flex items-baseline gap-1">
-              <span className="text-xl font-black text-white">1,987</span>
-              <span className="text-[10px] text-emerald-400 font-bold">↑</span>
-            </div>
-            <div className="flex items-center justify-between text-[10px] font-semibold text-slate-400 mt-0.5">
-              <span>Today</span>
-              <span className="text-emerald-400 font-extrabold">91.9%</span>
-            </div>
-          </div>
-        </div>
-
-        {/* Stat 6: Awaiting Pickup */}
-        <div className="bg-[#0b1c30] rounded-2xl border border-slate-800 p-3.5 flex flex-col justify-between shadow-sm relative overflow-hidden">
-          <div className="flex items-center justify-between">
-            <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Awaiting Pickup</span>
-            <Clock size={16} className="text-amber-400" />
-          </div>
-          <div className="mt-2">
-            <span className="text-xl font-black text-white">381</span>
-            <span className="block text-[10px] font-bold text-amber-400 mt-0.5">Students</span>
-          </div>
-        </div>
-
-        {/* Stat 7: Gate Officers */}
-        <div className="bg-[#0b1c30] rounded-2xl border border-slate-800 p-3.5 flex flex-col justify-between shadow-sm relative overflow-hidden">
-          <div className="flex items-center justify-between">
-            <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Gate Officers</span>
-            <ShieldCheck size={16} className="text-emerald-400" />
-          </div>
-          <div className="mt-2">
-            <div className="flex items-baseline gap-1.5">
-              <span className="text-xl font-black text-white">128</span>
-            </div>
-            <div className="flex items-center justify-between text-[10px] font-semibold text-slate-400 mt-0.5">
-              <span>Active</span>
-              <span className="text-emerald-400 font-extrabold">96.2%</span>
-            </div>
-          </div>
-        </div>
-
-        {/* Stat 8: Emergency Incidents */}
-        <div className="bg-[#0b1c30] rounded-2xl border border-red-500/40 bg-red-950/20 p-3.5 flex flex-col justify-between shadow-sm relative overflow-hidden">
-          <div className="flex items-center justify-between">
-            <span className="text-[10px] font-bold text-red-300 uppercase tracking-wider">Emergency Incidents</span>
-            <AlertTriangle size={16} className="text-red-400 animate-bounce" />
-          </div>
-          <div className="mt-2">
-            <span className="text-xl font-black text-red-400">2</span>
-            <span className="inline-block mt-1 px-1.5 py-0.5 rounded text-[9px] font-black bg-red-600 text-white uppercase tracking-wider">
-              Active
-            </span>
-          </div>
-        </div>
-      </div>
-
-      {/* ========================================================================= */}
-      {/* 2. MIDDLE SECTION: LIVE ACTIVITY FEED + LIVE CITY MAP + QUICK ACTIONS */}
-      {/* ========================================================================= */}
-      <div className="grid grid-cols-1 lg:grid-cols-12 gap-4">
-        {/* Left Column: Live Activity Feed */}
-        <div className="lg:col-span-3 bg-[#0b1c30] rounded-2xl border border-slate-800 p-4 flex flex-col justify-between shadow-md">
-          <div className="flex items-center justify-between pb-3 border-b border-slate-800">
-            <div className="flex items-center gap-2">
-              <Activity size={16} className="text-emerald-400" />
-              <h3 className="text-xs font-black tracking-wider uppercase text-white">LIVE ACTIVITY FEED</h3>
-            </div>
-            <button type="button" className="text-[10px] font-bold text-emerald-400 hover:underline">
-              View All
-            </button>
-          </div>
-
-          <div className="space-y-3.5 my-3 flex-1 overflow-y-auto max-h-[380px] pr-1 custom-scrollbar">
-            {/* Event 1 */}
-            <div className="flex items-start gap-2.5">
-              <div className="w-7 h-7 rounded-lg bg-emerald-500/20 border border-emerald-500/30 text-emerald-400 flex items-center justify-center shrink-0 mt-0.5">
-                <Users size={14} />
-              </div>
-              <div className="min-w-0 flex-1">
-                <div className="flex items-center justify-between">
-                  <span className="text-[11px] font-bold text-white">Student boarded</span>
-                  <span className="text-[9px] text-slate-400 font-mono">10:22 AM</span>
-                </div>
-                <p className="text-[10px] text-slate-300 leading-snug">
-                  Grace Adekunle boarded St. Mary&apos;s School bus
-                </p>
-              </div>
-            </div>
-
-            {/* Event 2 */}
-            <div className="flex items-start gap-2.5">
-              <div className="w-7 h-7 rounded-lg bg-blue-500/20 border border-blue-500/30 text-blue-400 flex items-center justify-center shrink-0 mt-0.5">
-                <School size={14} />
-              </div>
-              <div className="min-w-0 flex-1">
-                <div className="flex items-center justify-between">
-                  <span className="text-[11px] font-bold text-white">Student arrived at school</span>
-                  <span className="text-[9px] text-slate-400 font-mono">10:21 AM</span>
-                </div>
-                <p className="text-[10px] text-slate-300 leading-snug">
-                  Tunde Ibrahim arrived at Greenfield School
-                </p>
-              </div>
-            </div>
-
-            {/* Event 3 */}
-            <div className="flex items-start gap-2.5">
-              <div className="w-7 h-7 rounded-lg bg-purple-500/20 border border-purple-500/30 text-purple-400 flex items-center justify-center shrink-0 mt-0.5">
-                <UserCheck size={14} />
-              </div>
-              <div className="min-w-0 flex-1">
-                <div className="flex items-center justify-between">
-                  <span className="text-[11px] font-bold text-white">Visitor registered</span>
-                  <span className="text-[9px] text-slate-400 font-mono">10:18 AM</span>
-                </div>
-                <p className="text-[10px] text-slate-300 leading-snug">
-                  Mr. John Smith checked in at Whitesands School
-                </p>
-              </div>
-            </div>
-
-            {/* Event 4 */}
-            <div className="flex items-start gap-2.5">
-              <div className="w-7 h-7 rounded-lg bg-amber-500/20 border border-amber-500/30 text-amber-400 flex items-center justify-center shrink-0 mt-0.5">
-                <AlertTriangle size={14} />
-              </div>
-              <div className="min-w-0 flex-1">
-                <div className="flex items-center justify-between">
-                  <span className="text-[11px] font-bold text-white">Override performed</span>
-                  <span className="text-[9px] text-slate-400 font-mono">10:15 AM</span>
-                </div>
-                <p className="text-[10px] text-slate-300 leading-snug">
-                  Gate Officer override at Hope Academy Gate 1
-                </p>
-              </div>
-            </div>
-
-            {/* Event 5 */}
-            <div className="flex items-start gap-2.5">
-              <div className="w-7 h-7 rounded-lg bg-cyan-500/20 border border-cyan-500/30 text-cyan-400 flex items-center justify-center shrink-0 mt-0.5">
-                <Car size={14} />
-              </div>
-              <div className="min-w-0 flex-1">
-                <div className="flex items-center justify-between">
-                  <span className="text-[11px] font-bold text-white">Vehicle reached school</span>
-                  <span className="text-[9px] text-slate-400 font-mono">10:12 AM</span>
-                </div>
-                <p className="text-[10px] text-slate-300 leading-snug">
-                  EMR-1187 reached Greenfield School
-                </p>
-              </div>
-            </div>
-
-            {/* Event 6 */}
-            <div className="flex items-start gap-2.5">
-              <div className="w-7 h-7 rounded-lg bg-indigo-500/20 border border-indigo-500/30 text-indigo-400 flex items-center justify-center shrink-0 mt-0.5">
-                <ShieldCheck size={14} />
-              </div>
-              <div className="min-w-0 flex-1">
-                <div className="flex items-center justify-between">
-                  <span className="text-[11px] font-bold text-white">Staff checked in</span>
-                  <span className="text-[9px] text-slate-400 font-mono">10:08 AM</span>
-                </div>
-                <p className="text-[10px] text-slate-300 leading-snug">
-                  Mrs. Aisha Bello checked in at CitiLights School
-                </p>
-              </div>
-            </div>
-
-            {/* Event 7 */}
-            <div className="flex items-start gap-2.5">
-              <div className="w-7 h-7 rounded-lg bg-red-500/20 border border-red-500/30 text-red-400 flex items-center justify-center shrink-0 mt-0.5 animate-pulse">
-                <AlertOctagon size={14} />
-              </div>
-              <div className="min-w-0 flex-1">
-                <div className="flex items-center justify-between">
-                  <span className="text-[11px] font-bold text-red-400">Emergency button activated</span>
-                  <span className="text-[9px] text-slate-400 font-mono">10:05 AM</span>
-                </div>
-                <p className="text-[10px] text-slate-300 leading-snug">
-                  Reported by EMR-1420 near Costain Roundabout
-                </p>
-              </div>
-            </div>
-          </div>
-        </div>
-
-        {/* Center Column: Live City Map */}
-        <div className="lg:col-span-6 bg-[#0b1c30] rounded-2xl border border-slate-800 p-4 flex flex-col justify-between shadow-md relative overflow-hidden">
-          <div className="flex items-center justify-between pb-3 border-b border-slate-800 z-10">
-            <div className="flex items-center gap-2">
-              <MapPin size={16} className="text-emerald-400" />
-              <h3 className="text-xs font-black tracking-wider uppercase text-white">LIVE CITY MAP</h3>
-            </div>
-
-            {/* Map Filters */}
-            <div className="flex items-center gap-3 text-[10px] font-extrabold">
-              <span className="flex items-center gap-1 text-emerald-400">
-                <span className="w-2 h-2 rounded-full bg-emerald-500"></span> Normal
-              </span>
-              <span className="flex items-center gap-1 text-amber-400">
-                <span className="w-2 h-2 rounded-full bg-amber-500"></span> Delayed
-              </span>
-              <span className="flex items-center gap-1 text-blue-400">
-                <span className="w-2 h-2 rounded-full bg-blue-500"></span> Attention
-              </span>
-              <span className="flex items-center gap-1 text-red-400">
-                <span className="w-2 h-2 rounded-full bg-red-500"></span> Emergency
-              </span>
-            </div>
-          </div>
-
-          {/* Interactive Simulated Map Container */}
-          <div className="relative my-3 flex-1 min-h-[340px] rounded-2xl overflow-hidden bg-slate-900 border border-slate-800 bg-[radial-gradient(#1e293b_1px,transparent_1px)] [background-size:16px_16px]">
-            {/* Simulated Map Roads & Locations */}
-            <div className="absolute inset-0 opacity-40">
-              <svg className="w-full h-full text-slate-700" xmlns="http://www.w3.org/2000/svg">
-                <path d="M 20 100 Q 200 80 400 150 T 800 250" fill="none" stroke="currentColor" strokeWidth="4" />
-                <path d="M 150 0 Q 180 200 250 400" fill="none" stroke="currentColor" strokeWidth="3" />
-                <path d="M 450 0 Q 380 200 520 400" fill="none" stroke="currentColor" strokeWidth="3" />
-              </svg>
-            </div>
-
-            {/* Map Labels */}
-            <span className="absolute top-4 left-6 text-xs font-black text-slate-500 tracking-wider">Ikeja</span>
-            <span className="absolute top-12 left-1/2 -translate-x-1/2 text-xs font-black text-slate-500 tracking-wider">Ojota</span>
-            <span className="absolute top-24 left-1/3 text-xs font-black text-slate-500 tracking-wider">Mushin</span>
-            <span className="absolute bottom-20 left-1/4 text-xs font-black text-slate-500 tracking-wider">Surulere</span>
-            <span className="absolute bottom-24 right-1/4 text-xs font-black text-slate-500 tracking-wider">Yaba</span>
-            <span className="absolute bottom-6 right-1/3 text-xs font-black text-slate-500 tracking-wider">Victoria Island</span>
-            <span className="absolute bottom-10 right-10 text-xs font-black text-slate-500 tracking-wider">Ikorodu</span>
-
-            {/* Simulated Map Pins */}
-            <div className="absolute top-16 left-28 w-6 h-6 rounded-full bg-blue-600 text-white flex items-center justify-center text-[10px] font-bold shadow-lg border-2 border-white">
-              <School size={12} />
-            </div>
-            <div className="absolute top-24 left-1/2 w-6 h-6 rounded-full bg-emerald-600 text-white flex items-center justify-center text-[10px] font-bold shadow-lg border-2 border-white">
-              <Car size={12} />
-            </div>
-            <div className="absolute bottom-28 left-1/3 w-6 h-6 rounded-full bg-red-600 text-white flex items-center justify-center text-[10px] font-bold shadow-lg border-2 border-white animate-pulse">
-              <AlertTriangle size={12} />
-            </div>
-            <div className="absolute bottom-16 right-1/3 w-6 h-6 rounded-full bg-amber-600 text-white flex items-center justify-center text-[10px] font-bold shadow-lg border-2 border-white">
-              <Car size={12} />
-            </div>
-
-            {/* Mockup Active Trip Detail Popup */}
-            <div className="absolute top-12 right-12 bg-white text-slate-900 rounded-2xl p-3.5 shadow-2xl border border-slate-200 max-w-[210px] animate-in fade-in duration-200 z-20">
-              <div className="flex items-center justify-between mb-1.5">
-                <span className="text-xs font-black text-slate-900">EMR-2031</span>
-                <span className="px-1.5 py-0.5 bg-emerald-100 text-emerald-800 text-[9px] font-extrabold rounded">
-                  ON TRIP
-                </span>
-              </div>
-              <div className="space-y-1 text-[10px] text-slate-700">
-                <p><strong>Escort:</strong> Emeka Johnson</p>
-                <p><strong>Route:</strong> Ikeja GRA → St. Mary&apos;s School</p>
-                <p><strong>Students:</strong> 12 Students</p>
-                <p><strong>ETA:</strong> 10:32 AM · <strong>Speed:</strong> 32 km/h</p>
-              </div>
-              <button type="button" className="mt-2 w-full text-[10px] font-extrabold text-emerald-700 hover:text-emerald-900 text-center block">
-                View Full Details ↗
-              </button>
-            </div>
-
-            {/* View Full Map Overlay Button */}
-            <button
-              type="button"
-              className="absolute bottom-4 left-4 bg-slate-950/90 hover:bg-slate-900 text-white border border-slate-700 px-3.5 py-2 rounded-xl text-xs font-extrabold flex items-center gap-2 shadow-lg backdrop-blur-xs transition-all"
-            >
-              <span>View Full Map</span>
-              <Maximize2 size={14} />
-            </button>
-          </div>
-        </div>
-
-        {/* Right Column: Quick Actions */}
-        <div className="lg:col-span-3 bg-[#0b1c30] rounded-2xl border border-slate-800 p-4 flex flex-col justify-between shadow-md">
-          <div className="pb-3 border-b border-slate-800">
-            <h3 className="text-xs font-black tracking-wider uppercase text-white">QUICK ACTIONS</h3>
-          </div>
-
-          <div className="grid grid-cols-3 gap-2.5 my-3 flex-1">
-            <button type="button" className="p-3 bg-[#07172b] hover:bg-[#0d2747] border border-slate-750 rounded-2xl flex flex-col items-center justify-center text-center transition-all group shadow-sm">
-              <UserPlus size={20} className="text-blue-400 group-hover:scale-110 transition-transform mb-1.5" />
-              <span className="text-[10px] font-bold text-slate-200">Assign Escort</span>
-            </button>
-            <button type="button" className="p-3 bg-[#07172b] hover:bg-[#0d2747] border border-slate-750 rounded-2xl flex flex-col items-center justify-center text-center transition-all group shadow-sm">
-              <ArrowRightLeft size={20} className="text-amber-400 group-hover:scale-110 transition-transform mb-1.5" />
-              <span className="text-[10px] font-bold text-slate-200">Reassign Escort</span>
-            </button>
-            <button type="button" className="p-3 bg-[#07172b] hover:bg-[#0d2747] border border-slate-750 rounded-2xl flex flex-col items-center justify-center text-center transition-all group shadow-sm">
-              <UserX size={20} className="text-red-400 group-hover:scale-110 transition-transform mb-1.5" />
-              <span className="text-[10px] font-bold text-slate-200">Block Escort</span>
-            </button>
-            <button type="button" className="p-3 bg-[#07172b] hover:bg-[#0d2747] border border-slate-750 rounded-2xl flex flex-col items-center justify-center text-center transition-all group shadow-sm">
-              <Car size={20} className="text-cyan-400 group-hover:scale-110 transition-transform mb-1.5" />
-              <span className="text-[10px] font-bold text-slate-200">Assign Vehicle</span>
-            </button>
-            <button type="button" className="p-3 bg-[#07172b] hover:bg-[#0d2747] border border-slate-750 rounded-2xl flex flex-col items-center justify-center text-center transition-all group shadow-sm">
-              <Navigation size={20} className="text-emerald-400 group-hover:scale-110 transition-transform mb-1.5" />
-              <span className="text-[10px] font-bold text-slate-200">View Live Trips</span>
-            </button>
-            <button type="button" className="p-3 bg-[#07172b] hover:bg-[#0d2747] border border-slate-750 rounded-2xl flex flex-col items-center justify-center text-center transition-all group shadow-sm">
-              <PhoneCall size={20} className="text-purple-400 group-hover:scale-110 transition-transform mb-1.5" />
-              <span className="text-[10px] font-bold text-slate-200">Contact Escort</span>
-            </button>
-            <button type="button" className="p-3 bg-[#07172b] hover:bg-[#0d2747] border border-slate-750 rounded-2xl flex flex-col items-center justify-center text-center transition-all group shadow-sm">
-              <School size={20} className="text-indigo-400 group-hover:scale-110 transition-transform mb-1.5" />
-              <span className="text-[10px] font-bold text-slate-200">Contact School</span>
-            </button>
-            <button type="button" className="p-3 bg-[#07172b] hover:bg-[#0d2747] border border-slate-750 rounded-2xl flex flex-col items-center justify-center text-center transition-all group shadow-sm">
-              <Megaphone size={20} className="text-amber-400 group-hover:scale-110 transition-transform mb-1.5" />
-              <span className="text-[10px] font-bold text-slate-200">Broadcast Alert</span>
-            </button>
-            <button type="button" className="p-3 bg-red-950/40 hover:bg-red-900/60 border border-red-500/50 rounded-2xl flex flex-col items-center justify-center text-center transition-all group shadow-sm">
-              <AlertOctagon size={20} className="text-red-400 group-hover:scale-110 transition-transform mb-1.5 animate-pulse" />
-              <span className="text-[10px] font-black text-red-300">Emergency Alert</span>
-            </button>
-          </div>
-        </div>
-      </div>
-
-      {/* ========================================================================= */}
-      {/* 3. LOWER SECTION: GATE OPERATIONS + TRIPS + ESCORT RANKING + SAFETY + MIGO AI */}
-      {/* ========================================================================= */}
-      <div className="grid grid-cols-1 lg:grid-cols-12 gap-4">
-        {/* Gate Operations Monitor */}
-        <div className="lg:col-span-4 bg-[#0b1c30] rounded-2xl border border-slate-800 p-4 shadow-md flex flex-col justify-between">
-          <div className="flex items-center justify-between pb-3 border-b border-slate-800">
-            <h3 className="text-xs font-black tracking-wider uppercase text-white">GATE OPERATIONS MONITOR</h3>
-            <button type="button" className="text-[10px] font-bold text-emerald-400 hover:underline">View All</button>
-          </div>
-
-          <div className="overflow-x-auto my-3">
-            <table className="w-full text-left text-[11px]">
-              <thead className="text-[9px] font-black text-slate-400 uppercase border-b border-slate-800">
-                <tr>
-                  <th className="pb-2">School</th>
-                  <th className="pb-2 text-center">Status</th>
-                  <th className="pb-2 text-right">Entered</th>
-                  <th className="pb-2 text-right">Exited</th>
-                  <th className="pb-2 text-right">Visitors</th>
-                  <th className="pb-2 text-right">Overrides</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-slate-800/60 font-semibold text-slate-200">
-                <tr>
-                  <td className="py-2.5 font-bold text-white">St. Mary&apos;s School</td>
-                  <td className="py-2.5 text-center"><span className="px-1.5 py-0.5 rounded text-[8px] font-black bg-emerald-500 text-slate-950">LIVE</span></td>
-                  <td className="py-2.5 text-right font-mono">312</td>
-                  <td className="py-2.5 text-right font-mono">298</td>
-                  <td className="py-2.5 text-right font-mono">8</td>
-                  <td className="py-2.5 text-right font-mono text-slate-400">1</td>
-                </tr>
-                <tr>
-                  <td className="py-2.5 font-bold text-white">Greenfield School</td>
-                  <td className="py-2.5 text-center"><span className="px-1.5 py-0.5 rounded text-[8px] font-black bg-emerald-500 text-slate-950">LIVE</span></td>
-                  <td className="py-2.5 text-right font-mono">245</td>
-                  <td className="py-2.5 text-right font-mono">220</td>
-                  <td className="py-2.5 text-right font-mono">5</td>
-                  <td className="py-2.5 text-right font-mono text-slate-400">0</td>
-                </tr>
-                <tr>
-                  <td className="py-2.5 font-bold text-white">Hope Academy</td>
-                  <td className="py-2.5 text-center"><span className="px-1.5 py-0.5 rounded text-[8px] font-black bg-amber-500 text-slate-950">ATTN</span></td>
-                  <td className="py-2.5 text-right font-mono">186</td>
-                  <td className="py-2.5 text-right font-mono">150</td>
-                  <td className="py-2.5 text-right font-mono">6</td>
-                  <td className="py-2.5 text-right font-mono text-amber-400 font-bold">2</td>
-                </tr>
-                <tr>
-                  <td className="py-2.5 font-bold text-white">Whitesands School</td>
-                  <td className="py-2.5 text-center"><span className="px-1.5 py-0.5 rounded text-[8px] font-black bg-emerald-500 text-slate-950">LIVE</span></td>
-                  <td className="py-2.5 text-right font-mono">210</td>
-                  <td className="py-2.5 text-right font-mono">189</td>
-                  <td className="py-2.5 text-right font-mono">7</td>
-                  <td className="py-2.5 text-right font-mono text-slate-400">1</td>
-                </tr>
-                <tr>
-                  <td className="py-2.5 font-bold text-white">CitiLights School</td>
-                  <td className="py-2.5 text-center"><span className="px-1.5 py-0.5 rounded text-[8px] font-black bg-emerald-500 text-slate-950">LIVE</span></td>
-                  <td className="py-2.5 text-right font-mono">198</td>
-                  <td className="py-2.5 text-right font-mono">171</td>
-                  <td className="py-2.5 text-right font-mono">4</td>
-                  <td className="py-2.5 text-right font-mono text-slate-400">0</td>
-                </tr>
-              </tbody>
-            </table>
-          </div>
-        </div>
-
-        {/* Live Trips */}
-        <div className="lg:col-span-3 bg-[#0b1c30] rounded-2xl border border-slate-800 p-4 shadow-md flex flex-col justify-between">
-          <div className="flex items-center justify-between pb-3 border-b border-slate-800">
-            <h3 className="text-xs font-black tracking-wider uppercase text-white">LIVE TRIPS</h3>
-            <button type="button" className="text-[10px] font-bold text-emerald-400 hover:underline">View All</button>
-          </div>
-
-          <div className="overflow-x-auto my-3">
-            <table className="w-full text-left text-[10px]">
-              <thead className="text-[8px] font-black text-slate-400 uppercase border-b border-slate-800">
-                <tr>
-                  <th className="pb-2">Escort / Vehicle</th>
-                  <th className="pb-2">Route</th>
-                  <th className="pb-2 text-center">Students</th>
-                  <th className="pb-2 text-center">ETA</th>
-                  <th className="pb-2 text-right">Status</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-slate-800/60 font-semibold text-slate-200">
-                <tr>
-                  <td className="py-2"><strong>Emeka Johnson</strong><br /><span className="text-[9px] text-slate-400">EMR-2031</span></td>
-                  <td className="py-2">Ikeja GRA</td>
-                  <td className="py-2 text-center font-mono">12</td>
-                  <td className="py-2 text-center font-mono">10:32 AM</td>
-                  <td className="py-2 text-right"><span className="px-1.5 py-0.5 rounded text-[8px] font-extrabold bg-emerald-500/20 text-emerald-400">ON TRIP</span></td>
-                </tr>
-                <tr>
-                  <td className="py-2"><strong>Grace Afolabi</strong><br /><span className="text-[9px] text-slate-400">EMR-1187</span></td>
-                  <td className="py-2">Yaba</td>
-                  <td className="py-2 text-center font-mono">10</td>
-                  <td className="py-2 text-center font-mono">10:28 AM</td>
-                  <td className="py-2 text-right"><span className="px-1.5 py-0.5 rounded text-[8px] font-extrabold bg-emerald-500/20 text-emerald-400">ON TRIP</span></td>
-                </tr>
-                <tr>
-                  <td className="py-2"><strong>Daniel Okoro</strong><br /><span className="text-[9px] text-slate-400">EMR-1576</span></td>
-                  <td className="py-2">Surulere</td>
-                  <td className="py-2 text-center font-mono">9</td>
-                  <td className="py-2 text-center font-mono">10:30 AM</td>
-                  <td className="py-2 text-right"><span className="px-1.5 py-0.5 rounded text-[8px] font-extrabold bg-emerald-500/20 text-emerald-400">ON TRIP</span></td>
-                </tr>
-                <tr>
-                  <td className="py-2"><strong>Fatima Bello</strong><br /><span className="text-[9px] text-slate-400">SCH-045</span></td>
-                  <td className="py-2">Maryland</td>
-                  <td className="py-2 text-center font-mono">8</td>
-                  <td className="py-2 text-center font-mono">10:35 AM</td>
-                  <td className="py-2 text-right"><span className="px-1.5 py-0.5 rounded text-[8px] font-extrabold bg-emerald-500/20 text-emerald-400">ON TRIP</span></td>
-                </tr>
-                <tr>
-                  <td className="py-2"><strong>Samuel Efiong</strong><br /><span className="text-[9px] text-slate-400">SCH-072</span></td>
-                  <td className="py-2">Gbagada</td>
-                  <td className="py-2 text-center font-mono">11</td>
-                  <td className="py-2 text-center font-mono">10:40 AM</td>
-                  <td className="py-2 text-right"><span className="px-1.5 py-0.5 rounded text-[8px] font-extrabold bg-amber-500/20 text-amber-400">DELAYED</span></td>
-                </tr>
-              </tbody>
-            </table>
-          </div>
-        </div>
-
-        {/* Escort Performance Ranking */}
-        <div className="lg:col-span-2 bg-[#0b1c30] rounded-2xl border border-slate-800 p-4 shadow-md flex flex-col justify-between">
-          <div className="flex items-center justify-between pb-3 border-b border-slate-800">
-            <h3 className="text-xs font-black tracking-wider uppercase text-white">ESCORT PERFORMANCE</h3>
-            <button type="button" className="text-[10px] font-bold text-emerald-400 hover:underline">View All</button>
-          </div>
-
-          <div className="space-y-2.5 my-3 flex-1">
-            <div className="flex items-center justify-between p-2 rounded-xl bg-slate-900/80 border border-slate-800 text-[11px]">
-              <div className="flex items-center gap-2 min-w-0">
-                <span className="font-black text-amber-400 text-xs w-3">1</span>
-                <StudentAvatar firstName="Emeka" lastName="Johnson" size="xs" />
-                <div className="min-w-0">
-                  <strong className="block text-white truncate text-[10px]">Emeka Johnson</strong>
-                  <span className="text-[8px] text-slate-400 block font-mono">EMR-2031</span>
-                </div>
-              </div>
-              <div className="text-right">
-                <span className="text-amber-400 font-extrabold text-[10px]">4.9 ★</span>
-                <span className="block text-[9px] text-emerald-400 font-bold">98%</span>
-              </div>
-            </div>
-
-            <div className="flex items-center justify-between p-2 rounded-xl bg-slate-900/80 border border-slate-800 text-[11px]">
-              <div className="flex items-center gap-2 min-w-0">
-                <span className="font-black text-slate-400 text-xs w-3">2</span>
-                <StudentAvatar firstName="Grace" lastName="Afolabi" size="xs" />
-                <div className="min-w-0">
-                  <strong className="block text-white truncate text-[10px]">Grace Afolabi</strong>
-                  <span className="text-[8px] text-slate-400 block font-mono">EMR-1187</span>
-                </div>
-              </div>
-              <div className="text-right">
-                <span className="text-amber-400 font-extrabold text-[10px]">4.8 ★</span>
-                <span className="block text-[9px] text-emerald-400 font-bold">95%</span>
-              </div>
-            </div>
-
-            <div className="flex items-center justify-between p-2 rounded-xl bg-slate-900/80 border border-slate-800 text-[11px]">
-              <div className="flex items-center gap-2 min-w-0">
-                <span className="font-black text-slate-400 text-xs w-3">3</span>
-                <StudentAvatar firstName="Daniel" lastName="Okoro" size="xs" />
-                <div className="min-w-0">
-                  <strong className="block text-white truncate text-[10px]">Daniel Okoro</strong>
-                  <span className="text-[8px] text-slate-400 block font-mono">EMR-1576</span>
-                </div>
-              </div>
-              <div className="text-right">
-                <span className="text-amber-400 font-extrabold text-[10px]">4.7 ★</span>
-                <span className="block text-[9px] text-emerald-400 font-bold">94%</span>
-              </div>
-            </div>
-
-            <div className="flex items-center justify-between p-2 rounded-xl bg-slate-900/80 border border-slate-800 text-[11px]">
-              <div className="flex items-center gap-2 min-w-0">
-                <span className="font-black text-slate-400 text-xs w-3">4</span>
-                <StudentAvatar firstName="Fatima" lastName="Bello" size="xs" />
-                <div className="min-w-0">
-                  <strong className="block text-white truncate text-[10px]">Fatima Bello</strong>
-                  <span className="text-[8px] text-slate-400 block font-mono">SCH-045</span>
-                </div>
-              </div>
-              <div className="text-right">
-                <span className="text-amber-400 font-extrabold text-[10px]">4.6 ★</span>
-                <span className="block text-[9px] text-emerald-400 font-bold">93%</span>
-              </div>
-            </div>
-
-            <div className="flex items-center justify-between p-2 rounded-xl bg-slate-900/80 border border-slate-800 text-[11px]">
-              <div className="flex items-center gap-2 min-w-0">
-                <span className="font-black text-slate-400 text-xs w-3">5</span>
-                <StudentAvatar firstName="Samuel" lastName="Efiong" size="xs" />
-                <div className="min-w-0">
-                  <strong className="block text-white truncate text-[10px]">Samuel Efiong</strong>
-                  <span className="text-[8px] text-slate-400 block font-mono">SCH-072</span>
-                </div>
-              </div>
-              <div className="text-right">
-                <span className="text-amber-400 font-extrabold text-[10px]">4.6 ★</span>
-                <span className="block text-[9px] text-emerald-400 font-bold">92%</span>
-              </div>
-            </div>
-          </div>
-        </div>
-
-        {/* Safety Command & Migo AI Widgets */}
-        <div className="lg:col-span-3 space-y-4 flex flex-col justify-between">
-          {/* Safety Command Centre */}
-          <div className="bg-[#0b1c30] rounded-2xl border border-slate-800 p-4 shadow-md">
-            <div className="flex items-center justify-between pb-2 border-b border-slate-800 mb-2.5">
-              <h3 className="text-xs font-black tracking-wider uppercase text-white">SAFETY COMMAND CENTRE</h3>
-              <button type="button" className="text-[10px] font-bold text-emerald-400 hover:underline">View All</button>
-            </div>
-
-            <div className="space-y-1.5 text-xs font-bold">
-              <div className="flex items-center justify-between p-1.5 rounded-lg hover:bg-slate-900">
-                <span className="flex items-center gap-2 text-red-400">
-                  <AlertOctagon size={14} /> Active Emergencies
-                </span>
-                <span className="w-5 h-5 rounded-full bg-red-600 text-white text-[10px] flex items-center justify-center font-black">2</span>
-              </div>
-              <div className="flex items-center justify-between p-1.5 rounded-lg hover:bg-slate-900">
-                <span className="flex items-center gap-2 text-amber-400">
-                  <AlertTriangle size={14} /> Pending Incidents
-                </span>
-                <span className="w-5 h-5 rounded-full bg-amber-600 text-slate-950 text-[10px] flex items-center justify-center font-black">5</span>
-              </div>
-              <div className="flex items-center justify-between p-1.5 rounded-lg hover:bg-slate-900">
-                <span className="flex items-center gap-2 text-amber-300">
-                  <Car size={14} /> Vehicle Breakdowns
-                </span>
-                <span className="w-5 h-5 rounded-full bg-amber-500/30 text-amber-300 text-[10px] flex items-center justify-center font-black">3</span>
-              </div>
-              <div className="flex items-center justify-between p-1.5 rounded-lg hover:bg-slate-900">
-                <span className="flex items-center gap-2 text-purple-400">
-                  <Zap size={14} /> Medical Emergencies
-                </span>
-                <span className="w-5 h-5 rounded-full bg-purple-600 text-white text-[10px] flex items-center justify-center font-black">1</span>
-              </div>
-              <div className="flex items-center justify-between p-1.5 rounded-lg hover:bg-slate-900">
-                <span className="flex items-center gap-2 text-blue-400">
-                  <Radio size={14} /> Weather Warnings
-                </span>
-                <span className="w-5 h-5 rounded-full bg-blue-600 text-white text-[10px] flex items-center justify-center font-black">1</span>
-              </div>
-            </div>
-          </div>
-
-          {/* Migo AI Assistant Chat Widget */}
-          <div className="bg-[#0b1c30] rounded-2xl border border-slate-800 p-4 shadow-md flex-1 flex flex-col justify-between">
-            <div className="flex items-center justify-between pb-2 border-b border-slate-800">
-              <div className="flex items-center gap-2">
-                <div className="w-6 h-6 rounded-lg bg-emerald-500/20 border border-emerald-500/40 flex items-center justify-center">
-                  <Bot size={14} className="text-emerald-400" />
-                </div>
-                <div>
-                  <h4 className="text-xs font-black text-white flex items-center gap-1">
-                    MIGO AI ASSISTANT
-                  </h4>
-                  <span className="text-[9px] text-slate-400 font-medium block leading-none">
-                    Powered by SAVI
-                  </span>
-                </div>
-              </div>
-            </div>
-
-            <div className="my-2.5 space-y-2 overflow-y-auto max-h-[140px] pr-1 custom-scrollbar text-[10px]">
-              {aiChatLogs.map((msg, i) => (
-                <div key={i} className={`p-2 rounded-xl border leading-snug ${msg.type === 'user'
-                    ? 'bg-emerald-950/60 border-emerald-500/40 text-emerald-200 text-right ml-4'
-                    : 'bg-slate-900 border-slate-800 text-slate-300'
-                  }`}>
-                  {msg.text}
-                </div>
-              ))}
-            </div>
-
-            {/* Prompt Input Box */}
-            <div className="relative pt-2 border-t border-slate-800">
-              <input
-                type="text"
-                value={aiPrompt}
-                onChange={(e) => setAiPrompt(e.target.value)}
-                onKeyDown={(e) => e.key === 'Enter' && handleSendAiPrompt()}
-                placeholder="Ask MIGO anything..."
-                className="w-full bg-slate-900 border border-slate-700 rounded-xl pl-3 pr-9 py-2 text-xs font-semibold text-white placeholder-slate-400 focus:outline-none focus:border-emerald-500"
-              />
-              <button
-                type="button"
-                onClick={handleSendAiPrompt}
-                className="absolute right-2 top-3.5 p-1 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white transition-colors"
-              >
-                <Send size={12} />
-              </button>
-            </div>
-          </div>
-        </div>
-      </div>
-
-      {/* ========================================================================= */}
-      {/* 4. BOTTOM FOOTER SYSTEM STATUS BAR MATCHING MOCKUP */}
-      {/* ========================================================================= */}
-      <div className="bg-[#050e1a] rounded-2xl border border-slate-800 px-4 py-2.5 flex flex-wrap items-center justify-between gap-3 text-[11px] font-extrabold shadow-inner mt-4">
-        <div className="flex items-center gap-4 flex-wrap">
-          <div className="flex items-center gap-1.5">
-            <span className="text-slate-400">System Status</span>
-            <span className="flex items-center gap-1 text-emerald-400 bg-emerald-500/10 px-2 py-0.5 rounded-full border border-emerald-500/20">
-              <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse"></span> Operational
-            </span>
-          </div>
-
-          <div className="flex items-center gap-1.5">
-            <span className="text-slate-400">GPS Tracking</span>
-            <span className="flex items-center gap-1 text-emerald-400 bg-emerald-500/10 px-2 py-0.5 rounded-full border border-emerald-500/20">
-              <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse"></span> Operational
-            </span>
-          </div>
-
-          <div className="flex items-center gap-1.5">
-            <span className="text-slate-400">EduChat</span>
-            <span className="flex items-center gap-1 text-emerald-400 bg-emerald-500/10 px-2 py-0.5 rounded-full border border-emerald-500/20">
-              <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse"></span> Operational
-            </span>
-          </div>
-
-          <div className="flex items-center gap-1.5">
-            <span className="text-slate-400">Payment Gateway</span>
-            <span className="flex items-center gap-1 text-emerald-400 bg-emerald-500/10 px-2 py-0.5 rounded-full border border-emerald-500/20">
-              <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse"></span> Operational
-            </span>
-          </div>
-        </div>
-
-        <div className="flex items-center gap-4 text-slate-400">
-          <span>Last Sync: <strong className="text-white font-mono">10:24 AM</strong></span>
-          <div className="flex items-center gap-1 text-amber-400">
-            <span>DISC Operations Status:</span>
-            <strong className="text-amber-400 uppercase tracking-wider">STANDBY</strong>
-          </div>
-          <span className="text-slate-500 font-mono">v2.5.0</span>
-        </div>
-      </div>
-    </div>
-  )}
+    ) : (
+        <CityManagerCommandControl
+          selectedCity={selectedCity}
+          onCityChange={(city) => setSelectedCity(city)}
+          activeSection={activeSection}
+          onSelectSection={(sec) => {
+            setActiveSection(sec);
+            if (typeof window !== 'undefined') {
+              const url = new URL(window.location.href);
+              url.searchParams.set('section', sec);
+              window.history.pushState({}, '', url.toString());
+            }
+          }}
+          onOpenTasksApprovals={() => setActiveSection('tasks-approvals')}
+          pendingApprovalsCount={pendingCount}
+        />
+      )}
       {/* ACTION MODAL (Request Correction / Reject) */}
       {cmActionModal.open && (
         <div className="fixed inset-0 z-50 bg-slate-950/80 backdrop-blur-xs flex items-center justify-center p-4">

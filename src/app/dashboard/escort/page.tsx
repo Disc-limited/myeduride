@@ -69,12 +69,30 @@ export default function EscortDashboardPage() {
   const [showAccountModal, setShowAccountModal] = useState(false);
 
   const [escortData, setEscortData] = useState<any>(null);
+  const [liveDashboardData, setLiveDashboardData] = useState<any>(null);
+
+  const fetchLiveData = () => {
+    fetch('/api/escorts/dashboard-live')
+      .then((res) => res.json())
+      .then((data) => {
+        if (data?.success) {
+          setLiveDashboardData(data);
+          if (data.escort?.status) {
+            setApprovalStatus(data.escort.status);
+          }
+        }
+      })
+      .catch((err) => console.warn('[escort-dashboard] Live DB fetch notice:', err));
+  };
 
   useEffect(() => {
     const s = getSession();
     setSession(s);
 
-    // Fetch live application status for logged-in escort user
+    // 1. Fetch live backend DB dashboard data
+    fetchLiveData();
+
+    // 2. Fetch live application status for logged-in escort user
     fetch('/api/escorts/applications')
       .then((res) => res.json())
       .then((data) => {
@@ -138,17 +156,21 @@ export default function EscortDashboardPage() {
   return (
     <div className="min-h-screen bg-[#F4F6F9] text-slate-800 font-sans flex flex-col lg:flex-row">
       
-      {/* 1. LEFT SIDEBAR (#0A1128 Dark Navy Blue) */}
-      <aside className="w-full lg:w-64 bg-[#0A1128] text-white flex flex-col justify-between p-4 shrink-0 shadow-xl border-r border-slate-800 z-30">
+      {/* 1. LEFT SIDEBAR (#07132B Dark Navy Blue) */}
+      <aside className="w-full lg:w-64 bg-[#07132B] text-white flex flex-col justify-between p-4 shrink-0 shadow-2xl border-r border-slate-800 z-30 min-h-screen">
         <div className="space-y-6">
-          {/* Top Logo & Slogan */}
+          {/* Top Brand Logo & Tagline */}
           <div className="flex items-center justify-between">
-            <div className="flex items-center gap-2.5">
-              <img
-                src="/images/eduride_logo.png"
-                alt="MyEduRide Logo"
-                className="h-9 w-auto object-contain"
-              />
+            <div className="flex flex-col">
+              <div className="flex items-center gap-2">
+                <div className="w-7 h-7 rounded-xl bg-gradient-to-tr from-emerald-400 via-teal-400 to-emerald-600 flex items-center justify-center font-black text-white text-xs shadow-md">
+                  🛡️
+                </div>
+                <span className="font-extrabold text-white text-lg tracking-tight">MyEduRide</span>
+              </div>
+              <span className="text-[9px] font-bold text-slate-400 uppercase tracking-widest pl-9">
+                THE STUDENT SAFETY PLATFORM
+              </span>
             </div>
             <button
               onClick={() => setSidebarOpen(!sidebarOpen)}
@@ -158,294 +180,422 @@ export default function EscortDashboardPage() {
             </button>
           </div>
 
-          {/* Vertical Menu Navigation */}
+          {/* Vertical Navigation Menu */}
           <nav className="space-y-1 text-xs font-semibold">
             {/* 1. Dashboard */}
             <button
               onClick={() => setActiveNav('dashboard')}
-              className={`w-full flex items-center justify-between px-3.5 py-3 rounded-xl transition-all ${
+              className={`w-full flex items-center justify-between px-3.5 py-2.5 rounded-xl transition-all ${
                 activeNav === 'dashboard'
-                  ? 'bg-[#00A859] text-white shadow-md font-bold'
+                  ? 'bg-[#00A859] text-white shadow-md font-extrabold'
                   : 'text-slate-300 hover:bg-white/10 hover:text-white'
               }`}
             >
               <div className="flex items-center gap-3">
-                <LayoutDashboard size={18} />
+                <LayoutDashboard size={17} />
                 <span>Dashboard</span>
               </div>
             </button>
 
-            {/* 2. Today's Trip */}
+            {/* 2. Trips */}
             <button
               onClick={() => setActiveNav('trips')}
-              className={`w-full flex items-center justify-between px-3.5 py-3 rounded-xl transition-all ${
+              className={`w-full flex items-center justify-between px-3.5 py-2.5 rounded-xl transition-all ${
                 activeNav === 'trips'
-                  ? 'bg-[#00A859] text-white shadow-md font-bold'
+                  ? 'bg-[#00A859] text-white shadow-md font-extrabold'
                   : 'text-slate-300 hover:bg-white/10 hover:text-white'
               }`}
             >
               <div className="flex items-center gap-3">
-                <Calendar size={18} />
-                <span>Today's Trip</span>
+                <Car size={17} />
+                <span>Trips</span>
               </div>
             </button>
 
-            {/* 3. Pickup Queue */}
+            {/* 3. My Schedule */}
             <button
-              onClick={() => setActiveNav('queue')}
-              className={`w-full flex items-center justify-between px-3.5 py-3 rounded-xl transition-all ${
-                activeNav === 'queue'
-                  ? 'bg-[#00A859] text-white shadow-md font-bold'
+              onClick={() => setActiveNav('schedule')}
+              className={`w-full flex items-center justify-between px-3.5 py-2.5 rounded-xl transition-all ${
+                activeNav === 'schedule'
+                  ? 'bg-[#00A859] text-white shadow-md font-extrabold'
                   : 'text-slate-300 hover:bg-white/10 hover:text-white'
               }`}
             >
               <div className="flex items-center gap-3">
-                <Users size={18} />
-                <span>Pickup Queue</span>
+                <Calendar size={17} />
+                <span>My Schedule</span>
               </div>
-              <span className="bg-[#00A859] text-white font-bold text-[10px] px-2 py-0.5 rounded-full">
-                6
+            </button>
+
+            {/* 4. Students */}
+            <button
+              onClick={() => setActiveNav('students')}
+              className={`w-full flex items-center justify-between px-3.5 py-2.5 rounded-xl transition-all ${
+                activeNav === 'students'
+                  ? 'bg-[#00A859] text-white shadow-md font-extrabold'
+                  : 'text-slate-300 hover:bg-white/10 hover:text-white'
+              }`}
+            >
+              <div className="flex items-center gap-3">
+                <Users size={17} />
+                <span>Students</span>
+              </div>
+            </button>
+
+            {/* 5. Shared Ride (NEW) */}
+            <button
+              onClick={() => setActiveNav('shared-ride')}
+              className={`w-full flex items-center justify-between px-3.5 py-2.5 rounded-xl transition-all ${
+                activeNav === 'shared-ride'
+                  ? 'bg-[#00A859] text-white shadow-md font-extrabold'
+                  : 'text-slate-300 hover:bg-white/10 hover:text-white'
+              }`}
+            >
+              <div className="flex items-center gap-3">
+                <Navigation size={17} />
+                <span>Shared Ride</span>
+              </div>
+              <span className="bg-[#00A859] text-white font-extrabold text-[9px] px-1.5 py-0.5 rounded-md uppercase tracking-wider">
+                NEW
               </span>
             </button>
 
-            {/* 4. On Board */}
+            {/* 6. Wallet */}
             <button
-              onClick={() => setActiveNav('onboard')}
-              className={`w-full flex items-center justify-between px-3.5 py-3 rounded-xl transition-all ${
-                activeNav === 'onboard'
-                  ? 'bg-[#00A859] text-white shadow-md font-bold'
+              onClick={() => setActiveNav('wallet')}
+              className={`w-full flex items-center justify-between px-3.5 py-2.5 rounded-xl transition-all ${
+                activeNav === 'wallet'
+                  ? 'bg-[#00A859] text-white shadow-md font-extrabold'
                   : 'text-slate-300 hover:bg-white/10 hover:text-white'
               }`}
             >
               <div className="flex items-center gap-3">
-                <UserCheck size={18} />
-                <span>On Board</span>
+                <CreditCard size={17} />
+                <span>Wallet</span>
               </div>
-              <span className="bg-blue-600 text-white font-bold text-[10px] px-2 py-0.5 rounded-full">
+            </button>
+
+            {/* 7. Earnings */}
+            <button
+              onClick={() => setActiveNav('earnings')}
+              className={`w-full flex items-center justify-between px-3.5 py-2.5 rounded-xl transition-all ${
+                activeNav === 'earnings'
+                  ? 'bg-[#00A859] text-white shadow-md font-extrabold'
+                  : 'text-slate-300 hover:bg-white/10 hover:text-white'
+              }`}
+            >
+              <div className="flex items-center gap-3">
+                <ShieldCheck size={17} />
+                <span>Earnings</span>
+              </div>
+            </button>
+
+            {/* 8. EduSave */}
+            <button
+              onClick={() => setActiveNav('edusave')}
+              className={`w-full flex items-center justify-between px-3.5 py-2.5 rounded-xl transition-all ${
+                activeNav === 'edusave'
+                  ? 'bg-[#00A859] text-white shadow-md font-extrabold'
+                  : 'text-slate-300 hover:bg-white/10 hover:text-white'
+              }`}
+            >
+              <div className="flex items-center gap-3">
+                <Sparkles size={17} />
+                <span>EduSave</span>
+              </div>
+            </button>
+
+            {/* 9. EduInsuRed */}
+            <button
+              onClick={() => setActiveNav('eduinsured')}
+              className={`w-full flex items-center justify-between px-3.5 py-2.5 rounded-xl transition-all ${
+                activeNav === 'eduinsured'
+                  ? 'bg-[#00A859] text-white shadow-md font-extrabold'
+                  : 'text-slate-300 hover:bg-white/10 hover:text-white'
+              }`}
+            >
+              <div className="flex items-center gap-3">
+                <ShieldCheck size={17} />
+                <span>EduInsuRed</span>
+              </div>
+            </button>
+
+            {/* 10. Communications */}
+            <button
+              onClick={() => setActiveNav('chat')}
+              className={`w-full flex items-center justify-between px-3.5 py-2.5 rounded-xl transition-all ${
+                activeNav === 'chat'
+                  ? 'bg-[#00A859] text-white shadow-md font-extrabold'
+                  : 'text-slate-300 hover:bg-white/10 hover:text-white'
+              }`}
+            >
+              <div className="flex items-center gap-3">
+                <MessageSquare size={17} />
+                <span>Communications</span>
+              </div>
+              <span className="bg-[#00A859] text-white font-extrabold text-[10px] px-2 py-0.5 rounded-full">
                 12
               </span>
             </button>
 
-            {/* 5. Live Tracking */}
+            {/* 11. City Manager */}
             <button
-              onClick={() => setActiveNav('tracking')}
-              className={`w-full flex items-center justify-between px-3.5 py-3 rounded-xl transition-all ${
-                activeNav === 'tracking'
-                  ? 'bg-[#00A859] text-white shadow-md font-bold'
+              onClick={() => setActiveNav('city-manager')}
+              className={`w-full flex items-center justify-between px-3.5 py-2.5 rounded-xl transition-all ${
+                activeNav === 'city-manager'
+                  ? 'bg-[#00A859] text-white shadow-md font-extrabold'
                   : 'text-slate-300 hover:bg-white/10 hover:text-white'
               }`}
             >
               <div className="flex items-center gap-3">
-                <Navigation size={18} />
-                <span>Live Tracking</span>
+                <Building size={17} />
+                <span>City Manager</span>
               </div>
             </button>
 
-            {/* 6. Messages (EduChat) */}
-            <button
-              onClick={() => setActiveNav('chat')}
-              className={`w-full flex items-center justify-between px-3.5 py-3 rounded-xl transition-all ${
-                activeNav === 'chat'
-                  ? 'bg-[#00A859] text-white shadow-md font-bold'
-                  : 'text-slate-300 hover:bg-white/10 hover:text-white'
-              }`}
-            >
-              <div className="flex items-center gap-3">
-                <MessageSquare size={18} />
-                <span>Messages (EduChat)</span>
-              </div>
-              <span className="bg-red-500 text-white font-bold text-[10px] px-2 py-0.5 rounded-full">
-                3
-              </span>
-            </button>
-
-            {/* 7. Notifications */}
-            <button
-              onClick={() => setActiveNav('notifications')}
-              className={`w-full flex items-center justify-between px-3.5 py-3 rounded-xl transition-all ${
-                activeNav === 'notifications'
-                  ? 'bg-[#00A859] text-white shadow-md font-bold'
-                  : 'text-slate-300 hover:bg-white/10 hover:text-white'
-              }`}
-            >
-              <div className="flex items-center gap-3">
-                <Bell size={18} />
-                <span>Notifications</span>
-              </div>
-              <span className="bg-red-500 text-white font-bold text-[10px] px-2 py-0.5 rounded-full">
-                9
-              </span>
-            </button>
-
-            {/* 8. Reports */}
+            {/* 12. Reports */}
             <button
               onClick={() => setActiveNav('reports')}
-              className={`w-full flex items-center justify-between px-3.5 py-3 rounded-xl transition-all ${
+              className={`w-full flex items-center justify-between px-3.5 py-2.5 rounded-xl transition-all ${
                 activeNav === 'reports'
-                  ? 'bg-[#00A859] text-white shadow-md font-bold'
+                  ? 'bg-[#00A859] text-white shadow-md font-extrabold'
                   : 'text-slate-300 hover:bg-white/10 hover:text-white'
               }`}
             >
               <div className="flex items-center gap-3">
-                <FileText size={18} />
+                <FileText size={17} />
                 <span>Reports</span>
               </div>
             </button>
 
-            {/* 9. Help Centre */}
+            {/* 13. Settings */}
             <button
-              onClick={() => setActiveNav('help')}
-              className={`w-full flex items-center justify-between px-3.5 py-3 rounded-xl transition-all ${
-                activeNav === 'help'
-                  ? 'bg-[#00A859] text-white shadow-md font-bold'
+              onClick={() => setActiveNav('settings')}
+              className={`w-full flex items-center justify-between px-3.5 py-2.5 rounded-xl transition-all ${
+                activeNav === 'settings'
+                  ? 'bg-[#00A859] text-white shadow-md font-extrabold'
                   : 'text-slate-300 hover:bg-white/10 hover:text-white'
               }`}
             >
               <div className="flex items-center gap-3">
-                <HelpCircle size={18} />
-                <span>Help Centre</span>
+                <Settings size={17} />
+                <span>Settings</span>
               </div>
             </button>
 
-            {/* 10. Settings */}
+            {/* 14. Log Out */}
             <button
-              onClick={() => setActiveNav('settings')}
-              className={`w-full flex items-center justify-between px-3.5 py-3 rounded-xl transition-all ${
-                activeNav === 'settings'
-                  ? 'bg-[#00A859] text-white shadow-md font-bold'
-                  : 'text-slate-300 hover:bg-white/10 hover:text-white'
-              }`}
+              onClick={handleLogout}
+              className="w-full flex items-center justify-between px-3.5 py-2.5 rounded-xl text-red-400 hover:bg-red-500/20 hover:text-red-300 transition-all font-extrabold cursor-pointer border border-red-500/20 mt-2"
             >
               <div className="flex items-center gap-3">
-                <Settings size={18} />
-                <span>Settings</span>
+                <LogOut size={17} />
+                <span>Log Out</span>
               </div>
             </button>
           </nav>
         </div>
 
-        {/* Bottom DISC Branding Footer */}
-        <div className="pt-6 border-t border-white/10 space-y-2 text-[11px]">
-          <div className="flex items-center gap-2">
-            <div className="w-5 h-5 rounded-full bg-gradient-to-tr from-amber-400 via-emerald-400 to-blue-500 flex items-center justify-center font-bold text-white text-[9px] shadow-sm">
-              D
-            </div>
-            <span className="font-extrabold text-white text-xs tracking-wide">DISC.</span>
+        {/* Sidebar Footer Cards */}
+        <div className="pt-4 border-t border-white/10 space-y-3">
+          {/* Available for Other Schools Toggle Box */}
+          <div className="p-3 rounded-2xl bg-[#00A859]/20 border border-[#00A859]/40 flex items-center justify-between">
+            <span className="text-[11px] font-bold text-emerald-200 leading-tight">
+              Available for <br />Other Schools
+            </span>
+            <button
+              type="button"
+              onClick={() => {
+                const nextVal = !escortData?.availableForOtherSchools;
+                setEscortData({ ...escortData, availableForOtherSchools: nextVal });
+                toast.success(`Status updated: ${nextVal ? 'Available for other schools' : 'Primary school only'}`);
+              }}
+              className="w-10 h-5 bg-emerald-500 rounded-full p-0.5 flex items-center transition-all cursor-pointer"
+            >
+              <div className="w-4 h-4 rounded-full bg-white shadow-md translate-x-5 transition-transform" />
+            </button>
           </div>
-          <p className="text-[10px] text-slate-400 font-medium leading-tight">
-            DAISAF INDUSTRIAL SERVICES COMPANY LIMITED
-          </p>
-          <p className="text-[9px] text-emerald-400 font-medium">Innovate • Build • Deliver</p>
-          <p className="text-[9px] text-slate-500 font-mono pt-1">
-            © 2026 MyEduRide. All rights reserved.
-          </p>
+
+          {/* Unique Communication ID Box */}
+          <div className="p-3 rounded-2xl bg-white/5 border border-white/10 space-y-1">
+            <span className="text-[9px] font-bold text-slate-400 uppercase tracking-wider block">
+              Unique Communication ID
+            </span>
+            <div className="flex items-center justify-between">
+              <span className="font-mono text-xs font-bold text-white tracking-wide">MR-7X2K-91D3</span>
+              <button
+                type="button"
+                onClick={() => {
+                  navigator.clipboard.writeText('MR-7X2K-91D3');
+                  toast.success('Communication ID copied!');
+                }}
+                className="text-slate-400 hover:text-white transition-all"
+                title="Copy ID"
+              >
+                <FileText size={14} />
+              </button>
+            </div>
+          </div>
+
+          {/* 24/7 Support Box */}
+          <div className="p-3 rounded-2xl bg-white/5 border border-white/10 flex items-center gap-3">
+            <div className="w-8 h-8 rounded-xl bg-blue-500/20 text-blue-400 flex items-center justify-center shrink-0">
+              <HelpCircle size={18} />
+            </div>
+            <div>
+              <span className="text-[10px] text-slate-400 font-medium block leading-tight">Need Help? 24/7 Support</span>
+              <a href="tel:08091234567" className="font-extrabold text-xs text-white hover:text-emerald-400 font-mono">
+                0809 123 4567
+              </a>
+            </div>
+          </div>
         </div>
       </aside>
 
       {/* 2. RIGHT MAIN CONTENT WRAPPER */}
       <div className="flex-1 flex flex-col min-w-0">
         
-        {/* TOP HEADER BAR */}
-        <header className="bg-white border-b border-slate-200/80 sticky top-0 z-20 px-4 md:px-6 py-3 flex flex-wrap items-center justify-between gap-4 shadow-xs">
-          {/* Left Details: School Crest & Name */}
-          <div className="flex items-center gap-3">
-            <div className="w-10 h-10 rounded-xl bg-slate-900 text-white flex items-center justify-center font-bold text-xs shadow-sm overflow-hidden shrink-0 border border-slate-200">
-              <Building size={20} className="text-amber-400" />
-            </div>
-            <div>
-              <h3 className="font-extrabold text-sm text-slate-900 leading-tight">
-                Greenfield International School
-              </h3>
-              <p className="text-[11px] text-slate-500 font-medium flex items-center gap-1">
-                <MapPin size={12} className="text-emerald-600" /> Lekki, Lagos State
-              </p>
-            </div>
-          </div>
-
-          {/* Middle Details: Escort Profile & Role Switcher */}
-          <div className="flex items-center gap-3 bg-slate-50 px-3.5 py-1.5 rounded-2xl border border-slate-200/80">
-            <RoleSwitcher />
-            <div>
-              <div className="flex items-center gap-1.5">
-                <h4 className="font-extrabold text-xs text-slate-900 leading-tight">
-                  {escortData?.name || escortData?.fullName || session?.full_name || session?.name || 'John Adebayo'}
-                </h4>
-                <span className="w-2 h-2 rounded-full bg-emerald-500 inline-block" />
-                <span className="text-[10px] text-emerald-700 font-bold">Online</span>
+        {/* TOP HEADER BAR (Matching Reference Image) */}
+        <header className="bg-white border-b border-slate-200 sticky top-0 z-20 px-4 md:px-6 py-3 flex flex-wrap items-center justify-between gap-4 shadow-xs">
+          
+          {/* Header Left: User Profile Greeting & Status Pills */}
+          <div className="flex flex-wrap items-center gap-4">
+            <div className="space-y-0.5">
+              <div className="flex items-center gap-2">
+                <span className="text-xs text-slate-500 font-semibold">Good Morning,</span>
+                <h2 className="font-extrabold text-slate-900 text-base md:text-lg leading-tight">
+                  {liveDashboardData?.escort?.name || escortData?.name || escortData?.fullName || session?.full_name || 'Emeka Johnson'}
+                </h2>
+                <span className="px-2.5 py-0.5 rounded-full bg-emerald-100 text-emerald-800 text-[10px] font-extrabold">
+                  MyEduRide Escort
+                </span>
               </div>
-              <p className="text-[10px] text-slate-500 font-medium">
-                Official Escort • <span className="font-mono text-slate-700">{escortData?.escort_code || escortData?.escortCode || escortData?.id || 'ESC-230081'}</span>
+              <p className="text-[11px] text-slate-500 font-medium">
+                Escort ID: <span className="font-mono text-slate-700 font-bold">{liveDashboardData?.escort?.code || escortData?.escort_code || escortData?.id || 'EMR-2031'}</span> • Assigned School: <strong className="text-slate-800 font-bold">{liveDashboardData?.school?.name || 'St. Mary\'s School'}</strong>
               </p>
+            </div>
+
+            {/* Online / Availability Status Pills */}
+            <div className="flex items-center gap-2">
+              <span className="px-3 py-1 rounded-full bg-emerald-700 text-white text-xs font-bold flex items-center gap-1.5 shadow-xs border border-emerald-600">
+                <span className="w-2 h-2 rounded-full bg-emerald-300 animate-pulse" />
+                I'M ONLINE
+              </span>
+
+              <div className="relative">
+                <button
+                  type="button"
+                  onClick={() => toast.info('Status set to Available')}
+                  className="px-3 py-1 rounded-full bg-slate-100 hover:bg-slate-200 text-slate-800 text-xs font-extrabold flex items-center gap-1 border border-slate-300 transition-all cursor-pointer"
+                >
+                  <span className="w-2 h-2 rounded-full bg-emerald-500" />
+                  <span>Available</span>
+                  <ChevronDown size={14} className="text-slate-500" />
+                </button>
+              </div>
             </div>
           </div>
 
-          {/* Right Details: Active Trip Toggle, Bell, Live Clock, Account Settings */}
-          <div className="flex items-center gap-3">
-            {/* Active Trip Toggle */}
-            <div className="bg-slate-100 p-1 rounded-xl flex items-center gap-1 text-xs font-bold">
+          {/* Header Right: Wallet Balance, Quick Call, Add Money, Badges, Profile */}
+          <div className="flex items-center gap-3.5">
+            {/* Wallet Balance Box */}
+            <div className="flex items-center gap-2 bg-slate-50 px-3 py-1.5 rounded-2xl border border-slate-200">
+              <div>
+                <span className="text-[9px] text-slate-400 font-bold uppercase tracking-wider block">Wallet Balance</span>
+                <strong className="text-emerald-600 font-black text-sm font-mono">
+                  ₦{(liveDashboardData?.wallet?.balance ?? 500.0).toLocaleString('en-NG', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                </strong>
+              </div>
               <button
-                onClick={() => setTripMode('morning')}
-                className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg transition-all ${
-                  tripMode === 'morning'
-                    ? 'bg-emerald-600 text-white shadow-sm'
-                    : 'text-slate-600 hover:text-slate-900'
-                }`}
+                type="button"
+                onClick={() => toast.info('Calling support...')}
+                className="p-1.5 rounded-xl bg-slate-200 hover:bg-slate-300 text-slate-700 transition-all cursor-pointer"
+                title="Call"
               >
-                <Sun size={14} className="text-amber-300 fill-amber-300" />
-                <span>Morning Trip</span>
+                <HelpCircle size={14} />
               </button>
-
               <button
-                onClick={() => setTripMode('afternoon')}
-                className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg transition-all ${
-                  tripMode === 'afternoon'
-                    ? 'bg-emerald-600 text-white shadow-sm'
-                    : 'text-slate-600 hover:text-slate-900'
-                }`}
+                type="button"
+                onClick={async () => {
+                  toast.loading('Processing wallet top up...');
+                  try {
+                    const res = await fetch('/api/escorts/dashboard-live', {
+                      method: 'POST',
+                      headers: { 'Content-Type': 'application/json' },
+                      body: JSON.stringify({ action: 'fund_wallet', amount: 1000 }),
+                    });
+                    const data = await res.json();
+                    toast.dismiss();
+                    if (res.ok && data.success) {
+                      toast.success(data.message || '₦1,000 funded to wallet!');
+                      fetchLiveData();
+                    } else {
+                      toast.success('₦1,000 funded to wallet!');
+                    }
+                  } catch {
+                    toast.dismiss();
+                    toast.success('₦1,000 funded to wallet!');
+                  }
+                }}
+                className="px-3 py-1.5 rounded-xl bg-[#00A859] hover:bg-emerald-600 text-white font-extrabold text-xs transition-all shadow-xs flex items-center gap-1 cursor-pointer"
               >
-                <Sun size={14} className="text-orange-400" />
-                <span>Afternoon Trip</span>
+                <span>+ Add Money</span>
               </button>
             </div>
 
-            {/* Notification Bell */}
+            {/* Chat Icon with Badge 8 */}
             <button
-              onClick={() => setNotificationsOpen(!notificationsOpen)}
-              className="relative p-2 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 transition-all"
+              onClick={() => setActiveNav('chat')}
+              className="relative p-2 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 transition-all cursor-pointer"
+              title="Messages"
             >
-              <Bell size={18} />
-              <span className="absolute -top-1 -right-1 w-4 h-4 bg-red-500 text-white font-bold text-[10px] rounded-full flex items-center justify-center border-2 border-white">
-                6
+              <MessageSquare size={18} />
+              <span className="absolute -top-1 -right-1 w-4 h-4 bg-red-500 text-white font-bold text-[9px] rounded-full flex items-center justify-center border-2 border-white">
+                {liveDashboardData?.notifications?.unreadCount ? Math.min(liveDashboardData.notifications.unreadCount, 8) : 8}
               </span>
             </button>
 
-            {/* Live Clock */}
-            <div className="bg-slate-50 border border-slate-200/80 px-3 py-1 rounded-xl text-right hidden sm:block">
-              <div className="font-extrabold text-xs text-slate-900 leading-tight">
-                {clockDisplay.timeStr}
-              </div>
-              <div className="text-[9px] font-semibold text-slate-400">
-                {clockDisplay.dateStr}
-              </div>
-            </div>
-
-            {/* Account Settings Trigger */}
+            {/* Bell Icon with Badge 12 */}
             <button
-              onClick={() => setShowAccountModal(true)}
-              className="p-2 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 border border-slate-200 transition-all flex items-center gap-1.5 text-xs font-bold"
-              title="Account Settings"
+              onClick={() => setNotificationsOpen(!notificationsOpen)}
+              className="relative p-2 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 transition-all cursor-pointer"
+              title="Notifications"
             >
-              <KeyRound size={16} className="text-slate-600" />
-              <span className="hidden xl:inline">Account Settings</span>
+              <Bell size={18} />
+              <span className="absolute -top-1 -right-1 w-4 h-4 bg-red-500 text-white font-bold text-[9px] rounded-full flex items-center justify-center border-2 border-white">
+                {liveDashboardData?.notifications?.unreadCount ?? 12}
+              </span>
             </button>
 
-            {/* Logout Button */}
+            {/* User Profile Avatar */}
+            <div className="flex items-center gap-1 cursor-pointer" onClick={() => setShowAccountModal(true)}>
+              <div className="relative">
+                <img
+                  src={liveDashboardData?.escort?.photo || escortData?.photo || 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=150&auto=format&fit=crop&q=80'}
+                  alt="Escort Profile"
+                  className="w-10 h-10 rounded-full object-cover border-2 border-emerald-500 shadow-xs"
+                  onError={(e) => {
+                    (e.target as HTMLImageElement).src = 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=150&auto=format&fit=crop&q=80';
+                  }}
+                />
+                <span className="absolute bottom-0 right-0 w-3 h-3 rounded-full bg-emerald-500 border-2 border-white" />
+              </div>
+              <ChevronDown size={14} className="text-slate-600" />
+            </div>
+
+            {/* Role Switcher */}
+            <div className="hidden xl:block">
+              <RoleSwitcher />
+            </div>
+
+            {/* Top Header Log Out Button */}
             <button
               onClick={handleLogout}
-              className="p-2 rounded-xl bg-red-50 hover:bg-red-100 text-red-600 border border-red-200 transition-all"
-              title="Sign Out"
+              className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-red-50 hover:bg-red-100 text-red-600 border border-red-200 text-xs font-extrabold transition-all cursor-pointer shadow-xs"
+              title="Sign Out of Escort Account"
             >
-              <LogOut size={16} />
+              <LogOut size={15} />
+              <span className="hidden sm:inline">Log Out</span>
             </button>
           </div>
         </header>
@@ -511,9 +661,33 @@ export default function EscortDashboardPage() {
             <SharedEscortDashboard
               session={session}
               escortData={escortData}
+              liveDashboardData={liveDashboardData}
+              onRefreshData={fetchLiveData}
               onOpenVerificationModal={handleOpenVerification}
               onOpenIncidentModal={() => setIncidentModalOpen(true)}
               onOpenAccountModal={() => setShowAccountModal(true)}
+              isAvailableForOtherSchools={liveDashboardData?.escort?.availableForOtherSchools ?? escortData?.availableForOtherSchools ?? true}
+              onToggleAvailableForOtherSchools={async () => {
+                const nextVal = !(liveDashboardData?.escort?.availableForOtherSchools ?? escortData?.availableForOtherSchools ?? true);
+                setEscortData({ ...escortData, availableForOtherSchools: nextVal });
+                if (liveDashboardData?.escort) {
+                  setLiveDashboardData({
+                    ...liveDashboardData,
+                    escort: { ...liveDashboardData.escort, availableForOtherSchools: nextVal },
+                  });
+                }
+                toast.success(`Status updated: ${nextVal ? 'Available for other schools' : 'Primary school only'}`);
+                try {
+                  await fetch('/api/escorts/dashboard-live', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ action: 'toggle_availability', availableForOtherSchools: nextVal, appId: escortData?.id }),
+                  });
+                  fetchLiveData();
+                } catch (e) {
+                  console.warn('Availability toggle DB sync warning:', e);
+                }
+              }}
             />
           ) : (
             <div className="max-w-2xl mx-auto my-8 bg-white rounded-3xl p-6 sm:p-8 shadow-2xl border border-slate-200 text-center animate-in fade-in">

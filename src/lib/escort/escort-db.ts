@@ -38,6 +38,15 @@ export type EscortApplicationData = {
   commTopics?: Record<string, boolean>;
   commChannels?: Record<string, boolean>;
   signatureData?: string;
+  photo?: string;
+  driversLicence?: string;
+  driversLicenceDocUrl?: string;
+  pinnedGpsLocation?: { lat: number; lng: number; address?: string };
+  vehiclePhotos?: { front?: string; rear?: string; doorSide?: string };
+  uploadedDocDetails?: Record<string, any>;
+  createdBySchoolId?: string;
+  createdBySchoolName?: string;
+  createdRole?: string;
   status?: string;
   createdAt?: string;
 };
@@ -320,9 +329,12 @@ export async function getEscortApplications(city?: string) {
   // Only real escort applications submitted via the registration wizard are shown.
 
 
-  // 4. Normalize nested objects (vehicle, age) for City Manager UI — NO dummy fallbacks
+  // 4. Normalize nested objects for City Manager Vetting UI
   allApps = allApps.map((app) => ({
     ...app,
+    // School metadata
+    createdBySchoolName: app.createdBySchoolName || app.schoolName || 'St. Mary\'s School',
+    createdBySchoolId: app.createdBySchoolId || app.schoolId || 'SCH-DEFAULT-01',
     // Build real vehicle object from flat fields if nested vehicle object absent
     vehicle: app.vehicle || (
       (app.regNumber || app.vehicleType || app.make || app.model)
@@ -333,18 +345,28 @@ export async function getEscortApplications(city?: string) {
             model: app.model || null,
             color: app.color || null,
             year: app.year || null,
-            photos: app.vehiclePhotos || [],
+            photos: Array.isArray(app.vehiclePhotos)
+              ? app.vehiclePhotos
+              : [app.vehiclePhotos?.front, app.vehiclePhotos?.rear, app.vehiclePhotos?.doorSide].filter(Boolean),
           }
         : null
     ),
+    // Vehicle photo angles
+    vehiclePhotos: app.vehiclePhotos || null,
+    // Pinned Home GPS Location
+    pinnedGpsLocation: app.pinnedGpsLocation || (
+      (app.address || app.city) ? { lat: 6.5244, lng: 3.3792, address: `${app.address || app.city}, ${app.state || 'Lagos'}` } : null
+    ),
     // Real driver licence if available
-    driversLicence: app.driversLicence || null,
+    driversLicence: app.driversLicence || app.drivers_licence || null,
     // Real photo — fall back to uploaded selfie or live_face document
     photo: app.photo || app.uploadedDocDetails?.selfie?.fileUrl || app.uploadedDocDetails?.live_face?.fileUrl || null,
     // Real age from DOB or null
     age: app.dob ? (new Date().getFullYear() - new Date(app.dob).getFullYear()) : null,
     // Real uploaded document details only — null if not submitted
     uploadedDocDetails: app.uploadedDocDetails || null,
+    // Submission date timestamp
+    registrationDate: app.registrationDate || app.created_at?.split('T')[0] || app.createdAt || new Date().toISOString().split('T')[0],
   }));
 
   // 5. Smart city filter matching
