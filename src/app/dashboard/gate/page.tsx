@@ -45,6 +45,7 @@ import NotificationsInbox from '@/components/notifications/NotificationsInbox';
 import StudentPickupVerify from '@/components/pickup/StudentPickupVerify';
 import StudentIdScanPanel from '@/components/gate/StudentIdScanPanel';
 import StaffIdScanPanel from '@/components/gate/StaffIdScanPanel';
+import VisitorIdScanPanel from '@/components/gate/VisitorIdScanPanel';
 import GateActivitiesReport from '@/components/gate/GateActivitiesReport';
 import AttendanceSignLog from '@/components/attendance/AttendanceSignLog';
 import ReadyForPickupList from '@/components/gate/ReadyForPickupList';
@@ -382,19 +383,15 @@ export default function GateOfficerDashboard() {
             {/* Nav List */}
             <nav className="space-y-1 text-xs font-medium pt-1">
               {[
-                { id: 'dashboard', label: 'Dashboard', icon: LayoutDashboardIcon, action: () => setActiveNav('dashboard') },
-                { id: 'scan', label: 'Scan & Check-In', icon: QrCode, action: () => { setScanType('student'); setShowScanModal(true); } },
-                { id: 'ready-queue', label: 'Ready for Pickup', icon: Car, action: () => { setActiveNav('dashboard'); setTimeout(() => document.getElementById('ready-pickup-queue')?.scrollIntoView({ behavior: 'smooth' }), 50); } },
-                { id: 'search-student', label: 'Search Student', icon: Search, action: () => setShowSearchModal(true) },
-                { id: 'visitors', label: 'Visitors', icon: Users, action: () => setShowVisitorModal(true) },
-                { id: 'staff-attendance', label: 'Staff Attendance', icon: UserCheck, action: () => { setScanType('staff'); setShowScanModal(true); } },
+                { id: 'dashboard', label: 'Gate Dashboard', icon: LayoutDashboardIcon, action: () => setActiveNav('dashboard') },
+                { id: 'student-scan', label: 'Student Scan', icon: QrCode, action: () => setActiveNav('student-scan') },
+                { id: 'staff-scan', label: 'Staff Scan', icon: UserCheck, action: () => setActiveNav('staff-scan') },
+                { id: 'visitor-scan', label: 'Visitor Scan', icon: Users, action: () => setActiveNav('visitor-scan') },
+                { id: 'ready-queue', label: 'Ready for Pickup', icon: Car, action: () => setActiveNav('ready-queue') },
+                { id: 'my-reports', label: 'Gate Activity Log', icon: BarChart3, action: () => setActiveNav('my-reports') },
+                { id: 'audit-log', label: 'Attendance Audit', icon: FileText, action: () => setActiveNav('audit-log') },
                 { id: 'incident-reports', label: 'Incident Reports', icon: AlertCircle, action: () => setShowIncidentModal(true) },
-                { id: 'escalations', label: 'Escalations', icon: Shield },
-                { id: 'my-reports', label: 'My Reports', icon: BarChart3 },
-                { id: 'audit-log', label: 'Audit Log', icon: FileText },
                 { id: 'educhat', label: 'EduChat', icon: MessageSquare, badge: '7', action: () => { setActiveNav('dashboard'); setTimeout(() => document.getElementById('educhat-widget')?.scrollIntoView({ behavior: 'smooth' }), 50); } },
-                { id: 'announcements', label: 'Announcements', icon: Megaphone },
-                { id: 'advertisements', label: 'Advertisements', icon: ExternalLink },
                 { id: 'settings', label: 'Settings', icon: Settings },
               ].map((item) => {
                 const Icon = item.icon;
@@ -455,7 +452,83 @@ export default function GateOfficerDashboard() {
 
         {/* MAIN DASHBOARD CONTENT AREA */}
         <main className="flex-1 overflow-y-auto p-4 sm:p-6 space-y-5 max-w-[1700px]">
-          {activeNav === 'my-reports' ? (
+          {activeNav === 'student-scan' ? (
+            <div className="bg-white rounded-3xl p-6 border border-slate-200 shadow-xs space-y-4">
+              <div className="flex items-center justify-between border-b border-slate-100 pb-3">
+                <div className="flex items-center gap-3">
+                  <div className="w-10 h-10 rounded-2xl bg-emerald-100 text-emerald-800 flex items-center justify-center font-black">
+                    <QrCode size={20} />
+                  </div>
+                  <div>
+                    <h2 className="text-base font-extrabold text-slate-900">Student Scan Station</h2>
+                    <p className="text-xs text-slate-500">Scan student ID card for arrival check-in or gate departure release.</p>
+                  </div>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setActiveNav('dashboard')}
+                  className="px-3 py-1.5 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold text-xs"
+                >
+                  ← Back to Dashboard
+                </button>
+              </div>
+              <StudentIdScanPanel
+                schoolId={schoolId}
+                mode="arrival"
+                onModeChange={() => {}}
+                onSuccess={() => loadGateData()}
+              />
+            </div>
+          ) : activeNav === 'staff-scan' ? (
+            <div className="bg-white rounded-3xl p-6 border border-slate-200 shadow-xs space-y-4">
+              <div className="flex items-center justify-between border-b border-slate-100 pb-3">
+                <div className="flex items-center gap-3">
+                  <div className="w-10 h-10 rounded-2xl bg-blue-100 text-blue-800 flex items-center justify-center font-black">
+                    <UserCheck size={20} />
+                  </div>
+                  <div>
+                    <h2 className="text-base font-extrabold text-slate-900">Staff Scan Station</h2>
+                    <p className="text-xs text-slate-500">Scan teacher and administrative staff badges for gate attendance.</p>
+                  </div>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setActiveNav('dashboard')}
+                  className="px-3 py-1.5 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold text-xs"
+                >
+                  ← Back to Dashboard
+                </button>
+              </div>
+              <StaffIdScanPanel
+                schoolId={schoolId}
+                mode="arrival"
+                onModeChange={() => {}}
+                onSuccess={() => loadGateData()}
+              />
+            </div>
+          ) : activeNav === 'visitor-scan' || activeNav === 'visitors' ? (
+            <div className="bg-white rounded-3xl p-6 border border-slate-200 shadow-xs space-y-4">
+              <div className="flex items-center justify-between border-b border-slate-100 pb-3">
+                <div className="flex items-center gap-3">
+                  <div className="w-10 h-10 rounded-2xl bg-purple-100 text-purple-800 flex items-center justify-center font-black">
+                    <Users size={20} />
+                  </div>
+                  <div>
+                    <h2 className="text-base font-extrabold text-slate-900">Visitor Scan &amp; Digital Management</h2>
+                    <p className="text-xs text-slate-500">Scan smartphone digital visitor passes and register visitor entries.</p>
+                  </div>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setActiveNav('dashboard')}
+                  className="px-3 py-1.5 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold text-xs"
+                >
+                  ← Back to Dashboard
+                </button>
+              </div>
+              <VisitorIdScanPanel schoolId={schoolId} />
+            </div>
+          ) : activeNav === 'my-reports' ? (
             <div className="bg-white rounded-2xl p-6 border border-slate-200 shadow-xs space-y-4">
               <div className="flex items-center justify-between border-b border-slate-100 pb-3">
                 <div>
@@ -515,6 +588,52 @@ export default function GateOfficerDashboard() {
             />
           ) : (
             <>
+              {/* PRIMARY SCANNING WORKSTATION BAR */}
+              <div className="bg-gradient-to-r from-[#07132B] via-[#0B1E36] to-[#0A1633] rounded-3xl p-5 text-white shadow-xl flex flex-col md:flex-row items-start md:items-center justify-between gap-4 border border-slate-800">
+                <div className="space-y-1">
+                  <div className="flex items-center gap-2">
+                    <span className="px-3 py-0.5 rounded-full bg-emerald-500/20 text-emerald-300 font-black text-[10px] border border-emerald-400/30 uppercase tracking-wider flex items-center gap-1">
+                      <ShieldCheck size={12} /> Gate Workstation &amp; Admin Terminal
+                    </span>
+                  </div>
+                  <h2 className="text-xl md:text-2xl font-black text-white tracking-tight">
+                    Fast Gate Scanning &amp; Access Control
+                  </h2>
+                  <p className="text-slate-300 text-xs font-medium">
+                    Select a dedicated scan station to process arrivals, staff attendance, and digital visitor passes.
+                  </p>
+                </div>
+
+                <div className="flex items-center flex-wrap gap-2.5 w-full md:w-auto">
+                  <button
+                    type="button"
+                    onClick={() => setActiveNav('student-scan')}
+                    className="flex-1 md:flex-initial px-4 py-2.5 rounded-2xl bg-emerald-600 hover:bg-emerald-700 text-white font-black text-xs flex items-center justify-center gap-2 shadow-lg shadow-emerald-600/30 transition-all cursor-pointer"
+                  >
+                    <QrCode size={16} />
+                    <span>Student Scan</span>
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => setActiveNav('staff-scan')}
+                    className="flex-1 md:flex-initial px-4 py-2.5 rounded-2xl bg-blue-600 hover:bg-blue-700 text-white font-black text-xs flex items-center justify-center gap-2 shadow-lg shadow-blue-600/30 transition-all cursor-pointer"
+                  >
+                    <UserCheck size={16} />
+                    <span>Staff Scan</span>
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => setActiveNav('visitor-scan')}
+                    className="flex-1 md:flex-initial px-4 py-2.5 rounded-2xl bg-purple-600 hover:bg-purple-700 text-white font-black text-xs flex items-center justify-center gap-2 shadow-lg shadow-purple-600/30 transition-all cursor-pointer"
+                  >
+                    <Users size={16} />
+                    <span>Visitor Scan</span>
+                  </button>
+                </div>
+              </div>
+
               {/* ROW 1: 7 KPI STAT CARDS */}
           <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-7 gap-3">
             {/* 1. Students Checked In */}

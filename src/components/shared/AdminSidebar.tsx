@@ -99,12 +99,11 @@ export function AdminSidebar({
     {
       title: 'TRANSPORT & SAFETY',
       items: [
-        { label: 'Escort Dashboard', href: '/dashboard/escort', icon: <UserCheck size={18} /> },
-        { label: 'MyEduRide Escort', href: '/dashboard/escort', icon: <Shield size={18} /> },
+        { label: 'School Escort', href: '/dashboard/school-admin/escort/school-escort', icon: <UserCheck size={18} /> },
+        { label: 'MyEduRide Escort', href: '/dashboard/school-admin/escort/myeduride-escort', icon: <Shield size={18} /> },
         { label: 'Live Vehicle Movement', href: '/dashboard/school-admin/live-tracking', icon: <Navigation size={18} /> },
         { label: 'Pickup List', href: '/dashboard/school-admin/pickup-persons', icon: <Car size={18} /> },
         { label: 'Vehicles', href: '/dashboard/school-admin/vehicles', icon: <Car size={18} /> },
-        { label: 'Drivers', href: '/dashboard/school-admin/drivers', icon: <UserCheck size={18} /> },
         { label: 'Routes', href: '/dashboard/school-admin/routes', icon: <MapPin size={18} /> },
         { label: 'Gate Manager', href: '/dashboard/gate', icon: <DoorOpen size={18} /> },
         {
@@ -162,33 +161,8 @@ export function AdminSidebar({
 
   const [devNotice, setDevNotice] = useState<string | null>(null);
 
-  const WIRED_PATHS = new Set([
-    '/dashboard/school-admin',
-    '/dashboard/school-admin/students',
-    '/dashboard/school-admin/students/new',
-    '/dashboard/school-admin/classes',
-    '/dashboard/school-admin/staff',
-    '/dashboard/school-admin/staff/new',
-    '/dashboard/school-admin/parents',
-    '/dashboard/school-admin/pickup-persons',
-    '/dashboard/gate',
-    '/dashboard/school-admin/reports',
-    '/dashboard/school-admin/reports/gate-activities',
-    '/dashboard/school-admin/audit',
-    '/dashboard/school-admin/settings',
-    '/dashboard/school-admin/settings/gate-setup',
-    '/dashboard/school-admin/users',
-    '/dashboard/account',
-  ]);
-
-  const handleLinkClick = (e: React.MouseEvent, href: string, label: string) => {
-    if (!WIRED_PATHS.has(href)) {
-      e.preventDefault();
-      setDevNotice(`Oop! page undergoing development..... (${label})`);
-      setTimeout(() => setDevNotice(null), 4000);
-    } else {
-      onMobileClose?.();
-    }
+  const handleLinkClick = (_e: React.MouseEvent, _href: string, _label: string) => {
+    onMobileClose?.();
   };
 
   const isLinkActive = (href: string) => {

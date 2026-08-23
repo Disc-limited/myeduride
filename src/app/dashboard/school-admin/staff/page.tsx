@@ -143,9 +143,9 @@ export default function StaffManagementPage() {
             <span className="text-xs px-2.5 py-1 rounded-full bg-slate-100 text-slate-700 capitalize flex items-center gap-1 shrink-0 max-w-[180px] truncate">
               {getRoleIcon(s.roles?.[0] || s.role)} {s.job_title || s.role?.replace('_', ' ')}
             </span>
-            {!s.staff?.photo_url && s.user_id && (
-              <label className="text-[10px] text-primary-700 font-semibold cursor-pointer shrink-0">
-                Add photo
+            {s.user_id && (
+              <label className="text-[11px] text-primary-700 hover:text-primary-800 font-bold cursor-pointer shrink-0 px-2.5 py-1 rounded-lg bg-primary-50 hover:bg-primary-100 transition-colors">
+                {s.staff?.photo_url ? 'Change photo' : '+ Add photo'}
                 <input
                   type="file"
                   accept="image/*"
@@ -157,8 +157,8 @@ export default function StaffManagementPage() {
                     reader.onload = async () => {
                       try {
                         await handleAddPhoto(s.user_id, reader.result);
-                      } catch (err) {
-                        toast.error(err?.message || 'Photo failed');
+                      } catch (err: any) {
+                        toast.error(err?.message || 'Photo upload failed');
                       }
                     };
                     reader.readAsDataURL(file);

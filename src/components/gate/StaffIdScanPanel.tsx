@@ -16,7 +16,12 @@ function splitName(fullName) {
 /**
  * Scan-only staff sign-in/out (gate manager or school admin with staff ID card).
  */
-export default function StaffIdScanPanel({ schoolId, mode = 'arrival', onModeChange, onSuccess }) {
+export default function StaffIdScanPanel({
+  schoolId,
+  mode = 'arrival',
+  onModeChange = () => {},
+  onSuccess = () => {},
+}) {
   const [manualCode, setManualCode] = useState('');
   const [scanned, setScanned] = useState(null);
   const [saving, setSaving] = useState(false);

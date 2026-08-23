@@ -58,6 +58,7 @@ import {
 } from 'lucide-react';
 import { toast } from 'sonner';
 import StudentAvatar from '@/components/shared/StudentAvatar';
+import { CityManagerOperationsPanel } from '@/components/city-manager/CityManagerOperationsPanel';
 
 export interface CityManagerCommandControlProps {
   selectedCity: string;
@@ -964,6 +965,7 @@ export function CityManagerCommandControl({
           { id: 'escorts', label: 'Monitor Escorts (MyEduRide & School)', icon: UserCheck, count: escorts.length },
           { id: 'gate-monitor', label: 'Gate Officers & Gate Stream', icon: DoorOpen, count: gateOfficers.length },
           { id: 'trips-management', label: 'Active Trips & Operational Timing', icon: Navigation, count: 164 },
+          { id: 'assignments', label: 'Bookings & Escort Assignments', icon: ClipboardList },
           { id: 'safety-incidents', label: 'Safety Incidents & Panic Triage', icon: AlertTriangle, count: safetyIncidents.length, alert: true },
           { id: 'escalations', label: 'Parent & School Escalations', icon: AlertCircle, count: escalations.length },
           { id: 'communication', label: 'Approved Dispatch & Broadcasts', icon: MessageSquare },
@@ -1750,6 +1752,8 @@ export function CityManagerCommandControl({
           </div>
         </div>
       )}
+      {currentTab === 'assignments' && <CityManagerOperationsPanel />}
+
 
       {/* ========================================================================= */}
       {/* VIEW 5: SAFETY INCIDENTS & EMERGENCY ESCALATIONS */}

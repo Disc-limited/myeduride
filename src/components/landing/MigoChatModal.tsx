@@ -63,7 +63,7 @@ export default function MigoChatModal({ isOpen, onClose }: MigoChatModalProps) {
       } else if (lower.includes('school') || lower.includes('start') || lower.includes('register')) {
         botAnswer = "Schools can onboard within 24 hours! Simply click 'Get Started' or 'Book a Demo' above. Our team sets up student rosters, driver passes, and gate terminals seamlessly.";
       } else if (lower.includes('cashless') || lower.includes('payment') || lower.includes('wallet')) {
-        botAnswer = "MyEduRide includes a secure in-app wallet where parents can pay transport fees, manage ride subscriptions, and view itemized payment histories cleanly.";
+        botAnswer = "MyEduRide includes a secure in-app wallet where parents can pay transport subscriptions, manage ride bookings, and view itemized mobility payment histories cleanly.";
       }
 
       const migoMsg: Message = {

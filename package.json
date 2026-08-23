@@ -7,6 +7,11 @@
     "build": "next build",
     "start": "next start",
     "lint": "next lint",
+    "test": "tsx tests/run-all-tests.ts",
+    "test:unit": "tsx tests/unit/pickup-invariants.test.ts",
+    "test:integration": "tsx tests/integration/pickup-control-api.test.ts",
+    "test:e2e": "tsx tests/e2e/central-pickup-e2e.test.ts",
+    "test:perf": "tsx tests/performance/api-benchmarks.test.ts",
     "seed:super-admins": "node scripts/seed-super-admins.js",
     "seed:super-admins:inspect": "node scripts/seed-super-admins.js --inspect-only"
   },
@@ -42,6 +47,7 @@
     "eslint": "^8.57.0",
     "eslint-config-next": "^14.2.0",
     "postcss": "^8.4.0",
+    "tsx": "^4.23.12",
     "typescript": "^5.4.0"
   }
 }

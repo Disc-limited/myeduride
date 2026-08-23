@@ -3,7 +3,7 @@ import { getAdminClient } from '@/lib/supabase/admin';
 import { getSessionFromRequest, sessionHasRole } from '@/lib/session';
 import { uploadBase64Photo } from '@/lib/storage/upload-photo';
 
-/** POST — add or replace staff ID card photo without changing other profile fields */
+/** POST — add or replace staff ID card photo and synchronize across all profile records */
 export async function POST(request: NextRequest) {
   try {
     const session = getSessionFromRequest(request);
@@ -36,11 +36,9 @@ export async function POST(request: NextRequest) {
       .eq('school_id', school_id)
       .maybeSingle();
 
-    if (!profile?.staff_id_number) {
-      return NextResponse.json({ error: 'Staff profile not found — add staff first' }, { status: 404 });
-    }
+    const staffId = profile?.staff_id_number || `STF-${Date.now().toString().slice(-4)}`;
+    const storagePath = `staff/${school_id}/${staffId}.jpg`;
 
-    const storagePath = `staff/${school_id}/${profile.staff_id_number}.jpg`;
     const { path, error: uploadErr } = await uploadBase64Photo(supabase, storagePath, photo_base64);
     if (uploadErr || !path) {
       return NextResponse.json(
@@ -49,16 +47,35 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    const { error: updateErr } = await supabase
-      .from('teacher_profiles')
-      .update({ photo_url: path })
-      .eq('id', profile.id);
-
-    if (updateErr) {
-      return NextResponse.json({ error: updateErr.message }, { status: 500 });
+    // 1. Update teacher_profiles
+    if (profile?.id) {
+      await supabase
+        .from('teacher_profiles')
+        .update({ photo_url: path })
+        .eq('id', profile.id);
     }
 
-    return NextResponse.json({ success: true, photo_url: path });
+    // 2. Synchronize user_profiles (so avatar displays in Teacher Dashboard, Chat, etc.)
+    await supabase
+      .from('user_profiles')
+      .update({ avatar_url: path, photo_url: path })
+      .eq('id', user_id);
+
+    // 3. Synchronize users table if exists
+    try {
+      await supabase
+        .from('users')
+        .update({ avatar_url: path })
+        .eq('id', user_id);
+    } catch {
+      // optional
+    }
+
+    return NextResponse.json({
+      success: true,
+      photo_url: path,
+      preview_url: `/api/photo?path=${encodeURIComponent(path)}&t=${Date.now()}`,
+    });
   } catch (err: unknown) {
     const message = err instanceof Error ? err.message : 'Failed';
     return NextResponse.json({ error: message }, { status: 500 });

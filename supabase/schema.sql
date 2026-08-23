@@ -1094,6 +1094,9 @@ CREATE TABLE IF NOT EXISTS escort_applications (
   state TEXT DEFAULT 'Lagos',
   operating_area TEXT,
   status TEXT DEFAULT 'PENDING_CITY_MANAGER_REVIEW',
+  availability_status TEXT NOT NULL DEFAULT 'available' CHECK (availability_status IN ('available', 'on_assignment', 'offline')),
+  emergency_pool_enabled BOOLEAN NOT NULL DEFAULT TRUE,
+  last_available_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
   application_data JSONB DEFAULT '{}',
   notes TEXT,
   created_at TIMESTAMPTZ DEFAULT NOW(),
@@ -1102,6 +1105,25 @@ CREATE TABLE IF NOT EXISTS escort_applications (
 
 CREATE UNIQUE INDEX IF NOT EXISTS idx_escort_applications_lower_email
   ON escort_applications (LOWER(TRIM(email)));
+
+-- ============ CITY MANAGER OPERATIONS ============
+CREATE TABLE IF NOT EXISTS transport_bookings (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(), school_id UUID NOT NULL REFERENCES schools(id) ON DELETE CASCADE, student_id UUID REFERENCES students(id) ON DELETE SET NULL, parent_user_id UUID REFERENCES user_profiles(id) ON DELETE SET NULL,
+  source TEXT NOT NULL DEFAULT 'parent' CHECK (source IN ('parent', 'sales', 'business_development', 'city_manager', 'school')), pickup_address TEXT, pickup_lat NUMERIC, pickup_lng NUMERIC, requested_pickup_at TIMESTAMPTZ, notes TEXT,
+  status TEXT NOT NULL DEFAULT 'pending' CHECK (status IN ('pending', 'assigned', 'in_progress', 'completed', 'cancelled')),
+  priority TEXT NOT NULL DEFAULT 'standard' CHECK (priority IN ('standard', 'urgent', 'emergency')), created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(), updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+CREATE TABLE IF NOT EXISTS escort_assignments (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(), booking_id UUID REFERENCES transport_bookings(id) ON DELETE SET NULL, escort_application_id TEXT NOT NULL REFERENCES escort_applications(id) ON DELETE RESTRICT, school_id UUID NOT NULL REFERENCES schools(id) ON DELETE CASCADE, student_id UUID REFERENCES students(id) ON DELETE SET NULL,
+  assignment_type TEXT NOT NULL DEFAULT 'standard' CHECK (assignment_type IN ('standard', 'emergency', 'deputy')), status TEXT NOT NULL DEFAULT 'active' CHECK (status IN ('pending_confirmation', 'active', 'completed', 'reassigned', 'cancelled')),
+  confirmed_at TIMESTAMPTZ, assigned_by UUID REFERENCES user_profiles(id) ON DELETE SET NULL, replaces_assignment_id UUID REFERENCES escort_assignments(id) ON DELETE SET NULL, notes TEXT, created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(), updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+CREATE TABLE IF NOT EXISTS city_manager_audit_log (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(), actor_user_id UUID REFERENCES user_profiles(id) ON DELETE SET NULL, action TEXT NOT NULL, entity_type TEXT NOT NULL, entity_id TEXT, details JSONB NOT NULL DEFAULT '{}', created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+CREATE INDEX IF NOT EXISTS idx_transport_bookings_status ON transport_bookings(status, requested_pickup_at);
+CREATE INDEX IF NOT EXISTS idx_escort_assignments_escort ON escort_assignments(escort_application_id, status);
+CREATE INDEX IF NOT EXISTS idx_city_manager_audit_created ON city_manager_audit_log(created_at DESC);
 
 -- ============ END OF SCHEMA ============
 -- Fresh database setup complete. supabase/migrations/ is not used — this file is authoritative.

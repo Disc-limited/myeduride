@@ -9,6 +9,7 @@ import {
   History,
   FileCheck2,
   Bot,
+  Sparkles,
 } from 'lucide-react';
 
 interface QuickActionsGridProps {
@@ -45,11 +46,11 @@ export default function QuickActionsGrid({ onActionClick }: QuickActionsGridProp
       hoverColor: 'hover:bg-purple-200/80',
     },
     {
-      key: 'pay_fees',
-      label: 'Pay Fees',
-      fullLabel: 'Pay School Fees & Charges',
-      description: 'Pay tuition, transport fees, and school bills online',
-      icon: CreditCard,
+      key: 'book_ride',
+      label: 'Book Ride',
+      fullLabel: 'Book MyEduRide Escort & Ride',
+      description: 'Request a verified backup escort or scheduled transport ride',
+      icon: Sparkles,
       bgColor: 'bg-amber-100 text-amber-700',
       hoverColor: 'hover:bg-amber-200/80',
     },

@@ -27,8 +27,8 @@ function pickupFromScan(data) {
 export default function StudentIdScanPanel({
   schoolId,
   mode = 'arrival',
-  onModeChange,
-  onSuccess,
+  onModeChange = () => {},
+  onSuccess = () => {},
   initialStudent = null,
   fromReadyQueue = false,
 }) {

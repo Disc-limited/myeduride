@@ -1110,7 +1110,7 @@ export default function ParentRegistrationWizard({ onSwitchRole }: ParentRegistr
                   { key: 'trackChildren', label: 'Track My Children', sub: 'Real-time trip tracking' },
                   { key: 'tripAlerts', label: 'Receive Trip Alerts', sub: 'Pickup, drop-off & safety alerts' },
                   { key: 'digitalAttendance', label: 'Digital Attendance', sub: 'Attendance updates' },
-                  { key: 'feePayment', label: 'Fee & Payment', sub: 'Manage payments easily' },
+                  { key: 'feePayment', label: 'Transit Wallet & Bookings', sub: 'Manage ride payments & subscriptions' },
                   { key: 'communicate', label: 'Communicate', sub: 'Chat with school & escort' },
                   { key: 'marketplace', label: 'Marketplace', sub: 'Book shared escort seats' },
                 ].map((pref) => (
@@ -1289,7 +1289,7 @@ export default function ParentRegistrationWizard({ onSwitchRole }: ParentRegistr
 
               <div className="bg-slate-50 p-3.5 sm:p-4 rounded-2xl border border-slate-200 space-y-1.5 sm:space-y-2">
                 <h4 className="text-xs font-bold text-slate-800">Add Money to Get Started</h4>
-                <p className="text-[10px] sm:text-[11px] text-slate-500">Fund your wallet for rides, fees and other services.</p>
+                <p className="text-[10px] sm:text-[11px] text-slate-500">Fund your wallet for rides, bookings, and mobility services.</p>
               </div>
             </div>
 

@@ -54,6 +54,8 @@ import QuickActionsGrid from '@/components/parent/QuickActionsGrid';
 import SchoolAnnouncementsCard from '@/components/parent/SchoolAnnouncementsCard';
 import UpcomingEventsCard from '@/components/parent/UpcomingEventsCard';
 import MigoAIFloatingWidget from '@/components/parent/MigoAIFloatingWidget';
+import SafetyConnectView from '@/components/parent/SafetyConnectView';
+import PickupAuthorizationModal from '@/components/parent/PickupAuthorizationModal';
 
 // Helper to sanitize internal technical metadata like [sender_id:...] and [Message from ...]
 const cleanNotificationText = (text?: string) => {
@@ -460,10 +462,12 @@ export default function ParentDashboard() {
       case 'chat_school':
         setShowEduChatModal(true);
         break;
-      case 'pay_fees':
+      case 'book_ride':
+        setActiveTab('safety');
+        break;
       case 'fund_wallet':
-        toast.info('Wallet is currently undergoing development', {
-          description: 'Online payments and wallet funding will be active in the upcoming release.',
+        toast.info('Transport Wallet is currently undergoing development', {
+          description: 'Ride payments and wallet funding will be active in the upcoming release.',
         });
         break;
       case 'journey_history':
@@ -574,96 +578,105 @@ export default function ParentDashboard() {
           searchQuery={searchQuery}
           setSearchQuery={setSearchQuery}
         />
-
         {/* Main Content Dashboard - EXACT 9-COL / 3-COL STRUCTURE */}
         <main className="flex-1 p-4 sm:p-6 lg:p-6 overflow-y-auto">
-          <div className="grid grid-cols-1 lg:grid-cols-12 gap-5 max-w-[1600px] mx-auto">
-            
-            {/* LEFT & CENTER MAIN AREA (9 COLUMNS out of 12) */}
-            <div className="lg:col-span-9 space-y-5 min-w-0">
+          {activeTab === 'safety' || activeTab === 'edrive' ? (
+            <div className="max-w-[1600px] mx-auto space-y-5">
+              <SafetyConnectView
+                initialTab={activeTab === 'edrive' ? 'edrive' : 'school_escort'}
+                childrenList={safeChildren}
+                onClose={() => setActiveTab('dashboard')}
+              />
+            </div>
+          ) : (
+            <div className="grid grid-cols-1 lg:grid-cols-12 gap-5 max-w-[1600px] mx-auto">
               
-              {/* ROW 1: Hero Greeting (2/3) + Live Journey (1/3) */}
-              <div className="grid grid-cols-1 md:grid-cols-12 gap-5">
-                <div className="md:col-span-7 lg:col-span-7">
-                  <HeroGreetingCard userName={userName} childrenList={safeChildren} />
+              {/* LEFT & CENTER MAIN AREA (9 COLUMNS out of 12) */}
+              <div className="lg:col-span-9 space-y-5 min-w-0">
+                
+                {/* ROW 1: Hero Greeting (2/3) + Live Journey (1/3) */}
+                <div className="grid grid-cols-1 md:grid-cols-12 gap-5">
+                  <div className="md:col-span-7 lg:col-span-7">
+                    <HeroGreetingCard userName={userName} childrenList={safeChildren} />
+                  </div>
+                  <div className="md:col-span-5 lg:col-span-5">
+                    <LiveJourneyCard
+                      childName={safeChildren[0] ? `${safeChildren[0].first_name} ${safeChildren[0].last_name}` : 'David James'}
+                      hasActiveJourney={true}
+                      onOpenLiveJourney={() => setActiveTab('safety')}
+                    />
+                  </div>
                 </div>
-                <div className="md:col-span-5 lg:col-span-5">
-                  <LiveJourneyCard
-                    childName={safeChildren[0] ? `${safeChildren[0].first_name} ${safeChildren[0].last_name}` : 'David James'}
-                    hasActiveJourney={true}
-                    onOpenLiveJourney={() => setShowLiveJourneyModal(true)}
-                  />
+
+                {/* ROW 2: 20% OFF Promo Banner (2/3) + Pickup Authorization (1/3) */}
+                <div className="grid grid-cols-1 md:grid-cols-12 gap-5">
+                  <div className="md:col-span-7 lg:col-span-7">
+                    <PromoBanner />
+                  </div>
+                  <div className="md:col-span-5 lg:col-span-5">
+                    <PickupAuthCard
+                      personName={safeNotices[0]?.pickup_person_name || (session?.full_name || 'John Okafor')}
+                      relationship={safeNotices[0]?.relationship || 'Uncle'}
+                      onOpenPickupManager={() => setShowPickupModal(true)}
+                    />
+                  </div>
                 </div>
+
+                {/* ROW 3: My Children Grid (2/3) + Attendance This Week (1/3) */}
+                <div className="grid grid-cols-1 md:grid-cols-12 gap-5">
+                  <div className="md:col-span-7 lg:col-span-7">
+                    <ChildrenGridCard
+                      childrenList={safeChildren}
+                      onOpenChildProfile={(childId) => {
+                        setSelectedChild(childId);
+                        setShowAttendanceModal(true);
+                      }}
+                    />
+                  </div>
+                  <div className="md:col-span-5 lg:col-span-5">
+                    <AttendanceWeekCard
+                      presentCount={safeChildren.filter((c) => c?.present_today).length || 4}
+                      lateCount={0}
+                      absentCount={safeChildren.filter((c) => !c?.present_today).length || 1}
+                      attendanceRate={safeChildren.length > 0 ? Math.round((safeChildren.filter((c) => c?.present_today).length / safeChildren.length) * 100) : 80}
+                      onViewAll={() => setShowAttendanceModal(true)}
+                    />
+                  </div>
+                </div>
+
+                {/* ROW 4: Quick Actions Grid (4 cols) + School Announcements (4 cols) + Upcoming Events (4 cols) */}
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-5">
+                  <QuickActionsGrid onActionClick={handleQuickAction} />
+                  <SchoolAnnouncementsCard onViewAll={() => toast.info('All announcements loaded')} />
+                  <UpcomingEventsCard onViewAll={() => toast.info('All events loaded')} />
+                </div>
+
               </div>
 
-              {/* ROW 2: 20% OFF Promo Banner (2/3) + Pickup Authorization (1/3) */}
-              <div className="grid grid-cols-1 md:grid-cols-12 gap-5">
-                <div className="md:col-span-7 lg:col-span-7">
-                  <PromoBanner />
-                </div>
-                <div className="md:col-span-5 lg:col-span-5">
-                  <PickupAuthCard
-                    personName={safeNotices[0]?.pickup_person_name || (session?.full_name || 'John Okafor')}
-                    relationship={safeNotices[0]?.relationship || 'Uncle'}
-                    onOpenPickupManager={() => setShowPickupModal(true)}
-                  />
-                </div>
-              </div>
+              {/* RIGHT SIDEBAR COLUMN (3 COLUMNS out of 12) */}
+              <div className="lg:col-span-3 space-y-5 min-w-0">
+                {/* Card 1: Today's Highlights */}
+                <TodaysHighlightsCard
+                  highlights={highlightsList}
+                  onViewAll={() => setShowNotifModal(true)}
+                />
 
-              {/* ROW 3: My Children Grid (2/3) + Attendance This Week (1/3) */}
-              <div className="grid grid-cols-1 md:grid-cols-12 gap-5">
-                <div className="md:col-span-7 lg:col-span-7">
-                  <ChildrenGridCard
-                    childrenList={safeChildren}
-                    onOpenChildProfile={(childId) => {
-                      setSelectedChild(childId);
-                      setShowAttendanceModal(true);
-                    }}
-                  />
-                </div>
-                <div className="md:col-span-5 lg:col-span-5">
-                  <AttendanceWeekCard
-                    presentCount={safeChildren.filter((c) => c?.present_today).length || 4}
-                    lateCount={0}
-                    absentCount={safeChildren.filter((c) => !c?.present_today).length || 1}
-                    attendanceRate={safeChildren.length > 0 ? Math.round((safeChildren.filter((c) => c?.present_today).length / safeChildren.length) * 100) : 80}
-                    onViewAll={() => setShowAttendanceModal(true)}
-                  />
-                </div>
-              </div>
+                {/* Card 2: Wallet Balance */}
+                <WalletCard
+                  balanceAmount={walletBalance}
+                  onFundWallet={() => setShowWalletModal(true)}
+                  onViewWalletHistory={() => setShowWalletModal(true)}
+                />
 
-              {/* ROW 4: Quick Actions Grid (4 cols) + School Announcements (4 cols) + Upcoming Events (4 cols) */}
-              <div className="grid grid-cols-1 md:grid-cols-3 gap-5">
-                <QuickActionsGrid onActionClick={handleQuickAction} />
-                <SchoolAnnouncementsCard onViewAll={() => toast.info('All announcements loaded')} />
-                <UpcomingEventsCard onViewAll={() => toast.info('All events loaded')} />
+                {/* Card 3: EduChat Preview */}
+                <EduChatPreviewCard
+                  onOpenChat={() => setShowEduChatModal(true)}
+                  onSeeAll={() => setShowEduChatModal(true)}
+                />
               </div>
 
             </div>
-
-            {/* RIGHT SIDEBAR COLUMN (3 COLUMNS out of 12) */}
-            <div className="lg:col-span-3 space-y-5 min-w-0">
-              {/* Card 1: Today's Highlights */}
-              <TodaysHighlightsCard
-                highlights={highlightsList}
-                onViewAll={() => setShowNotifModal(true)}
-              />
-
-              {/* Card 2: Wallet Balance */}
-              <WalletCard
-                balanceAmount={walletBalance}
-                onFundWallet={() => setShowWalletModal(true)}
-                onViewWalletHistory={() => setShowWalletModal(true)}
-              />
-
-              {/* Card 3: EduChat Preview */}
-              <EduChatPreviewCard
-                onOpenChat={() => setShowEduChatModal(true)}
-                onSeeAll={() => setShowEduChatModal(true)}
-              />
-            </div>
-
-          </div>
+          )}
         </main>
       </div>
 
@@ -737,73 +750,16 @@ export default function ParentDashboard() {
         </div>
       )}
 
-      {/* Pickup Authorization Modal */}
-      {showPickupModal && (
-        <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4">
-          <div className="bg-white rounded-3xl max-w-lg w-full p-6 shadow-2xl overflow-y-auto max-h-[90vh] space-y-4">
-            <div className="flex items-center justify-between pb-3 border-b border-slate-100">
-              <h2 className="text-base font-extrabold text-slate-900">Authorize Pickup Person</h2>
-              <button
-                type="button"
-                onClick={() => setShowPickupModal(false)}
-                className="p-1 text-slate-400 hover:text-slate-700"
-              >
-                <X className="w-5 h-5" />
-              </button>
-            </div>
-
-            {safeChildren.length === 0 ? (
-              <p className="text-xs text-slate-500 text-center py-6">Link a child first</p>
-            ) : (
-              <div className="space-y-4">
-                <PickupPersonsManager
-                  mode="parent"
-                  students={safeChildren}
-                  schoolId={safeChildren[0]?.school_id}
-                />
-
-                <div className="border-t border-slate-100 pt-4">
-                  <h3 className="text-xs font-bold text-slate-800 mb-2">Notify Gate Officer Today</h3>
-                  <label className="text-[10px] font-bold text-slate-400 uppercase block mb-1">
-                    Child
-                  </label>
-                  <select
-                    className="w-full bg-slate-50 border border-slate-200 rounded-xl p-2.5 text-xs text-slate-800 mb-3"
-                    value={pickupForm.student_id}
-                    onChange={(e) => setPickupForm((f) => ({ ...f, student_id: e.target.value }))}
-                  >
-                    {safeChildren.map((c) => (
-                      <option key={c.id} value={c.id}>
-                        {c.first_name} {c.last_name}
-                      </option>
-                    ))}
-                  </select>
-
-                  <label className="text-[10px] font-bold text-slate-400 uppercase block mb-1">
-                    Authorized Pickup Name
-                  </label>
-                  <input
-                    className="w-full bg-slate-50 border border-slate-200 rounded-xl p-2.5 text-xs text-slate-800 mb-3"
-                    value={pickupForm.pickup_person_name}
-                    onChange={(e) => setPickupForm((f) => ({ ...f, pickup_person_name: e.target.value }))}
-                    placeholder="Full name of authorized person"
-                  />
-
-                  <button
-                    type="button"
-                    onClick={submitNotifySchool}
-                    disabled={submittingPickup}
-                    className="w-full bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-xs py-3 rounded-xl shadow-md transition-all flex items-center justify-center gap-1.5"
-                  >
-                    <Send className="w-4 h-4" />
-                    <span>{submittingPickup ? 'Notifying Gate...' : 'Send Gate Alert'}</span>
-                  </button>
-                </div>
-              </div>
-            )}
-          </div>
-        </div>
-      )}
+      {/* 5-Step Guaranteed Pickup Authorization Modal (Max 3 Slots) */}
+      <PickupAuthorizationModal
+        isOpen={showPickupModal}
+        onClose={() => setShowPickupModal(false)}
+        childId={safeChildren[0]?.id || 'STU-001'}
+        childName={safeChildren[0] ? `${safeChildren[0].first_name} ${safeChildren[0].last_name}` : 'David James'}
+        onUpdated={() => {
+          loadParentDashboard();
+        }}
+      />
 
       {/* Attendance History Modal */}
       {showAttendanceModal && (

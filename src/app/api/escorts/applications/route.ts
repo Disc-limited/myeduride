@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getEscortApplications, updateEscortApplicationStatus } from '@/lib/escort/escort-db';
 import { sendEmail } from '@/lib/notifications/email-service';
+import { getAdminClient } from '@/lib/supabase/admin';
+import { getSessionFromRequest } from '@/lib/session';
 
 export const dynamic = 'force-dynamic';
 
@@ -29,12 +31,25 @@ export async function PATCH(request: NextRequest) {
       );
     }
 
-    const result = await updateEscortApplicationStatus(appId, status, notes, {
-      uploadedDocDetails,
-      isResubmitted,
-      nin,
-      photo,
-    });
+
+
+    const result = await updateEscortApplicationStatus(appId, status, notes, { uploadedDocDetails, isResubmitted, nin, photo });
+
+    // Keep City Manager approval decisions in the central accountability ledger.
+    if (['CITY_MANAGER_APPROVED', 'REJECTED', 'CORRECTION_REQUESTED', 'ESCALATED'].includes(status)) {
+      try {
+        const session = getSessionFromRequest(request);
+        await getAdminClient().from('city_manager_audit_log').insert({
+          actor_user_id: session?.user_id || null,
+          action: 'ESCORT_APPLICATION_' + status,
+          entity_type: 'escort_application',
+          entity_id: appId,
+          details: { notes: notes || null },
+        });
+      } catch (auditError) {
+        console.warn('[escorts/applications] audit logging notice:', auditError);
+      }
+    }
 
     // Resolve applicant email and name if not directly supplied in body
     let targetEmail = escortEmail;

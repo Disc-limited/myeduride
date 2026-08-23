@@ -115,12 +115,22 @@ export async function GET(request: NextRequest) {
       const classId = assignment?.class_id || null;
       const className = assignment?.class?.name || null;
 
+      const resolvedPhoto =
+        profileRow?.photo_url ||
+        (row.profile as any)?.avatar_url ||
+        (row.profile as any)?.photo_url ||
+        null;
+
+      const staffPayload = profileRow
+        ? { ...profileRow, photo_url: resolvedPhoto, class_id: classId, class_name: className }
+        : { photo_url: resolvedPhoto, class_id: classId, class_name: className };
+
       const existing = byUser.get(row.user_id);
       if (!existing) {
         byUser.set(row.user_id, {
           ...row,
           job_title: accessLabel,
-          staff: profileRow ? { ...profileRow, class_id: classId, class_name: className } : null,
+          staff: staffPayload,
           roles: [row.role],
           role_ids: [row.id],
           job_titles: [accessLabel],
@@ -132,8 +142,8 @@ export async function GET(request: NextRequest) {
           existing.job_titles.push(accessLabel);
         }
         existing.job_title = existing.job_titles.join(' · ');
-        if (profileRow && !existing.staff) {
-          existing.staff = { ...profileRow, class_id: classId, class_name: className };
+        if (!existing.staff || !(existing.staff as any).photo_url) {
+          existing.staff = staffPayload;
         }
       }
     }

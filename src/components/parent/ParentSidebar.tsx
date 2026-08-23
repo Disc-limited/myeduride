@@ -52,9 +52,8 @@ export default function ParentSidebar({
 }: ParentSidebarProps) {
   const menuItems = [
     { id: 'dashboard', label: 'Dashboard', icon: LayoutDashboard },
+    { id: 'safety', label: 'Safety Connect', icon: ShieldAlert, badge: 'Live' },
     { id: 'children', label: 'My Children', icon: Users },
-    { id: 'safety', label: 'Safety Connect', icon: ShieldAlert },
-    { id: 'edrive', label: 'E-DRiVE', icon: Car },
     { id: 'wallet', label: 'Wallet', icon: Wallet },
     { id: 'reports', label: 'Reports', icon: BarChart3 },
     { id: 'educhat', label: 'EduChat', icon: MessageSquare, badge: unreadChatCount },
@@ -63,7 +62,7 @@ export default function ParentSidebar({
   ];
 
   const handleItemClick = (id: string, label: string) => {
-    if (id === 'safety' || id === 'wallet') {
+    if (id === 'wallet') {
       toast.info(`${label} is currently undergoing development`, {
         description: 'Stay tuned! Full functionality will be available in the upcoming release.',
         duration: 4000,
@@ -155,12 +154,20 @@ export default function ParentSidebar({
                   />
                   {!isCollapsed && <span>{item.label}</span>}
                 </div>
-                {!isCollapsed && item.badge && item.badge > 0 ? (
-                  <span className="bg-red-500 text-white text-[9px] font-extrabold px-1.5 py-0.5 rounded-full">
-                    {item.badge}
-                  </span>
-                ) : isCollapsed && item.badge && item.badge > 0 ? (
-                  <span className="absolute top-1 right-2 w-2 h-2 rounded-full bg-red-500" />
+                {!isCollapsed && item.badge ? (
+                  typeof item.badge === 'number' ? (
+                    item.badge > 0 ? (
+                      <span className="bg-red-500 text-white text-[9px] font-extrabold px-1.5 py-0.5 rounded-full">
+                        {item.badge}
+                      </span>
+                    ) : null
+                  ) : (
+                    <span className="bg-emerald-500/20 text-emerald-300 text-[9px] font-black uppercase px-2 py-0.5 rounded-full border border-emerald-400/30">
+                      {item.badge}
+                    </span>
+                  )
+                ) : isCollapsed && item.badge ? (
+                  <span className="absolute top-1 right-2 w-2 h-2 rounded-full bg-emerald-400" />
                 ) : null}
               </button>
             );
