@@ -21,7 +21,11 @@ import {
   Car,
   Layers,
   Sparkles,
-  Info
+  Info,
+  ChevronRight,
+  Shield,
+  Clock,
+  Radio
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { photoSrc } from '@/lib/photo';
@@ -31,6 +35,7 @@ interface PickupAuthorizationModalProps {
   onClose: () => void;
   childId?: string;
   childName?: string;
+  childrenList?: Array<{ id: string; first_name: string; last_name: string; photo_url?: string }>;
   onUpdated?: () => void;
 }
 
@@ -39,10 +44,12 @@ type ModalMode = 'list' | 'enter' | 'review' | 'success';
 export default function PickupAuthorizationModal({
   isOpen,
   onClose,
-  childId = 'STU-001',
-  childName = 'David James',
+  childId = '',
+  childName = 'Student',
+  childrenList = [],
   onUpdated,
 }: PickupAuthorizationModalProps) {
+  const [selectedChildId, setSelectedChildId] = useState<string>(childId);
   const [data, setData] = useState<any>(null);
   const [loading, setLoading] = useState(true);
   const [mode, setMode] = useState<ModalMode>('list');
@@ -51,26 +58,40 @@ export default function PickupAuthorizationModal({
   // 5-Step Form State
   const [form, setForm] = useState({
     name: '',
-    category: 'family_member',
-    relationship: 'Uncle',
+    category: 'family_member' as 'escort' | 'family_member' | 'other_approved',
+    relationship: 'Mother',
     phone: '',
-    photo_url: 'https://images.unsplash.com/photo-1500648767791-00dcc994a43e?w=150',
-    emergency_notes: 'Authorized for gate release.',
+    photo_url: '',
+    emergency_notes: 'Authorized for regular gate pickup and emergency release.',
     legal_confirmation: false,
   });
   const [submitting, setSubmitting] = useState(false);
 
   useEffect(() => {
-    if (isOpen) {
-      loadData();
+    if (childId) {
+      setSelectedChildId(childId);
+    } else if (childrenList.length > 0) {
+      setSelectedChildId(childrenList[0].id);
+    }
+  }, [childId, childrenList]);
+
+  useEffect(() => {
+    if (isOpen && selectedChildId) {
+      loadData(selectedChildId);
       setMode('list');
     }
-  }, [isOpen, childId]);
+  }, [isOpen, selectedChildId]);
 
-  const loadData = async () => {
+  const activeChildObj = childrenList.find((c) => c.id === selectedChildId);
+  const activeChildDisplayName = activeChildObj
+    ? `${activeChildObj.first_name} ${activeChildObj.last_name}`
+    : childName;
+
+  const loadData = async (targetChildId: string) => {
+    if (!targetChildId) return;
     setLoading(true);
     try {
-      const res = await fetch(`/api/parent/pickup-authorizations?child_id=${childId}`, {
+      const res = await fetch(`/api/parent/pickup-authorizations?child_id=${targetChildId}`, {
         credentials: 'include',
         cache: 'no-store',
       });
@@ -94,8 +115,8 @@ export default function PickupAuthorizationModal({
       category: 'family_member',
       relationship: 'Mother',
       phone: '',
-      photo_url: 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=150',
-      emergency_notes: 'Authorized for school gate pickup.',
+      photo_url: '',
+      emergency_notes: 'Authorized for regular school gate pickup.',
       legal_confirmation: false,
     });
     setMode('enter');
@@ -104,14 +125,14 @@ export default function PickupAuthorizationModal({
   const handleProceedToReview = (e: React.FormEvent) => {
     e.preventDefault();
     if (!form.name.trim() || !form.relationship.trim() || !form.phone.trim()) {
-      return toast.error('Full name, relationship, and phone number are required.');
+      return toast.error('Full legal name, relationship, and phone number are required.');
     }
     setMode('review');
   };
 
   const handleConfirmAndSubmit = async () => {
     if (!form.legal_confirmation) {
-      return toast.error('You must confirm the legal authorization acknowledgment.');
+      return toast.error('You must confirm the legal safety authorization acknowledgment.');
     }
     setSubmitting(true);
     try {
@@ -120,7 +141,7 @@ export default function PickupAuthorizationModal({
         headers: { 'Content-Type': 'application/json' },
         credentials: 'include',
         body: JSON.stringify({
-          child_id: childId,
+          child_id: selectedChildId,
           target_slot_number: selectedSlotNum,
           ...form,
         }),
@@ -129,7 +150,7 @@ export default function PickupAuthorizationModal({
       if (res.ok && json.success) {
         toast.success(json.message || 'Authorized person recorded and transmitted to Gate Officer!');
         setMode('success');
-        await loadData();
+        await loadData(selectedChildId);
         onUpdated?.();
       } else {
         toast.error(json.error || 'Authorization failed');
@@ -145,7 +166,7 @@ export default function PickupAuthorizationModal({
     if (!confirm(`Are you sure you want to remove ${personName} from Slot ${slotNumber}?`)) return;
     try {
       const res = await fetch(
-        `/api/parent/pickup-authorizations?child_id=${childId}&slot_number=${slotNumber}`,
+        `/api/parent/pickup-authorizations?child_id=${selectedChildId}&slot_number=${slotNumber}`,
         {
           method: 'DELETE',
           credentials: 'include',
@@ -154,7 +175,7 @@ export default function PickupAuthorizationModal({
       const json = await res.json();
       if (res.ok && json.success) {
         toast.success('Pickup authorization removed and slot freed.');
-        await loadData();
+        await loadData(selectedChildId);
         onUpdated?.();
       } else {
         toast.error(json.error || 'Failed to remove slot');
@@ -167,69 +188,106 @@ export default function PickupAuthorizationModal({
   if (!isOpen) return null;
 
   return (
-    <div className="fixed inset-0 z-50 bg-slate-950/70 backdrop-blur-xs flex items-center justify-center p-3 sm:p-4 font-sans">
+    <div className="fixed inset-0 z-50 bg-slate-950/70 backdrop-blur-xs flex items-center justify-center p-3 sm:p-4 font-sans animate-in fade-in duration-200">
       <div className="bg-white rounded-3xl max-w-2xl w-full p-5 sm:p-6 shadow-2xl border border-slate-200 overflow-y-auto max-h-[92vh] space-y-4">
-        {/* Header */}
+        
+        {/* ========================================================================= */}
+        {/* HEADER & CHILD SELECTOR                                                   */}
+        {/* ========================================================================= */}
         <div className="flex items-center justify-between pb-3 border-b border-slate-100">
           <div className="flex items-center gap-2.5">
-            <div className="w-9 h-9 rounded-xl bg-emerald-100 text-emerald-800 flex items-center justify-center font-bold">
-              <ShieldCheck size={20} />
+            <div className="w-10 h-10 rounded-2xl bg-emerald-100 text-emerald-800 flex items-center justify-center font-bold shadow-xs">
+              <ShieldCheck size={22} />
             </div>
             <div>
-              <h2 className="text-base sm:text-lg font-black text-slate-900 leading-tight">
-                Emergency &amp; Authorized Pickup List
-              </h2>
+              <div className="flex items-center gap-2">
+                <h2 className="text-base sm:text-lg font-black text-slate-900 leading-tight">
+                  Emergency &amp; Authorised Pickup List
+                </h2>
+                <span className="px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-800 text-[10px] font-black uppercase">
+                  Safety Record
+                </span>
+              </div>
               <p className="text-xs text-slate-500">
-                Child Safety Record for <strong className="text-slate-800">{childName}</strong>
+                Official Child Custody &amp; Gate Verification Roster
               </p>
             </div>
           </div>
           <button
             type="button"
             onClick={onClose}
-            className="p-1.5 text-slate-400 hover:text-slate-700 rounded-lg cursor-pointer"
+            className="p-2 text-slate-400 hover:text-slate-700 rounded-xl hover:bg-slate-100 transition-colors cursor-pointer"
           >
             <X size={18} />
           </button>
         </div>
 
+        {/* Child Selector Tabs (If multiple children exist) */}
+        {childrenList.length > 1 && (
+          <div className="flex items-center gap-2 p-1.5 bg-slate-100 rounded-2xl overflow-x-auto text-xs font-bold">
+            <span className="text-[10px] uppercase tracking-wider text-slate-400 px-2 shrink-0">Student:</span>
+            {childrenList.map((c) => (
+              <button
+                key={c.id}
+                type="button"
+                onClick={() => setSelectedChildId(c.id)}
+                className={`px-3 py-1.5 rounded-xl transition-all shrink-0 flex items-center gap-1.5 ${
+                  selectedChildId === c.id
+                    ? 'bg-white text-slate-900 shadow-xs font-black'
+                    : 'text-slate-600 hover:text-slate-900'
+                }`}
+              >
+                <div className="w-4 h-4 rounded-full bg-emerald-500 text-white text-[9px] font-extrabold flex items-center justify-center">
+                  {c.first_name[0]}
+                </div>
+                <span>{c.first_name} {c.last_name}</span>
+              </button>
+            ))}
+          </div>
+        )}
+
         {/* ========================================================================= */}
         {/* PRE-SUBMISSION SAFETY EXPLAINER BANNER (MANDATORY REQUIREMENT)           */}
         {/* ========================================================================= */}
-        <div className="p-4 rounded-2xl bg-gradient-to-r from-indigo-900 via-slate-900 to-slate-950 text-white shadow-xs space-y-2">
-          <div className="flex items-center gap-2">
-            <span className="px-2 py-0.5 rounded-full bg-amber-400 text-slate-950 text-[10px] font-black uppercase tracking-wider flex items-center gap-1">
-              <Lock size={10} /> Child Safety &amp; Gate Protocol
+        <div className="p-4 rounded-2xl bg-gradient-to-r from-[#0A1128] via-[#101D42] to-[#0A1128] text-white shadow-md border border-white/10 space-y-2.5">
+          <div className="flex items-center justify-between">
+            <span className="px-2.5 py-0.5 rounded-full bg-amber-400 text-slate-950 text-[10px] font-black uppercase tracking-wider flex items-center gap-1">
+              <Lock size={11} /> Child Safety &amp; Gate Protocol
             </span>
-            <span className="text-[11px] text-slate-300 font-mono">Max 3 Authorized Slots</span>
+            <span className="text-[11px] text-emerald-400 font-mono font-bold flex items-center gap-1">
+              <Radio size={12} className="animate-pulse" /> Live Gate Sync Active
+            </span>
           </div>
+
           <p className="text-xs text-slate-200 leading-relaxed font-medium">
-            This pickup list forms an <strong>official, immutable part of your child&apos;s safety record</strong>. The Gate Officer and School Staff will <strong>ONLY release your child</strong> to individuals registered across your <strong>3 allocated slots</strong> upon photograph and identity verification.
+            This pickup authorisation forms an <strong>official, immutable part of {activeChildDisplayName}&apos;s child safety record</strong>. The School Administration and Gate Officer will <strong>strictly release your child only</strong> to persons registered across your <strong>3 authorised slots</strong> upon photograph and identity matching.
           </p>
-          <div className="grid grid-cols-3 gap-2 pt-1 text-[11px] text-slate-300 border-t border-slate-800">
-            <div className="flex items-center gap-1">
-              <span className="w-2 h-2 rounded-full bg-emerald-400" />
-              <span>1. Escorts</span>
+
+          {/* 3 Pillars Category Legend */}
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 pt-2 border-t border-white/10 text-[11px] text-slate-300 font-semibold">
+            <div className="flex items-center gap-1.5 bg-white/5 p-2 rounded-xl">
+              <span className="w-2.5 h-2.5 rounded-full bg-emerald-400 shrink-0" />
+              <span>1. Escorts (School / MyEduRide)</span>
             </div>
-            <div className="flex items-center gap-1">
-              <span className="w-2 h-2 rounded-full bg-cyan-400" />
+            <div className="flex items-center gap-1.5 bg-white/5 p-2 rounded-xl">
+              <span className="w-2.5 h-2.5 rounded-full bg-cyan-400 shrink-0" />
               <span>2. Family Members</span>
             </div>
-            <div className="flex items-center gap-1">
-              <span className="w-2 h-2 rounded-full bg-amber-400" />
-              <span>3. Other Approved</span>
+            <div className="flex items-center gap-1.5 bg-white/5 p-2 rounded-xl">
+              <span className="w-2.5 h-2.5 rounded-full bg-amber-400 shrink-0" />
+              <span>3. Other Approved Persons</span>
             </div>
           </div>
         </div>
 
-        {/* 3-Slot Occupancy Visualizer Bar */}
+        {/* 3-Slot Visual Capacity Ribbon */}
         <div className="grid grid-cols-3 gap-2.5">
           {data?.slots?.map((slot: any) => (
             <div
               key={slot.slot_number}
               className={`p-3 rounded-2xl border text-xs transition-all ${
                 slot.status === 'FILLED'
-                  ? 'bg-emerald-50/70 border-emerald-300 text-emerald-950 shadow-2xs'
+                  ? 'bg-emerald-50/80 border-emerald-300 text-emerald-950 shadow-2xs'
                   : 'bg-slate-50 border-dashed border-slate-300 text-slate-500'
               }`}
             >
@@ -244,10 +302,10 @@ export default function PickupAuthorizationModal({
                 </span>
               </div>
               <p className="font-bold text-xs truncate">
-                {slot.status === 'FILLED' ? slot.person?.name : 'Available Slot'}
+                {slot.status === 'FILLED' ? slot.person?.name : 'Empty Slot'}
               </p>
               <p className="text-[10px] text-slate-500 truncate">
-                {slot.status === 'FILLED' ? slot.person?.relationship : 'Click to authorize'}
+                {slot.status === 'FILLED' ? slot.person?.relationship : 'Available for Authorisation'}
               </p>
             </div>
           ))}
@@ -258,7 +316,6 @@ export default function PickupAuthorizationModal({
         {/* ========================================================================= */}
         {mode === 'list' && (
           <div className="space-y-4">
-            {/* Slot Items Cards */}
             <div className="space-y-3">
               {data?.slots?.map((slot: any) => {
                 const person = slot.person;
@@ -269,17 +326,29 @@ export default function PickupAuthorizationModal({
                       className="p-4 rounded-2xl bg-white border border-slate-200 shadow-2xs flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-xs"
                     >
                       <div className="flex items-center gap-3.5">
-                        <div className="w-13 h-13 rounded-2xl overflow-hidden bg-slate-100 border border-slate-200 shrink-0">
-                          <img
-                            src={photoSrc(person.photo_url)}
-                            alt={person.name}
-                            className="w-full h-full object-cover"
-                          />
+                        <div className="w-12 h-12 rounded-2xl overflow-hidden bg-slate-100 border border-slate-200 flex items-center justify-center font-bold text-slate-700 shrink-0">
+                          {person.photo_url ? (
+                            <img
+                              src={photoSrc(person.photo_url)}
+                              alt={person.name}
+                              className="w-full h-full object-cover"
+                            />
+                          ) : (
+                            <div className="w-full h-full bg-emerald-700 text-white flex items-center justify-center text-sm font-extrabold">
+                              {person.name.substring(0, 2).toUpperCase()}
+                            </div>
+                          )}
                         </div>
                         <div className="space-y-0.5">
                           <div className="flex items-center gap-2">
                             <h4 className="font-black text-slate-900 text-sm">{person.name}</h4>
-                            <span className="px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-800 text-[10px] font-bold">
+                            <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold ${
+                              person.category === 'escort'
+                                ? 'bg-emerald-100 text-emerald-800'
+                                : person.category === 'family_member'
+                                ? 'bg-blue-100 text-blue-800'
+                                : 'bg-amber-100 text-amber-900'
+                            }`}>
                               Slot {slot.slot_number} · {person.category_label || person.category}
                             </span>
                           </div>
@@ -289,7 +358,9 @@ export default function PickupAuthorizationModal({
                           <p className="text-[11px] text-slate-500 font-mono">
                             📞 {person.phone} · <span className="text-emerald-700 font-bold">✓ Synced to Gate Officer</span>
                           </p>
-                          <p className="text-[10px] text-slate-400 italic">{person.emergency_notes}</p>
+                          {person.emergency_notes && (
+                            <p className="text-[10px] text-slate-400 italic">{person.emergency_notes}</p>
+                          )}
                         </div>
                       </div>
 
@@ -347,7 +418,7 @@ export default function PickupAuthorizationModal({
             <div className="flex items-center justify-between pb-2 border-b border-slate-100">
               <span className="font-black text-slate-900 text-sm flex items-center gap-1.5">
                 <span className="w-5 h-5 rounded-full bg-emerald-600 text-white flex items-center justify-center text-[10px]">1</span>
-                Step 1: Enter Authorised Person Details
+                Step 1: Enter Authorised Person Details (Slot #{selectedSlotNum || 'Next Available'})
               </span>
               <button
                 type="button"
@@ -367,7 +438,7 @@ export default function PickupAuthorizationModal({
                   placeholder="e.g. Mary Okafor"
                   value={form.name}
                   onChange={(e) => setForm({ ...form, name: e.target.value })}
-                  className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl font-bold text-slate-800"
+                  className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl font-bold text-slate-800 focus:outline-emerald-500"
                 />
               </div>
 
@@ -375,48 +446,48 @@ export default function PickupAuthorizationModal({
                 <label className="block font-bold text-slate-700 mb-1">Authorisation Category *</label>
                 <select
                   value={form.category}
-                  onChange={(e) => setForm({ ...form, category: e.target.value })}
-                  className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl font-bold text-slate-800"
+                  onChange={(e) => setForm({ ...form, category: e.target.value as any })}
+                  className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl font-bold text-slate-800 focus:outline-emerald-500"
                 >
-                  <option value="family_member">Family Member (Mother, Father, Grandparent, etc.)</option>
-                  <option value="escort">Escort (School / MyEduRide Certified)</option>
-                  <option value="other_approved">Other Approved Person (Trusted Driver, Neighbor)</option>
+                  <option value="family_member">Family Member (Mother, Father, Grandparent, Sibling)</option>
+                  <option value="escort">Escort (School Escort / MyEduRide Certified)</option>
+                  <option value="other_approved">Other Approved Person (Trusted Driver, Neighbor, Guardian)</option>
                 </select>
               </div>
 
               <div>
-                <label className="block font-bold text-slate-700 mb-1">Relationship to Child *</label>
+                <label className="block font-bold text-slate-700 mb-1">Relationship to {activeChildDisplayName} *</label>
                 <input
                   type="text"
                   required
                   placeholder="e.g. Mother, Uncle, Designated Driver"
                   value={form.relationship}
                   onChange={(e) => setForm({ ...form, relationship: e.target.value })}
-                  className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl"
+                  className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl font-medium focus:outline-emerald-500"
                 />
               </div>
 
               <div>
-                <label className="block font-bold text-slate-700 mb-1">Phone Number *</label>
+                <label className="block font-bold text-slate-700 mb-1">Phone Number (For Gate SMS / Call) *</label>
                 <input
                   type="tel"
                   required
                   placeholder="e.g. +234 803 112 4455"
                   value={form.phone}
                   onChange={(e) => setForm({ ...form, phone: e.target.value })}
-                  className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl font-mono"
+                  className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl font-mono focus:outline-emerald-500"
                 />
               </div>
             </div>
 
             <div>
-              <label className="block font-bold text-slate-700 mb-1">Emergency &amp; Handover Notes</label>
+              <label className="block font-bold text-slate-700 mb-1">Emergency Handover Notes &amp; Instructions</label>
               <input
                 type="text"
-                placeholder="e.g. Authorized for regular Tuesday & Thursday pickup."
+                placeholder="e.g. Authorized for Monday & Thursday school dismissal."
                 value={form.emergency_notes}
                 onChange={(e) => setForm({ ...form, emergency_notes: e.target.value })}
-                className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl"
+                className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl focus:outline-emerald-500"
               />
             </div>
 
@@ -458,15 +529,15 @@ export default function PickupAuthorizationModal({
               </button>
             </div>
 
-            {/* Verification Summary Card */}
+            {/* Gate Officer Verification Preview Card */}
             <div className="p-4 rounded-2xl bg-slate-50 border border-slate-200 space-y-3">
               <span className="text-[10px] font-black uppercase text-slate-400 tracking-wider">
                 Gate Officer Verification Preview
               </span>
 
               <div className="flex items-center gap-4">
-                <div className="w-16 h-16 rounded-2xl overflow-hidden bg-slate-200 border-2 border-emerald-500 shrink-0">
-                  <img src={photoSrc(form.photo_url)} alt="" className="w-full h-full object-cover" />
+                <div className="w-14 h-14 rounded-2xl overflow-hidden bg-emerald-800 text-white font-extrabold text-lg flex items-center justify-center border-2 border-emerald-500 shrink-0">
+                  {form.name.substring(0, 2).toUpperCase()}
                 </div>
                 <div className="space-y-1">
                   <div className="flex items-center gap-2">
@@ -475,7 +546,7 @@ export default function PickupAuthorizationModal({
                       {form.category === 'escort' ? 'Escort' : form.category === 'family_member' ? 'Family Member' : 'Other Approved'}
                     </span>
                   </div>
-                  <p className="text-slate-600">Relationship: <strong>{form.relationship}</strong> to {childName}</p>
+                  <p className="text-slate-600">Relationship: <strong>{form.relationship}</strong> to {activeChildDisplayName}</p>
                   <p className="text-slate-600 font-mono">Phone: <strong>{form.phone}</strong></p>
                   <p className="text-slate-500 italic text-[11px]">{form.emergency_notes}</p>
                 </div>
@@ -492,7 +563,7 @@ export default function PickupAuthorizationModal({
                   className="mt-0.5 w-4 h-4 text-emerald-600 rounded border-slate-300 focus:ring-emerald-500 cursor-pointer"
                 />
                 <span className="text-slate-800 font-bold leading-tight">
-                  I legally confirm that this person is authorized to take physical custody of my child ({childName}) at the school gate. This will become an official part of the school safety record.
+                  I legally confirm that this person is authorised to take physical custody of my child ({activeChildDisplayName}) at the school gate. I understand that this authorization becomes an immutable part of my child&apos;s safety record.
                 </span>
               </label>
             </div>
@@ -533,9 +604,14 @@ export default function PickupAuthorizationModal({
 
             <div>
               <h3 className="text-lg font-black text-slate-900">Authorisation Recorded Successfully!</h3>
-              <p className="text-xs text-slate-600 max-w-md mx-auto mt-1">
-                The authorized pickup person has been registered into <strong>{childName}&apos;s child safety record</strong> and synchronized in real time with the <strong>School Administration and Gate Officer</strong>.
+              <p className="text-xs text-slate-600 max-w-md mx-auto mt-1 leading-relaxed">
+                The authorised pickup person has been recorded in <strong>{activeChildDisplayName}&apos;s official safety record</strong> and synchronized in real time with the <strong>School Administration and Gate Officer</strong>.
               </p>
+            </div>
+
+            <div className="p-3 rounded-2xl bg-emerald-50 border border-emerald-200 text-emerald-900 text-xs font-bold flex items-center justify-center gap-2 max-w-md mx-auto">
+              <ShieldCheck size={16} className="text-emerald-700" />
+              <span>Gate Release Clearance Active</span>
             </div>
 
             <button

@@ -76,6 +76,7 @@ export default function ParentDashboard() {
   const [notifications, setNotifications] = useState([]);
   const [loading, setLoading] = useState(true);
   const [activeTab, setActiveTab] = useState<ParentTabType>('dashboard');
+  const [safetyPillar, setSafetyPillar] = useState<'school_escort' | 'myeduride_escort' | 'edrive'>('school_escort');
   const [searchQuery, setSearchQuery] = useState('');
 
   // Sidebar Collapse & Mobile Overlay State
@@ -453,17 +454,27 @@ export default function ParentDashboard() {
   // Handle Quick Actions
   const handleQuickAction = (key: string) => {
     switch (key) {
+      case 'safety_connect':
+        setSafetyPillar('school_escort');
+        setActiveTab('safety');
+        break;
+      case 'school_escort':
+        setSafetyPillar('school_escort');
+        setActiveTab('safety');
+        break;
+      case 'book_ride':
+        setSafetyPillar('myeduride_escort');
+        setActiveTab('safety');
+        break;
+      case 'track_vehicle':
+        setSafetyPillar('edrive');
+        setActiveTab('safety');
+        break;
       case 'authorize_pickup':
         setShowPickupModal(true);
         break;
-      case 'track_vehicle':
-        setShowLiveJourneyModal(true);
-        break;
       case 'chat_school':
         setShowEduChatModal(true);
-        break;
-      case 'book_ride':
-        setActiveTab('safety');
         break;
       case 'fund_wallet':
         toast.info('Transport Wallet is currently undergoing development', {
@@ -471,7 +482,8 @@ export default function ParentDashboard() {
         });
         break;
       case 'journey_history':
-        setShowLiveJourneyModal(true);
+        setSafetyPillar('edrive');
+        setActiveTab('safety');
         break;
       case 'attendance_report':
         setShowAttendanceModal(true);
@@ -533,9 +545,17 @@ export default function ParentDashboard() {
             if (tab === 'children') setSelectedChild(safeChildren[0]?.id || '');
             if (tab === 'educhat') setShowEduChatModal(true);
             if (tab === 'wallet') setShowWalletModal(true);
-            if (tab === 'edrive') setShowLiveJourneyModal(true);
+            if (tab === 'edrive') {
+              setSafetyPillar('edrive');
+              setActiveTab('safety');
+            }
             if (tab === 'reports') setShowAttendanceModal(true);
             if (tab === 'migoai') setShowMigoAI(true);
+          }}
+          activeSafetyPillar={safetyPillar}
+          onSelectSafetyPillar={(pillar) => {
+            setSafetyPillar(pillar);
+            setActiveTab('safety');
           }}
           unreadChatCount={unreadEduChartCount}
           isCollapsed={isSidebarCollapsed}
@@ -552,9 +572,17 @@ export default function ParentDashboard() {
             if (tab === 'children') setSelectedChild(safeChildren[0]?.id || '');
             if (tab === 'educhat') setShowEduChatModal(true);
             if (tab === 'wallet') setShowWalletModal(true);
-            if (tab === 'edrive') setShowLiveJourneyModal(true);
+            if (tab === 'edrive') {
+              setSafetyPillar('edrive');
+              setActiveTab('safety');
+            }
             if (tab === 'reports') setShowAttendanceModal(true);
             if (tab === 'migoai') setShowMigoAI(true);
+          }}
+          activeSafetyPillar={safetyPillar}
+          onSelectSafetyPillar={(pillar) => {
+            setSafetyPillar(pillar);
+            setActiveTab('safety');
           }}
           unreadChatCount={unreadEduChartCount}
           isMobileDrawer={true}
@@ -583,7 +611,7 @@ export default function ParentDashboard() {
           {activeTab === 'safety' || activeTab === 'edrive' ? (
             <div className="max-w-[1600px] mx-auto space-y-5">
               <SafetyConnectView
-                initialTab={activeTab === 'edrive' ? 'edrive' : 'school_escort'}
+                initialTab={activeTab === 'edrive' ? 'edrive' : safetyPillar}
                 childrenList={safeChildren}
                 onClose={() => setActiveTab('dashboard')}
               />
@@ -597,13 +625,23 @@ export default function ParentDashboard() {
                 {/* ROW 1: Hero Greeting (2/3) + Live Journey (1/3) */}
                 <div className="grid grid-cols-1 md:grid-cols-12 gap-5">
                   <div className="md:col-span-7 lg:col-span-7">
-                    <HeroGreetingCard userName={userName} childrenList={safeChildren} />
+                    <HeroGreetingCard
+                      userName={userName}
+                      childrenList={safeChildren}
+                      onOpenSafetyConnect={() => {
+                        setSafetyPillar('school_escort');
+                        setActiveTab('safety');
+                      }}
+                    />
                   </div>
                   <div className="md:col-span-5 lg:col-span-5">
                     <LiveJourneyCard
                       childName={safeChildren[0] ? `${safeChildren[0].first_name} ${safeChildren[0].last_name}` : 'David James'}
                       hasActiveJourney={true}
-                      onOpenLiveJourney={() => setActiveTab('safety')}
+                      onOpenLiveJourney={() => {
+                        setSafetyPillar('edrive');
+                        setActiveTab('safety');
+                      }}
                     />
                   </div>
                 </div>
@@ -754,8 +792,13 @@ export default function ParentDashboard() {
       <PickupAuthorizationModal
         isOpen={showPickupModal}
         onClose={() => setShowPickupModal(false)}
-        childId={safeChildren[0]?.id || 'STU-001'}
-        childName={safeChildren[0] ? `${safeChildren[0].first_name} ${safeChildren[0].last_name}` : 'David James'}
+        childId={selectedChild || safeChildren[0]?.id || ''}
+        childName={
+          (safeChildren.find((c) => c.id === selectedChild) || safeChildren[0])
+            ? `${(safeChildren.find((c) => c.id === selectedChild) || safeChildren[0]).first_name} ${(safeChildren.find((c) => c.id === selectedChild) || safeChildren[0]).last_name}`
+            : 'Child'
+        }
+        childrenList={safeChildren}
         onUpdated={() => {
           loadParentDashboard();
         }}

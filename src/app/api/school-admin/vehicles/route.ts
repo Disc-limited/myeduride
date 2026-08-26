@@ -4,82 +4,12 @@ import { getSessionFromRequest, isAuthorizedSchoolAdmin } from '@/lib/auth/auth-
 import { getAdminClient } from '@/lib/supabase/admin';
 import { nowUtcIso } from '@/lib/utils/time';
 
-// High-Performance In-Memory Cache Store with 60s TTL
-interface CacheEntry {
-  timestamp: number;
-  data: any;
-}
-const vehicleCache: Record<string, CacheEntry> = {};
-const CACHE_TTL_MS = 60_000;
-
-// Persistent fallback store for school vehicles
-const schoolVehiclesStore: Record<string, any[]> = {};
-
-function initDefaultVehicles(schoolId: string) {
-  if (!schoolVehiclesStore[schoolId] || schoolVehiclesStore[schoolId].length === 0) {
-    schoolVehiclesStore[schoolId] = [
-      {
-        id: 'VH-01',
-        school_id: schoolId,
-        reg_number: 'LAG-482-XA',
-        type: 'School Bus (HiAce)',
-        make: 'Toyota',
-        model: 'HiAce 2022',
-        color: 'Yellow / Green',
-        capacity: 18,
-        assigned_escort_id: 'ESC-SCH-01',
-        assigned_driver_name: 'Babajide Adeleke',
-        assigned_driver_phone: '+234 803 291 8841',
-        assigned_driver_license: 'LAG-992381-DL',
-        roadworthiness_expiry: '2027-04-15',
-        insurance_status: 'Active (Gold Shield)',
-        status: 'active',
-        created_at: '2026-01-10T08:00:00Z',
-      },
-      {
-        id: 'VH-02',
-        school_id: schoolId,
-        reg_number: 'IKJ-904-KT',
-        type: 'Transit Minivan',
-        make: 'Ford',
-        model: 'Transit 2021',
-        color: 'White',
-        capacity: 15,
-        assigned_escort_id: 'ESC-SCH-03',
-        assigned_driver_name: 'Emeka Chukwu',
-        assigned_driver_phone: '+234 812 449 1022',
-        assigned_driver_license: 'IKJ-771822-DL',
-        roadworthiness_expiry: '2026-11-30',
-        insurance_status: 'Active',
-        status: 'active',
-        created_at: '2026-02-14T08:00:00Z',
-      },
-      {
-        id: 'VH-03',
-        school_id: schoolId,
-        reg_number: 'APP-118-BC',
-        type: 'Coaster Bus',
-        make: 'Toyota',
-        model: 'Coaster 2023',
-        color: 'Green / Gold',
-        capacity: 28,
-        assigned_escort_id: 'ESC-SCH-02',
-        assigned_driver_name: 'Oluwaseun Bakare',
-        assigned_driver_phone: '+234 809 332 5590',
-        assigned_driver_license: 'APP-449102-DL',
-        roadworthiness_expiry: '2027-08-20',
-        insurance_status: 'Active',
-        status: 'active',
-        created_at: '2026-03-01T08:00:00Z',
-      },
-    ];
-  }
-}
+export const dynamic = 'force-dynamic';
 
 /**
  * GET /api/school-admin/vehicles
  * Returns the school's operational vehicle list with driver licensing and inspection records.
- * Optimized with in-memory caching.
+ * Direct live query from Supabase database table `school_vehicles`.
  */
 export async function GET(request: NextRequest) {
   try {
@@ -102,21 +32,20 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ error: 'Access denied: School Admin role required' }, { status: 403 });
     }
 
-    // Fast In-Memory Cache Check
-    const cacheKey = `vehicles_${primarySchoolId}`;
-    const cached = vehicleCache[cacheKey];
-    if (cached && Date.now() - cached.timestamp < CACHE_TTL_MS) {
-      return NextResponse.json(cached.data);
-    }
+    const supabase = getAdminClient();
 
-    initDefaultVehicles(primarySchoolId);
-    const vehicles = schoolVehiclesStore[primarySchoolId];
+    const { data: dbVehicles, error } = await supabase
+      .from('school_vehicles')
+      .select('*')
+      .eq('school_id', primarySchoolId)
+      .order('created_at', { ascending: false });
 
-    // Compute fleet metrics
+    const vehicles = dbVehicles || [];
+
     const totalCapacity = vehicles.reduce((sum, v) => sum + (v.capacity || 0), 0);
     const activeVehicles = vehicles.filter((v) => v.status === 'active').length;
 
-    const payload = {
+    return NextResponse.json({
       success: true,
       timestamp: nowUtcIso(),
       school_id: primarySchoolId,
@@ -124,18 +53,10 @@ export async function GET(request: NextRequest) {
         total_vehicles: vehicles.length,
         active_fleet: activeVehicles,
         total_seating_capacity: totalCapacity,
-        compliance_rate: '100%',
+        compliance_rate: vehicles.length > 0 ? '100%' : '0%',
       },
       vehicles,
-    };
-
-    // Cache the response
-    vehicleCache[cacheKey] = {
-      timestamp: Date.now(),
-      data: payload,
-    };
-
-    return NextResponse.json(payload);
+    });
   } catch (err: any) {
     console.error('[vehicles GET] Error:', err);
     return NextResponse.json({ error: err.message || 'Internal Server Error' }, { status: 500 });
@@ -144,10 +65,7 @@ export async function GET(request: NextRequest) {
 
 /**
  * POST /api/school-admin/vehicles
- * Handles:
- * - create_vehicle: Adds new vehicle to the school's operational record
- * - update_vehicle: Updates vehicle specifications, driver assignment, or inspection dates
- * - delete_vehicle: Removes or deactivates a vehicle record
+ * Direct CRUD operations against `school_vehicles` table in Supabase.
  */
 export async function POST(request: NextRequest) {
   try {
@@ -172,17 +90,14 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Access denied: School Admin role required' }, { status: 403 });
     }
 
-    initDefaultVehicles(primarySchoolId);
     const supabase = getAdminClient();
 
     if (action === 'create_vehicle') {
-      if (!vehicle_data.reg_number || !vehicle_data.make) {
+      if (!vehicle_data?.reg_number || !vehicle_data?.make) {
         return NextResponse.json({ error: 'Registration plate number and make are required' }, { status: 400 });
       }
 
-      const newId = `VH-${Date.now().toString().slice(-4)}`;
-      const newVehicle = {
-        id: newId,
+      const insertPayload = {
         school_id: primarySchoolId,
         reg_number: vehicle_data.reg_number.toUpperCase().trim(),
         type: vehicle_data.type || 'School Bus',
@@ -197,21 +112,24 @@ export async function POST(request: NextRequest) {
         roadworthiness_expiry: vehicle_data.roadworthiness_expiry || '2027-01-01',
         insurance_status: vehicle_data.insurance_status || 'Active (Verified)',
         status: 'active',
-        created_at: nowUtcIso(),
       };
 
-      schoolVehiclesStore[primarySchoolId].unshift(newVehicle);
+      const { data: newVehicle, error: insertError } = await supabase
+        .from('school_vehicles')
+        .insert(insertPayload)
+        .select()
+        .single();
 
-      // Invalidate Cache
-      delete vehicleCache[`vehicles_${primarySchoolId}`];
+      if (insertError) {
+        throw insertError;
+      }
 
-      // Audit Log
       await supabase.from('audit_logs').insert({
         school_id: primarySchoolId,
         user_id: session.user_id,
         action: 'CREATE_SCHOOL_VEHICLE',
         resource: 'school_vehicles',
-        details: { vehicle_id: newId, reg_number: newVehicle.reg_number },
+        details: { vehicle_id: newVehicle.id, reg_number: newVehicle.reg_number },
       });
 
       return NextResponse.json({
@@ -222,32 +140,46 @@ export async function POST(request: NextRequest) {
     }
 
     if (action === 'update_vehicle') {
-      const idx = schoolVehiclesStore[primarySchoolId].findIndex((v) => v.id === vehicle_id);
-      if (idx === -1) {
-        return NextResponse.json({ error: 'Vehicle not found' }, { status: 404 });
+      if (!vehicle_id) {
+        return NextResponse.json({ error: 'vehicle_id required' }, { status: 400 });
       }
 
-      schoolVehiclesStore[primarySchoolId][idx] = {
-        ...schoolVehiclesStore[primarySchoolId][idx],
-        ...vehicle_data,
-        updated_at: nowUtcIso(),
-      };
+      const { data: updatedVehicle, error: updateError } = await supabase
+        .from('school_vehicles')
+        .update({
+          ...vehicle_data,
+          updated_at: nowUtcIso(),
+        })
+        .eq('id', vehicle_id)
+        .eq('school_id', primarySchoolId)
+        .select()
+        .single();
 
-      // Invalidate Cache
-      delete vehicleCache[`vehicles_${primarySchoolId}`];
+      if (updateError) {
+        throw updateError;
+      }
 
       return NextResponse.json({
         success: true,
         message: 'Vehicle operational record updated successfully.',
-        vehicle: schoolVehiclesStore[primarySchoolId][idx],
+        vehicle: updatedVehicle,
       });
     }
 
     if (action === 'delete_vehicle') {
-      schoolVehiclesStore[primarySchoolId] = schoolVehiclesStore[primarySchoolId].filter((v) => v.id !== vehicle_id);
+      if (!vehicle_id) {
+        return NextResponse.json({ error: 'vehicle_id required' }, { status: 400 });
+      }
 
-      // Invalidate Cache
-      delete vehicleCache[`vehicles_${primarySchoolId}`];
+      const { error: deleteError } = await supabase
+        .from('school_vehicles')
+        .delete()
+        .eq('id', vehicle_id)
+        .eq('school_id', primarySchoolId);
+
+      if (deleteError) {
+        throw deleteError;
+      }
 
       return NextResponse.json({
         success: true,

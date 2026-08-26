@@ -136,15 +136,27 @@ export default function SchoolAdminDashboard() {
       if (schoolData.school?.name) {
         setSchoolName(schoolData.school.name);
       }
-      const dashboard = await fetchData('get_school_dashboard', { school_id: schoolData.school_id });
+      let escortMetrics = null;
+      try {
+        const escortRes = await fetch(`/api/school-admin/escorts?school_id=${schoolData.school_id}`, {
+          credentials: 'include',
+        });
+        const escortJson = await escortRes.json();
+        if (escortJson.success) {
+          escortMetrics = escortJson.metrics;
+        }
+      } catch {
+        /* ignore */
+      }
+
       if (dashboard) {
         setStats({
           total_students: dashboard.total_students ?? 0,
           total_teachers: dashboard.total_teachers ?? 0,
           total_parents: dashboard.total_parents ?? 0,
-          total_escorts: 0,
-          vehicles_online: 0,
-          safety_alerts: 0,
+          total_escorts: escortMetrics?.total_escorts ?? dashboard.total_escorts ?? 0,
+          vehicles_online: escortMetrics?.vehicles_assigned ?? dashboard.vehicles_online ?? 0,
+          safety_alerts: dashboard.safety_alerts ?? 0,
           student_stats: dashboard.student_stats || { present: 0, absent: 0, late: 0, total: 0 },
         });
         if (Array.isArray(dashboard.recent_activity)) {
@@ -175,6 +187,7 @@ export default function SchoolAdminDashboard() {
         change: 'Active',
         bgColor: 'bg-emerald-50 text-emerald-600',
         icon: <Users size={20} />,
+        href: '/dashboard/school-admin/students',
       },
       {
         title: 'Staff',
@@ -182,6 +195,7 @@ export default function SchoolAdminDashboard() {
         change: 'Active',
         bgColor: 'bg-amber-50 text-amber-600',
         icon: <GraduationCap size={20} />,
+        href: '/dashboard/school-admin/staff',
       },
       {
         title: 'Parents',
@@ -189,39 +203,44 @@ export default function SchoolAdminDashboard() {
         change: 'Active',
         bgColor: 'bg-blue-50 text-blue-600',
         icon: <UserCheck size={20} />,
+        href: '/dashboard/school-admin/parents',
       },
       {
         title: 'Active Escorts',
-        value: 0,
-        change: 'Not Configured',
-        bgColor: 'bg-rose-50 text-rose-600',
-        icon: <Shield size={20} />,
+        value: stats.total_escorts,
+        change: 'Active',
+        bgColor: 'bg-teal-50 text-teal-700',
+        icon: <UserCheck size={20} />,
+        href: '/dashboard/school-admin/escort',
       },
       {
         title: 'Vehicles Online',
-        value: 0,
-        change: 'Offline',
+        value: stats.vehicles_online,
+        change: 'Online',
         bgColor: 'bg-sky-50 text-sky-600',
         icon: <Car size={20} />,
+        href: '/dashboard/school-admin/vehicles',
       },
       {
         title: 'Safety Alerts',
-        value: 0,
+        value: stats.safety_alerts,
         change: 'All Clear',
         bgColor: 'bg-emerald-50 text-emerald-600',
         icon: <CheckCircle2 size={20} />,
+        href: '/dashboard/school-admin/incidents',
       },
     ],
-    [stats.total_students, stats.total_teachers, stats.total_parents]
+    [stats.total_students, stats.total_teachers, stats.total_parents, stats.total_escorts, stats.vehicles_online, stats.safety_alerts]
   );
 
   const quickActions = [
     { label: 'Add Student', icon: <Plus size={18} />, color: 'bg-emerald-100 text-emerald-700', href: '/dashboard/school-admin/students/new' },
     { label: 'Add Staff', icon: <Plus size={18} />, color: 'bg-purple-100 text-purple-700', href: '/dashboard/school-admin/staff/new' },
-    { label: 'Add School Escort', icon: <Shield size={18} />, color: 'bg-[#00A859] text-white font-extrabold shadow-sm', href: '/dashboard/school-admin/transport/escorts/add' },
-    { label: 'School Escorts', icon: <Users size={18} />, color: 'bg-teal-100 text-teal-700', href: '/dashboard/school-admin/transport/escorts' },
+    { label: 'Escort Records', icon: <UserCheck size={18} />, color: 'bg-teal-600 text-white font-extrabold shadow-sm', href: '/dashboard/school-admin/escort' },
+    { label: 'School Escorts', icon: <Users size={18} />, color: 'bg-teal-100 text-teal-700', href: '/dashboard/school-admin/escort/school-escort' },
+    { label: 'MyEduRide Escorts', icon: <Shield size={18} />, color: 'bg-[#0B1E36] text-white font-extrabold shadow-sm', href: '/dashboard/school-admin/escort/myeduride-escort' },
     { label: 'Pickup List', icon: <Car size={18} />, color: 'bg-blue-100 text-blue-700', href: '/dashboard/school-admin/pickup-persons' },
-    { label: 'Add Vehicle', icon: <Car size={18} />, color: 'bg-emerald-100 text-emerald-700', href: '/dashboard/school-admin/vehicles' },
+    { label: 'Vehicles', icon: <Car size={18} />, color: 'bg-emerald-100 text-emerald-700', href: '/dashboard/school-admin/vehicles' },
     { label: 'Send Notice', icon: <Send size={18} />, color: 'bg-sky-100 text-sky-700', href: '/dashboard/school-admin/messages' },
     { label: 'View Reports', icon: <FileText size={18} />, color: 'bg-cyan-100 text-cyan-700', href: '/dashboard/school-admin/reports' },
     { label: 'Wallet', icon: <WalletIcon size={18} />, color: 'bg-amber-100 text-amber-700', href: '/dashboard/school-admin/wallet' },
@@ -431,19 +450,21 @@ export default function SchoolAdminDashboard() {
       {/* 2. METRIC STAT CARDS GRID (6 CARDS) */}
       <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3.5">
         {metricCards.map((card) => (
-          <div
+          <Link
             key={card.title}
-            className="bg-white rounded-2xl p-4 border border-slate-200/80 shadow-sm hover:shadow-md transition-all flex flex-col justify-between"
+            href={card.href || '#'}
+            className="bg-white rounded-2xl p-4 border border-slate-200/80 shadow-sm hover:shadow-md hover:border-slate-300 transition-all flex flex-col justify-between group"
           >
             <div className="flex items-center justify-between mb-3">
-              <div className={`p-2.5 rounded-xl ${card.bgColor}`}>{card.icon}</div>
+              <div className={`p-2.5 rounded-xl ${card.bgColor} group-hover:scale-105 transition-transform`}>{card.icon}</div>
+              <ChevronRight size={14} className="text-slate-300 group-hover:text-slate-600 transition-colors" />
             </div>
             <div>
               <p className="text-2xl font-black text-slate-900 tracking-tight">{card.value}</p>
               <p className="text-xs font-bold text-slate-800 mt-0.5">{card.title}</p>
               <p className="text-[11px] font-semibold text-emerald-600 mt-1">{card.change}</p>
             </div>
-          </div>
+          </Link>
         ))}
       </div>
 

@@ -18,16 +18,16 @@ interface AttendanceWeekCardProps {
 
 export default function AttendanceWeekCard({
   days = [
-    { day: 'Mon', status: 'present' },
-    { day: 'Tue', status: 'present' },
-    { day: 'Wed', status: 'absent' },
-    { day: 'Thu', status: 'present' },
-    { day: 'Fri', status: 'present' },
+    { day: 'Mon', status: 'none' },
+    { day: 'Tue', status: 'none' },
+    { day: 'Wed', status: 'none' },
+    { day: 'Thu', status: 'none' },
+    { day: 'Fri', status: 'none' },
   ],
-  presentCount = 4,
+  presentCount = 0,
   lateCount = 0,
-  absentCount = 1,
-  attendanceRate = 80,
+  absentCount = 0,
+  attendanceRate = 0,
   onViewAll,
 }: AttendanceWeekCardProps) {
   const getDayIcon = (status: string) => {

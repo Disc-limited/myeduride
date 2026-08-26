@@ -422,11 +422,14 @@ export default function EscortDashboardPage() {
               Unique Communication ID
             </span>
             <div className="flex items-center justify-between">
-              <span className="font-mono text-xs font-bold text-white tracking-wide">MR-7X2K-91D3</span>
+              <span className="font-mono text-xs font-bold text-white tracking-wide">
+                {liveDashboardData?.escort?.code || escortData?.escort_code || escortData?.id || (session?.user_id ? `ESC-${session.user_id.substring(0, 6).toUpperCase()}` : 'ESC-ID')}
+              </span>
               <button
                 type="button"
                 onClick={() => {
-                  navigator.clipboard.writeText('MR-7X2K-91D3');
+                  const idToCopy = liveDashboardData?.escort?.code || escortData?.escort_code || escortData?.id || 'ESC-ID';
+                  navigator.clipboard.writeText(idToCopy);
                   toast.success('Communication ID copied!');
                 }}
                 className="text-slate-400 hover:text-white transition-all"
@@ -464,14 +467,14 @@ export default function EscortDashboardPage() {
               <div className="flex items-center gap-2">
                 <span className="text-xs text-slate-500 font-semibold">Good Morning,</span>
                 <h2 className="font-extrabold text-slate-900 text-base md:text-lg leading-tight">
-                  {liveDashboardData?.escort?.name || escortData?.name || escortData?.fullName || session?.full_name || 'Emeka Johnson'}
+                  {liveDashboardData?.escort?.name || escortData?.name || escortData?.fullName || session?.full_name || 'Escort'}
                 </h2>
                 <span className="px-2.5 py-0.5 rounded-full bg-emerald-100 text-emerald-800 text-[10px] font-extrabold">
                   MyEduRide Escort
                 </span>
               </div>
               <p className="text-[11px] text-slate-500 font-medium">
-                Escort ID: <span className="font-mono text-slate-700 font-bold">{liveDashboardData?.escort?.code || escortData?.escort_code || escortData?.id || 'EMR-2031'}</span> • Assigned School: <strong className="text-slate-800 font-bold">{liveDashboardData?.school?.name || 'St. Mary\'s School'}</strong>
+                Escort ID: <span className="font-mono text-slate-700 font-bold">{liveDashboardData?.escort?.code || escortData?.escort_code || escortData?.id || (session?.user_id ? `ESC-${session.user_id.substring(0, 6).toUpperCase()}` : 'ID Pending')}</span> • Assigned School: <strong className="text-slate-800 font-bold">{liveDashboardData?.school?.name || (escortData?.createdBySchoolName || 'Not Assigned')}</strong>
               </p>
             </div>
 
@@ -503,7 +506,7 @@ export default function EscortDashboardPage() {
               <div>
                 <span className="text-[9px] text-slate-400 font-bold uppercase tracking-wider block">Wallet Balance</span>
                 <strong className="text-emerald-600 font-black text-sm font-mono">
-                  ₦{(liveDashboardData?.wallet?.balance ?? 500.0).toLocaleString('en-NG', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                  ₦{(liveDashboardData?.wallet?.balance ?? 0.0).toLocaleString('en-NG', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                 </strong>
               </div>
               <button
@@ -543,28 +546,32 @@ export default function EscortDashboardPage() {
               </button>
             </div>
 
-            {/* Chat Icon with Badge 8 */}
+            {/* Chat Icon with Badge */}
             <button
               onClick={() => setActiveNav('chat')}
               className="relative p-2 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 transition-all cursor-pointer"
               title="Messages"
             >
               <MessageSquare size={18} />
-              <span className="absolute -top-1 -right-1 w-4 h-4 bg-red-500 text-white font-bold text-[9px] rounded-full flex items-center justify-center border-2 border-white">
-                {liveDashboardData?.notifications?.unreadCount ? Math.min(liveDashboardData.notifications.unreadCount, 8) : 8}
-              </span>
+              {liveDashboardData?.notifications?.unreadCount > 0 && (
+                <span className="absolute -top-1 -right-1 w-4 h-4 bg-red-500 text-white font-bold text-[9px] rounded-full flex items-center justify-center border-2 border-white">
+                  {Math.min(liveDashboardData.notifications.unreadCount, 99)}
+                </span>
+              )}
             </button>
 
-            {/* Bell Icon with Badge 12 */}
+            {/* Bell Icon with Badge */}
             <button
               onClick={() => setNotificationsOpen(!notificationsOpen)}
               className="relative p-2 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 transition-all cursor-pointer"
               title="Notifications"
             >
               <Bell size={18} />
-              <span className="absolute -top-1 -right-1 w-4 h-4 bg-red-500 text-white font-bold text-[9px] rounded-full flex items-center justify-center border-2 border-white">
-                {liveDashboardData?.notifications?.unreadCount ?? 12}
-              </span>
+              {liveDashboardData?.notifications?.unreadCount > 0 && (
+                <span className="absolute -top-1 -right-1 w-4 h-4 bg-red-500 text-white font-bold text-[9px] rounded-full flex items-center justify-center border-2 border-white">
+                  {Math.min(liveDashboardData.notifications.unreadCount, 99)}
+                </span>
+              )}
             </button>
 
             {/* User Profile Avatar */}
@@ -734,7 +741,7 @@ export default function EscortDashboardPage() {
                           const res = await fetch('/api/escorts/activate', {
                             method: 'POST',
                             headers: { 'Content-Type': 'application/json' },
-                            body: JSON.stringify({ appId: 'APP-ESC-901', paymentMethod: 'card' }),
+                            body: JSON.stringify({ appId: escortData?.id || liveDashboardData?.escort?.id || session?.user_id, paymentMethod: 'card' }),
                           });
                           const data = await res.json();
                           toast.dismiss();

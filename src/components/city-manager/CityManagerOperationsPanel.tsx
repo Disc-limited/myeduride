@@ -48,12 +48,12 @@ export function CityManagerOperationsPanel() {
     school_name: '',
     route_name: '',
     original_escort_name: '',
-    original_escort_phone: '+234 803 291 8841',
+    original_escort_phone: '',
     deputy_escort_id: '',
     deputy_escort_name: '',
     deputy_escort_phone: '',
     emergency_reason: 'School bus mechanical breakdown / delay',
-    student_names: 'David James, Esther Paul',
+    student_names: '',
     notes: '',
   });
 
@@ -106,7 +106,11 @@ export function CityManagerOperationsPanel() {
   };
 
   const handleApproveParentBooking = async (bookingId: string) => {
-    const escortId = selectedEscortsForParentBookings[bookingId] || 'ESC-MYE-04';
+    const escortId = selectedEscortsForParentBookings[bookingId] || (data.escorts.length > 0 ? data.escorts[0].id : null);
+    if (!escortId) {
+      toast.error('No approved escort available to assign. Please ensure an approved escort exists in the database.');
+      return;
+    }
     setProcessingBookingId(bookingId);
     try {
       const r = await fetch('/api/city-manager/operations', {
@@ -313,7 +317,7 @@ export function CityManagerOperationsPanel() {
                   <p className="text-sm font-black text-white">{req.child_name}</p>
                 </div>
                 <p className="text-[11px] text-slate-400">
-                  School: <strong className="text-slate-200">{req.school_name || 'Gracefield International School'}</strong>
+                  School: <strong className="text-slate-200">{req.school_name || 'Designated School'}</strong>
                 </p>
                 <p className="text-[11px] text-slate-400">
                   📍 Area / Pickup Stop: <strong className="text-slate-200">{req.pickup_location}</strong>
@@ -348,7 +352,7 @@ export function CityManagerOperationsPanel() {
                 ) : (
                   <>
                     <select
-                      value={selectedEscortsForParentBookings[req.booking_id] || 'ESC-MYE-04'}
+                      value={selectedEscortsForParentBookings[req.booking_id] || (data.escorts[0]?.id || '')}
                       onChange={(e) =>
                         setSelectedEscortsForParentBookings((prev) => ({
                           ...prev,
@@ -357,8 +361,15 @@ export function CityManagerOperationsPanel() {
                       }
                       className="px-3 py-2 bg-slate-950 border border-slate-700 rounded-xl text-xs font-bold text-white focus:outline-none"
                     >
-                      <option value="ESC-MYE-04">Babatunde Lawal (Victoria Island / Lekki - 4.95★)</option>
-                      <option value="ESC-MYE-05">Chioma Okonkwo (Ikeja / Maryland - 4.98★)</option>
+                      {data.escorts.length === 0 ? (
+                        <option value="">No Approved Escorts in Database</option>
+                      ) : (
+                        data.escorts.map((esc: any) => (
+                          <option key={esc.id} value={esc.id}>
+                            {esc.full_name} ({esc.operating_area || 'Standard Zone'})
+                          </option>
+                        ))
+                      )}
                     </select>
 
                     <button
@@ -713,7 +724,7 @@ export function CityManagerOperationsPanel() {
                   <input
                     value={deputiseForm.original_escort_name}
                     onChange={(e) => setDeputiseForm({ ...deputiseForm, original_escort_name: e.target.value })}
-                    placeholder="e.g. Babajide Adeleke"
+                    placeholder="e.g. Current Assigned Escort"
                     className="w-full rounded-xl bg-slate-900 border border-slate-700 p-2.5 text-white"
                   />
                 </div>
@@ -730,8 +741,8 @@ export function CityManagerOperationsPanel() {
                     setDeputiseForm({
                       ...deputiseForm,
                       deputy_escort_id: e.target.value,
-                      deputy_escort_name: selected?.full_name || 'MyEduRide Certified Escort',
-                      deputy_escort_phone: selected?.phone || '+234 802 334 1188',
+                      deputy_escort_name: selected?.full_name || '',
+                      deputy_escort_phone: selected?.phone || '',
                     });
                   }}
                   className="w-full rounded-xl bg-slate-900 border border-slate-700 p-2.5 text-white"
@@ -739,7 +750,7 @@ export function CityManagerOperationsPanel() {
                   <option value="">Select Available Deputy Escort</option>
                   {emergencyPool.map((esc) => (
                     <option key={esc.id} value={esc.id}>
-                      {esc.full_name} ({esc.operating_area || 'Lagos Central'}) — Available
+                      {esc.full_name} ({esc.operating_area || 'Verified Area'}) — Available
                     </option>
                   ))}
                 </select>
@@ -764,7 +775,7 @@ export function CityManagerOperationsPanel() {
                 <input
                   value={deputiseForm.student_names}
                   onChange={(e) => setDeputiseForm({ ...deputiseForm, student_names: e.target.value })}
-                  placeholder="e.g. David James, Esther Paul, Michael Obi"
+                  placeholder="e.g. Student Name(s)"
                   className="w-full rounded-xl bg-slate-900 border border-slate-700 p-2.5 text-white"
                 />
               </div>

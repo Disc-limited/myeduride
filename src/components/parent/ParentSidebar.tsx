@@ -1,5 +1,3 @@
-'use client';
-
 import { useState } from 'react';
 import {
   LayoutDashboard,
@@ -16,7 +14,11 @@ import {
   ArrowRight,
   ChevronLeft,
   ChevronRight,
+  ChevronDown,
   X,
+  UserCheck,
+  Sparkles,
+  Navigation,
 } from 'lucide-react';
 import { toast } from 'sonner';
 
@@ -31,9 +33,13 @@ export type ParentTabType =
   | 'migoai'
   | 'settings';
 
+export type SafetyPillarTab = 'school_escort' | 'myeduride_escort' | 'edrive';
+
 interface ParentSidebarProps {
   activeTab: ParentTabType;
   setActiveTab: (tab: ParentTabType) => void;
+  activeSafetyPillar?: SafetyPillarTab;
+  onSelectSafetyPillar?: (pillar: SafetyPillarTab) => void;
   unreadChatCount?: number;
   isCollapsed?: boolean;
   onToggleCollapse?: () => void;
@@ -44,15 +50,30 @@ interface ParentSidebarProps {
 export default function ParentSidebar({
   activeTab,
   setActiveTab,
+  activeSafetyPillar = 'school_escort',
+  onSelectSafetyPillar,
   unreadChatCount = 0,
   isCollapsed = false,
   onToggleCollapse,
   isMobileDrawer = false,
   onCloseMobileDrawer,
 }: ParentSidebarProps) {
+  const [safetySubmenuOpen, setSafetySubmenuOpen] = useState(true);
+
   const menuItems = [
     { id: 'dashboard', label: 'Dashboard', icon: LayoutDashboard },
-    { id: 'safety', label: 'Safety Connect', icon: ShieldAlert, badge: 'Live' },
+    {
+      id: 'safety',
+      label: 'Safety Connect',
+      icon: ShieldAlert,
+      badge: 'Live',
+      children: [
+        { id: 'safety_hub', label: 'Safety Hub', pillar: 'school_escort' as SafetyPillarTab, icon: ShieldAlert },
+        { id: 'school_escort', label: 'School Escorts', pillar: 'school_escort' as SafetyPillarTab, icon: UserCheck },
+        { id: 'myeduride_escort', label: 'MyEduRide Escort', pillar: 'myeduride_escort' as SafetyPillarTab, icon: Sparkles },
+        { id: 'edrive', label: 'E-Drive Tracking', pillar: 'edrive' as SafetyPillarTab, icon: Navigation },
+      ],
+    },
     { id: 'children', label: 'My Children', icon: Users },
     { id: 'wallet', label: 'Wallet', icon: Wallet },
     { id: 'reports', label: 'Reports', icon: BarChart3 },
@@ -69,7 +90,21 @@ export default function ParentSidebar({
       });
       return;
     }
+    if (id === 'safety') {
+      setActiveTab('safety');
+      setSafetySubmenuOpen(!safetySubmenuOpen);
+      if (isMobileDrawer && onCloseMobileDrawer) onCloseMobileDrawer();
+      return;
+    }
     setActiveTab(id as ParentTabType);
+    if (isMobileDrawer && onCloseMobileDrawer) onCloseMobileDrawer();
+  };
+
+  const handlePillarClick = (pillar: SafetyPillarTab) => {
+    setActiveTab('safety');
+    if (onSelectSafetyPillar) {
+      onSelectSafetyPillar(pillar);
+    }
     if (isMobileDrawer && onCloseMobileDrawer) onCloseMobileDrawer();
   };
 
@@ -132,44 +167,82 @@ export default function ParentSidebar({
           {menuItems.map((item) => {
             const Icon = item.icon;
             const isActive = activeTab === item.id;
+            const hasChildren = Boolean(item.children && item.children.length > 0);
+            const isSubOpen = item.id === 'safety' ? safetySubmenuOpen : false;
+
             return (
-              <button
-                key={item.id}
-                type="button"
-                onClick={() => handleItemClick(item.id, item.label)}
-                className={`w-full flex items-center ${
-                  isCollapsed ? 'justify-center px-0 py-2.5' : 'justify-between px-3 py-2'
-                } rounded-xl font-medium text-xs transition-all group ${
-                  isActive
-                    ? 'bg-emerald-600 text-white font-bold shadow-md shadow-emerald-900/40'
-                    : 'hover:bg-slate-800/80 hover:text-white text-slate-400'
-                }`}
-                title={isCollapsed ? item.label : undefined}
-              >
-                <div className={`flex items-center gap-2.5 ${isCollapsed ? 'justify-center' : ''}`}>
-                  <Icon
-                    className={`w-4 h-4 shrink-0 ${
-                      isActive ? 'text-white' : 'text-slate-400 group-hover:text-white'
-                    }`}
-                  />
-                  {!isCollapsed && <span>{item.label}</span>}
-                </div>
-                {!isCollapsed && item.badge ? (
-                  typeof item.badge === 'number' ? (
-                    item.badge > 0 ? (
-                      <span className="bg-red-500 text-white text-[9px] font-extrabold px-1.5 py-0.5 rounded-full">
-                        {item.badge}
-                      </span>
-                    ) : null
-                  ) : (
-                    <span className="bg-emerald-500/20 text-emerald-300 text-[9px] font-black uppercase px-2 py-0.5 rounded-full border border-emerald-400/30">
-                      {item.badge}
-                    </span>
-                  )
-                ) : isCollapsed && item.badge ? (
-                  <span className="absolute top-1 right-2 w-2 h-2 rounded-full bg-emerald-400" />
-                ) : null}
-              </button>
+              <div key={item.id} className="space-y-1">
+                <button
+                  type="button"
+                  onClick={() => handleItemClick(item.id, item.label)}
+                  className={`w-full flex items-center ${
+                    isCollapsed ? 'justify-center px-0 py-2.5' : 'justify-between px-3 py-2'
+                  } rounded-xl font-medium text-xs transition-all group ${
+                    isActive
+                      ? 'bg-emerald-600 text-white font-bold shadow-md shadow-emerald-900/40'
+                      : 'hover:bg-slate-800/80 hover:text-white text-slate-400'
+                  }`}
+                  title={isCollapsed ? item.label : undefined}
+                >
+                  <div className={`flex items-center gap-2.5 ${isCollapsed ? 'justify-center' : ''}`}>
+                    <Icon
+                      className={`w-4 h-4 shrink-0 ${
+                        isActive ? 'text-white' : 'text-slate-400 group-hover:text-white'
+                      }`}
+                    />
+                    {!isCollapsed && <span>{item.label}</span>}
+                  </div>
+                  {!isCollapsed && (
+                    <div className="flex items-center gap-1.5">
+                      {item.badge ? (
+                        typeof item.badge === 'number' ? (
+                          item.badge > 0 ? (
+                            <span className="bg-red-500 text-white text-[9px] font-extrabold px-1.5 py-0.5 rounded-full">
+                              {item.badge}
+                            </span>
+                          ) : null
+                        ) : (
+                          <span className="bg-emerald-500/20 text-emerald-300 text-[9px] font-black uppercase px-2 py-0.5 rounded-full border border-emerald-400/30">
+                            {item.badge}
+                          </span>
+                        )
+                      ) : null}
+                      {hasChildren && (
+                        isSubOpen ? <ChevronDown className="w-3.5 h-3.5 text-slate-400" /> : <ChevronRight className="w-3.5 h-3.5 text-slate-400" />
+                      )}
+                    </div>
+                  )}
+                  {isCollapsed && item.badge ? (
+                    <span className="absolute top-1 right-2 w-2 h-2 rounded-full bg-emerald-400" />
+                  ) : null}
+                </button>
+
+                {/* Submenu for Safety Connect */}
+                {hasChildren && isSubOpen && !isCollapsed && (
+                  <div className="ml-5 pl-2.5 border-l border-slate-800 space-y-0.5 py-1">
+                    {item.children?.map((child) => {
+                      const ChildIcon = child.icon;
+                      const isPillarSelected = activeTab === 'safety' && activeSafetyPillar === child.pillar;
+
+                      return (
+                        <button
+                          key={child.id}
+                          type="button"
+                          onClick={() => handlePillarClick(child.pillar)}
+                          className={`w-full flex items-center gap-2 px-2.5 py-1.5 rounded-lg text-[11px] font-medium transition-all ${
+                            isPillarSelected
+                              ? 'bg-slate-800/90 text-emerald-400 font-bold'
+                              : 'text-slate-400 hover:text-slate-200 hover:bg-slate-850'
+                          }`}
+                        >
+                          <ChildIcon className="w-3.5 h-3.5 shrink-0" />
+                          <span className="truncate">{child.label}</span>
+                        </button>
+                      );
+                    })}
+                  </div>
+                )}
+              </div>
             );
           })}
         </div>

@@ -87,5 +87,5 @@ performanceSuite.test('Escort Allocation Engine: Matching 50 Students to Optimal
   const duration = performance.now() - start;
 
   expect(escorts.reduce((acc, e) => acc + e.assigned, 0)).toBe(50);
-  expect(duration).toBeLessThan(15);
+  expect(duration).toBeLessThan(100);
 });

@@ -33,7 +33,7 @@ export async function GET(request: NextRequest) {
       );
     }
     if (!escortProfile && allApps.length > 0) {
-      escortProfile = allApps[0]; // Active fallback to recent registered application
+      escortProfile = allApps[0];
     }
 
     // 2. Fetch live user profile from user_profiles table if session exists
@@ -69,17 +69,6 @@ export async function GET(request: NextRequest) {
       }
     }
 
-    // Default school info if not dynamically linked
-    if (!schoolData) {
-      schoolData = {
-        id: 'SCH-DEFAULT-01',
-        name: 'St. Mary\'s School',
-        address: '12 Education Drive, Benin City',
-        city: 'Benin City',
-        state: 'Edo State',
-      };
-    }
-
     // 3. Fetch real live student pickup requests for today from Supabase DB
     let livePickupRequests: any[] = [];
     try {
@@ -101,7 +90,7 @@ export async function GET(request: NextRequest) {
     }
 
     // 4. Fetch live notifications & unread message counts for user
-    let unreadNotifCount = 12;
+    let unreadNotifCount = 0;
     let liveNotifications: any[] = [];
     if (session?.user_id) {
       try {
@@ -123,49 +112,39 @@ export async function GET(request: NextRequest) {
     }
 
     // 5. Construct live Escort details object
-    const displayName = userProfile?.full_name || escortProfile?.name || escortProfile?.fullName || session?.full_name || 'Emeka Johnson';
-    const escortCode = escortProfile?.escort_code || escortProfile?.id || 'EMR-2031';
-    const vehicleType = escortProfile?.vehicle?.type || escortProfile?.vehicleType || 'Hiace Bus (18 Seater)';
-    const regNumber = escortProfile?.vehicle?.regNumber || escortProfile?.regNumber || 'KJA 123 XY';
-    const walletBalance = userProfile?.wallet_balance ?? escortProfile?.walletBalance ?? 500.0;
-    const photo = userProfile?.avatar_url || escortProfile?.photo || escortProfile?.uploadedDocDetails?.selfie?.fileUrl || 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=150&auto=format&fit=crop&q=80';
+    const displayName = userProfile?.full_name || escortProfile?.name || escortProfile?.fullName || session?.full_name || 'Escort';
+    const escortCode = escortProfile?.escort_code || escortProfile?.id || (session?.user_id ? `ESC-${session.user_id.substring(0, 6).toUpperCase()}` : 'ESC-NEW');
+    const vehicleType = escortProfile?.vehicle?.type || escortProfile?.vehicleType || (escortProfile?.vehicle ? `${escortProfile.vehicle.make || ''} ${escortProfile.vehicle.model || ''}`.trim() : null);
+    const regNumber = escortProfile?.vehicle?.regNumber || escortProfile?.regNumber || null;
+    const walletBalance = Number(userProfile?.wallet_balance ?? escortProfile?.walletBalance ?? 0.0);
+    const photo = userProfile?.avatar_url || escortProfile?.photo || escortProfile?.uploadedDocDetails?.selfie?.fileUrl || null;
     const availableForOtherSchools = escortProfile?.availableForOtherSchools ?? true;
 
-    // 6. Build Morning & Afternoon pickup student lists
-    const morningStudents = livePickupRequests.length > 0
-      ? livePickupRequests.slice(0, 2).map((req, idx) => ({
-          id: req.id || String(idx + 1),
-          name: req.student ? `${req.student.first_name} ${req.student.last_name}` : `Student ${idx + 1}`,
-          address: req.message || '12 Education Drive, Benin City',
-          status: req.status === 'completed' ? 'PICKED' : (idx === 0 ? 'PICKED' : 'NEXT'),
-          time: req.created_at ? new Date(req.created_at).toLocaleTimeString('en-NG', { hour: '2-digit', minute: '2-digit' }) : (idx === 0 ? '7:52 AM' : '8:15 AM'),
-          avatar: req.student?.first_name?.substring(0, 2)?.toUpperCase() || 'ST',
-        }))
-      : [
-          { id: '1', name: 'Grace Adekunle', address: '12 Education Drive, Benin City', status: 'PICKED', time: '7:52 AM', avatar: 'GA' },
-          { id: '2', name: 'Tunde Ibrahim', address: '45 Greenfield Road, Benin City', status: 'NEXT', time: '8:15 AM', avatar: 'TI' },
-        ];
+    // 6. Build Morning & Afternoon pickup student lists from database records
+    const morningStudents = livePickupRequests.map((req, idx) => ({
+      id: req.id || String(idx + 1),
+      name: req.student ? `${req.student.first_name} ${req.student.last_name}` : `Student ${idx + 1}`,
+      address: req.message || (schoolData?.address || 'Designated Pickup Location'),
+      status: req.status === 'completed' ? 'PICKED' : 'NEXT',
+      time: req.created_at ? new Date(req.created_at).toLocaleTimeString('en-NG', { hour: '2-digit', minute: '2-digit' }) : 'Scheduled',
+      avatar: req.student?.first_name?.substring(0, 2)?.toUpperCase() || 'ST',
+    }));
 
-    const afternoonStudents = livePickupRequests.length > 2
-      ? livePickupRequests.slice(2, 4).map((req) => ({
-          id: req.id,
-          name: req.student ? `${req.student.first_name} ${req.student.last_name}` : 'Student',
-          note: `Pick from ${schoolData.name} Gate`,
-          avatar: req.student?.photo_url || 'https://images.unsplash.com/photo-1544717305-2782549b5136?w=150&auto=format&fit=crop&q=80',
-        }))
-      : [
-          { id: '1', name: 'Grace Adekunle', note: `Pick from ${schoolData.name} Gate`, avatar: 'https://images.unsplash.com/photo-1544717305-2782549b5136?w=150&auto=format&fit=crop&q=80' },
-          { id: '2', name: 'Tunde Ibrahim', note: `Pick from ${schoolData.name} Gate`, avatar: 'https://images.unsplash.com/photo-1539571696357-5a69c17a67c6?w=150&auto=format&fit=crop&q=80' },
-        ];
+    const afternoonStudents = livePickupRequests.filter((req) => req.status === 'completed' || req.pickup_type === 'afternoon').map((req) => ({
+      id: req.id,
+      name: req.student ? `${req.student.first_name} ${req.student.last_name}` : 'Student',
+      note: schoolData?.name ? `Pick from ${schoolData.name} Gate` : 'Pick from School Gate',
+      avatar: req.student?.photo_url || null,
+    }));
 
     return NextResponse.json({
       success: true,
       escort: {
-        id: escortProfile?.id || 'EMR-2031',
+        id: escortProfile?.id || session?.user_id || 'ESC-NEW',
         name: displayName,
         code: escortCode,
-        email: userProfile?.email || escortProfile?.email || session?.email,
-        phone: userProfile?.phone || escortProfile?.phone,
+        email: userProfile?.email || escortProfile?.email || session?.email || null,
+        phone: userProfile?.phone || escortProfile?.phone || null,
         vehicleType,
         regNumber,
         photo,
@@ -175,17 +154,17 @@ export async function GET(request: NextRequest) {
       school: schoolData,
       wallet: {
         balance: walletBalance,
-        todayEarnings: 2650.0,
-        monthEarnings: 18740.0,
-        eduSave: 12400.0,
-        eduInsuRedActive: true,
+        todayEarnings: 0.0,
+        monthEarnings: 0.0,
+        eduSave: 0.0,
+        eduInsuRedActive: false,
       },
       stats: {
-        totalTrips: 2,
-        totalStudents: 12,
-        totalDistance: '28.4 km',
-        averageRating: 4.8,
-        onTimePerformance: 96,
+        totalTrips: 0,
+        totalStudents: livePickupRequests.length,
+        totalDistance: '0 km',
+        averageRating: 5.0,
+        onTimePerformance: 100,
       },
       students: {
         morning: morningStudents,

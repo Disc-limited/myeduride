@@ -38,8 +38,8 @@ export function CityManagerHeader({
   const [dateStr, setDateStr] = useState('');
   const [cityName, setCityName] = useState(selectedCity);
   const [cityDropdownOpen, setCityDropdownOpen] = useState(false);
-  const [managerName, setManagerName] = useState('Adekule Samuel');
-  const [managerCode, setManagerCode] = useState('CM-LAG-001');
+  const [managerName, setManagerName] = useState('City Manager');
+  const [managerCode, setManagerCode] = useState('Authorized');
 
   const availableCities = [
     'LAGOS MAINLAND',

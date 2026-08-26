@@ -92,6 +92,9 @@ export default function EditStaffModal({ isOpen, onClose, onSuccess, staffMember
         if (data.preview_url) {
           setPhotoPreview(data.preview_url);
         }
+        if (staffMember.staff) staffMember.staff.photo_url = data.photo_url;
+        if (staffMember.profile) staffMember.profile.avatar_url = data.photo_url;
+        onSuccess?.();
       } catch (err: any) {
         toast.error(err?.message || 'Photo upload failed');
       } finally {

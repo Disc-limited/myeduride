@@ -6,7 +6,10 @@ export const dynamic = 'force-dynamic';
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json();
-    const { appId = 'APP-ESC-901', paymentMethod = 'card' } = body;
+    const { appId, paymentMethod = 'card' } = body;
+    if (!appId) {
+      return NextResponse.json({ error: 'Application ID (appId) is required' }, { status: 400 });
+    }
 
     const result = await updateEscortApplicationStatus(appId, 'ACTIVATED', `Registration payment completed via ${paymentMethod}`);
 

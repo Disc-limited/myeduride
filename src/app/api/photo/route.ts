@@ -5,10 +5,10 @@ function extractStoragePath(input: string): string | null {
   try {
     const decoded = decodeURIComponent(input);
     const publicMatch = decoded.match(/\/storage\/v1\/object\/public\/(?:photos|avatars|uploads)\/(.+?)(\?|$)/i);
-    if (publicMatch) return publicMatch[1];
+    if (publicMatch) return publicMatch[1].split('?')[0];
     const signedMatch = decoded.match(/\/storage\/v1\/object\/sign\/(?:photos|avatars|uploads)\/(.+?)(\?|$)/i);
-    if (signedMatch) return signedMatch[1];
-    if (!decoded.includes('://') && !decoded.startsWith('/')) return decoded;
+    if (signedMatch) return signedMatch[1].split('?')[0];
+    if (!decoded.includes('://') && !decoded.startsWith('/')) return decoded.split('?')[0];
   } catch {
     return null;
   }
@@ -34,11 +34,15 @@ export async function GET(request: NextRequest) {
       return NextResponse.redirect(urlParam);
     }
 
-    const storagePath = pathParam || (urlParam ? extractStoragePath(urlParam) : null);
+    const rawPath = pathParam || (urlParam ? extractStoragePath(urlParam) : null);
 
-    if (!storagePath) {
+    if (!rawPath) {
       return NextResponse.json({ error: 'Invalid photo path' }, { status: 400 });
     }
+
+    // Cleanly isolate object key without leading slashes or bucket prefixes
+    let cleanPath = decodeURIComponent(rawPath).split('?')[0].replace(/^[/\\]+/, '');
+    cleanPath = cleanPath.replace(/^(?:photos|avatars|uploads)\//i, '');
 
     const supabase = getAdminClient();
     const bucketsToTry = ['photos', 'avatars', 'uploads'];
@@ -46,7 +50,7 @@ export async function GET(request: NextRequest) {
 
     for (const bucket of bucketsToTry) {
       try {
-        const { data, error } = await supabase.storage.from(bucket).download(storagePath);
+        const { data, error } = await supabase.storage.from(bucket).download(cleanPath);
         if (!error && data) {
           fileData = data;
           break;
@@ -56,18 +60,38 @@ export async function GET(request: NextRequest) {
       }
     }
 
+    // Fallback attempt with raw path in case of custom folder structure
+    if (!fileData && rawPath !== cleanPath) {
+      for (const bucket of bucketsToTry) {
+        try {
+          const { data, error } = await supabase.storage.from(bucket).download(rawPath);
+          if (!error && data) {
+            fileData = data;
+            break;
+          }
+        } catch {
+          // try next bucket
+        }
+      }
+    }
+
     if (!fileData) {
       return NextResponse.json({ error: 'Photo not found' }, { status: 404 });
     }
 
     const buffer = Buffer.from(await fileData.arrayBuffer());
-    const contentType = contentTypeForPath(storagePath);
+    const contentType = contentTypeForPath(cleanPath);
+    const etag = `"${Buffer.from(cleanPath + '_' + buffer.length).toString('base64')}"`;
+
+    if (request.headers.get('if-none-match') === etag) {
+      return new NextResponse(null, { status: 304 });
+    }
 
     return new NextResponse(buffer, {
       headers: {
         'Content-Type': contentType,
-        'Cache-Control': 'public, max-age=3600, stale-while-revalidate=86400',
-        'ETag': `"${Buffer.from(storagePath).toString('base64')}"`,
+        'Cache-Control': 'public, max-age=60, s-maxage=300, stale-while-revalidate=86400',
+        'ETag': etag,
       },
     });
   } catch (err: any) {

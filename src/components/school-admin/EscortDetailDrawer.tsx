@@ -1,6 +1,3 @@
-// @ts-nocheck
-'use client';
-
 import { useState } from 'react';
 import {
   X,
@@ -21,6 +18,7 @@ import {
   ChevronRight
 } from 'lucide-react';
 import { photoSrc } from '@/lib/photo';
+import StudentAvatar from '@/components/shared/StudentAvatar';
 
 interface EscortDetailDrawerProps {
   escort: any;
@@ -51,13 +49,12 @@ export default function EscortDetailDrawer({ escort, onClose, onUpdateStatus }: 
             </div>
 
             <div className="flex items-center gap-4">
-              <div className="w-16 h-16 rounded-2xl overflow-hidden bg-slate-800 border-2 border-emerald-500 shrink-0 flex items-center justify-center">
-                {escort.avatar_url ? (
-                  <img src={photoSrc(escort.avatar_url)} alt="" className="w-full h-full object-cover" />
-                ) : (
-                  <User size={30} className="text-slate-400" />
-                )}
-              </div>
+              <StudentAvatar
+                photoUrl={escort.avatar_url}
+                fullName={escort.full_name}
+                size="lg"
+                className="w-16 h-16 rounded-2xl border-2 border-emerald-500 shrink-0"
+              />
               <div className="min-w-0">
                 <h2 className="text-xl font-black text-white tracking-tight">{escort.full_name}</h2>
                 <p className="text-xs text-slate-300 font-mono">{escort.id} · {escort.escort_type}</p>
@@ -144,14 +141,22 @@ export default function EscortDetailDrawer({ escort, onClose, onUpdateStatus }: 
               </div>
 
               <div className="space-y-2 max-h-60 overflow-y-auto pr-1">
-                {escort.connected_students?.map((stu) => (
-                  <div key={stu.student_id} className="p-3 rounded-2xl bg-slate-50 border border-slate-100 space-y-1 text-xs">
-                    <div className="flex items-center justify-between">
-                      <p className="font-black text-slate-900">{stu.name}</p>
-                      <span className="text-[10px] font-bold text-slate-500">{stu.class}</span>
+                {escort.connected_students?.map((stu: any) => (
+                  <div key={stu.student_id} className="p-3 rounded-2xl bg-slate-50 border border-slate-100 flex items-center gap-3 text-xs">
+                    <StudentAvatar
+                      photoUrl={stu.photo_url}
+                      fullName={stu.name}
+                      size="xs"
+                      className="w-8 h-8 rounded-xl shrink-0"
+                    />
+                    <div className="min-w-0 flex-1 space-y-0.5">
+                      <div className="flex items-center justify-between">
+                        <p className="font-black text-slate-900 truncate">{stu.name}</p>
+                        <span className="text-[10px] font-bold text-slate-500">{stu.class}</span>
+                      </div>
+                      <p className="text-[11px] text-slate-600 truncate">📍 Stop: <strong>{stu.stop}</strong></p>
+                      <p className="text-[10px] text-slate-400 font-mono">📞 Parent: {stu.parent_phone}</p>
                     </div>
-                    <p className="text-[11px] text-slate-600">📍 Designated Stop: <strong>{stu.stop}</strong></p>
-                    <p className="text-[10px] text-slate-400 font-mono">📞 Parent: {stu.parent_phone}</p>
                   </div>
                 ))}
                 {(!escort.connected_students || escort.connected_students.length === 0) && (

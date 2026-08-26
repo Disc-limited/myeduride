@@ -30,6 +30,7 @@ import {
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { photoSrc } from '@/lib/photo';
+import StudentAvatar from '@/components/shared/StudentAvatar';
 
 export type SafetyPillarTab = 'school_escort' | 'myeduride_escort' | 'edrive';
 
@@ -57,6 +58,12 @@ export default function SafetyConnectView({
     reason: 'School Escort Unavailable / Urgent Leave',
   });
   const [submittingBooking, setSubmittingBooking] = useState(false);
+
+  useEffect(() => {
+    if (initialTab) {
+      setActivePillar(initialTab);
+    }
+  }, [initialTab]);
 
   useEffect(() => {
     loadSafetyData();
@@ -121,9 +128,9 @@ export default function SafetyConnectView({
   };
 
   const selectedChildObj = childrenList.find((c) => c.id === selectedChildId) || childrenList[0] || {
-    first_name: 'David',
-    last_name: 'James',
-    class_name: 'Basic 4 Gold',
+    first_name: 'Student',
+    last_name: '',
+    class_name: 'Enrolled Class',
   };
 
   const activeBooking = data?.active_bookings?.[0];
@@ -217,47 +224,50 @@ export default function SafetyConnectView({
         {/* ========================================================================= */}
         {activePillar === 'school_escort' && data?.school_escort && (
           <div className="space-y-5 animate-in fade-in duration-200">
-            {/* Live Emergency Deputising Notice */}
-            <div className="bg-gradient-to-r from-red-50 via-rose-50 to-amber-50 border border-red-200 rounded-3xl p-4.5 space-y-2.5 shadow-xs">
-              <div className="flex items-center justify-between">
-                <span className="px-2.5 py-0.5 rounded-full bg-red-600 text-white text-[10px] font-black uppercase tracking-wider flex items-center gap-1 animate-pulse">
-                  ● Emergency Deputised Escort On Duty
-                </span>
-                <span className="text-[10px] font-mono text-slate-500">Authorized by City Manager</span>
-              </div>
-              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-xs">
-                <div className="space-y-1">
-                  <p className="font-extrabold text-slate-900">
-                    Babatunde Lawal (MyEduRide Certified Escort) is currently deputising for your child's route.
-                  </p>
-                  <p className="text-[11px] text-slate-600">
-                    Reason: <strong>School bus mechanical delay — immediate standby deputising</strong>
-                  </p>
-                  <p className="text-[10px] text-slate-500 font-mono">
-                    Vehicle: SUR-440-XA (Toyota Sienna 2022) · Phone: +234 802 334 1188
-                  </p>
+            {/* Live Emergency Deputising Notice (Only when active deputy exists) */}
+            {(data.school_escort.deputy_escort || (data as any).deputy_escort) && (
+              <div className="bg-gradient-to-r from-red-50 via-rose-50 to-amber-50 border border-red-200 rounded-3xl p-4.5 space-y-2.5 shadow-xs">
+                <div className="flex items-center justify-between">
+                  <span className="px-2.5 py-0.5 rounded-full bg-red-600 text-white text-[10px] font-black uppercase tracking-wider flex items-center gap-1 animate-pulse">
+                    ● Emergency Deputised Escort On Duty
+                  </span>
+                  <span className="text-[10px] font-mono text-slate-500">Authorized by City Manager</span>
                 </div>
-                <div className="flex items-center gap-2 shrink-0">
-                  <a
-                    href="tel:+2348023341188"
-                    className="px-3 py-1.5 rounded-xl bg-red-600 hover:bg-red-700 text-white text-xs font-bold flex items-center gap-1 shadow-xs"
-                  >
-                    <Phone size={12} /> Call Deputy
-                  </a>
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-xs">
+                  <div className="space-y-1">
+                    <p className="font-extrabold text-slate-900">
+                      {data.school_escort.deputy_escort?.name || (data as any).deputy_escort?.name || 'Assigned Deputy'} (MyEduRide Certified Escort) is currently deputising for your child's route.
+                    </p>
+                    <p className="text-[11px] text-slate-600">
+                      Reason: <strong>{data.school_escort.deputy_escort?.reason || (data as any).deputy_escort?.reason || 'Standby Deputising'}</strong>
+                    </p>
+                    <p className="text-[10px] text-slate-500 font-mono">
+                      Vehicle: {data.school_escort.deputy_escort?.vehicle || (data as any).deputy_escort?.vehicle || '—'} · Phone: {data.school_escort.deputy_escort?.phone || (data as any).deputy_escort?.phone || '—'}
+                    </p>
+                  </div>
+                  {data.school_escort.deputy_escort?.phone && (
+                    <div className="flex items-center gap-2 shrink-0">
+                      <a
+                        href={`tel:${data.school_escort.deputy_escort.phone}`}
+                        className="px-3 py-1.5 rounded-xl bg-red-600 hover:bg-red-700 text-white text-xs font-bold flex items-center gap-1 shadow-xs"
+                      >
+                        <Phone size={12} /> Call Deputy
+                      </a>
+                    </div>
+                  )}
                 </div>
               </div>
-            </div>
+            )}
 
             <div className="bg-white p-5 rounded-3xl border border-slate-200 shadow-2xs space-y-4">
               <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-4 border-b border-slate-100">
                 <div className="flex items-center gap-4">
-                  <div className="w-16 h-16 rounded-2xl overflow-hidden bg-slate-100 border-2 border-emerald-500 shrink-0 flex items-center justify-center">
-                    {data.school_escort.avatar_url ? (
-                      <img src={photoSrc(data.school_escort.avatar_url)} alt="" className="w-full h-full object-cover" />
-                    ) : (
-                      <UserCheck size={32} className="text-slate-400" />
-                    )}
-                  </div>
+                  <StudentAvatar
+                    photoUrl={data.school_escort.avatar_url}
+                    fullName={data.school_escort.full_name}
+                    size="lg"
+                    className="w-16 h-16 rounded-2xl border-2 border-emerald-500 shrink-0"
+                  />
                   <div>
                     <div className="flex items-center gap-2">
                       <h3 className="text-lg font-black text-slate-900">{data.school_escort.full_name}</h3>
@@ -338,6 +348,24 @@ export default function SafetyConnectView({
                 </button>
               </div>
             </div>
+          </div>
+        )}
+        {activePillar === 'school_escort' && !data?.school_escort && (
+          <div className="bg-white p-8 rounded-3xl border border-slate-200 text-center space-y-3 shadow-2xs">
+            <div className="w-12 h-12 bg-slate-100 rounded-2xl flex items-center justify-center mx-auto text-slate-400">
+              <UserCheck size={24} />
+            </div>
+            <h3 className="text-sm font-black text-slate-900">No School Escort Currently Assigned</h3>
+            <p className="text-xs text-slate-500 max-w-sm mx-auto">
+              {selectedChildObj.first_name} does not have a designated school bus escort assigned today. You can book an on-demand MyEduRide Escort or monitor private commutes via E-Drive.
+            </p>
+            <button
+              type="button"
+              onClick={() => setBookingModalOpen(true)}
+              className="mt-2 px-4 py-2 bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold rounded-xl shadow-xs inline-flex items-center gap-1.5 cursor-pointer"
+            >
+              <Sparkles size={14} /> Request MyEduRide Escort
+            </button>
           </div>
         )}
 
@@ -465,9 +493,12 @@ export default function SafetyConnectView({
                 {data?.myeduride_escorts?.map((escort) => (
                   <div key={escort.id} className="p-4 rounded-2xl bg-slate-50 border border-slate-200/80 space-y-3 text-xs">
                     <div className="flex items-center gap-3.5">
-                      <div className="w-12 h-12 rounded-2xl overflow-hidden bg-slate-200 border border-slate-300 shrink-0">
-                        <img src={photoSrc(escort.avatar_url)} alt="" className="w-full h-full object-cover" />
-                      </div>
+                      <StudentAvatar
+                        photoUrl={escort.avatar_url}
+                        fullName={escort.full_name}
+                        size="md"
+                        className="w-12 h-12 rounded-2xl shrink-0"
+                      />
                       <div className="min-w-0">
                         <div className="flex items-center gap-1.5">
                           <p className="font-black text-slate-900 truncate">{escort.full_name}</p>

@@ -79,9 +79,7 @@ function CityManagerDashboardContent() {
   }, []);
 
   const [aiChatLogs, setAiChatLogs] = useState([
-    { type: 'insight', text: 'Route 3 is delayed by 18 mins due to traffic congestion on Agege Motor Road.' },
-    { type: 'insight', text: 'EMR-2031 has completed 98% of assigned trips today. Excellent work!' },
-    { type: 'insight', text: 'Gate overrides increased by 30% today. Please review Gate 1 at Hope Academy.' },
+    { type: 'insight', text: 'MIGO SAVI Operational Intelligence online. Ask about escorts, gates, and route oversight.' },
   ]);
 
   // Escort Applications & Verification State (Live data fetched from API)
@@ -510,8 +508,10 @@ function CityManagerDashboardContent() {
                     </p>
                     <p className="text-[11px] text-amber-300 font-bold flex items-center gap-1.5 mt-0.5">
                       <School size={13} className="text-amber-400 shrink-0" />
-                      <span>School: <strong>{selectedApp.createdBySchoolName || selectedApp.schoolName || 'St. Mary\'s School'}</strong></span>
-                      <span className="text-slate-400 font-mono text-[10px]">(ID: {selectedApp.createdBySchoolId || selectedApp.schoolId || 'SCH-DEFAULT-01'})</span>
+                      <span>School: <strong>{selectedApp.createdBySchoolName || selectedApp.schoolName || 'Direct Independent Application'}</strong></span>
+                      {(selectedApp.createdBySchoolId || selectedApp.schoolId) && (
+                        <span className="text-slate-400 font-mono text-[10px]">(ID: {selectedApp.createdBySchoolId || selectedApp.schoolId})</span>
+                      )}
                     </p>
                   </div>
                 </div>
@@ -530,7 +530,7 @@ function CityManagerDashboardContent() {
                   >
                     <Eye className="w-4 h-4" /> Inspect Uploaded Credentials
                   </button>
-                  <span className="text-[10px] text-slate-400 block uppercase font-mono">Submitted: {selectedApp.registrationDate || selectedApp.createdAt || '2026-08-18'}</span>
+                  <span className="text-[10px] text-slate-400 block uppercase font-mono">Submitted: {selectedApp.registrationDate || selectedApp.createdAt || 'Recent'}</span>
                   <div>
                     {selectedApp?.isResubmitted ? (
                       <span className="px-2.5 py-0.5 rounded-full text-[10px] font-black inline-block bg-cyan-400 text-slate-950 shadow-md">
@@ -572,8 +572,8 @@ function CityManagerDashboardContent() {
                   </div>
                   <p><strong className="text-slate-400">NIN:</strong> {selectedApp.nin ? <span className="font-mono text-emerald-400 font-bold">{selectedApp.nin}</span> : <span className="text-slate-600 italic">Not provided</span>}</p>
                   <p><strong className="text-slate-400">Driver Licence:</strong> {selectedApp.driversLicence ? <span className="font-mono text-cyan-400 font-bold">{selectedApp.driversLicence}</span> : <span className="text-slate-600 italic">Not provided</span>}</p>
-                  <p><strong className="text-slate-400">DOB & Gender:</strong> {selectedApp.dob ? `${selectedApp.dob} · ` : ''}{selectedApp.gender || 'Male'}</p>
-                  <p><strong className="text-slate-400">Initiated By:</strong> <span className="text-amber-300 font-bold">{selectedApp.createdBySchoolName || 'St. Mary\'s School'}</span></p>
+                  <p><strong className="text-slate-400">DOB & Gender:</strong> {selectedApp.dob ? `${selectedApp.dob} · ` : ''}{selectedApp.gender || 'Not specified'}</p>
+                  <p><strong className="text-slate-400">Initiated By:</strong> <span className="text-amber-300 font-bold">{selectedApp.createdBySchoolName || 'Direct Independent Application'}</span></p>
                 </div>
 
                 {/* Box 2: Home Address & Pinned GPS Location */}
@@ -611,10 +611,10 @@ function CityManagerDashboardContent() {
                   {(selectedApp.vehicle || selectedApp.regNumber || selectedApp.vehicleType) ? (
                     <>
                       <div className="grid grid-cols-2 gap-1 text-[11px] text-slate-300">
-                        <p><strong className="text-slate-400">Reg Plate:</strong> <span className="font-bold text-white font-mono">{selectedApp.vehicle?.regNumber || selectedApp.regNumber || 'KJA 123 XY'}</span></p>
-                        <p><strong className="text-slate-400">Type:</strong> {selectedApp.vehicle?.type || selectedApp.vehicleType || 'Hiace Bus'}</p>
-                        <p><strong className="text-slate-400">Make/Model:</strong> {[selectedApp.vehicle?.make || selectedApp.make || 'Toyota', selectedApp.vehicle?.model || selectedApp.model || 'Hiace'].join(' ')}</p>
-                        <p><strong className="text-slate-400">Color/Year:</strong> {[selectedApp.vehicle?.color || selectedApp.color || 'White', selectedApp.vehicle?.year || selectedApp.year || '2020'].join(' ')}</p>
+                        <p><strong className="text-slate-400">Reg Plate:</strong> <span className="font-bold text-white font-mono">{selectedApp.vehicle?.regNumber || selectedApp.regNumber || 'Not registered'}</span></p>
+                        <p><strong className="text-slate-400">Type:</strong> {selectedApp.vehicle?.type || selectedApp.vehicleType || 'Standard Vehicle'}</p>
+                        <p><strong className="text-slate-400">Make/Model:</strong> {[selectedApp.vehicle?.make || selectedApp.make, selectedApp.vehicle?.model || selectedApp.model].filter(Boolean).join(' ') || 'Not specified'}</p>
+                        <p><strong className="text-slate-400">Color/Year:</strong> {[selectedApp.vehicle?.color || selectedApp.color, selectedApp.vehicle?.year || selectedApp.year].filter(Boolean).join(' ') || 'Not specified'}</p>
                       </div>
                       
                       {/* Vehicle 3-Angle Photographs Grid (Front, Rear, Door-Side) */}

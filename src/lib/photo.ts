@@ -18,33 +18,40 @@ export function extractStoragePath(input: string | null | undefined): string | n
     // 1. Data URLs are not storage paths
     if (trimmed.startsWith('data:')) return null;
 
-    // 2. Decode URL safely
+    // 2. Already an /api/photo request URL
+    if (trimmed.startsWith('/api/photo')) {
+      const queryIdx = trimmed.indexOf('?');
+      if (queryIdx !== -1) {
+        const params = new URLSearchParams(trimmed.slice(queryIdx));
+        const p = params.get('path');
+        if (p) return decodeURIComponent(p).split('?')[0].replace(/^[/\\]+/, '');
+      }
+      return null;
+    }
+
+    // 3. Decode URL safely
     const decoded = decodeURIComponent(trimmed);
 
-    // 3. Match Supabase Public Storage pattern (/storage/v1/object/public/photos/<path>)
-    const publicMatch = decoded.match(/\/storage\/v1\/object\/public\/(?:photos|avatars|uploads)\/(.+?)(\?|$)/i);
-    if (publicMatch) return publicMatch[1];
+    // 4. Supabase Storage URLs (.../storage/v1/object/public/ or .../storage/v1/object/sign/)
+    const supabaseMatch = decoded.match(/\/storage\/v1\/object\/(?:public|sign)\/(?:photos|avatars|uploads)\/(.+?)(\?|$)/i);
+    if (supabaseMatch) {
+      return supabaseMatch[1].split('?')[0].replace(/^[/\\]+/, '');
+    }
 
-    // 4. Match Supabase Signed Storage pattern (/storage/v1/object/sign/photos/<path>?token=...)
-    const signedMatch = decoded.match(/\/storage\/v1\/object\/sign\/(?:photos|avatars|uploads)\/(.+?)(\?|$)/i);
-    if (signedMatch) return signedMatch[1];
-
-    // 5. If it's an external HTTP/HTTPS URL that does NOT belong to Supabase storage, it is not a storage path
+    // 5. External HTTP/HTTPS URLs (e.g. Unsplash, Google, Cloudinary) that are NOT Supabase storage
     if (decoded.startsWith('http://') || decoded.startsWith('https://')) {
-      // Check if it contains /photos/ in path
-      const photosMatch = decoded.match(/\/photos\/(.+?)(\?|$)/i);
-      if (photosMatch) return photosMatch[1];
       return null;
     }
 
     // 6. Local static asset paths starting with '/' are not storage paths
     if (decoded.startsWith('/')) {
-      if (decoded.startsWith('/api/photo')) return decoded;
       return null;
     }
 
-    // 7. Relative clean storage path (e.g. "staff/123/STF-01.jpg" or "students/STU-01.jpg")
-    return decoded.replace(/^[/\\]+/, '');
+    // 7. Relative clean storage path (e.g. "staff/123/STF-01.jpg" or "students/STU-01.jpg?t=123")
+    const clean = decoded.split('?')[0].replace(/^[/\\]+/, '');
+    // Strip redundant leading bucket name if present
+    return clean.replace(/^(?:photos|avatars|uploads)\//i, '');
   } catch {
     return null;
   }
@@ -61,24 +68,29 @@ export function photoSrc(url: string | null | undefined): string | null {
   // 1. Data URLs (e.g. base64 preview) render directly
   if (trimmed.startsWith('data:')) return trimmed;
 
-  // 2. Local app assets (e.g. /images/default-avatar.png) render directly
-  if (trimmed.startsWith('/') && !trimmed.startsWith('/api/photo')) return trimmed;
+  // 2. Already an /api/photo URL - keep as-is
+  if (trimmed.startsWith('/api/photo')) return trimmed;
 
-  // 3. Check if it's a Supabase storage path or storage URL
-  const storagePath = extractStoragePath(trimmed);
-  if (storagePath) {
-    // If it's already an /api/photo path, return directly
-    if (storagePath.startsWith('/api/photo')) return storagePath;
-    return `/api/photo?path=${encodeURIComponent(storagePath)}`;
-  }
+  // 3. Local app static assets (e.g. /images/default-avatar.png) render directly
+  if (trimmed.startsWith('/')) return trimmed;
 
-  // 4. If it is an external URL (Cloudinary, Google Avatar, Unsplash, etc.), return direct URL
+  // 4. Check if it's an external HTTP/HTTPS URL
   if (trimmed.startsWith('http://') || trimmed.startsWith('https://')) {
+    // Check if it's a Supabase storage URL that needs routing through /api/photo
+    const storagePath = extractStoragePath(trimmed);
+    if (storagePath) {
+      return `/api/photo?path=${encodeURIComponent(storagePath)}`;
+    }
+    // Pure external image URL (Unsplash, Google Avatar, Cloudinary, etc.)
     return trimmed;
   }
 
-  // 5. Fallback relative storage path
-  return `/api/photo?path=${encodeURIComponent(trimmed)}`;
+  // 5. Relative clean storage path (e.g. "staff/school-id/STF-01.jpg" or with query param)
+  const [basePath, query] = trimmed.split('?');
+  const storagePath = extractStoragePath(basePath) || basePath.replace(/^[/\\]+/, '');
+  const cleanPath = storagePath.replace(/^(?:photos|avatars|uploads)\//i, '');
+
+  return `/api/photo?path=${encodeURIComponent(cleanPath)}${query ? `&${query}` : ''}`;
 }
 
 /**

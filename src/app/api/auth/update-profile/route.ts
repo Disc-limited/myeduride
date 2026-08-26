@@ -85,6 +85,27 @@ export async function POST(request: NextRequest) {
       );
     }
 
+    // ── Synchronize teacher_profiles & users table if avatar updated ───
+    if (avatar_url !== undefined) {
+      try {
+        await supabase
+          .from('teacher_profiles')
+          .update({ photo_url: avatar_url })
+          .eq('user_id', session.user_id);
+      } catch {
+        // optional
+      }
+
+      try {
+        await supabase
+          .from('users')
+          .update({ avatar_url })
+          .eq('id', session.user_id);
+      } catch {
+        // optional
+      }
+    }
+
     // ── Parent → student custom_fields sync ────────────────────────────
     const { data: parentLinks } = await supabase
       .from('student_parents')

@@ -43,7 +43,8 @@ import {
   CheckCircle,
   Radio,
   Sliders,
-  LifeBuoy
+  LifeBuoy,
+  Camera
 } from 'lucide-react';
 import { toast } from 'sonner';
 
@@ -67,20 +68,20 @@ export default function StaffDashboardPage() {
   const [currentTime, setCurrentTime] = useState<Date | null>(null);
 
   // Attendance stats for the current month
-  const [stats, setStats] = useState({ present: 18, late: 1, absent: 0, rate: 94, schoolDays: 19 });
+  const [stats, setStats] = useState({ present: 0, late: 0, absent: 0, rate: 0, schoolDays: 0 });
 
   // Today's attendance details state
   const [todayAttendance, setTodayAttendance] = useState({
-    status: 'present',
-    clockIn: '07:43 AM',
-    clockOut: '04:18 PM',
-    dateStr: '23 May 2026',
-    locationIn: 'Main Gate, Fortune Springs Montessori',
-    locationOut: 'Main Gate, Fortune Springs Montessori',
-    scannedBy: 'Mr. Peter John (Gate Officer)',
-    verification: 'Verified (Inside School Geofence)',
-    gpsCoords: '6.3350° N, 5.6037° E',
-    address: '12 Education Drive, Benin City, Edo State',
+    status: 'not_marked',
+    clockIn: '—',
+    clockOut: '—',
+    dateStr: 'Today',
+    locationIn: 'Main Campus Gate',
+    locationOut: 'Main Campus Gate',
+    scannedBy: 'Gate Officer',
+    verification: 'Pending Gate Clock-In',
+    gpsCoords: '—',
+    address: 'Campus Perimeter',
   });
 
   // History filtering states
@@ -113,6 +114,7 @@ export default function StaffDashboardPage() {
   const [newPassword, setNewPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
   const [updatingPassword, setUpdatingPassword] = useState(false);
+  const [uploadingSelfPhoto, setUploadingSelfPhoto] = useState(false);
 
   // MIGO AI Assistant states
   const [migoMessages, setMigoMessages] = useState<Array<{ sender: 'bot' | 'user'; text: string }>>([
@@ -565,9 +567,12 @@ export default function StaffDashboardPage() {
             onClick={() => setActiveTab('profile')}
             className="relative cursor-pointer"
           >
-            <div className="w-8 h-8 rounded-full bg-slate-200 text-slate-800 border-2 border-emerald-400 overflow-hidden flex items-center justify-center font-bold text-xs">
-              {session?.full_name ? session.full_name.charAt(0) : 'S'}
-            </div>
+            <StudentAvatar
+              photoUrl={session?.avatar_url || session?.photo_url}
+              fullName={session?.full_name || 'Staff'}
+              size="xs"
+              className="w-8 h-8 text-xs border-2 border-emerald-400"
+            />
             <span className="absolute bottom-0 right-0 w-2.5 h-2.5 bg-emerald-400 border border-[#0A1128] rounded-full" />
           </div>
 
@@ -767,9 +772,12 @@ export default function StaffDashboardPage() {
                   onClick={() => setActiveTab('profile')}
                   className="relative cursor-pointer group"
                 >
-                  <div className="w-10 h-10 rounded-full bg-slate-300 overflow-hidden border-2 border-emerald-500 shadow-sm flex items-center justify-center font-bold text-slate-700">
-                    {session?.full_name ? session.full_name.charAt(0) : 'S'}
-                  </div>
+                  <StudentAvatar
+                    photoUrl={session?.avatar_url || session?.photo_url}
+                    fullName={session?.full_name || 'Staff'}
+                    size="sm"
+                    className="w-10 h-10 border-2 border-emerald-500 shadow-sm"
+                  />
                   <span className="absolute bottom-0 right-0 w-3 h-3 bg-emerald-500 border-2 border-white rounded-full" />
                 </div>
 
@@ -1651,7 +1659,7 @@ export default function StaffDashboardPage() {
                                 : 'bg-white hover:bg-slate-100 text-slate-800 border border-slate-200/80'
                             }`}
                           >
-                            <StudentAvatar name={stud.full_name || 'Student'} size={36} />
+                            <StudentAvatar fullName={stud.full_name || 'Student'} photoUrl={stud.photo_url || stud.avatar_url} size="sm" />
                             <div className="flex-1 min-w-0">
                               <span className="font-bold text-xs block truncate">{stud.full_name}</span>
                               <span
@@ -1680,7 +1688,7 @@ export default function StaffDashboardPage() {
                       {/* Chat Header */}
                       <div className="flex items-center justify-between pb-3 border-b border-slate-100">
                         <div className="flex items-center gap-3">
-                          <StudentAvatar name={selectedStudent.full_name} size={40} />
+                          <StudentAvatar fullName={selectedStudent.full_name} photoUrl={selectedStudent.photo_url || selectedStudent.avatar_url} size="sm" />
                           <div>
                             <h4 className="font-bold text-sm text-slate-900">{selectedStudent.full_name}</h4>
                             <span className="text-[11px] text-emerald-600 font-semibold">Online • EduChat</span>
@@ -1804,8 +1812,61 @@ export default function StaffDashboardPage() {
                 <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
                   {/* Left Photo & ID Card Badge */}
                   <div className="bg-slate-50 border border-slate-200 rounded-2xl p-6 flex flex-col items-center text-center space-y-4">
-                    <div className="w-24 h-24 rounded-full bg-[#0A1128] text-white text-3xl font-extrabold flex items-center justify-center border-4 border-emerald-500 shadow-lg">
-                      {session?.full_name ? session.full_name.charAt(0) : 'S'}
+                    <div className="relative group">
+                      <StudentAvatar
+                        photoUrl={session?.avatar_url || session?.photo_url}
+                        fullName={session?.full_name || 'Staff'}
+                        size="xl"
+                        className="w-24 h-24 text-2xl border-4 border-emerald-500 shadow-lg"
+                      />
+                      <label className="absolute bottom-0 right-0 p-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-full shadow-md cursor-pointer transition-all border-2 border-white">
+                        {uploadingSelfPhoto ? (
+                          <span className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin block" />
+                        ) : (
+                          <Camera size={14} />
+                        )}
+                        <input
+                          type="file"
+                          accept="image/*"
+                          className="hidden"
+                          disabled={uploadingSelfPhoto}
+                          onChange={async (e) => {
+                            const file = e.target.files?.[0];
+                            if (!file) return;
+                            const reader = new FileReader();
+                            reader.onload = async () => {
+                              const base64 = reader.result as string;
+                              setUploadingSelfPhoto(true);
+                              try {
+                                const res = await fetch('/api/staff/photo', {
+                                  method: 'POST',
+                                  headers: { 'Content-Type': 'application/json' },
+                                  credentials: 'include',
+                                  body: JSON.stringify({
+                                    school_id: schoolId,
+                                    user_id: session?.user_id,
+                                    photo_base64: base64,
+                                  }),
+                                });
+                                const data = await res.json();
+                                if (!res.ok) throw new Error(data.error || 'Failed to upload photo');
+                                toast.success('Profile photograph updated successfully!');
+                                setSession((prev: any) => ({
+                                  ...prev,
+                                  avatar_url: data.photo_url,
+                                  photo_url: data.photo_url,
+                                }));
+                              } catch (err: any) {
+                                toast.error(err?.message || 'Photo upload failed');
+                              } finally {
+                                setUploadingSelfPhoto(false);
+                              }
+                            };
+                            reader.readAsDataURL(file);
+                            e.target.value = '';
+                          }}
+                        />
+                      </label>
                     </div>
                     <div>
                       <h4 className="font-extrabold text-lg text-slate-900">

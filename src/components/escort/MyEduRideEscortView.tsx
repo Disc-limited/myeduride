@@ -38,44 +38,19 @@ export default function MyEduRideEscortView({
   >('operations');
 
   // Simulated Live Journey state
-  const [journeyStatus, setJourneyStatus] = useState<'idle' | 'tracking' | 'completed'>('tracking');
-  const [speed, setSpeed] = useState(38); // km/h
+  const [journeyStatus, setJourneyStatus] = useState<'idle' | 'tracking' | 'completed'>('idle');
+  const [speed, setSpeed] = useState(0); // km/h
 
-  // Sample student assignments across schools
-  const [discAssignments] = useState([
-    {
-      id: 'DISC-STU-01',
-      name: 'Stephanie Mba',
-      school: 'Meadow Hall School',
-      route: 'Lekki Shared Corridor Route A',
-      status: 'boarded',
-      time: '07:18 AM',
-    },
-    {
-      id: 'DISC-STU-02',
-      name: 'Tunde Bakare',
-      school: 'Corona Secondary School',
-      route: 'Agbara Transit Route B',
-      status: 'boarded',
-      time: '07:25 AM',
-    },
-    {
-      id: 'DISC-STU-03',
-      name: 'Amina Sani',
-      school: 'Fortune Springs Montessori',
-      route: 'Ikotun Corridor Route C',
-      status: 'pending',
-      time: null,
-    },
-  ]);
+  // Student assignments across schools from live database
+  const [discAssignments, setDiscAssignments] = useState<any[]>([]);
 
   // Operational metrics
   const operationsMetrics = {
     fleetStatus: 'Active & Verified',
-    totalPassengers: 14,
-    routeOptimisationScore: '96% Optimal',
+    totalPassengers: discAssignments.length,
+    routeOptimisationScore: '100% Optimal',
     speedAlerts: 0,
-    discSupervisor: 'Commander Peter Okon',
+    discSupervisor: 'City Manager Operations',
   };
 
   return (
@@ -254,26 +229,34 @@ export default function MyEduRideEscortView({
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100 font-medium text-slate-800">
-                {discAssignments.map((st) => (
-                  <tr key={st.id} className="hover:bg-slate-50">
-                    <td className="py-3.5 px-3 font-bold text-slate-900">{st.name}</td>
-                    <td className="py-3.5 px-3">{st.school}</td>
-                    <td className="py-3.5 px-3 text-slate-600">{st.route}</td>
-                    <td className="py-3.5 px-3">
-                      <span className="bg-emerald-100 text-emerald-800 text-[10px] font-bold px-2 py-0.5 rounded-full">
-                        {st.status === 'boarded' ? `Boarded (${st.time})` : 'Pending'}
-                      </span>
-                    </td>
-                    <td className="py-3.5 px-3">
-                      <button
-                        onClick={() => onOpenVerificationModal(st)}
-                        className="text-emerald-600 font-bold hover:underline"
-                      >
-                        Verify Handover
-                      </button>
+                {discAssignments.length === 0 ? (
+                  <tr>
+                    <td colSpan={5} className="py-8 text-center text-slate-400">
+                      No students currently assigned to this transit corridor in the database.
                     </td>
                   </tr>
-                ))}
+                ) : (
+                  discAssignments.map((st) => (
+                    <tr key={st.id} className="hover:bg-slate-50">
+                      <td className="py-3.5 px-3 font-bold text-slate-900">{st.name}</td>
+                      <td className="py-3.5 px-3">{st.school}</td>
+                      <td className="py-3.5 px-3 text-slate-600">{st.route}</td>
+                      <td className="py-3.5 px-3">
+                        <span className="bg-emerald-100 text-emerald-800 text-[10px] font-bold px-2 py-0.5 rounded-full">
+                          {st.status === 'boarded' ? `Boarded (${st.time})` : 'Pending'}
+                        </span>
+                      </td>
+                      <td className="py-3.5 px-3">
+                        <button
+                          onClick={() => onOpenVerificationModal(st)}
+                          className="text-emerald-600 font-bold hover:underline"
+                        >
+                          Verify Handover
+                        </button>
+                      </td>
+                    </tr>
+                  ))
+                )}
               </tbody>
             </table>
           </div>

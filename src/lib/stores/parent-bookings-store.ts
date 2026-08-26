@@ -1,26 +1,2 @@
-// Shared store for parent MyEduRide ride requests & bookings
-export const parentBookingsStore: any[] = [
-  {
-    booking_id: 'BK-MYE-901',
-    child_id: 'STU-001',
-    child_name: 'David James',
-    school_id: 'sch-001',
-    school_name: 'Gracefield International School',
-    escort_id: 'ESC-MYE-04',
-    escort_name: 'Babatunde Lawal',
-    escort_phone: '+234 802 334 1188',
-    vehicle_plate: 'SUR-440-XA (Toyota Sienna 2022)',
-    operating_area: 'Victoria Island / Oniru / Lekki',
-    pickup_date: '2026-08-23',
-    pickup_time: '03:30 PM',
-    pickup_location: '1044 Ademola Adetokunbo St, Victoria Island',
-    reason: 'School Escort Unavailable / Urgent Leave',
-    security_pin: '4892',
-    stage: 5,
-    stage_label: 'Confirmed & Approved — Ready for Pickup',
-    status: 'CONFIRMED',
-    created_at: '2026-08-23T08:00:00Z',
-    approved_at: '2026-08-23T08:15:00Z',
-    approved_by: 'City Manager Lagos Central',
-  },
-];
+// Shared store for parent MyEduRide ride requests & bookings (strictly live requests)
+export const parentBookingsStore: any[] = [];

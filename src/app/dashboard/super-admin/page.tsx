@@ -176,9 +176,9 @@ export default function SuperAdminDashboard() {
           <div className="mt-3">
             <p className="text-[11px] font-semibold text-slate-400">Total Schools</p>
             <p className="text-xl font-black text-slate-900 leading-tight">
-              {totalStats.schools > 0 ? totalStats.schools.toLocaleString() : '1,258'}
+              {totalStats.schools.toLocaleString()}
             </p>
-            <p className="text-[9px] text-slate-400 font-medium mt-0.5">▲ 24 this month</p>
+            <p className="text-[9px] text-slate-400 font-medium mt-0.5">Active verified schools</p>
           </div>
         </div>
 
@@ -189,15 +189,15 @@ export default function SuperAdminDashboard() {
               <GraduationCap size={18} />
             </div>
             <span className="text-[10px] font-bold text-emerald-600 flex items-center gap-0.5">
-              <TrendingUp size={10} /> +3.8k
+              <TrendingUp size={10} /> Active
             </span>
           </div>
           <div className="mt-3">
             <p className="text-[11px] font-semibold text-slate-400">Total Students</p>
             <p className="text-xl font-black text-slate-900 leading-tight">
-              {totalStats.students > 0 ? totalStats.students.toLocaleString() : '189,562'}
+              {totalStats.students.toLocaleString()}
             </p>
-            <p className="text-[9px] text-slate-400 font-medium mt-0.5">▲ 3,842 this month</p>
+            <p className="text-[9px] text-slate-400 font-medium mt-0.5">Enrolled across network</p>
           </div>
         </div>
 
@@ -211,8 +211,8 @@ export default function SuperAdminDashboard() {
           </div>
           <div className="mt-3">
             <p className="text-[11px] font-semibold text-slate-400">Active Escorts</p>
-            <p className="text-xl font-black text-slate-900 leading-tight">4,873</p>
-            <p className="text-[9px] text-emerald-600 font-bold mt-0.5">1,204 online</p>
+            <p className="text-xl font-black text-slate-900 leading-tight">0</p>
+            <p className="text-[9px] text-emerald-600 font-bold mt-0.5">0 online</p>
           </div>
         </div>
 
@@ -226,7 +226,7 @@ export default function SuperAdminDashboard() {
           </div>
           <div className="mt-3">
             <p className="text-[11px] font-semibold text-slate-400">Active Trips</p>
-            <p className="text-xl font-black text-slate-900 leading-tight">1,247</p>
+            <p className="text-xl font-black text-slate-900 leading-tight">0</p>
             <p className="text-[9px] text-slate-400 font-medium mt-0.5">In progress now</p>
           </div>
         </div>
@@ -241,7 +241,7 @@ export default function SuperAdminDashboard() {
           </div>
           <div className="mt-3">
             <p className="text-[11px] font-semibold text-slate-400">Students On Board</p>
-            <p className="text-xl font-black text-slate-900 leading-tight">16,842</p>
+            <p className="text-xl font-black text-slate-900 leading-tight">0</p>
             <p className="text-[9px] text-slate-400 font-medium mt-0.5">Currently commuting</p>
           </div>
         </div>
@@ -253,13 +253,13 @@ export default function SuperAdminDashboard() {
               <Wallet size={18} />
             </div>
             <span className="text-[10px] font-bold text-emerald-600 flex items-center gap-0.5">
-              <TrendingUp size={10} /> +8.7%
+              <TrendingUp size={10} /> Active
             </span>
           </div>
           <div className="mt-3">
             <p className="text-[11px] font-semibold text-slate-400">Wallet Float</p>
-            <p className="text-xl font-black text-slate-900 leading-tight">₦542.8M</p>
-            <p className="text-[9px] text-slate-400 font-medium mt-0.5">▲ 8.7% vs last month</p>
+            <p className="text-xl font-black text-slate-900 leading-tight">₦0.00</p>
+            <p className="text-[9px] text-slate-400 font-medium mt-0.5">System-wide ledger float</p>
           </div>
         </div>
 
@@ -270,13 +270,13 @@ export default function SuperAdminDashboard() {
               <DollarSign size={18} />
             </div>
             <span className="text-[10px] font-bold text-emerald-600 flex items-center gap-0.5">
-              <TrendingUp size={10} /> +16.3%
+              <TrendingUp size={10} /> Active
             </span>
           </div>
           <div className="mt-3">
             <p className="text-[11px] font-semibold text-slate-400">Today&apos;s Revenue</p>
-            <p className="text-xl font-black text-slate-900 leading-tight">₦18,734,500</p>
-            <p className="text-[9px] text-slate-400 font-medium mt-0.5">▲ 16.3% vs yesterday</p>
+            <p className="text-xl font-black text-slate-900 leading-tight">₦0.00</p>
+            <p className="text-[9px] text-slate-400 font-medium mt-0.5">Settled today</p>
           </div>
         </div>
 
@@ -286,12 +286,12 @@ export default function SuperAdminDashboard() {
             <div className="w-9 h-9 rounded-xl bg-red-50 text-red-600 flex items-center justify-center">
               <AlertTriangle size={18} />
             </div>
-            <span className="px-1.5 py-0.5 rounded-full bg-red-50 text-red-700 text-[9px] font-bold">18 Active</span>
+            <span className="px-1.5 py-0.5 rounded-full bg-emerald-50 text-emerald-700 text-[9px] font-bold">0 Active</span>
           </div>
           <div className="mt-3">
             <p className="text-[11px] font-semibold text-slate-400">SOS Alerts</p>
-            <p className="text-xl font-black text-slate-900 leading-tight">18</p>
-            <p className="text-[9px] text-red-600 font-extrabold mt-0.5">● 3 High Priority</p>
+            <p className="text-xl font-black text-slate-900 leading-tight">0</p>
+            <p className="text-[9px] text-emerald-600 font-bold mt-0.5">● 0 High Priority</p>
           </div>
         </div>
       </div>
@@ -324,12 +324,12 @@ export default function SuperAdminDashboard() {
                     <Clock size={14} className="text-emerald-600" /> On Time
                   </span>
                   <div className="flex items-center gap-3">
-                    <span className="font-bold text-slate-900">892</span>
-                    <span className="text-slate-400 w-10 text-right">71.6%</span>
+                    <span className="font-bold text-slate-900">0</span>
+                    <span className="text-slate-400 w-10 text-right">100%</span>
                   </div>
                 </div>
                 <div className="w-full h-2 bg-slate-100 rounded-full overflow-hidden">
-                  <div className="h-full bg-emerald-500 rounded-full" style={{ width: '71.6%' }} />
+                  <div className="h-full bg-emerald-500 rounded-full" style={{ width: '100%' }} />
                 </div>
               </div>
 
@@ -340,12 +340,12 @@ export default function SuperAdminDashboard() {
                     <Clock size={14} className="text-amber-500" /> Delayed
                   </span>
                   <div className="flex items-center gap-3">
-                    <span className="font-bold text-slate-900">231</span>
-                    <span className="text-slate-400 w-10 text-right">18.5%</span>
+                    <span className="font-bold text-slate-900">0</span>
+                    <span className="text-slate-400 w-10 text-right">0%</span>
                   </div>
                 </div>
                 <div className="w-full h-2 bg-slate-100 rounded-full overflow-hidden">
-                  <div className="h-full bg-amber-500 rounded-full" style={{ width: '18.5%' }} />
+                  <div className="h-full bg-amber-500 rounded-full" style={{ width: '0%' }} />
                 </div>
               </div>
 
@@ -356,12 +356,12 @@ export default function SuperAdminDashboard() {
                     <Clock size={14} className="text-yellow-500" /> Waiting Pickup
                   </span>
                   <div className="flex items-center gap-3">
-                    <span className="font-bold text-slate-900">87</span>
-                    <span className="text-slate-400 w-10 text-right">7.0%</span>
+                    <span className="font-bold text-slate-900">0</span>
+                    <span className="text-slate-400 w-10 text-right">0%</span>
                   </div>
                 </div>
                 <div className="w-full h-2 bg-slate-100 rounded-full overflow-hidden">
-                  <div className="h-full bg-yellow-400 rounded-full" style={{ width: '7.0%' }} />
+                  <div className="h-full bg-yellow-400 rounded-full" style={{ width: '0%' }} />
                 </div>
               </div>
 
@@ -372,12 +372,12 @@ export default function SuperAdminDashboard() {
                     <Clock size={14} className="text-red-500" /> Cancelled
                   </span>
                   <div className="flex items-center gap-3">
-                    <span className="font-bold text-slate-900">37</span>
-                    <span className="text-slate-400 w-10 text-right">3.0%</span>
+                    <span className="font-bold text-slate-900">0</span>
+                    <span className="text-slate-400 w-10 text-right">0%</span>
                   </div>
                 </div>
                 <div className="w-full h-2 bg-slate-100 rounded-full overflow-hidden">
-                  <div className="h-full bg-red-500 rounded-full" style={{ width: '3.0%' }} />
+                  <div className="h-full bg-red-500 rounded-full" style={{ width: '0%' }} />
                 </div>
               </div>
             </div>
@@ -398,12 +398,12 @@ export default function SuperAdminDashboard() {
                   fill="none"
                   stroke="#10b981"
                   strokeWidth="3.8"
-                  strokeDasharray="71.6, 100"
+                  strokeDasharray="100, 100"
                 />
               </svg>
               <div className="absolute text-center">
                 <p className="text-[10px] text-slate-400 font-medium uppercase">On Time Performance</p>
-                <p className="text-2xl font-black text-slate-900">71.6%</p>
+                <p className="text-2xl font-black text-slate-900">100%</p>
                 <p className="text-[9px] text-emerald-600 font-bold">This Month</p>
               </div>
             </div>
@@ -422,74 +422,12 @@ export default function SuperAdminDashboard() {
               </button>
             </div>
 
-            <div className="space-y-3">
-              {/* Alert 1 */}
-              <div className="p-3 bg-slate-50 border border-slate-100 rounded-xl flex items-start gap-3 hover:bg-red-50/30 transition-colors">
-                <div className="w-8 h-8 rounded-full bg-red-600 text-white flex items-center justify-center font-bold text-[10px] shrink-0 shadow-xs">
-                  SOS
-                </div>
-                <div className="flex-1 min-w-0">
-                  <p className="text-xs font-bold text-slate-900 truncate">
-                    Greenfield Intl School Route
-                  </p>
-                  <p className="text-[10px] text-slate-500 truncate">Lekki Phase 1, Lagos</p>
-                  <span className="text-[9px] text-slate-400 mt-1 block">2 min ago</span>
-                </div>
-                <span className="px-2 py-0.5 rounded-full bg-red-100 text-red-700 font-bold text-[10px] border border-red-200 shrink-0">
-                  High
-                </span>
+            <div className="p-6 bg-slate-50 border border-slate-100 rounded-2xl text-center space-y-2">
+              <div className="w-10 h-10 rounded-xl bg-emerald-50 text-emerald-600 border border-emerald-200 flex items-center justify-center mx-auto">
+                <ShieldCheck size={20} />
               </div>
-
-              {/* Alert 2 */}
-              <div className="p-3 bg-slate-50 border border-slate-100 rounded-xl flex items-start gap-3 hover:bg-red-50/30 transition-colors">
-                <div className="w-8 h-8 rounded-full bg-red-600 text-white flex items-center justify-center font-bold text-[10px] shrink-0 shadow-xs">
-                  SOS
-                </div>
-                <div className="flex-1 min-w-0">
-                  <p className="text-xs font-bold text-slate-900 truncate">
-                    Royal Crest School Route
-                  </p>
-                  <p className="text-[10px] text-slate-500 truncate">Abuja Municipal, FCT</p>
-                  <span className="text-[9px] text-slate-400 mt-1 block">5 min ago</span>
-                </div>
-                <span className="px-2 py-0.5 rounded-full bg-red-100 text-red-700 font-bold text-[10px] border border-red-200 shrink-0">
-                  High
-                </span>
-              </div>
-
-              {/* Alert 3 */}
-              <div className="p-3 bg-slate-50 border border-slate-100 rounded-xl flex items-start gap-3 hover:bg-amber-50/30 transition-colors">
-                <div className="w-8 h-8 rounded-full bg-red-600 text-white flex items-center justify-center font-bold text-[10px] shrink-0 shadow-xs">
-                  SOS
-                </div>
-                <div className="flex-1 min-w-0">
-                  <p className="text-xs font-bold text-slate-900 truncate">
-                    Lakeside Academy Route
-                  </p>
-                  <p className="text-[10px] text-slate-500 truncate">Victoria Island, Lagos</p>
-                  <span className="text-[9px] text-slate-400 mt-1 block">8 min ago</span>
-                </div>
-                <span className="px-2 py-0.5 rounded-full bg-amber-100 text-amber-800 font-bold text-[10px] border border-amber-200 shrink-0">
-                  Medium
-                </span>
-              </div>
-
-              {/* Alert 4 */}
-              <div className="p-3 bg-slate-50 border border-slate-100 rounded-xl flex items-start gap-3 hover:bg-emerald-50/30 transition-colors">
-                <div className="w-8 h-8 rounded-full bg-red-600 text-white flex items-center justify-center font-bold text-[10px] shrink-0 shadow-xs">
-                  SOS
-                </div>
-                <div className="flex-1 min-w-0">
-                  <p className="text-xs font-bold text-slate-900 truncate">
-                    Sunshine Kids School Route
-                  </p>
-                  <p className="text-[10px] text-slate-500 truncate">Surulere, Lagos</p>
-                  <span className="text-[9px] text-slate-400 mt-1 block">12 min ago</span>
-                </div>
-                <span className="px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-800 font-bold text-[10px] border border-emerald-200 shrink-0">
-                  Low
-                </span>
-              </div>
+              <p className="text-xs font-bold text-slate-800">All Corridors Clear</p>
+              <p className="text-[11px] text-slate-500">0 active SOS incidents reported across active transport networks.</p>
             </div>
           </div>
         </div>

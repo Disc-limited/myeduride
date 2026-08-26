@@ -11,7 +11,7 @@ interface WalletCardProps {
 }
 
 export default function WalletCard({
-  balanceAmount = 25600,
+  balanceAmount = 0,
   currencySymbol = '₦',
   onFundWallet,
   onViewWalletHistory,

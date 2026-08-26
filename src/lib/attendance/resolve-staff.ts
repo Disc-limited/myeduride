@@ -21,7 +21,7 @@ export async function resolveStaffProfile(
   for (const value of candidates) {
     const { data: byQr } = await supabase
       .from('teacher_profiles')
-      .select('id, user_id, staff_id_number, photo_url, user:user_profiles(full_name)')
+      .select('id, user_id, staff_id_number, photo_url, user:user_profiles(full_name, avatar_url, photo_url)')
       .eq('school_id', schoolId)
       .eq('qr_code_data', value)
       .maybeSingle();
@@ -30,7 +30,7 @@ export async function resolveStaffProfile(
 
     const { data: byNum } = await supabase
       .from('teacher_profiles')
-      .select('id, user_id, staff_id_number, photo_url, user:user_profiles(full_name)')
+      .select('id, user_id, staff_id_number, photo_url, user:user_profiles(full_name, avatar_url, photo_url)')
       .eq('school_id', schoolId)
       .eq('staff_id_number', value)
       .maybeSingle();
@@ -50,12 +50,13 @@ function mapStaffRow(row: {
 }): ResolvedStaff {
   const user = Array.isArray(row.user) ? row.user[0] : row.user;
   const fullName = (user as { full_name?: string })?.full_name || 'Staff';
+  const userAvatar = (user as { avatar_url?: string; photo_url?: string })?.avatar_url || (user as { photo_url?: string })?.photo_url || null;
 
   return {
     id: row.id,
     user_id: row.user_id,
     staff_id_number: row.staff_id_number,
-    photo_url: row.photo_url,
+    photo_url: row.photo_url || userAvatar,
     full_name: fullName,
     role_label: 'Staff',
   };

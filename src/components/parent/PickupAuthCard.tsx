@@ -15,12 +15,12 @@ interface PickupAuthCardProps {
 }
 
 export default function PickupAuthCard({
-  personName = 'John Okafor',
-  relationship = 'Uncle',
+  personName = '',
+  relationship = '',
   photoUrl,
-  isVerified = true,
-  pickupTime = '2:45 PM',
-  activeSlotsCount = 2,
+  isVerified = false,
+  pickupTime = '—',
+  activeSlotsCount = 0,
   maxSlotsCount = 3,
   onOpenPickupManager,
 }: PickupAuthCardProps) {

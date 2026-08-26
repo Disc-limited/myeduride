@@ -18,16 +18,16 @@ interface LiveJourneyCardProps {
 }
 
 export default function LiveJourneyCard({
-  childName = 'David James',
-  hasActiveJourney = true,
-  escortName = 'John Okafor',
-  escortCode = 'ESC-0012',
-  vehicleModel = 'Toyota Hiace',
-  licensePlate = 'ABC-234AA',
-  routeName = 'Route A',
-  studentsCount = 12,
-  etaMinutes = 8,
-  etaTime = '8:05 AM',
+  childName = 'Student',
+  hasActiveJourney = false,
+  escortName = 'Assigned Escort',
+  escortCode = 'ESC',
+  vehicleModel = 'School Bus',
+  licensePlate = '—',
+  routeName = 'Designated Route',
+  studentsCount = 0,
+  etaMinutes = 0,
+  etaTime = '—',
   onOpenLiveJourney,
 }: LiveJourneyCardProps) {
   const [mapType, setMapType] = useState<'roadmap' | 'satellite'>('roadmap');

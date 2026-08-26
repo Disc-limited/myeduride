@@ -72,6 +72,19 @@ export default function StaffManagementPage() {
   };
 
   const handleAddPhoto = async (userId, photoBase64) => {
+    // Optimistic local update for instantaneous UI feedback
+    setStaff((prev) =>
+      prev.map((item) =>
+        item.user_id === userId
+          ? {
+              ...item,
+              staff: { ...(item.staff || {}), photo_url: photoBase64 },
+              profile: { ...(item.profile || {}), avatar_url: photoBase64 },
+            }
+          : item
+      )
+    );
+
     const res = await fetch('/api/staff/photo', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -79,8 +92,11 @@ export default function StaffManagementPage() {
       body: JSON.stringify({ school_id: schoolId, user_id: userId, photo_base64: photoBase64 }),
     });
     const data = await res.json();
-    if (!res.ok) throw new Error(data.error || 'Failed');
-    toast.success('Photo saved — you can generate ID card now');
+    if (!res.ok) {
+      loadStaff();
+      throw new Error(data.error || 'Failed');
+    }
+    toast.success('Staff photo updated and synchronized!');
     loadStaff();
   };
 
@@ -122,9 +138,8 @@ export default function StaffManagementPage() {
         {staff.map((s) => (
           <div key={s.user_id || s.id} className="list-row gap-4 flex-wrap sm:flex-nowrap">
             <StudentAvatar
-              photoUrl={s.staff?.photo_url}
-              firstName={s.profile?.full_name?.split(' ')[0]}
-              lastName={s.profile?.full_name?.split(' ').slice(1).join(' ')}
+              photoUrl={s.staff?.photo_url || s.profile?.avatar_url}
+              fullName={s.profile?.full_name}
               size="sm"
             />
             <div className="flex-1 min-w-0">

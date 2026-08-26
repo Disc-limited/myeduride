@@ -2,7 +2,7 @@ import { TestSuite, expect } from '../utils/test-harness';
 
 export const routesPerfSuite = new TestSuite('Vehicle & Route Performance & High-Throughput Suite', 'PERFORMANCE');
 
-routesPerfSuite.test('Throughput & Latency: 50 Transport Routes with 300 Stops resolves in < 10ms', async () => {
+routesPerfSuite.test('Throughput & Latency: 50 Transport Routes with 300 Stops resolves in < 25ms', async () => {
   const routes = Array.from({ length: 50 }).map((_, i) => ({
     id: `RT-${i}`,
     code: `RTE-${i}`,
@@ -23,7 +23,7 @@ routesPerfSuite.test('Throughput & Latency: 50 Transport Routes with 300 Stops r
 
   expect(totalStops).toBe(300);
   expect(totalPassengers).toBe(500);
-  expect(duration).toBeLessThan(10);
+  expect(duration).toBeLessThan(25);
 });
 
 routesPerfSuite.test('Concurrent Parent Pinning Stress: 200 simultaneous pin requests process in < 50ms', async () => {

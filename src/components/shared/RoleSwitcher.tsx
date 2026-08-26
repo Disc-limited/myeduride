@@ -5,6 +5,8 @@ import { usePathname } from 'next/navigation';
 import { getSession } from '@/lib/api';
 import { ChevronDown, Shield, GraduationCap, DoorOpen, Users, User, Check, KeyRound, UserCheck, Navigation, LayoutGrid } from 'lucide-react';
 import Link from 'next/link';
+import StudentAvatar from '@/components/shared/StudentAvatar';
+import { photoSrc } from '@/lib/photo';
 
 const ROLE_CONFIG: Record<string, { label: string; href: string; icon: React.ReactNode }> = {
   super_admin: { label: 'Super Admin', href: '/dashboard/super-admin', icon: <Shield size={14} /> },
@@ -72,22 +74,32 @@ export function RoleSwitcher({ showLogout = true, className = '' }: RoleSwitcher
       <button
         type="button"
         onClick={() => setOpen(!open)}
-        className="flex items-center gap-1.5 p-1 rounded-full hover:bg-gray-100 transition-colors"
+        className="flex items-center gap-1.5 p-0.5 rounded-full hover:bg-gray-100 transition-colors"
         aria-label="Switch account"
       >
-        <div className="w-9 h-9 rounded-full bg-[#0A1128] flex items-center justify-center text-white text-xs font-bold shadow-sm ring-2 ring-emerald-500/20">
-          {session?.full_name?.split(' ').map((n: string) => n[0]).join('').slice(0, 2) || 'AU'}
-        </div>
+        <StudentAvatar
+          photoUrl={session?.avatar_url || session?.photo_url}
+          fullName={session?.full_name}
+          size="xs"
+          className="w-9 h-9 text-xs ring-2 ring-emerald-500/30"
+        />
         <ChevronDown size={14} className="text-gray-500 hidden sm:block" />
       </button>
 
       {open && (
         <>
           <div className="fixed inset-0 z-40" onClick={() => setOpen(false)} />
-          <div className="absolute right-0 top-full mt-2 w-56 bg-white rounded-xl shadow-xl border border-slate-200 z-50 overflow-hidden">
-            <div className="p-3 border-b bg-gray-50">
-              <p className="font-bold text-sm text-slate-900">{session?.full_name || 'Authorized User'}</p>
-              <p className="text-xs text-slate-500 truncate">@{session?.username || session?.email || 'myeduride'}</p>
+          <div className="absolute right-0 top-full mt-2 w-60 bg-white rounded-xl shadow-xl border border-slate-200 z-50 overflow-hidden">
+            <div className="p-3 border-b bg-gray-50 flex items-center gap-3">
+              <StudentAvatar
+                photoUrl={session?.avatar_url || session?.photo_url}
+                fullName={session?.full_name}
+                size="sm"
+              />
+              <div className="min-w-0 flex-1">
+                <p className="font-bold text-sm text-slate-900 truncate">{session?.full_name || 'Authorized User'}</p>
+                <p className="text-xs text-slate-500 truncate">@{session?.username || session?.email || 'myeduride'}</p>
+              </div>
             </div>
 
             <div className="p-2 space-y-0.5 max-h-64 overflow-y-auto custom-scrollbar">

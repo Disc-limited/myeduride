@@ -63,32 +63,62 @@ async function loadPickupPersonRowsDirect(
   return rows;
 }
 
-/** Authorised pickup persons for one student (embed + direct fallback). */
+/** Authorised pickup persons for one student (embed + direct fallback + 3-slot parent pickup authorizations). */
 export async function loadPickupPersonsForStudent(
   supabase: SupabaseClient,
   schoolId: string,
   studentId: string
 ): Promise<PickupPersonRow[]> {
+  const persons: PickupPersonRow[] = [];
+
+  // 1. Query modern 3-slot parent pickup authorizations
+  try {
+    const { data: authRows } = await supabase
+      .from('pickup_authorizations')
+      .select('id, name, relationship, phone, photo_url, slot_number, category_label')
+      .eq('student_id', studentId)
+      .order('slot_number', { ascending: true });
+
+    if (authRows && authRows.length > 0) {
+      for (const row of authRows) {
+        persons.push({
+          id: row.id,
+          name: row.name,
+          relationship: row.relationship || row.category_label || `Slot ${row.slot_number}`,
+          phone: row.phone || null,
+          photo_url: row.photo_url || null,
+        });
+      }
+    }
+  } catch (authErr) {
+    console.warn('[student-pickup-context] pickup_authorizations query notice:', authErr);
+  }
+
+  // 2. Query legacy pickup_person_students if available
   const { data: ppLinks } = await supabase
     .from('pickup_person_students')
     .select(`pickup_person_id, ${PICKUP_PERSON_SELECT}`)
     .eq('school_id', schoolId)
     .eq('student_id', studentId);
 
-  const persons: PickupPersonRow[] = [];
   const fallbackIds: string[] = [];
 
   for (const link of ppLinks || []) {
     const person = normalizePickupPerson(link.pickup_person);
-    if (person) {
+    if (person && !persons.some((p) => p.name.toLowerCase() === person.name.toLowerCase())) {
       persons.push(person);
     } else if (link.pickup_person_id) {
       fallbackIds.push(link.pickup_person_id);
     }
   }
 
-  if (persons.length === 0 && fallbackIds.length > 0) {
-    return loadPickupPersonRowsDirect(supabase, schoolId, fallbackIds);
+  if (fallbackIds.length > 0) {
+    const directRows = await loadPickupPersonRowsDirect(supabase, schoolId, fallbackIds);
+    for (const r of directRows) {
+      if (!persons.some((p) => p.name.toLowerCase() === r.name.toLowerCase())) {
+        persons.push(r);
+      }
+    }
   }
 
   return persons;
@@ -104,6 +134,32 @@ export async function loadPickupPersonsByStudents(
   if (!studentIds.length) return personsByStudent;
 
   for (const batch of chunkArray(studentIds)) {
+    // 1. Batch query 3-slot parent pickup authorizations
+    try {
+      const { data: authRows } = await supabase
+        .from('pickup_authorizations')
+        .select('id, student_id, name, relationship, phone, photo_url, slot_number, category_label')
+        .in('student_id', batch)
+        .order('slot_number', { ascending: true });
+
+      if (authRows && authRows.length > 0) {
+        for (const row of authRows) {
+          const sid = String(row.student_id);
+          if (!personsByStudent[sid]) personsByStudent[sid] = [];
+          personsByStudent[sid].push({
+            id: row.id,
+            name: row.name,
+            relationship: row.relationship || row.category_label || `Slot ${row.slot_number}`,
+            phone: row.phone || null,
+            photo_url: row.photo_url || null,
+          });
+        }
+      }
+    } catch (authErr) {
+      console.warn('[student-pickup-context] batch pickup_authorizations notice:', authErr);
+    }
+
+    // 2. Batch query legacy pickup_person_students
     const { data: ppLinks } = await supabase
       .from('pickup_person_students')
       .select(`student_id, pickup_person_id, ${PICKUP_PERSON_SELECT}`)
@@ -117,7 +173,9 @@ export async function loadPickupPersonsByStudents(
       const person = normalizePickupPerson(link.pickup_person);
       if (person) {
         if (!personsByStudent[sid]) personsByStudent[sid] = [];
-        personsByStudent[sid].push(person);
+        if (!personsByStudent[sid].some((p) => p.name.toLowerCase() === person.name.toLowerCase())) {
+          personsByStudent[sid].push(person);
+        }
       } else if (link.pickup_person_id) {
         if (!fallbackByStudent.has(sid)) fallbackByStudent.set(sid, []);
         fallbackByStudent.get(sid)!.push(link.pickup_person_id);

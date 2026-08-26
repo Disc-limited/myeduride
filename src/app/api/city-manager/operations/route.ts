@@ -2,8 +2,6 @@ import { NextRequest, NextResponse } from 'next/server';
 import { getAdminClient } from '@/lib/supabase/admin';
 import { getSessionFromRequest, sessionHasRole } from '@/lib/session';
 import { sendEmail } from '@/lib/notifications/email-service';
-import { parentBookingsStore } from '@/lib/stores/parent-bookings-store';
-import { emergencyDeputisingStore, EmergencyDeputisingRecord } from '@/lib/stores/deputising-store';
 import { nowUtcIso } from '@/lib/utils/time';
 
 export const dynamic = 'force-dynamic';
@@ -16,14 +14,14 @@ const canOperate = (request: NextRequest) => {
 async function audit(db: any, actorId: string, action: string, entityType: string, entityId: string, details: Record<string, unknown>) {
   try {
     await db.from('city_manager_audit_log').insert({
-      actor_id: actorId,
+      actor_user_id: actorId,
       action,
       entity_type: entityType,
       entity_id: entityId,
       details,
     });
   } catch {
-    // Non-blocking fallback for local environments
+    // Non-blocking fallback
   }
 }
 
@@ -48,28 +46,63 @@ export async function GET(request: NextRequest) {
   try {
     const db = getAdminClient();
     const query = request.nextUrl.searchParams.get('q')?.trim();
-    const [schools, escorts, bookings, assignments, auditRows] = await Promise.all([
+    const [schools, escorts, bookings, assignments, auditRows, deputisingRows] = await Promise.all([
       db.from('schools').select('id,name').order('name'),
       db.from('escort_applications').select('id,full_name,email,phone,operating_area,status,availability_status,emergency_pool_enabled,last_available_at,application_data,user_id').in('status', ['CITY_MANAGER_APPROVED', 'ACTIVE']),
       db.from('transport_bookings').select('*, school:schools(name), student:students(first_name,last_name,student_id_number,class_id)').order('created_at', { ascending: false }).limit(100),
       db.from('escort_assignments').select('*, escort:escort_applications(full_name,operating_area), school:schools(name), student:students(first_name,last_name)').order('created_at', { ascending: false }).limit(100),
       db.from('city_manager_audit_log').select('*').order('created_at', { ascending: false }).limit(100),
+      db.from('emergency_deputising').select('*').order('created_at', { ascending: false }).limit(100),
     ]);
+
     let students: any[] = [];
     if (query) {
       const pattern = `%${query}%`;
       const { data } = await db.from('students').select('id,first_name,last_name,student_id_number,school_id,school:schools(name),class:school_classes(name,grade)').or(`first_name.ilike.${pattern},last_name.ilike.${pattern},student_id_number.ilike.${pattern}`).limit(50);
       students = data || [];
     }
+
+    // Format parent requests from database bookings
+    const rawBookings = bookings.data || [];
+    const parentRequests = rawBookings.map((b: any) => {
+      const stu = Array.isArray(b.student) ? b.student[0] : b.student;
+      const sch = Array.isArray(b.school) ? b.school[0] : b.school;
+      return {
+        booking_id: b.id,
+        child_id: b.student_id,
+        child_name: stu ? `${stu.first_name} ${stu.last_name}` : 'Student',
+        parent_user_id: b.parent_user_id,
+        parent_name: 'Parent User',
+        parent_phone: '+234 800 000 0000',
+        school_id: b.school_id,
+        school_name: sch?.name || 'School Campus',
+        preferred_escort_id: null,
+        escort_id: null,
+        escort_name: b.status === 'assigned' ? 'Assigned Escort' : 'Awaiting City Manager Assignment',
+        escort_phone: null,
+        vehicle_plate: null,
+        operating_area: 'Lagos Metropolis',
+        pickup_date: b.requested_pickup_at ? b.requested_pickup_at.split('T')[0] : 'Today',
+        pickup_time: b.requested_pickup_at ? b.requested_pickup_at.split('T')[1]?.slice(0, 5) : '07:00',
+        pickup_location: b.pickup_address || 'Designated Stop',
+        reason: b.notes || 'School Escort Unavailable',
+        security_pin: null,
+        stage: b.status === 'completed' ? 5 : b.status === 'in_progress' ? 4 : b.status === 'assigned' ? 3 : 2,
+        stage_label: b.status === 'assigned' ? 'Escort Assigned & Dispatched' : 'Under City Manager Review',
+        status: b.status === 'pending' ? 'PENDING_CM_REVIEW' : b.status.toUpperCase(),
+        created_at: b.created_at,
+      };
+    });
+
     return NextResponse.json({
       schools: schools.data || [],
       escorts: escorts.data || [],
-      bookings: bookings.data || [],
+      bookings: rawBookings,
       assignments: assignments.data || [],
       audit: auditRows.data || [],
       students,
-      parent_requests: parentBookingsStore,
-      deputising_records: emergencyDeputisingStore,
+      parent_requests: parentRequests,
+      deputising_records: deputisingRows.data || [],
     });
   } catch (error: any) { return NextResponse.json({ error: error.message || 'Unable to load operations' }, { status: 500 }); }
 }
@@ -104,28 +137,27 @@ export async function POST(request: NextRequest) {
         return NextResponse.json({ error: 'booking_id and escort_id are required' }, { status: 400 });
       }
 
-      const booking = parentBookingsStore.find((b) => b.booking_id === booking_id);
-      if (!booking) {
-        return NextResponse.json({ error: 'Parent booking not found' }, { status: 404 });
-      }
+      const { data: escort } = await db
+        .from('escort_applications')
+        .select('id, full_name, phone, application_data')
+        .eq('id', escort_id)
+        .maybeSingle();
 
-      const escort = escort_id === 'ESC-MYE-05'
-        ? { id: 'ESC-MYE-05', full_name: 'Chioma Okonkwo', phone: '+234 803 771 2299', vehicle: 'IKJ-110-LA (Honda Odyssey 2023)' }
-        : { id: 'ESC-MYE-04', full_name: 'Babatunde Lawal', phone: '+234 802 334 1188', vehicle: 'SUR-440-XA (Toyota Sienna 2022)' };
-
+      const escortName = escort?.full_name || 'Assigned Escort';
       const securityPin = Math.floor(1000 + Math.random() * 9000).toString();
 
-      booking.escort_id = escort.id;
-      booking.escort_name = escort.full_name;
-      booking.escort_phone = escort.phone;
-      booking.vehicle_plate = escort.vehicle;
-      booking.security_pin = securityPin;
-      booking.stage = 5;
-      booking.stage_label = 'Confirmed & Approved — Ready for Pickup';
-      booking.status = 'CONFIRMED';
-      booking.approved_at = new Date().toISOString();
-      booking.approved_by = session.full_name || 'City Manager';
-      booking.cm_notes = notes || null;
+      const { data: updatedBooking, error: updateErr } = await db
+        .from('transport_bookings')
+        .update({
+          status: 'assigned',
+          notes: notes ? `CM Notes: ${notes} | PIN: ${securityPin}` : `PIN: ${securityPin}`,
+          updated_at: nowUtcIso(),
+        })
+        .eq('id', booking_id)
+        .select()
+        .single();
+
+      if (updateErr) throw updateErr;
 
       await audit(db, session.user_id, 'PARENT_BOOKING_APPROVED', 'transport_booking', booking_id, {
         escort_id,
@@ -134,17 +166,15 @@ export async function POST(request: NextRequest) {
 
       return NextResponse.json({
         success: true,
-        message: `Booking approved and assigned to ${escort.full_name}. Parent notified with Security PIN: ${securityPin}`,
-        booking,
+        message: `Booking approved and assigned to ${escortName}. Parent notified with Security PIN: ${securityPin}`,
+        booking: updatedBooking,
       });
     }
 
     if (body.action === 'create_emergency_deputy') {
       const {
         school_id,
-        school_name,
         route_id,
-        route_name,
         original_escort_id,
         original_escort_name,
         original_escort_phone,
@@ -159,53 +189,48 @@ export async function POST(request: NextRequest) {
         time_window_start,
       } = body;
 
-      if (!school_id || !original_escort_id || !deputy_escort_id || !emergency_reason) {
+      if (!school_id || !emergency_reason || !deputy_escort_name) {
         return NextResponse.json(
-          { error: 'school_id, original_escort_id, deputy_escort_id, and emergency_reason are required' },
+          { error: 'school_id, deputy_escort_name, and emergency_reason are required' },
           { status: 400 }
         );
       }
 
-      const newRecord: EmergencyDeputisingRecord = {
-        id: `DEP-${Date.now().toString().slice(-6)}`,
-        school_id,
-        school_name: school_name || 'Gracefield International School',
-        route_id: route_id || 'rt-general',
-        route_name: route_name || 'Emergency Backup Route',
-        original_escort_id,
-        original_escort_name: original_escort_name || 'School Bus Escort',
-        original_escort_phone: original_escort_phone || '+234 800 000 0000',
-        deputy_escort_id,
-        deputy_escort_name: deputy_escort_name || 'MyEduRide Certified Escort',
-        deputy_escort_phone: deputy_escort_phone || '+234 802 334 1188',
-        deputy_vehicle_plate: deputy_vehicle_plate || 'SUR-440-XA (Toyota Sienna 2022)',
-        deputy_photo_url: 'https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=150',
-        student_ids: Array.isArray(student_ids) && student_ids.length > 0 ? student_ids : ['STU-001', 'STU-002'],
-        student_names: Array.isArray(student_names) && student_names.length > 0 ? student_names : ['David James', 'Esther Paul'],
-        emergency_reason,
-        notes: notes || 'Emergency deputising dispatched by City Manager.',
-        time_window_start: time_window_start || nowUtcIso(),
-        time_window_end: null,
-        handover_confirmed_at: null,
-        assigned_by: session.user_id,
-        assigned_by_name: session.full_name || 'City Manager',
-        status: 'ACTIVE_DEPUTY',
-        created_at: nowUtcIso(),
-        updated_at: nowUtcIso(),
-      };
+      const { data: newRecord, error: insertErr } = await db
+        .from('emergency_deputising')
+        .insert({
+          school_id,
+          route_id: route_id || null,
+          original_escort_id: original_escort_id || null,
+          original_escort_name: original_escort_name || 'School Escort',
+          original_escort_phone: original_escort_phone || '',
+          deputy_escort_id: deputy_escort_id || null,
+          deputy_escort_name,
+          deputy_escort_phone: deputy_escort_phone || '',
+          deputy_vehicle_plate: deputy_vehicle_plate || 'Standard Fleet Plate',
+          student_ids: Array.isArray(student_ids) ? student_ids : [],
+          student_names: Array.isArray(student_names) ? student_names : [],
+          emergency_reason,
+          notes: notes || 'Emergency deputising dispatched by City Manager.',
+          time_window_start: time_window_start || nowUtcIso(),
+          assigned_by: session.user_id,
+          assigned_by_name: session.full_name || 'City Manager',
+          status: 'ACTIVE_DEPUTY',
+        })
+        .select()
+        .single();
 
-      emergencyDeputisingStore.unshift(newRecord);
+      if (insertErr) throw insertErr;
 
       await audit(db, session.user_id, 'EMERGENCY_DEPUTY_ASSIGNED', 'emergency_deputising', newRecord.id, {
         original_escort_id,
-        deputy_escort_id,
+        deputy_escort_name,
         emergency_reason,
-        student_count: newRecord.student_ids.length,
       });
 
       return NextResponse.json({
         success: true,
-        message: `Emergency deputy ${newRecord.deputy_escort_name} assigned to deputise for ${newRecord.original_escort_name}. All parties synced.`,
+        message: `Emergency deputy ${newRecord.deputy_escort_name} assigned. Custody record registered in database.`,
         record: newRecord,
       });
     }
@@ -216,16 +241,20 @@ export async function POST(request: NextRequest) {
         return NextResponse.json({ error: 'record_id is required' }, { status: 400 });
       }
 
-      const record = emergencyDeputisingStore.find((r) => r.id === record_id);
-      if (!record) {
-        return NextResponse.json({ error: 'Emergency deputising record not found' }, { status: 404 });
-      }
+      const { data: record, error: updateErr } = await db
+        .from('emergency_deputising')
+        .update({
+          status: 'COMPLETED_HANDOVER',
+          time_window_end: nowUtcIso(),
+          handover_confirmed_at: nowUtcIso(),
+          notes: notes ? `Handover notes: ${notes}` : undefined,
+          updated_at: nowUtcIso(),
+        })
+        .eq('id', record_id)
+        .select()
+        .single();
 
-      record.status = 'COMPLETED_HANDOVER';
-      record.time_window_end = nowUtcIso();
-      record.handover_confirmed_at = nowUtcIso();
-      record.updated_at = nowUtcIso();
-      if (notes) record.notes = `${record.notes || ''} | Handover notes: ${notes}`;
+      if (updateErr) throw updateErr;
 
       await audit(db, session.user_id, 'EMERGENCY_DEPUTY_HANDOVER_COMPLETED', 'emergency_deputising', record.id, {
         handover_confirmed_at: record.handover_confirmed_at,

@@ -85,30 +85,26 @@ export default function SharedEscortDashboard({
   });
 
   // Dynamic Live Database Bindings
-  const escortName = liveDashboardData?.escort?.name || escortData?.name || escortData?.fullName || session?.full_name || 'Emeka Johnson';
-  const escortCode = liveDashboardData?.escort?.code || escortData?.escort_code || escortData?.id || 'EMR-2031';
-  const schoolName = liveDashboardData?.school?.name || 'St. Mary\'s School';
-  const walletBal = liveDashboardData?.wallet?.balance ?? 500.0;
-  const totalTrips = liveDashboardData?.stats?.totalTrips ?? 2;
-  const totalStudents = liveDashboardData?.stats?.totalStudents ?? 12;
-  const totalDistance = liveDashboardData?.stats?.totalDistance ?? '28.4 km';
+  const escortName = liveDashboardData?.escort?.name || escortData?.name || escortData?.fullName || session?.full_name || 'Escort';
+  const escortCode = liveDashboardData?.escort?.code || escortData?.escort_code || escortData?.id || (session?.user_id ? `ESC-${session.user_id.substring(0, 6).toUpperCase()}` : 'ESC-ID');
+  const schoolName = liveDashboardData?.school?.name || (escortData?.createdBySchoolName || 'Assigned School');
+  const walletBal = Number(liveDashboardData?.wallet?.balance ?? 0.0);
+  const totalTrips = liveDashboardData?.stats?.totalTrips ?? 0;
+  const totalStudents = liveDashboardData?.stats?.totalStudents ?? 0;
+  const totalDistance = liveDashboardData?.stats?.totalDistance ?? '0 km';
 
   // Live Pickup List Data from Supabase DB
-  const morningList = liveDashboardData?.students?.morning || [
-    { id: '1', name: 'Grace Adekunle', address: '12 Education Drive, Benin City', status: 'PICKED', time: '7:52 AM', avatar: 'GA', initials: 'GA', color: 'bg-purple-600' },
-    { id: '2', name: 'Tunde Ibrahim', address: '45 Greenfield Road, Benin City', status: 'NEXT', time: '8:15 AM', avatar: 'TI', initials: 'TI', color: 'bg-amber-500' },
-  ];
-
-  const afternoonList = liveDashboardData?.students?.afternoon || [
-    { id: '1', name: 'Grace Adekunle', note: `Pick from ${schoolName} Gate`, avatar: 'https://images.unsplash.com/photo-1544717305-2782549b5136?w=150&auto=format&fit=crop&q=80' },
-    { id: '2', name: 'Tunde Ibrahim', note: `Pick from ${schoolName} Gate`, avatar: 'https://images.unsplash.com/photo-1539571696357-5a69c17a67c6?w=150&auto=format&fit=crop&q=80' },
-  ];
+  const morningList = liveDashboardData?.students?.morning || [];
+  const afternoonList = liveDashboardData?.students?.afternoon || [];
 
   // Handle Morning Trip Start Action
   const handleStartMorningTrip = () => {
+    if (morningList.length === 0) {
+      toast.info('No morning student pickups scheduled.');
+      return;
+    }
     setMorningTripStarted(true);
     toast.success('Morning trip to school started! Live navigation active.');
-    // Move picked students to dropped off simulation if needed
   };
 
   // Handle Afternoon Trip Checklist Toggle
@@ -151,11 +147,15 @@ export default function SharedEscortDashboard({
                   MIGO AI
                 </span>
                 <h3 className="font-extrabold text-slate-900 text-sm md:text-base tracking-tight truncate">
-                  GIGO morning, {escortName.split(' ')[0]}! 👋
+                  Good day, {escortName.split(' ')[0]}! 👋
                 </h3>
               </div>
               <p className="text-slate-600 text-xs font-medium truncate">
-                You have <strong className="text-slate-900 font-bold">{totalTrips} trips today</strong>. Your first pickup is in <span className="text-emerald-600 font-bold font-mono">{morningList[0]?.time ? morningList[0].time : '12 mins'}</span>.
+                {morningList.length > 0 ? (
+                  <>You have <strong className="text-slate-900 font-bold">{morningList.length} student pickups</strong> scheduled for today.</>
+                ) : (
+                  <>Your schedule is ready. Real-time student assignments from {schoolName} will stream here.</>
+                )}
               </p>
 
               {/* Action Chips */}
@@ -171,7 +171,7 @@ export default function SharedEscortDashboard({
 
                 <button
                   type="button"
-                  onClick={() => toast.info('Updating Trip Status with Migo AI...')}
+                  onClick={() => toast.info('Trip Status synchronised with central dispatch.')}
                   className="px-2.5 py-1 rounded-lg bg-blue-50 hover:bg-blue-100 text-blue-800 text-[11px] font-bold border border-blue-200/80 flex items-center gap-1.5 transition-all"
                 >
                   <Sparkles className="w-3.5 h-3.5 text-blue-600" />
@@ -192,7 +192,7 @@ export default function SharedEscortDashboard({
 
           <button
             type="button"
-            onClick={() => toast.info('Migo AI Details active')}
+            onClick={() => toast.info('Operational status is nominal and connected to central server.')}
             className="p-2 rounded-xl bg-slate-50 hover:bg-slate-100 text-slate-500 hover:text-slate-800 border border-slate-200 transition-all shrink-0 hidden md:block"
           >
             <ChevronRight className="w-5 h-5" />
@@ -244,28 +244,37 @@ export default function SharedEscortDashboard({
               NEXT PICKUP
             </span>
             <span className="px-2.5 py-0.5 rounded-full bg-emerald-100 text-emerald-700 text-[10px] font-extrabold">
-              {morningList[0]?.time ? `At ${morningList[0].time}` : 'In 12 mins (8:15 AM)'}
+              {morningList[0]?.time ? `At ${morningList[0].time}` : 'Standby'}
             </span>
           </div>
 
-          <div className="flex items-start gap-3 bg-slate-50 p-3 rounded-xl border border-slate-100">
-            <div className="w-10 h-10 rounded-full bg-purple-600 text-white font-extrabold flex items-center justify-center text-sm shadow-sm shrink-0">
-              {morningList[0]?.avatar || morningList[0]?.name?.substring(0, 2)?.toUpperCase() || 'GA'}
+          {morningList.length > 0 ? (
+            <div className="flex items-start gap-3 bg-slate-50 p-3 rounded-xl border border-slate-100">
+              <div className="w-10 h-10 rounded-full bg-purple-600 text-white font-extrabold flex items-center justify-center text-sm shadow-sm shrink-0">
+                {morningList[0]?.avatar || morningList[0]?.name?.substring(0, 2)?.toUpperCase() || 'ST'}
+              </div>
+              <div className="min-w-0 space-y-0.5">
+                <span className="text-[10px] font-medium text-slate-400 block uppercase">First Pickup</span>
+                <h4 className="font-extrabold text-slate-900 text-sm truncate">{morningList[0]?.name}</h4>
+                <p className="text-[11px] text-slate-600 font-medium flex items-center gap-1 leading-snug">
+                  <MapPin className="w-3.5 h-3.5 text-emerald-600 shrink-0" />
+                  <span className="truncate">{morningList[0]?.address}</span>
+                </p>
+              </div>
             </div>
-            <div className="min-w-0 space-y-0.5">
-              <span className="text-[10px] font-medium text-slate-400 block uppercase">First Pickup</span>
-              <h4 className="font-extrabold text-slate-900 text-sm truncate">{morningList[0]?.name || 'Grace Adekunle'}</h4>
-              <p className="text-[11px] text-slate-600 font-medium flex items-center gap-1 leading-snug">
-                <MapPin className="w-3.5 h-3.5 text-emerald-600 shrink-0" />
-                <span className="truncate">{morningList[0]?.address || '12 Education Drive, Benin City'}</span>
-              </p>
+          ) : (
+            <div className="p-5 text-center bg-slate-50 rounded-xl border border-slate-100 space-y-1">
+              <Clock className="w-6 h-6 text-slate-400 mx-auto mb-1" />
+              <p className="text-slate-700 font-bold text-xs">No Pickups Scheduled</p>
+              <p className="text-slate-400 text-[10px]">Active student requests will appear here once assigned.</p>
             </div>
-          </div>
+          )}
 
           <button
             type="button"
-            onClick={() => toast.success(`Starting navigation to ${morningList[0]?.name || 'Student'}...`)}
-            className="w-full py-2.5 px-4 rounded-xl bg-[#00A859] hover:bg-emerald-600 text-white font-extrabold text-xs transition-all shadow-md shadow-emerald-600/20 flex items-center justify-center gap-2 cursor-pointer"
+            disabled={morningList.length === 0}
+            onClick={() => morningList.length > 0 ? toast.success(`Starting navigation to ${morningList[0]?.name}...`) : toast.info('No pickup scheduled')}
+            className="w-full py-2.5 px-4 rounded-xl bg-[#00A859] hover:bg-emerald-600 disabled:opacity-50 text-white font-extrabold text-xs transition-all shadow-md shadow-emerald-600/20 flex items-center justify-center gap-2 cursor-pointer"
           >
             <span>Navigate</span>
             <ArrowRight className="w-4 h-4" />
@@ -291,7 +300,7 @@ export default function SharedEscortDashboard({
 
             {/* Map Town Labels */}
             <div className="relative z-10 flex justify-between text-[9px] font-bold text-slate-400 uppercase tracking-wider pointer-events-none">
-              <span>Route 1</span>
+              <span>Depot</span>
               <span>Pickup</span>
               <span>En-route</span>
               <span>Arrival</span>
@@ -300,15 +309,17 @@ export default function SharedEscortDashboard({
 
             {/* Route Pins */}
             <div className="relative z-10 flex items-center justify-between px-6 pointer-events-none">
-              {/* Pin 1: Grace */}
-              <div className="w-6 h-6 rounded-full bg-purple-600 text-white font-extrabold text-[10px] flex items-center justify-center shadow-lg ring-4 ring-purple-100">
-                1
-              </div>
-
-              {/* Pin 2: Tunde */}
-              <div className="w-6 h-6 rounded-full bg-amber-500 text-white font-extrabold text-[10px] flex items-center justify-center shadow-lg ring-4 ring-amber-100">
-                2
-              </div>
+              {morningList.length > 0 ? (
+                morningList.slice(0, 2).map((stu, i) => (
+                  <div key={stu.id || i} className={`w-6 h-6 rounded-full ${i === 0 ? 'bg-purple-600' : 'bg-amber-500'} text-white font-extrabold text-[10px] flex items-center justify-center shadow-lg ring-4 ring-purple-100`}>
+                    {i + 1}
+                  </div>
+                ))
+              ) : (
+                <div className="w-6 h-6 rounded-full bg-slate-400 text-white font-extrabold text-[10px] flex items-center justify-center shadow-lg">
+                  📍
+                </div>
+              )}
 
               {/* Pin School */}
               <div className="w-7 h-7 rounded-full bg-emerald-600 text-white font-extrabold text-xs flex items-center justify-center shadow-lg ring-4 ring-emerald-100">
@@ -319,14 +330,18 @@ export default function SharedEscortDashboard({
 
           {/* Map Legend Pills */}
           <div className="flex flex-wrap items-center justify-between gap-1.5 text-[10px] font-semibold text-slate-600 pt-1">
-            <span className="flex items-center gap-1.5">
-              <span className="w-4 h-4 rounded-full bg-purple-600 text-white text-[9px] font-extrabold flex items-center justify-center">1</span>
-              <span>{morningList[0]?.name || 'Grace Adekunle'} (1st)</span>
-            </span>
-            <span className="flex items-center gap-1.5">
-              <span className="w-4 h-4 rounded-full bg-amber-500 text-white text-[9px] font-extrabold flex items-center justify-center">2</span>
-              <span>{morningList[1]?.name || 'Tunde Ibrahim'} (2nd)</span>
-            </span>
+            {morningList.length > 0 ? (
+              morningList.slice(0, 2).map((stu, i) => (
+                <span key={stu.id || i} className="flex items-center gap-1.5">
+                  <span className={`w-4 h-4 rounded-full ${i === 0 ? 'bg-purple-600' : 'bg-amber-500'} text-white text-[9px] font-extrabold flex items-center justify-center`}>
+                    {i + 1}
+                  </span>
+                  <span>{stu.name}</span>
+                </span>
+              ))
+            ) : (
+              <span className="text-slate-400">Route Standby</span>
+            )}
             <span className="flex items-center gap-1.5">
               <span className="w-4 h-4 rounded-full bg-emerald-600 text-white text-[9px] font-extrabold flex items-center justify-center">🎒</span>
               <span>{schoolName} (Drop-off)</span>
@@ -392,25 +407,33 @@ export default function SharedEscortDashboard({
           </div>
 
           <div className="space-y-2.5">
-            {morningList.map((stu: any, index: number) => (
-              <div key={stu.id || index} className="p-2.5 rounded-xl bg-slate-50 border border-slate-200 flex items-center justify-between gap-2">
-                <div className="flex items-center gap-2.5 min-w-0">
-                  <span className={`w-5 h-5 rounded-full ${index === 0 ? 'bg-purple-600' : 'bg-amber-500'} text-white font-extrabold text-[10px] flex items-center justify-center shrink-0`}>
-                    {index + 1}
-                  </span>
-                  <div className={`w-7 h-7 rounded-full ${index === 0 ? 'bg-purple-100 text-purple-700' : 'bg-amber-100 text-amber-800'} font-bold flex items-center justify-center text-xs shrink-0`}>
-                    {stu.avatar || stu.name?.substring(0, 2)?.toUpperCase() || 'ST'}
-                  </div>
-                  <div className="min-w-0">
-                    <h5 className="font-extrabold text-slate-900 text-xs truncate">{stu.name}</h5>
-                    <p className="text-[10px] text-slate-500 truncate">{stu.address}</p>
-                  </div>
-                </div>
-                <span className={`px-2 py-0.5 rounded ${stu.status === 'PICKED' ? 'bg-emerald-100 text-emerald-800' : 'bg-amber-100 text-amber-800'} font-extrabold text-[9px] shrink-0 flex items-center gap-1`}>
-                  {stu.status === 'PICKED' ? `PICKED ${stu.time || '7:52 AM'} ✓` : `NEXT ${stu.time || '8:15 AM'}`}
-                </span>
+            {morningList.length === 0 ? (
+              <div className="p-8 text-center bg-slate-50 rounded-xl border border-slate-100 text-slate-400">
+                <Users className="w-6 h-6 mx-auto mb-1 text-slate-300" />
+                <p className="font-bold text-slate-600">No Morning Pickups</p>
+                <p className="text-[10px]">Assigned students for morning transport will list here.</p>
               </div>
-            ))}
+            ) : (
+              morningList.map((stu: any, index: number) => (
+                <div key={stu.id || index} className="p-2.5 rounded-xl bg-slate-50 border border-slate-200 flex items-center justify-between gap-2">
+                  <div className="flex items-center gap-2.5 min-w-0">
+                    <span className={`w-5 h-5 rounded-full ${index === 0 ? 'bg-purple-600' : 'bg-amber-500'} text-white font-extrabold text-[10px] flex items-center justify-center shrink-0`}>
+                      {index + 1}
+                    </span>
+                    <div className={`w-7 h-7 rounded-full ${index === 0 ? 'bg-purple-100 text-purple-700' : 'bg-amber-100 text-amber-800'} font-bold flex items-center justify-center text-xs shrink-0`}>
+                      {stu.avatar || stu.name?.substring(0, 2)?.toUpperCase() || 'ST'}
+                    </div>
+                    <div className="min-w-0">
+                      <h5 className="font-extrabold text-slate-900 text-xs truncate">{stu.name}</h5>
+                      <p className="text-[10px] text-slate-500 truncate">{stu.address}</p>
+                    </div>
+                  </div>
+                  <span className={`px-2 py-0.5 rounded ${stu.status === 'PICKED' ? 'bg-emerald-100 text-emerald-800' : 'bg-amber-100 text-amber-800'} font-extrabold text-[9px] shrink-0 flex items-center gap-1`}>
+                    {stu.status === 'PICKED' ? `PICKED ${stu.time || ''} ✓` : `NEXT ${stu.time || ''}`}
+                  </span>
+                </div>
+              ))
+            )}
           </div>
 
           <div className="pt-2 border-t border-slate-100 space-y-2">
@@ -419,8 +442,9 @@ export default function SharedEscortDashboard({
             </p>
             <button
               type="button"
+              disabled={morningList.length === 0}
               onClick={handleStartMorningTrip}
-              className="w-full py-2.5 px-4 rounded-xl bg-[#00A859] hover:bg-emerald-600 text-white font-extrabold text-xs transition-all shadow-md shadow-emerald-600/20 flex items-center justify-center gap-2 cursor-pointer"
+              className="w-full py-2.5 px-4 rounded-xl bg-[#00A859] hover:bg-emerald-600 disabled:opacity-50 text-white font-extrabold text-xs transition-all shadow-md shadow-emerald-600/20 flex items-center justify-center gap-2 cursor-pointer"
             >
               <span>▶ Start Trip to School</span>
             </button>
@@ -453,22 +477,32 @@ export default function SharedEscortDashboard({
             <h4 className="font-extrabold text-slate-900 text-xs uppercase tracking-wider">
               AFTERNOON PICKUP LIST <span className="text-[10px] text-slate-400 font-normal">(At {schoolName})</span>
             </h4>
-            <span className="text-[10px] text-emerald-700 font-bold">Starts at 2:30 PM</span>
+            <span className="text-[10px] text-emerald-700 font-bold">Scheduled</span>
           </div>
 
           <div className="space-y-2">
-            {afternoonList.map((stu: any, index: number) => (
-              <div key={stu.id || index} className="p-2.5 rounded-xl bg-slate-50 border border-slate-200 flex items-center gap-2.5">
-                <span className="w-5 h-5 rounded-full bg-purple-600 text-white font-extrabold text-[10px] flex items-center justify-center shrink-0">
-                  {index + 1}
-                </span>
-                <img src={stu.avatar} alt={stu.name} className="w-7 h-7 rounded-full object-cover shrink-0" />
-                <div className="min-w-0">
-                  <h5 className="font-extrabold text-slate-900 text-xs truncate">{stu.name}</h5>
-                  <p className="text-[10px] text-slate-500 truncate">{stu.note || `Pick from ${schoolName} Gate`}</p>
-                </div>
+            {afternoonList.length === 0 ? (
+              <div className="p-8 text-center bg-slate-50 rounded-xl border border-slate-100 text-slate-400">
+                <Building className="w-6 h-6 mx-auto mb-1 text-slate-300" />
+                <p className="font-bold text-slate-600">No Afternoon Pickups</p>
+                <p className="text-[10px]">Students ready for gate release will list here.</p>
               </div>
-            ))}
+            ) : (
+              afternoonList.map((stu: any, index: number) => (
+                <div key={stu.id || index} className="p-2.5 rounded-xl bg-slate-50 border border-slate-200 flex items-center gap-2.5">
+                  <span className="w-5 h-5 rounded-full bg-purple-600 text-white font-extrabold text-[10px] flex items-center justify-center shrink-0">
+                    {index + 1}
+                  </span>
+                  <div className="w-7 h-7 rounded-full bg-slate-800 text-white font-bold flex items-center justify-center text-xs shrink-0">
+                    {stu.name?.substring(0, 2)?.toUpperCase() || 'ST'}
+                  </div>
+                  <div className="min-w-0">
+                    <h5 className="font-extrabold text-slate-900 text-xs truncate">{stu.name}</h5>
+                    <p className="text-[10px] text-slate-500 truncate">{stu.note || `Pick from ${schoolName} Gate`}</p>
+                  </div>
+                </div>
+              ))
+            )}
           </div>
 
           <div className="p-3 rounded-xl bg-blue-50/80 border border-blue-200/80 text-blue-900 text-center text-xs font-semibold">
@@ -501,7 +535,7 @@ export default function SharedEscortDashboard({
           </div>
 
           <div className="flex items-center justify-center gap-1.5 p-2 rounded-xl bg-amber-50 border border-amber-200 text-amber-900 font-extrabold text-xs">
-            <span>⏳ Pending release</span>
+            <span>⏳ Gate Verification Ready</span>
           </div>
         </div>
 
@@ -579,30 +613,26 @@ export default function SharedEscortDashboard({
               <div>
                 <h5 className="font-extrabold text-slate-900 text-xs">{schoolName} <span className="text-[10px] font-normal text-slate-500">(Pickup)</span></h5>
               </div>
-              <span className="font-mono text-slate-500 text-[11px] font-semibold">2:35 PM</span>
+              <span className="font-mono text-slate-500 text-[11px] font-semibold">Scheduled</span>
             </div>
 
-            {/* Journey Stop 2 */}
-            <div className="relative flex items-center justify-between">
-              <span className="absolute -left-[21px] w-4 h-4 rounded-full bg-emerald-600 text-white font-extrabold text-[10px] flex items-center justify-center">2</span>
-              <div>
-                <h5 className="font-extrabold text-slate-900 text-xs">{afternoonList[0]?.name || morningList[0]?.name || 'Student 1'} <span className="text-[10px] font-normal text-slate-500">(Drop-off)</span></h5>
-              </div>
-              <span className="font-mono text-slate-500 text-[11px] font-semibold">2:48 PM</span>
-            </div>
-
-            {/* Journey Stop 3 */}
-            <div className="relative flex items-center justify-between">
-              <span className="absolute -left-[21px] w-4 h-4 rounded-full bg-emerald-600 text-white font-extrabold text-[10px] flex items-center justify-center">3</span>
-              <div>
-                <h5 className="font-extrabold text-slate-900 text-xs">{afternoonList[1]?.name || morningList[1]?.name || 'Student 2'} <span className="text-[10px] font-normal text-slate-500">(Drop-off)</span></h5>
-              </div>
-              <span className="font-mono text-slate-500 text-[11px] font-semibold">3:05 PM</span>
-            </div>
+            {afternoonList.length > 0 ? (
+              afternoonList.map((stu: any, idx: number) => (
+                <div key={stu.id || idx} className="relative flex items-center justify-between">
+                  <span className="absolute -left-[21px] w-4 h-4 rounded-full bg-emerald-600 text-white font-extrabold text-[10px] flex items-center justify-center">{idx + 2}</span>
+                  <div>
+                    <h5 className="font-extrabold text-slate-900 text-xs">{stu.name} <span className="text-[10px] font-normal text-slate-500">(Drop-off)</span></h5>
+                  </div>
+                  <span className="font-mono text-slate-500 text-[11px] font-semibold">Pending</span>
+                </div>
+              ))
+            ) : (
+              <div className="text-slate-400 text-[11px] py-1">No afternoon drop-off stops queued</div>
+            )}
           </div>
 
           <div className="p-2.5 rounded-xl bg-slate-100 text-slate-700 text-center text-xs font-semibold">
-            Est. arrival last stop: 3:15 PM ⌛
+            Operational Schedule Active ⌛
           </div>
         </div>
 
@@ -650,13 +680,13 @@ export default function SharedEscortDashboard({
               <div>
                 <span className="text-[10px] text-slate-400 block font-medium">Today's Earnings</span>
                 <strong className="text-white font-extrabold font-mono text-sm">
-                  ₦{(liveDashboardData?.wallet?.todayEarnings ?? 2650).toLocaleString('en-NG', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                  ₦{(liveDashboardData?.wallet?.todayEarnings ?? 0.0).toLocaleString('en-NG', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                 </strong>
               </div>
               <div>
                 <span className="text-[10px] text-slate-400 block font-medium">This Month</span>
                 <strong className="text-white font-extrabold font-mono text-sm">
-                  ₦{(liveDashboardData?.wallet?.monthEarnings ?? 18740).toLocaleString('en-NG', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                  ₦{(liveDashboardData?.wallet?.monthEarnings ?? 0.0).toLocaleString('en-NG', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                 </strong>
               </div>
             </div>
@@ -717,7 +747,7 @@ export default function SharedEscortDashboard({
                 </div>
                 <div>
                   <h5 className="font-extrabold text-slate-900 text-xs">EduSave</h5>
-                  <p className="text-[10px] text-slate-500">You have saved <strong className="text-slate-900 font-bold font-mono">₦12,400.00</strong></p>
+                  <p className="text-[10px] text-slate-500">Savings: <strong className="text-slate-900 font-bold font-mono">₦{(liveDashboardData?.wallet?.eduSave ?? 0.0).toLocaleString('en-NG', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</strong></p>
                 </div>
               </div>
               <button type="button" onClick={() => toast.info('Opening EduSave')} className="text-[11px] font-bold text-emerald-600 hover:underline">View</button>
@@ -731,7 +761,7 @@ export default function SharedEscortDashboard({
                 </div>
                 <div>
                   <h5 className="font-extrabold text-slate-900 text-xs">EduInsuRed</h5>
-                  <p className="text-[10px] text-slate-500">Active Plan</p>
+                  <p className="text-[10px] text-slate-500">{liveDashboardData?.wallet?.eduInsuRedActive ? 'Active Plan' : 'Plan Inactive'}</p>
                 </div>
               </div>
               <button type="button" onClick={() => toast.info('Opening EduInsuRed Policy')} className="text-[11px] font-bold text-emerald-600 hover:underline">View</button>
@@ -780,16 +810,16 @@ export default function SharedEscortDashboard({
 
             <div className="flex items-center justify-between py-1 border-b border-slate-100">
               <span className="text-slate-600 flex items-center gap-1.5"><Star className="w-3.5 h-3.5 text-amber-500 fill-amber-500" /> Average Rating</span>
-              <strong className="font-black text-amber-600 text-xs">⭐ {liveDashboardData?.stats?.averageRating ?? 4.8}</strong>
+              <strong className="font-black text-amber-600 text-xs">⭐ {liveDashboardData?.stats?.averageRating ?? 5.0}</strong>
             </div>
 
             <div className="space-y-1 pt-1">
               <div className="flex items-center justify-between text-xs">
                 <span className="text-slate-600 font-semibold">On-Time Performance</span>
-                <strong className="font-extrabold text-emerald-600 text-xs">{liveDashboardData?.stats?.onTimePerformance ?? 96}%</strong>
+                <strong className="font-extrabold text-emerald-600 text-xs">{liveDashboardData?.stats?.onTimePerformance ?? 100}%</strong>
               </div>
               <div className="w-full h-2 rounded-full bg-slate-100 overflow-hidden">
-                <div className="h-full bg-emerald-500 rounded-full" style={{ width: `${liveDashboardData?.stats?.onTimePerformance ?? 96}%` }} />
+                <div className="h-full bg-emerald-500 rounded-full" style={{ width: `${liveDashboardData?.stats?.onTimePerformance ?? 100}%` }} />
               </div>
             </div>
           </div>
@@ -829,53 +859,30 @@ export default function SharedEscortDashboard({
 
           {/* Chat Messages List */}
           <div className="space-y-2 text-xs">
-            {/* Msg 1 */}
-            <div className="p-2.5 rounded-xl bg-slate-50 border border-slate-200 flex items-center justify-between">
-              <div className="flex items-center gap-2.5 min-w-0">
-                <div className="w-8 h-8 rounded-full bg-emerald-100 text-emerald-700 font-bold flex items-center justify-center shrink-0">
-                  🏫
+            {liveDashboardData?.notifications?.list && liveDashboardData.notifications.list.length > 0 ? (
+              liveDashboardData.notifications.list.slice(0, 3).map((notif: any) => (
+                <div key={notif.id} className="p-2.5 rounded-xl bg-slate-50 border border-slate-200 flex items-center justify-between">
+                  <div className="flex items-center gap-2.5 min-w-0">
+                    <div className="w-8 h-8 rounded-full bg-emerald-100 text-emerald-700 font-bold flex items-center justify-center shrink-0">
+                      🔔
+                    </div>
+                    <div className="min-w-0">
+                      <h5 className="font-extrabold text-slate-900 text-xs truncate">{notif.title || 'Notification'}</h5>
+                      <p className="text-[10px] text-slate-500 truncate">{notif.message}</p>
+                    </div>
+                  </div>
+                  <span className="text-[9px] text-slate-400 font-mono shrink-0">
+                    {notif.created_at ? new Date(notif.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : 'Today'}
+                  </span>
                 </div>
-                <div className="min-w-0">
-                  <h5 className="font-extrabold text-slate-900 text-xs truncate">{schoolName}</h5>
-                  <p className="text-[10px] text-slate-500 truncate">New message from school admin</p>
-                </div>
+              ))
+            ) : (
+              <div className="p-6 text-center text-slate-400 bg-slate-50 rounded-xl border border-slate-100">
+                <MessageSquare className="w-5 h-5 mx-auto mb-1 text-slate-300" />
+                <p className="font-semibold text-slate-600 text-xs">No Messages</p>
+                <p className="text-[10px]">Direct messages with parents, schools, and city managers will appear here.</p>
               </div>
-              <div className="text-right shrink-0">
-                <span className="text-[9px] text-slate-400 font-mono block">10:20 AM</span>
-                <span className="w-4 h-4 rounded-full bg-emerald-600 text-white font-bold text-[9px] inline-flex items-center justify-center">2</span>
-              </div>
-            </div>
-
-            {/* Msg 2 */}
-            <div className="p-2.5 rounded-xl bg-slate-50 border border-slate-200 flex items-center justify-between">
-              <div className="flex items-center gap-2.5 min-w-0">
-                <div className="w-8 h-8 rounded-full bg-purple-100 text-purple-700 font-bold flex items-center justify-center shrink-0">
-                  👩
-                </div>
-                <div className="min-w-0">
-                  <h5 className="font-extrabold text-slate-900 text-xs truncate">Parent of {morningList[0]?.name || 'Student'}</h5>
-                  <p className="text-[10px] text-slate-500 truncate">Trip update acknowledged</p>
-                </div>
-              </div>
-              <div className="text-right shrink-0">
-                <span className="text-[9px] text-slate-400 font-mono block">9:58 AM</span>
-                <span className="w-4 h-4 rounded-full bg-emerald-600 text-white font-bold text-[9px] inline-flex items-center justify-center">1</span>
-              </div>
-            </div>
-
-            {/* Msg 3 */}
-            <div className="p-2.5 rounded-xl bg-slate-50 border border-slate-200 flex items-center justify-between">
-              <div className="flex items-center gap-2.5 min-w-0">
-                <div className="w-8 h-8 rounded-full bg-blue-100 text-blue-700 font-bold flex items-center justify-center shrink-0">
-                  👔
-                </div>
-                <div className="min-w-0">
-                  <h5 className="font-extrabold text-slate-900 text-xs truncate">City Manager</h5>
-                  <p className="text-[10px] text-slate-500 truncate">Safety meeting tomorrow 10AM</p>
-                </div>
-              </div>
-              <span className="text-[9px] text-slate-400 font-mono shrink-0">9:30 AM</span>
-            </div>
+            )}
           </div>
         </div>
 
@@ -895,36 +902,23 @@ export default function SharedEscortDashboard({
               </div>
               <div className="flex-1 min-w-0">
                 <div className="flex items-center justify-between">
-                  <h5 className="font-extrabold text-slate-900 text-xs">Safety First</h5>
-                  <span className="text-[9px] text-slate-400 font-mono">2h ago</span>
+                  <h5 className="font-extrabold text-slate-900 text-xs">Safety Protocol</h5>
+                  <span className="text-[9px] text-slate-400 font-mono">Notice</span>
                 </div>
-                <p className="text-[10px] text-slate-500">Always follow safety protocols and speed limits.</p>
+                <p className="text-[10px] text-slate-500">Always verify digital QR identification before releasing students.</p>
               </div>
             </div>
 
             <div className="p-2.5 rounded-xl bg-slate-50 border border-slate-200 flex items-start gap-2.5">
-              <div className="w-6 h-6 rounded-md bg-amber-100 text-amber-700 flex items-center justify-center shrink-0 mt-0.5">
+              <div className="w-6 h-6 rounded-md bg-blue-100 text-blue-700 flex items-center justify-center shrink-0 mt-0.5">
                 <Sparkles className="w-3.5 h-3.5" />
               </div>
               <div className="flex-1 min-w-0">
                 <div className="flex items-center justify-between">
-                  <h5 className="font-extrabold text-slate-900 text-xs">Platform Update</h5>
-                  <span className="text-[9px] text-slate-400 font-mono">1d ago</span>
+                  <h5 className="font-extrabold text-slate-900 text-xs">Platform Connectivity</h5>
+                  <span className="text-[9px] text-slate-400 font-mono">Live</span>
                 </div>
-                <p className="text-[10px] text-slate-500">New features added to improve your experience.</p>
-              </div>
-            </div>
-
-            <div className="p-2.5 rounded-xl bg-slate-50 border border-slate-200 flex items-start gap-2.5">
-              <div className="w-6 h-6 rounded-md bg-red-100 text-red-700 flex items-center justify-center shrink-0 mt-0.5">
-                <Bell className="w-3.5 h-3.5" />
-              </div>
-              <div className="flex-1 min-w-0">
-                <div className="flex items-center justify-between">
-                  <h5 className="font-extrabold text-slate-900 text-xs">Meeting Reminder</h5>
-                  <span className="text-[9px] text-slate-400 font-mono">2d ago</span>
-                </div>
-                <p className="text-[10px] text-slate-500">City Escort meeting on Friday at 10:00 AM.</p>
+                <p className="text-[10px] text-slate-500">GPS location broadcasting is enabled for safety oversight.</p>
               </div>
             </div>
           </div>
@@ -940,40 +934,30 @@ export default function SharedEscortDashboard({
           </div>
 
           <div className="space-y-2.5 relative pl-4 border-l-2 border-emerald-500 text-xs">
-            <div className="relative flex items-center justify-between">
-              <span className="absolute -left-[21px] w-4 h-4 rounded-full bg-purple-600 text-white font-extrabold text-[10px] flex items-center justify-center">1</span>
-              <div>
-                <h5 className="font-extrabold text-slate-900 text-xs">{morningList[0]?.name || 'Grace Adekunle'}</h5>
-                <p className="text-[10px] text-slate-500 truncate max-w-[150px]">{morningList[0]?.address || '12 Education Drive, Benin City'}</p>
+            {morningList.length > 0 ? (
+              morningList.slice(0, 3).map((stu: any, idx: number) => (
+                <div key={stu.id || idx} className="relative flex items-center justify-between">
+                  <span className="absolute -left-[21px] w-4 h-4 rounded-full bg-purple-600 text-white font-extrabold text-[10px] flex items-center justify-center">{idx + 1}</span>
+                  <div>
+                    <h5 className="font-extrabold text-slate-900 text-xs">{stu.name}</h5>
+                    <p className="text-[10px] text-slate-500 truncate max-w-[150px]">{stu.address}</p>
+                  </div>
+                  <span className="font-mono text-slate-500 text-[10px] font-semibold">{stu.time || ''}</span>
+                </div>
+              ))
+            ) : (
+              <div className="text-slate-400 text-xs py-2">
+                No route destinations scheduled today.
               </div>
-              <span className="font-mono text-slate-500 text-[10px] font-semibold">{morningList[0]?.time || '8:15 AM'}</span>
-            </div>
-
-            <div className="relative flex items-center justify-between">
-              <span className="absolute -left-[21px] w-4 h-4 rounded-full bg-amber-500 text-white font-extrabold text-[10px] flex items-center justify-center">2</span>
-              <div>
-                <h5 className="font-extrabold text-slate-900 text-xs">{morningList[1]?.name || 'Tunde Ibrahim'}</h5>
-                <p className="text-[10px] text-slate-500 truncate max-w-[150px]">{morningList[1]?.address || '45 Greenfield Road, Benin City'}</p>
-              </div>
-              <span className="font-mono text-slate-500 text-[10px] font-semibold">{morningList[1]?.time || '8:35 AM'}</span>
-            </div>
+            )}
 
             <div className="relative flex items-center justify-between">
               <span className="absolute -left-[21px] w-4 h-4 rounded-full bg-emerald-600 text-white font-extrabold text-[10px] flex items-center justify-center">🎒</span>
               <div>
-                <h5 className="font-extrabold text-slate-900 text-xs">School Drop-off</h5>
+                <h5 className="font-extrabold text-slate-900 text-xs">School Station</h5>
                 <p className="text-[10px] text-slate-500">{schoolName}</p>
               </div>
-              <span className="font-mono text-slate-500 text-[10px] font-semibold">9:00 AM</span>
-            </div>
-
-            <div className="relative flex items-center justify-between">
-              <span className="absolute -left-[21px] w-4 h-4 rounded-full bg-emerald-600 text-white font-extrabold text-[10px] flex items-center justify-center">🎒</span>
-              <div>
-                <h5 className="font-extrabold text-slate-900 text-xs">Afternoon Pickup (From School)</h5>
-                <p className="text-[10px] text-slate-500">{schoolName} Gate</p>
-              </div>
-              <span className="font-mono text-slate-500 text-[10px] font-semibold">2:30 PM</span>
+              <span className="font-mono text-slate-500 text-[10px] font-semibold">Destination</span>
             </div>
           </div>
         </div>
@@ -986,21 +970,21 @@ export default function SharedEscortDashboard({
       <div className="bg-[#081530] rounded-2xl p-4 sm:p-5 text-white shadow-xl flex flex-col md:flex-row items-center justify-between gap-4">
         <div className="flex items-center gap-3.5">
           <div className="w-10 h-10 rounded-xl bg-amber-400/20 border border-amber-400/40 text-amber-300 flex items-center justify-center text-xl shrink-0">
-            🏆
+            🛡️
           </div>
           <div>
             <h4 className="font-extrabold text-white text-sm sm:text-base flex items-center gap-2">
-              <span>Well done, {escortName.split(' ')[0]}! 🎉</span>
+              <span>{escortName} · {escortCode}</span>
             </h4>
             <p className="text-slate-300 text-xs font-medium">
-              You have completed all trips for today.
+              Verified Certified Escort — {schoolName}
             </p>
           </div>
         </div>
 
         <div className="flex items-center gap-4 text-xs font-semibold">
           <span className="text-slate-300 text-center md:text-right">
-            Want to accept more trips? <br className="hidden sm:block" /> Go available for other schools and earn more.
+            Available for multi-school transit? <br className="hidden sm:block" /> Enable cross-school standby mode.
           </span>
 
           <button
@@ -1044,7 +1028,7 @@ export default function SharedEscortDashboard({
           </span>
 
           <span className="text-slate-400">
-            Last Sync: <strong className="text-slate-700 font-mono">10:24:35 AM</strong>
+            Live Stream: <strong className="text-slate-700 font-mono">Synchronized</strong>
           </span>
         </div>
 

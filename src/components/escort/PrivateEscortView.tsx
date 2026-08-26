@@ -30,39 +30,14 @@ export default function PrivateEscortView({
 }: PrivateEscortViewProps) {
   const [activeTab, setActiveTab] = useState<'students' | 'routes' | 'schedules' | 'safety' | 'earnings'>('students');
 
-  // Sample parent-assigned students data
-  const [parentAssignedStudents] = useState([
-    {
-      id: 'PE-STU-01',
-      name: 'David Adeleke Jr.',
-      class: 'Grade 3 Emerald',
-      school: 'Corona Secondary School, Agbara',
-      parentName: 'Chief Adewale Adeleke',
-      parentPhone: '+234 802 111 9988',
-      pickupAddress: 'Plot 14, Alma Beach Estate, Lekki',
-      dropoffAddress: 'Corona School Campus, Agbara',
-      specialInstructions: 'Child requires front seat booster; notify parent 10 mins before arrival.',
-      monthlyFee: '₦85,000 / month',
-    },
-    {
-      id: 'PE-STU-02',
-      name: 'Stephanie Mba',
-      class: 'Grade 5 Ruby',
-      school: 'Meadow Hall School, Lekki',
-      parentName: 'Dr. Mrs. Ngozi Mba',
-      parentPhone: '+234 803 777 5544',
-      pickupAddress: '12 Admiralty Way, Lekki Phase 1',
-      dropoffAddress: 'Meadow Hall Campus, Alma Beach',
-      specialInstructions: 'Must present digital QR pass on pickup.',
-      monthlyFee: '₦90,000 / month',
-    },
-  ]);
+  // Parent-assigned students data from database
+  const [parentAssignedStudents, setParentAssignedStudents] = useState<any[]>([]);
 
   // Earnings summary
   const earningsData = {
-    thisMonth: '₦175,000',
-    pendingPayout: '₦45,000',
-    completedTrips: 42,
+    thisMonth: '₦0.00',
+    pendingPayout: '₦0.00',
+    completedTrips: 0,
     rating: '5.0 ★',
   };
 
@@ -133,57 +108,67 @@ export default function PrivateEscortView({
 
       {/* TAB 1: PARENT-ASSIGNED STUDENTS */}
       {activeTab === 'students' && (
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-          {parentAssignedStudents.map((stud) => (
-            <div
-              key={stud.id}
-              className="bg-white rounded-2xl border border-slate-200/80 p-6 shadow-sm space-y-4 hover:shadow-md transition-all flex flex-col justify-between"
-            >
-              <div>
-                <div className="flex items-start justify-between gap-2 border-b border-slate-100 pb-3">
-                  <div>
-                    <span className="text-[10px] font-extrabold uppercase tracking-widest text-emerald-600 bg-emerald-50 px-2 py-0.5 rounded-full border border-emerald-200">
-                      PRIVATE ESCORT CONTRACT
+        parentAssignedStudents.length === 0 ? (
+          <div className="bg-white rounded-2xl border border-slate-200/80 p-8 text-center space-y-2">
+            <UserCheck size={32} className="mx-auto text-slate-300" />
+            <h4 className="font-extrabold text-sm text-slate-700">No Private Escort Assignments</h4>
+            <p className="text-xs text-slate-400 max-w-sm mx-auto">
+              Parent-assigned private transport contracts and door-to-door assignments will appear here.
+            </p>
+          </div>
+        ) : (
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+            {parentAssignedStudents.map((stud) => (
+              <div
+                key={stud.id}
+                className="bg-white rounded-2xl border border-slate-200/80 p-6 shadow-sm space-y-4 hover:shadow-md transition-all flex flex-col justify-between"
+              >
+                <div>
+                  <div className="flex items-start justify-between gap-2 border-b border-slate-100 pb-3">
+                    <div>
+                      <span className="text-[10px] font-extrabold uppercase tracking-widest text-emerald-600 bg-emerald-50 px-2 py-0.5 rounded-full border border-emerald-200">
+                        PRIVATE ESCORT CONTRACT
+                      </span>
+                      <h4 className="font-extrabold text-base text-slate-900 mt-1">{stud.name}</h4>
+                      <span className="text-xs text-slate-500 font-medium">{stud.school}</span>
+                    </div>
+                    <span className="font-extrabold text-sm text-emerald-700 bg-emerald-50 px-2.5 py-1 rounded-xl border border-emerald-100">
+                      {stud.monthlyFee}
                     </span>
-                    <h4 className="font-extrabold text-base text-slate-900 mt-1">{stud.name}</h4>
-                    <span className="text-xs text-slate-500 font-medium">{stud.school}</span>
-                  </div>
-                  <span className="font-extrabold text-sm text-emerald-700 bg-emerald-50 px-2.5 py-1 rounded-xl border border-emerald-100">
-                    {stud.monthlyFee}
-                  </span>
-                </div>
-
-                <div className="pt-3 space-y-2 text-xs text-slate-700">
-                  <div className="p-3 bg-slate-50 rounded-xl border border-slate-200/80 space-y-1">
-                    <span className="text-slate-400 font-semibold block">Pickup Address</span>
-                    <span className="font-bold text-slate-900 block">{stud.pickupAddress}</span>
                   </div>
 
-                  <div className="p-3 bg-slate-50 rounded-xl border border-slate-200/80 space-y-1">
-                    <span className="text-slate-400 font-semibold block">Parent Contact</span>
-                    <span className="font-bold text-slate-900 block">{stud.parentName}</span>
-                    <span className="font-mono text-emerald-600">{stud.parentPhone}</span>
-                  </div>
+                  <div className="pt-3 space-y-2 text-xs text-slate-700">
+                    <div className="p-3 bg-slate-50 rounded-xl border border-slate-200/80 space-y-1">
+                      <span className="text-slate-400 font-semibold block">Pickup Address</span>
+                      <span className="font-bold text-slate-900 block">{stud.pickupAddress}</span>
+                    </div>
 
-                  <div className="p-3 bg-amber-50 rounded-xl border border-amber-200/80 text-amber-900 text-[11px] space-y-0.5">
-                    <span className="font-bold block">Special Parent Instructions:</span>
-                    <span>{stud.specialInstructions}</span>
+                    <div className="p-3 bg-slate-50 rounded-xl border border-slate-200/80 space-y-1">
+                      <span className="text-slate-400 font-semibold block">Parent Contact</span>
+                      <span className="font-bold text-slate-900 block">{stud.parentName}</span>
+                      <span className="font-mono text-emerald-600">{stud.parentPhone}</span>
+                    </div>
+
+                    <div className="p-3 bg-amber-50 rounded-xl border border-amber-200/80 text-amber-900 text-[11px] space-y-0.5">
+                      <span className="font-bold block">Special Parent Instructions:</span>
+                      <span>{stud.specialInstructions}</span>
+                    </div>
                   </div>
                 </div>
-              </div>
 
-              <div className="pt-3 border-t border-slate-100 flex items-center gap-3">
-                <button
-                  onClick={() => onOpenVerificationModal(stud)}
-                  className="flex-1 bg-emerald-500 hover:bg-emerald-600 text-white font-bold text-xs py-2.5 px-3 rounded-xl transition-all shadow-md flex items-center justify-center gap-1.5"
-                >
-                  <QrCode size={16} />
-                  <span>Verify Pickup PIN</span>
-                </button>
+                <div className="pt-3 border-t border-slate-100 flex items-center gap-3">
+                  <button
+                    onClick={() => onOpenVerificationModal(stud)}
+                    className="flex-1 bg-emerald-500 hover:bg-emerald-600 text-white font-bold text-xs py-2.5 px-3 rounded-xl transition-all shadow-md flex items-center justify-center gap-1.5"
+                  >
+                    <QrCode size={16} />
+                    <span>Verify Pickup PIN</span>
+                  </button>
+                </div>
               </div>
-            </div>
-          ))}
-        </div>
+            ))}
+          </div>
+        )
       )}
 
       {/* TAB 2: ROUTE INFORMATION */}

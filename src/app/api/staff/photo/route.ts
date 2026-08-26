@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { getAdminClient } from '@/lib/supabase/admin';
 import { getSessionFromRequest, sessionHasRole } from '@/lib/session';
 import { uploadBase64Photo } from '@/lib/storage/upload-photo';
+import { ensureStaffProfile } from '@/lib/staff/ensure-profile';
 
 /** POST — add or replace staff ID card photo and synchronize across all profile records */
 export async function POST(request: NextRequest) {
@@ -29,14 +30,10 @@ export async function POST(request: NextRequest) {
     }
 
     const supabase = getAdminClient();
-    const { data: profile } = await supabase
-      .from('teacher_profiles')
-      .select('id, staff_id_number')
-      .eq('user_id', user_id)
-      .eq('school_id', school_id)
-      .maybeSingle();
 
-    const staffId = profile?.staff_id_number || `STF-${Date.now().toString().slice(-4)}`;
+    // 1. Ensure staff profile exists so staff_id_number is deterministically established
+    const staffProfile = await ensureStaffProfile(supabase, school_id, user_id);
+    const staffId = staffProfile?.staff_id_number || `STF-${school_id.slice(0, 4).toUpperCase()}-${Date.now().toString(36).toUpperCase()}`;
     const storagePath = `staff/${school_id}/${staffId}.jpg`;
 
     const { path, error: uploadErr } = await uploadBase64Photo(supabase, storagePath, photo_base64);
@@ -47,21 +44,34 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // 1. Update teacher_profiles
-    if (profile?.id) {
+    // 2. Synchronize teacher_profiles table
+    if (staffProfile?.id) {
       await supabase
         .from('teacher_profiles')
         .update({ photo_url: path })
-        .eq('id', profile.id);
+        .eq('id', staffProfile.id);
+    } else {
+      await supabase
+        .from('teacher_profiles')
+        .upsert(
+          {
+            user_id,
+            school_id,
+            staff_id_number: staffId,
+            qr_code_data: `MYEDURIDE:STAFF:${staffId}`,
+            photo_url: path,
+          },
+          { onConflict: 'user_id,school_id' }
+        );
     }
 
-    // 2. Synchronize user_profiles (so avatar displays in Teacher Dashboard, Chat, etc.)
+    // 3. Synchronize user_profiles table (so avatar displays across headers, dashboards, and chat)
     await supabase
       .from('user_profiles')
       .update({ avatar_url: path, photo_url: path })
       .eq('id', user_id);
 
-    // 3. Synchronize users table if exists
+    // 4. Synchronize users table if present
     try {
       await supabase
         .from('users')

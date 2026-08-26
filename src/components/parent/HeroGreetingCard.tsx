@@ -15,9 +15,10 @@ interface Child {
 interface HeroGreetingCardProps {
   userName: string;
   childrenList: Child[];
+  onOpenSafetyConnect?: () => void;
 }
 
-export default function HeroGreetingCard({ userName, childrenList }: HeroGreetingCardProps) {
+export default function HeroGreetingCard({ userName, childrenList, onOpenSafetyConnect }: HeroGreetingCardProps) {
   const getGreeting = () => {
     const hour = new Date().getHours();
     if (hour < 12) return 'Good Morning';
@@ -25,31 +26,15 @@ export default function HeroGreetingCard({ userName, childrenList }: HeroGreetin
     return 'Good Evening';
   };
 
-  const displayKids =
-    childrenList && Array.isArray(childrenList) && childrenList.length > 0
-      ? childrenList
-      : [
-          {
-            id: 'demo-1',
-            first_name: 'David',
-            last_name: 'James',
-            present_today: true,
-            arrival_time: '2026-08-04T07:28:00Z',
-          },
-          {
-            id: 'demo-2',
-            first_name: 'Esther',
-            last_name: 'James',
-            present_today: true,
-            arrival_time: '2026-08-04T07:31:00Z',
-          },
-        ];
+  const hasKids = Boolean(childrenList && Array.isArray(childrenList) && childrenList.length > 0);
+  const displayKids = hasKids ? childrenList : [];
 
   const kidsNames = displayKids.map((c) => c?.first_name || 'Child');
-  const summaryText =
-    kidsNames.length > 1
-      ? `${kidsNames.slice(0, -1).join(', ')} and ${kidsNames[kidsNames.length - 1]} are safely on their way to school.`
-      : `${kidsNames[0]} is safely on their way to school.`;
+  const summaryText = hasKids
+    ? kidsNames.length > 1
+      ? `${kidsNames.slice(0, -1).join(', ')} and ${kidsNames[kidsNames.length - 1]} are linked to your live safety dashboard.`
+      : `${kidsNames[0]} is linked to your live safety dashboard.`
+    : 'Welcome to MyEduRide. Connect your child to monitor live school transit & safety.';
 
   return (
     <div className="relative rounded-3xl overflow-hidden bg-slate-900 border border-slate-800 shadow-xl min-h-[220px] flex flex-col justify-between p-6 sm:p-8 text-white group h-full">
@@ -115,6 +100,17 @@ export default function HeroGreetingCard({ userName, childrenList }: HeroGreetin
             </div>
           );
         })}
+
+        {onOpenSafetyConnect && (
+          <button
+            type="button"
+            onClick={onOpenSafetyConnect}
+            className="flex items-center gap-1.5 px-4 py-2 rounded-2xl bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-black transition-all shadow-md active:scale-95 cursor-pointer border border-emerald-400/40 ml-auto"
+          >
+            <ShieldCheck className="w-4 h-4 text-white" />
+            <span>Safety Connect Hub</span>
+          </button>
+        )}
       </div>
     </div>
   );

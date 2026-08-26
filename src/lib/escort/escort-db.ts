@@ -294,9 +294,9 @@ export async function getEscortApplications(city?: string) {
           phone: row.phone || parsed.phone,
           nin: row.nin || parsed.nin,
           status: row.status,
-          city: row.city || parsed.city || 'Lagos',
-          state: row.state || parsed.state || 'Lagos',
-          registrationDate: row.created_at ? row.created_at.split('T')[0] : '2026-08-12',
+          city: row.city || parsed.city || null,
+          state: row.state || parsed.state || null,
+          registrationDate: row.created_at ? row.created_at.split('T')[0] : new Date().toISOString().split('T')[0],
           ...parsed,
         };
       });
@@ -316,8 +316,8 @@ export async function getEscortApplications(city?: string) {
         phone: fileRec.phone,
         nin: fileRec.nin,
         status: fileRec.status || 'PENDING_CITY_MANAGER_REVIEW',
-        city: fileRec.city || 'Lagos',
-        state: fileRec.state || 'Lagos',
+        city: fileRec.city || null,
+        state: fileRec.state || null,
         registrationDate: fileRec.createdAt || new Date().toISOString().split('T')[0],
         ...fileRec,
       });
@@ -333,8 +333,8 @@ export async function getEscortApplications(city?: string) {
   allApps = allApps.map((app) => ({
     ...app,
     // School metadata
-    createdBySchoolName: app.createdBySchoolName || app.schoolName || 'St. Mary\'s School',
-    createdBySchoolId: app.createdBySchoolId || app.schoolId || 'SCH-DEFAULT-01',
+    createdBySchoolName: app.createdBySchoolName || app.schoolName || null,
+    createdBySchoolId: app.createdBySchoolId || app.schoolId || null,
     // Build real vehicle object from flat fields if nested vehicle object absent
     vehicle: app.vehicle || (
       (app.regNumber || app.vehicleType || app.make || app.model)
@@ -355,7 +355,7 @@ export async function getEscortApplications(city?: string) {
     vehiclePhotos: app.vehiclePhotos || null,
     // Pinned Home GPS Location
     pinnedGpsLocation: app.pinnedGpsLocation || (
-      (app.address || app.city) ? { lat: 6.5244, lng: 3.3792, address: `${app.address || app.city}, ${app.state || 'Lagos'}` } : null
+      (app.address || app.city) ? { lat: 6.5244, lng: 3.3792, address: `${app.address || app.city}${app.state ? `, ${app.state}` : ''}` } : null
     ),
     // Real driver licence if available
     driversLicence: app.driversLicence || app.drivers_licence || null,

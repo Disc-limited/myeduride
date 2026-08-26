@@ -27,7 +27,7 @@ import { VoiceRecordButton } from '@/components/chat/VoiceRecordButton';
 export default function TeacherDashboard() {
   const [students, setStudents] = useState([]);
   const [selectedStudent, setSelectedStudent] = useState(null);
-  const [stats, setStats] = useState({ total: 28, present: 24, absent: 4 });
+  const [stats, setStats] = useState({ total: 0, present: 0, absent: 0 });
   const [loading, setLoading] = useState(true);
   const [readySearch, setReadySearch] = useState('');
   const [studentSearch, setStudentSearch] = useState('');

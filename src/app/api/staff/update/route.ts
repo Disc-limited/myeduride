@@ -3,6 +3,7 @@ import { getAdminClient } from '@/lib/supabase/admin';
 import { getSessionFromRequest, sessionHasRole } from '@/lib/session';
 import { isValidUsername, normalizeUsername, authEmailFromUsername } from '@/lib/auth/username';
 import { getCustomRole } from '@/lib/staff/custom-roles';
+import { uploadBase64Photo } from '@/lib/storage/upload-photo';
 
 export async function POST(request: NextRequest) {
   try {
@@ -22,6 +23,8 @@ export async function POST(request: NextRequest) {
       custom_role_id,
       class_id,
       teacher_responsibility,
+      photo_base64,
+      photo_url,
     } = await request.json();
 
     const accessRole = role || 'staff';
@@ -138,18 +141,49 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: `Failed to assign role: ${insertRoleErr.message}` }, { status: 500 });
     }
 
-    // 4. Update Teacher Profile
+    // 4. Update Teacher Profile & Photo Sync
     const { data: existingTeacherProfile } = await supabase
       .from('teacher_profiles')
-      .select('id')
+      .select('id, staff_id_number, photo_url')
       .eq('user_id', user_id)
       .eq('school_id', school_id)
       .maybeSingle();
 
+    let resolvedPhotoPath = photo_url || existingTeacherProfile?.photo_url || null;
+
+    if (photo_base64) {
+      const staffIdNumber =
+        existingTeacherProfile?.staff_id_number ||
+        `STF-${school_id.slice(0, 4).toUpperCase()}-${Date.now().toString(36).toUpperCase()}`;
+      const storagePath = `staff/${school_id}/${staffIdNumber}.jpg`;
+      const { path, error: uploadErr } = await uploadBase64Photo(supabase, storagePath, photo_base64);
+      if (!uploadErr && path) {
+        resolvedPhotoPath = path;
+      }
+    }
+
+    if (resolvedPhotoPath) {
+      await supabase
+        .from('user_profiles')
+        .update({ avatar_url: resolvedPhotoPath, photo_url: resolvedPhotoPath })
+        .eq('id', user_id);
+
+      try {
+        await supabase
+          .from('users')
+          .update({ avatar_url: resolvedPhotoPath })
+          .eq('id', user_id);
+      } catch {
+        // optional
+      }
+    }
+
     let teacherProfileId = existingTeacherProfile?.id;
 
     if (!teacherProfileId) {
-      const staffIdNumber = `STF-${school_id.slice(0, 4).toUpperCase()}-${Date.now().toString(36).toUpperCase()}`;
+      const staffIdNumber =
+        existingTeacherProfile?.staff_id_number ||
+        `STF-${school_id.slice(0, 4).toUpperCase()}-${Date.now().toString(36).toUpperCase()}`;
       const qrCodeData = `MYEDURIDE:STAFF:${staffIdNumber}`;
       const { data: newProfile, error: createProfileErr } = await supabase
         .from('teacher_profiles')
@@ -160,6 +194,7 @@ export async function POST(request: NextRequest) {
           qr_code_data: qrCodeData,
           custom_role_id: custom_role_id || null,
           teacher_responsibility: finalTeacherResponsibility,
+          photo_url: resolvedPhotoPath,
         })
         .select()
         .single();
@@ -169,12 +204,17 @@ export async function POST(request: NextRequest) {
       }
       teacherProfileId = newProfile.id;
     } else {
+      const updatePayload: Record<string, unknown> = {
+        custom_role_id: custom_role_id || null,
+        teacher_responsibility: finalTeacherResponsibility,
+      };
+      if (resolvedPhotoPath) {
+        updatePayload.photo_url = resolvedPhotoPath;
+      }
+
       const { error: updateProfileErr } = await supabase
         .from('teacher_profiles')
-        .update({
-          custom_role_id: custom_role_id || null,
-          teacher_responsibility: finalTeacherResponsibility,
-        })
+        .update(updatePayload)
         .eq('id', teacherProfileId);
 
       if (updateProfileErr) {

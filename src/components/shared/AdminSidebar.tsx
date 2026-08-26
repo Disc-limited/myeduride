@@ -64,8 +64,21 @@ export function AdminSidebar({
   const [openSubmenus, setOpenSubmenus] = useState<Record<string, boolean>>({
     Students: false,
     Staff: false,
+    'Escort Records': false,
     Reports: false,
   });
+
+  useEffect(() => {
+    if (pathname.startsWith('/dashboard/school-admin/students')) {
+      setOpenSubmenus((prev) => ({ ...prev, Students: true }));
+    } else if (pathname.startsWith('/dashboard/school-admin/staff')) {
+      setOpenSubmenus((prev) => ({ ...prev, Staff: true }));
+    } else if (pathname.startsWith('/dashboard/school-admin/escort')) {
+      setOpenSubmenus((prev) => ({ ...prev, 'Escort Records': true }));
+    } else if (pathname.startsWith('/dashboard/school-admin/reports')) {
+      setOpenSubmenus((prev) => ({ ...prev, Reports: true }));
+    }
+  }, [pathname]);
 
   const toggleSubmenu = (label: string) => {
     setOpenSubmenus((prev) => ({ ...prev, [label]: !prev[label] }));
@@ -94,13 +107,22 @@ export function AdminSidebar({
             { label: 'Add Staff', href: '/dashboard/school-admin/staff/new', icon: <GraduationCap size={16} /> },
           ],
         },
+        {
+          label: 'Escort Records',
+          href: '/dashboard/school-admin/escort',
+          icon: <UserCheck size={18} />,
+          children: [
+            { label: 'Escort Directory', href: '/dashboard/school-admin/escort', icon: <UserCheck size={16} /> },
+            { label: 'School Escorts', href: '/dashboard/school-admin/escort/school-escort', icon: <UserCheck size={16} /> },
+            { label: 'MyEduRide Escorts', href: '/dashboard/school-admin/escort/myeduride-escort', icon: <Shield size={16} /> },
+            { label: 'Add School Escort', href: '/dashboard/school-admin/escort/school-escort', icon: <UserPlus size={16} /> },
+          ],
+        },
       ],
     },
     {
       title: 'TRANSPORT & SAFETY',
       items: [
-        { label: 'School Escort', href: '/dashboard/school-admin/escort/school-escort', icon: <UserCheck size={18} /> },
-        { label: 'MyEduRide Escort', href: '/dashboard/school-admin/escort/myeduride-escort', icon: <Shield size={18} /> },
         { label: 'Live Vehicle Movement', href: '/dashboard/school-admin/live-tracking', icon: <Navigation size={18} /> },
         { label: 'Pickup List', href: '/dashboard/school-admin/pickup-persons', icon: <Car size={18} /> },
         { label: 'Vehicles', href: '/dashboard/school-admin/vehicles', icon: <Car size={18} /> },

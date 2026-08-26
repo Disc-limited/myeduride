@@ -91,80 +91,16 @@ export default function LiveOperationsMap() {
         Ikorodu
       </div>
 
-      {/* Animated Live Pins */}
-      {/* 1. Active Escort Pins (Green) */}
-      {(activeFilter === 'all' || activeFilter === 'escorts') && (
-        <>
-          <div className="absolute top-[32%] left-[18%] group/pin cursor-pointer">
-            <div className="w-6 h-6 rounded-full bg-emerald-500/30 flex items-center justify-center animate-ping absolute inset-0" />
-            <div className="w-6 h-6 rounded-full bg-emerald-600 text-white flex items-center justify-center shadow-lg border-2 border-white text-[10px] font-bold">
-              <Navigation size={12} />
-            </div>
-          </div>
-          <div className="absolute top-[30%] left-[58%] group/pin cursor-pointer">
-            <div className="w-6 h-6 rounded-full bg-emerald-600 text-white flex items-center justify-center shadow-lg border-2 border-white text-[10px] font-bold">
-              <Navigation size={12} />
-            </div>
-          </div>
-          <div className="absolute top-[62%] left-[44%] group/pin cursor-pointer">
-            <div className="w-6 h-6 rounded-full bg-emerald-600 text-white flex items-center justify-center shadow-lg border-2 border-white text-[10px] font-bold">
-              <Navigation size={12} />
-            </div>
-          </div>
-        </>
-      )}
-
-      {/* 2. School Pins (Blue) */}
-      {(activeFilter === 'all' || activeFilter === 'schools') && (
-        <>
-          <div className="absolute top-[36%] left-[28%] group/pin cursor-pointer">
-            <div className="w-6 h-6 rounded-full bg-blue-600 text-white flex items-center justify-center shadow-lg border-2 border-white text-[10px] font-bold">
-              D
-            </div>
-          </div>
-          <div className="absolute top-[42%] left-[52%] group/pin cursor-pointer">
-            <div className="w-6 h-6 rounded-full bg-blue-600 text-white flex items-center justify-center shadow-lg border-2 border-white text-[10px] font-bold">
-              D
-            </div>
-          </div>
-          <div className="absolute top-[72%] left-[58%] group/pin cursor-pointer">
-            <div className="w-6 h-6 rounded-full bg-blue-600 text-white flex items-center justify-center shadow-lg border-2 border-white text-[10px] font-bold">
-              D
-            </div>
-          </div>
-        </>
-      )}
-
-      {/* 3. Active Trips Cluster Pins (Yellow) */}
-      {(activeFilter === 'all' || activeFilter === 'trips') && (
-        <>
-          <div className="absolute top-[28%] left-[32%] group/pin cursor-pointer">
-            <div className="w-7 h-7 rounded-full bg-amber-500 text-slate-950 font-bold flex items-center justify-center shadow-lg border-2 border-white text-xs">
-              12
-            </div>
-          </div>
-          <div className="absolute top-[38%] left-[42%] group/pin cursor-pointer">
-            <div className="w-7 h-7 rounded-full bg-amber-500 text-slate-950 font-bold flex items-center justify-center shadow-lg border-2 border-white text-xs">
-              3
-            </div>
-          </div>
-          <div className="absolute top-[58%] left-[38%] group/pin cursor-pointer">
-            <div className="w-7 h-7 rounded-full bg-amber-500 text-slate-950 font-bold flex items-center justify-center shadow-lg border-2 border-white text-xs">
-              15
-            </div>
-          </div>
-        </>
-      )}
-
-      {/* 4. SOS Alert Pin (Red Pulsing) */}
-      {(activeFilter === 'all' || activeFilter === 'sos') && (
-        <div className="absolute top-[36%] left-[62%] group/pin cursor-pointer">
-          <div className="w-8 h-8 rounded-full bg-red-500/40 flex items-center justify-center animate-ping absolute -inset-1" />
-          <div className="w-6 h-6 rounded-full bg-red-600 text-white flex items-center justify-center shadow-lg border-2 border-white font-bold text-[10px]">
-            SOS
-          </div>
+      {/* Live Map Pins (Rendered dynamically from active operations) */}
+      <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
+        <div className="bg-slate-900/80 backdrop-blur-md px-4 py-2 rounded-2xl border border-slate-700/60 shadow-xl text-center space-y-1">
+          <p className="text-[11px] font-bold text-emerald-400 flex items-center justify-center gap-1.5">
+            <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
+            Live Map Telemetry Connected
+          </p>
+          <p className="text-[10px] text-slate-400">Monitoring real-time GPS coordinates across all registered schools</p>
         </div>
-      )}
+      </div>
 
       {/* Legend Footer inside Map Box */}
       <div className="absolute bottom-3 left-3 right-3 flex flex-wrap items-center justify-between gap-2 z-10 bg-slate-900/90 backdrop-blur-md border border-slate-700/80 px-3.5 py-2 rounded-xl text-xs">

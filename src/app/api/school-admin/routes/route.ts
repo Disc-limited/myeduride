@@ -4,213 +4,16 @@ import { getSessionFromRequest, isAuthorizedSchoolAdmin } from '@/lib/auth/auth-
 import { getAdminClient } from '@/lib/supabase/admin';
 import { nowUtcIso } from '@/lib/utils/time';
 
-// In-Memory Cache Store with 60s TTL
-interface CacheEntry {
-  timestamp: number;
-  data: any;
-}
-const routesCache: Record<string, CacheEntry> = {};
-const CACHE_TTL_MS = 60_000;
-
-// Persistent in-memory fallback store for school transport routes
-const schoolRoutesStore: Record<string, any[]> = {};
-const parentPinnedRoutesStore: Record<string, Set<string>> = {}; // parentUserId -> Set of routeId:stopId
-const studentRouteAssignmentsStore: Record<string, any> = {}; // studentId -> { morning_route_id, morning_stop, afternoon_route_id, afternoon_stop }
-
-function initDefaultRoutes(schoolId: string) {
-  if (!schoolRoutesStore[schoolId] || schoolRoutesStore[schoolId].length === 0) {
-    schoolRoutesStore[schoolId] = [
-      {
-        id: 'RT-01',
-        school_id: schoolId,
-        name: 'Route A: Victoria Island & Oniru Express',
-        code: 'VI-EXP-01',
-        assigned_vehicle: 'LAG-482-XA (Toyota HiAce 18-Seater)',
-        assigned_escort_name: 'Babajide Adeleke',
-        assigned_escort_phone: '+234 803 291 8841',
-        departure_morning: '06:45 AM',
-        departure_afternoon: '03:15 PM',
-        status: 'active',
-        directions_summary: 'Departs from 1044 Ademola Adetokunbo St -> Oniru Market -> Palace Way -> School Campus Front Gate via Ozumba Mbadiwe Ave.',
-        stops: [
-          {
-            stop_number: 1,
-            name: '1044 Ademola Adetokunbo St, Victoria Island',
-            landmark: 'Opposite Zenith Bank Towers',
-            eta_morning: '06:50 AM',
-            eta_afternoon: '03:45 PM',
-            gps_lat: 6.4281,
-            gps_lng: 3.4219,
-            students_assigned: 4,
-          },
-          {
-            stop_number: 2,
-            name: 'Oniru Market Roundabout',
-            landmark: 'Beside Oniru Royal Palace Gate',
-            eta_morning: '07:05 AM',
-            eta_afternoon: '03:35 PM',
-            gps_lat: 6.4342,
-            gps_lng: 3.4351,
-            students_assigned: 5,
-          },
-          {
-            stop_number: 3,
-            name: 'Palace Way Entrance',
-            landmark: 'Near Silverbird Galleria Corridor',
-            eta_morning: '07:15 AM',
-            eta_afternoon: '03:25 PM',
-            gps_lat: 6.4399,
-            gps_lng: 3.4412,
-            students_assigned: 7,
-          },
-          {
-            stop_number: 4,
-            name: 'School Campus Front Gate',
-            landmark: 'Main Security Turnstile Hub',
-            eta_morning: '07:35 AM',
-            eta_afternoon: '03:15 PM',
-            gps_lat: 6.4474,
-            gps_lng: 3.4731,
-            students_assigned: 0,
-          },
-        ],
-        passenger_students: [
-          { student_id: 'STU-001', name: 'Stephanie Mba', class: 'Basic 4 Gold', stop: '1044 Ademola Adetokunbo St', parent_phone: '+234 803 112 4455' },
-          { student_id: 'STU-002', name: 'David James', class: 'Basic 5 Emerald', stop: 'Oniru Market Roundabout', parent_phone: '+234 802 998 1122' },
-          { student_id: 'STU-003', name: 'Esther Paul', class: 'Basic 3 Sapphire', stop: 'Palace Way Entrance', parent_phone: '+234 809 443 2211' },
-        ],
-        pinned_by_parents_count: 12,
-        created_at: '2026-01-15T08:00:00Z',
-      },
-      {
-        id: 'RT-02',
-        school_id: schoolId,
-        name: 'Route B: Lekki Phase 1 & Admiralty',
-        code: 'LEK-02',
-        assigned_vehicle: 'IKJ-904-KT (Ford Transit 15-Seater)',
-        assigned_escort_name: 'Emeka Chukwu',
-        assigned_escort_phone: '+234 812 449 1022',
-        departure_morning: '06:50 AM',
-        departure_afternoon: '03:20 PM',
-        status: 'active',
-        directions_summary: 'Departs from Admiralty Way Post Office -> Fola Osibo -> Freedom Way Roundabout -> School Campus Gate.',
-        stops: [
-          {
-            stop_number: 1,
-            name: 'Admiralty Way Post Office',
-            landmark: 'Near Tantalizers Lekki',
-            eta_morning: '06:55 AM',
-            eta_afternoon: '03:50 PM',
-            gps_lat: 6.4489,
-            gps_lng: 3.4721,
-            students_assigned: 5,
-          },
-          {
-            stop_number: 2,
-            name: 'Fola Osibo Junction',
-            landmark: 'Beside Ebeano Supermarket',
-            eta_morning: '07:10 AM',
-            eta_afternoon: '03:38 PM',
-            gps_lat: 6.4522,
-            gps_lng: 3.4811,
-            students_assigned: 4,
-          },
-          {
-            stop_number: 3,
-            name: 'Freedom Way Roundabout',
-            landmark: 'Opposite Dome Event Center',
-            eta_morning: '07:22 AM',
-            eta_afternoon: '03:30 PM',
-            gps_lat: 6.4589,
-            gps_lng: 3.4902,
-            students_assigned: 3,
-          },
-          {
-            stop_number: 4,
-            name: 'School Campus Front Gate',
-            landmark: 'Main Security Gate',
-            eta_morning: '07:40 AM',
-            eta_afternoon: '03:20 PM',
-            gps_lat: 6.4474,
-            gps_lng: 3.4731,
-            students_assigned: 0,
-          },
-        ],
-        passenger_students: [
-          { student_id: 'STU-006', name: 'Sarah Yusuf', class: 'Basic 4 Silver', stop: 'Admiralty Way Post Office', parent_phone: '+234 802 884 1133' },
-          { student_id: 'STU-007', name: 'Daniel Peter', class: 'Basic 5 Gold', stop: 'Fola Osibo Junction', parent_phone: '+234 803 441 5566' },
-        ],
-        pinned_by_parents_count: 8,
-        created_at: '2026-02-01T08:00:00Z',
-      },
-      {
-        id: 'RT-03',
-        school_id: schoolId,
-        name: 'Route C: Ikeja GRA, Maryland & Anthony',
-        code: 'IKJ-03',
-        assigned_vehicle: 'APP-118-BC (Coaster Bus 28-Seater)',
-        assigned_escort_name: 'Oluwaseun Bakare',
-        assigned_escort_phone: '+234 809 332 5590',
-        departure_morning: '06:30 AM',
-        departure_afternoon: '03:00 PM',
-        status: 'active',
-        directions_summary: 'Departs from Isaac John St Ikeja -> Maryland Mall Terminal -> Anthony Interchange -> School Campus Gate via Ikorodu Rd Express.',
-        stops: [
-          {
-            stop_number: 1,
-            name: 'Isaac John St, Ikeja GRA',
-            landmark: 'Near Radisson Blu Ikeja',
-            eta_morning: '06:35 AM',
-            eta_afternoon: '04:10 PM',
-            gps_lat: 6.5872,
-            gps_lng: 3.3571,
-            students_assigned: 8,
-          },
-          {
-            stop_number: 2,
-            name: 'Maryland Mall Terminal',
-            landmark: 'Maryland BRT Station Entrance',
-            eta_morning: '06:50 AM',
-            eta_afternoon: '03:50 PM',
-            gps_lat: 6.5712,
-            gps_lng: 3.3688,
-            students_assigned: 9,
-          },
-          {
-            stop_number: 3,
-            name: 'Anthony Village Interchange',
-            landmark: 'Anthony Pedestrian Bridge',
-            eta_morning: '07:05 AM',
-            eta_afternoon: '03:35 PM',
-            gps_lat: 6.5591,
-            gps_lng: 3.3752,
-            students_assigned: 7,
-          },
-          {
-            stop_number: 4,
-            name: 'School Campus Front Gate',
-            landmark: 'Main Security Gate',
-            eta_morning: '07:30 AM',
-            eta_afternoon: '03:00 PM',
-            gps_lat: 6.4474,
-            gps_lng: 3.4731,
-            students_assigned: 0,
-          },
-        ],
-        passenger_students: [
-          { student_id: 'STU-004', name: 'Michael Obi', class: 'Basic 6 Diamond', stop: 'Isaac John St, Ikeja GRA', parent_phone: '+234 803 552 1199' },
-          { student_id: 'STU-005', name: 'Victory Bello', class: 'Basic 2 Ruby', stop: 'Maryland Mall Terminal', parent_phone: '+234 807 114 9900' },
-        ],
-        pinned_by_parents_count: 15,
-        created_at: '2026-02-15T08:00:00Z',
-      },
-    ];
-  }
-}
+export const dynamic = 'force-dynamic';
 
 /**
  * GET /api/school-admin/routes
  * Returns transport routes with stops, passenger manifests, directions, and parent pin statuses.
+ * Direct live query from Supabase database tables:
+ * - transport_routes
+ * - transport_route_stops
+ * - student_route_assignments
+ * - school_vehicles
  */
 export async function GET(request: NextRequest) {
   try {
@@ -229,20 +32,95 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ error: 'school_id could not be determined' }, { status: 400 });
     }
 
-    // Fast Cache Lookup
-    const cacheKey = `routes_${primarySchoolId}`;
-    const cached = routesCache[cacheKey];
-    if (cached && Date.now() - cached.timestamp < CACHE_TTL_MS) {
-      return NextResponse.json(cached.data);
+    const supabase = getAdminClient();
+
+    // 1. Fetch routes
+    const { data: dbRoutes, error: routesErr } = await supabase
+      .from('transport_routes')
+      .select('*, vehicle:school_vehicles(id, reg_number, make, model)')
+      .eq('school_id', primarySchoolId)
+      .order('created_at', { ascending: false });
+
+    const rawRoutes = dbRoutes || [];
+    const routeIds = rawRoutes.map((r) => r.id);
+
+    // 2. Fetch stops for these routes
+    let stopsByRoute: Record<string, any[]> = {};
+    if (routeIds.length > 0) {
+      const { data: dbStops } = await supabase
+        .from('transport_route_stops')
+        .select('*')
+        .in('route_id', routeIds)
+        .order('stop_number', { ascending: true });
+
+      if (dbStops) {
+        for (const stop of dbStops) {
+          if (!stopsByRoute[stop.route_id]) stopsByRoute[stop.route_id] = [];
+          stopsByRoute[stop.route_id].push(stop);
+        }
+      }
     }
 
-    initDefaultRoutes(primarySchoolId);
-    const routes = schoolRoutesStore[primarySchoolId];
+    // 3. Fetch passenger students assigned to these routes
+    let studentsByRoute: Record<string, any[]> = {};
+    if (routeIds.length > 0) {
+      const { data: dbAssignments } = await supabase
+        .from('student_route_assignments')
+        .select('student_id, morning_route_id, afternoon_route_id, morning_stop_id, afternoon_stop_id, student:students(id, first_name, last_name, class:school_classes(name), parent_phone)')
+        .eq('school_id', primarySchoolId)
+        .eq('status', 'active');
+
+      if (dbAssignments) {
+        for (const sa of dbAssignments) {
+          const stu = Array.isArray(sa.student) ? sa.student[0] : sa.student;
+          const stuObj = {
+            student_id: sa.student_id,
+            name: stu ? `${stu.first_name} ${stu.last_name}` : 'Student',
+            class: stu?.class?.name || 'Class',
+            stop: 'Designated Stop',
+            parent_phone: stu?.parent_phone || null,
+          };
+
+          if (sa.morning_route_id) {
+            if (!studentsByRoute[sa.morning_route_id]) studentsByRoute[sa.morning_route_id] = [];
+            studentsByRoute[sa.morning_route_id].push(stuObj);
+          }
+          if (sa.afternoon_route_id && sa.afternoon_route_id !== sa.morning_route_id) {
+            if (!studentsByRoute[sa.afternoon_route_id]) studentsByRoute[sa.afternoon_route_id] = [];
+            studentsByRoute[sa.afternoon_route_id].push(stuObj);
+          }
+        }
+      }
+    }
+
+    const routes = rawRoutes.map((r) => {
+      const vehicleObj = Array.isArray(r.vehicle) ? r.vehicle[0] : r.vehicle;
+      const stops = stopsByRoute[r.id] || [];
+      const passengers = studentsByRoute[r.id] || [];
+
+      return {
+        id: r.id,
+        school_id: r.school_id,
+        name: r.name,
+        code: r.code,
+        assigned_vehicle: vehicleObj ? `${vehicleObj.reg_number} (${vehicleObj.make} ${vehicleObj.model})` : 'Unassigned',
+        assigned_escort_name: 'School Assigned Escort',
+        assigned_escort_phone: '',
+        departure_morning: r.departure_morning || '06:45 AM',
+        departure_afternoon: r.departure_afternoon || '03:15 PM',
+        status: r.status || 'active',
+        directions_summary: r.directions_summary || 'Standard Route Corridor',
+        stops,
+        passenger_students: passengers,
+        pinned_by_parents_count: 0,
+        created_at: r.created_at,
+      };
+    });
 
     const totalStops = routes.reduce((acc, r) => acc + (r.stops?.length || 0), 0);
     const totalPassengers = routes.reduce((acc, r) => acc + (r.passenger_students?.length || 0), 0);
 
-    const payload = {
+    return NextResponse.json({
       success: true,
       timestamp: nowUtcIso(),
       school_id: primarySchoolId,
@@ -253,14 +131,7 @@ export async function GET(request: NextRequest) {
         active_routes: routes.filter((r) => r.status === 'active').length,
       },
       routes,
-    };
-
-    routesCache[cacheKey] = {
-      timestamp: Date.now(),
-      data: payload,
-    };
-
-    return NextResponse.json(payload);
+    });
   } catch (err: any) {
     console.error('[routes GET] Error:', err);
     return NextResponse.json({ error: err.message || 'Internal Server Error' }, { status: 500 });
@@ -269,12 +140,7 @@ export async function GET(request: NextRequest) {
 
 /**
  * POST /api/school-admin/routes
- * Actions:
- * - create_route: Add new route
- * - update_route: Edit route parameters & stops
- * - pin_route: Parent pins route and preferred stop
- * - assign_student_route: Assign student to route & designated stop
- * - log_stop_event: Escort logs stop departure & directions
+ * Direct CRUD operations against `transport_routes`, `transport_route_stops`, and `student_route_assignments`.
  */
 export async function POST(request: NextRequest) {
   try {
@@ -284,7 +150,7 @@ export async function POST(request: NextRequest) {
     }
 
     const body = await request.json();
-    const { action, school_id, route_data, route_id, student_assignment, pin_data, stop_event } = body;
+    const { action, school_id, route_data, route_id, student_assignment } = body;
 
     const primarySchoolId =
       school_id ||
@@ -295,48 +161,54 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'school_id required' }, { status: 400 });
     }
 
-    initDefaultRoutes(primarySchoolId);
     const supabase = getAdminClient();
 
     if (action === 'create_route') {
-      if (!route_data.name || !route_data.code) {
+      if (!route_data?.name || !route_data?.code) {
         return NextResponse.json({ error: 'Route name and route code are required' }, { status: 400 });
       }
 
-      const newId = `RT-${Date.now().toString().slice(-4)}`;
-      const newRoute = {
-        id: newId,
+      const insertPayload = {
         school_id: primarySchoolId,
         name: route_data.name,
         code: route_data.code.toUpperCase().trim(),
-        assigned_vehicle: route_data.assigned_vehicle || 'Unassigned',
-        assigned_escort_name: route_data.assigned_escort_name || 'Unassigned',
-        assigned_escort_phone: route_data.assigned_escort_phone || '',
-        departure_morning: route_data.departure_morning || '06:45 AM',
-        departure_afternoon: route_data.departure_afternoon || '03:15 PM',
-        status: 'active',
+        departure_morning: route_data.departure_morning || '06:45',
+        departure_afternoon: route_data.departure_afternoon || '15:15',
         directions_summary: route_data.directions_summary || 'Standard direct corridor to school front gate.',
-        stops: route_data.stops || [
-          { stop_number: 1, name: 'Designated First Stop Point', landmark: 'Area Landmark', eta_morning: '06:50 AM', eta_afternoon: '03:45 PM', students_assigned: 0 },
-          { stop_number: 2, name: 'School Campus Main Gate', landmark: 'Campus Entry', eta_morning: '07:35 AM', eta_afternoon: '03:15 PM', students_assigned: 0 },
-        ],
-        passenger_students: [],
-        pinned_by_parents_count: 0,
-        created_at: nowUtcIso(),
+        status: 'active',
       };
 
-      schoolRoutesStore[primarySchoolId].unshift(newRoute);
+      const { data: newRoute, error: insertError } = await supabase
+        .from('transport_routes')
+        .insert(insertPayload)
+        .select()
+        .single();
 
-      // Invalidate Cache
-      delete routesCache[`routes_${primarySchoolId}`];
+      if (insertError) throw insertError;
 
-      // Audit Log
+      // Insert stops if provided
+      if (route_data.stops && Array.isArray(route_data.stops) && route_data.stops.length > 0) {
+        const stopsPayload = route_data.stops.map((s: any, idx: number) => ({
+          route_id: newRoute.id,
+          school_id: primarySchoolId,
+          stop_number: s.stop_number || idx + 1,
+          name: s.name || `Stop ${idx + 1}`,
+          landmark: s.landmark || null,
+          eta_morning: s.eta_morning || null,
+          eta_afternoon: s.eta_afternoon || null,
+          gps_lat: s.gps_lat || null,
+          gps_lng: s.gps_lng || null,
+        }));
+
+        await supabase.from('transport_route_stops').insert(stopsPayload);
+      }
+
       await supabase.from('audit_logs').insert({
         school_id: primarySchoolId,
         user_id: session.user_id,
         action: 'CREATE_TRANSPORT_ROUTE',
         resource: 'transport_routes',
-        details: { route_id: newId, code: newRoute.code, name: newRoute.name },
+        details: { route_id: newRoute.id, code: newRoute.code, name: newRoute.name },
       });
 
       return NextResponse.json({
@@ -347,104 +219,84 @@ export async function POST(request: NextRequest) {
     }
 
     if (action === 'update_route') {
-      const idx = schoolRoutesStore[primarySchoolId].findIndex((r) => r.id === route_id);
-      if (idx === -1) {
-        return NextResponse.json({ error: 'Route not found' }, { status: 404 });
+      if (!route_id) {
+        return NextResponse.json({ error: 'route_id required' }, { status: 400 });
       }
 
-      schoolRoutesStore[primarySchoolId][idx] = {
-        ...schoolRoutesStore[primarySchoolId][idx],
-        ...route_data,
-        updated_at: nowUtcIso(),
-      };
+      const { data: updatedRoute, error: updateError } = await supabase
+        .from('transport_routes')
+        .update({
+          name: route_data.name,
+          code: route_data.code,
+          departure_morning: route_data.departure_morning,
+          departure_afternoon: route_data.departure_afternoon,
+          directions_summary: route_data.directions_summary,
+          status: route_data.status || 'active',
+          updated_at: nowUtcIso(),
+        })
+        .eq('id', route_id)
+        .eq('school_id', primarySchoolId)
+        .select()
+        .single();
 
-      // Invalidate Cache
-      delete routesCache[`routes_${primarySchoolId}`];
+      if (updateError) throw updateError;
 
       return NextResponse.json({
         success: true,
-        message: 'Transport route configuration updated successfully.',
-        route: schoolRoutesStore[primarySchoolId][idx],
+        message: 'Transport route updated successfully.',
+        route: updatedRoute,
       });
     }
 
-    if (action === 'pin_route') {
-      const parentId = session.user_id;
-      if (!parentPinnedRoutesStore[parentId]) parentPinnedRoutesStore[parentId] = new Set();
-
-      const pinKey = `${pin_data.route_id}:${pin_data.stop_number}`;
-      const isPinned = parentPinnedRoutesStore[parentId].has(pinKey);
-
-      if (isPinned) {
-        parentPinnedRoutesStore[parentId].delete(pinKey);
-      } else {
-        parentPinnedRoutesStore[parentId].add(pinKey);
+    if (action === 'delete_route') {
+      if (!route_id) {
+        return NextResponse.json({ error: 'route_id required' }, { status: 400 });
       }
+
+      const { error: deleteError } = await supabase
+        .from('transport_routes')
+        .delete()
+        .eq('id', route_id)
+        .eq('school_id', primarySchoolId);
+
+      if (deleteError) throw deleteError;
 
       return NextResponse.json({
         success: true,
-        pinned: !isPinned,
-        message: !isPinned ? 'Route and stop pinned to your Parent Dashboard.' : 'Route unpinned.',
+        message: 'Route removed from active transport network.',
       });
     }
 
     if (action === 'assign_student_route') {
-      const { student_id, student_name, student_class, parent_phone, route_id, stop_name } = student_assignment;
-      const targetRoute = schoolRoutesStore[primarySchoolId].find((r) => r.id === route_id);
-      if (!targetRoute) {
-        return NextResponse.json({ error: 'Target route not found' }, { status: 404 });
+      const { student_id, morning_route_id, morning_stop_id, afternoon_route_id, afternoon_stop_id } = student_assignment || {};
+      if (!student_id) {
+        return NextResponse.json({ error: 'student_id is required' }, { status: 400 });
       }
 
-      if (!targetRoute.passenger_students) targetRoute.passenger_students = [];
-      const existingIdx = targetRoute.passenger_students.findIndex((s) => s.student_id === student_id);
+      const { data: assignment, error: assignError } = await supabase
+        .from('student_route_assignments')
+        .upsert(
+          {
+            student_id,
+            school_id: primarySchoolId,
+            morning_route_id: morning_route_id || null,
+            morning_stop_id: morning_stop_id || null,
+            afternoon_route_id: afternoon_route_id || null,
+            afternoon_stop_id: afternoon_stop_id || null,
+            status: 'active',
+            updated_at: nowUtcIso(),
+          },
+          { onConflict: 'student_id' }
+        )
+        .select()
+        .single();
 
-      const passengerRecord = {
-        student_id,
-        name: student_name,
-        class: student_class,
-        stop: stop_name,
-        parent_phone,
-      };
-
-      if (existingIdx >= 0) {
-        targetRoute.passenger_students[existingIdx] = passengerRecord;
-      } else {
-        targetRoute.passenger_students.push(passengerRecord);
-      }
-
-      studentRouteAssignmentsStore[student_id] = {
-        route_id,
-        stop_name,
-        updated_at: nowUtcIso(),
-      };
-
-      delete routesCache[`routes_${primarySchoolId}`];
+      if (assignError) throw assignError;
 
       return NextResponse.json({
         success: true,
-        message: `Student ${student_name} assigned to ${targetRoute.name} at stop: ${stop_name}`,
-        passenger: passengerRecord,
-      });
-    }
-
-    if (action === 'log_stop_event') {
-      // Escort marks stop arrival and logs operational record
-      await supabase.from('gate_activity_log').insert({
-        school_id: primarySchoolId,
-        action_type: 'ROUTE_STOP_REACHED',
-        pickup_person_name: stop_event.escort_name,
-        details: {
-          route_id: stop_event.route_id,
-          stop_number: stop_event.stop_number,
-          stop_name: stop_event.stop_name,
-          students_boarded: stop_event.students_boarded,
-          timestamp: nowUtcIso(),
-        },
-      });
-
-      return NextResponse.json({
-        success: true,
-        message: `Stop ${stop_event.stop_name} arrival logged successfully.`,
+        message: 'Student assigned to route and designated stop.',
+        assignment,
       });
     }
 

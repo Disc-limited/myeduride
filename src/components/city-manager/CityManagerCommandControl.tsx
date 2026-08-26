@@ -69,424 +69,6 @@ export interface CityManagerCommandControlProps {
   pendingApprovalsCount?: number;
 }
 
-// Initial Mock Operational Data for Command & Control
-const INITIAL_ESCORT_ROSTER = [
-  {
-    id: 'EMR-2031',
-    name: 'Emeka Johnson',
-    type: 'myeduride',
-    phone: '+234 803 219 4481',
-    status: 'ON_TRIP',
-    schoolName: "St. Mary's School",
-    vehicle: 'Toyota HiAce (KJA-892-AA)',
-    currentTripId: 'TRP-1092',
-    route: 'Ikeja GRA → St. Mary\'s Campus',
-    studentsCount: 12,
-    speed: '34 km/h',
-    battery: '88%',
-    lastPing: '12s ago',
-    complianceScore: 98,
-    rating: 4.9,
-    tripsToday: 4,
-    avatar: '',
-    notes: 'Verified top-tier escort. Clean safety record.',
-  },
-  {
-    id: 'EMR-1187',
-    name: 'Grace Afolabi',
-    type: 'myeduride',
-    phone: '+234 802 443 1928',
-    status: 'ON_TRIP',
-    schoolName: 'Greenfield Academy',
-    vehicle: 'Ford Transit (LND-412-XY)',
-    currentTripId: 'TRP-1094',
-    route: 'Yaba Tech Corridor → Greenfield',
-    studentsCount: 10,
-    speed: '28 km/h',
-    battery: '94%',
-    lastPing: '5s ago',
-    complianceScore: 95,
-    rating: 4.8,
-    tripsToday: 3,
-    avatar: '',
-    notes: 'Punctual, positive parent feedback.',
-  },
-  {
-    id: 'SCH-045',
-    name: 'Fatima Bello',
-    type: 'school',
-    phone: '+234 814 883 9021',
-    status: 'ON_TRIP',
-    schoolName: 'Hope Academy',
-    vehicle: 'Mercedes Sprinter (GGE-219-BC)',
-    currentTripId: 'TRP-1098',
-    route: 'Maryland Estate → Hope Academy',
-    studentsCount: 8,
-    speed: '31 km/h',
-    battery: '76%',
-    lastPing: '20s ago',
-    complianceScore: 93,
-    rating: 4.6,
-    tripsToday: 2,
-    avatar: '',
-    notes: 'School staff driver & escort.',
-  },
-  {
-    id: 'EMR-1576',
-    name: 'Daniel Okoro',
-    type: 'myeduride',
-    phone: '+234 809 112 5590',
-    status: 'AVAILABLE',
-    schoolName: 'Whitesands School',
-    vehicle: 'Nissan Urvan (AGL-552-DE)',
-    currentTripId: null,
-    route: 'Standby at Surulere Hub',
-    studentsCount: 0,
-    speed: '0 km/h',
-    battery: '92%',
-    lastPing: '45s ago',
-    complianceScore: 94,
-    rating: 4.7,
-    tripsToday: 3,
-    avatar: '',
-    notes: 'Ready for emergency backup dispatch.',
-  },
-  {
-    id: 'SCH-072',
-    name: 'Samuel Efiong',
-    type: 'school',
-    phone: '+234 805 776 3312',
-    status: 'DELAYED',
-    schoolName: 'CitiLights School',
-    vehicle: 'Toyota Coaster (IKJ-110-ZA)',
-    currentTripId: 'TRP-1102',
-    route: 'Gbagada Expressway → CitiLights',
-    studentsCount: 14,
-    speed: '12 km/h',
-    battery: '62%',
-    lastPing: '30s ago',
-    complianceScore: 88,
-    rating: 4.5,
-    tripsToday: 2,
-    avatar: '',
-    notes: 'Heavy traffic congestion reported on Third Mainland approach.',
-  },
-  {
-    id: 'EMR-3309',
-    name: 'Kazeem Oladipo',
-    type: 'myeduride',
-    phone: '+234 803 551 2289',
-    status: 'FLAGGED',
-    schoolName: 'Corona School Victoria Island',
-    vehicle: 'Toyota HiAce (APP-901-LK)',
-    currentTripId: null,
-    route: 'Under Investigation',
-    studentsCount: 0,
-    speed: '0 km/h',
-    battery: '81%',
-    lastPing: '2m ago',
-    complianceScore: 71,
-    rating: 3.9,
-    tripsToday: 1,
-    avatar: '',
-    notes: 'Speed alert triggered twice this morning (>65km/h in 30km/h school zone).',
-  },
-];
-
-const INITIAL_GATE_OFFICERS = [
-  {
-    id: 'GT-01',
-    name: 'Sgt. Babatunde Lawal',
-    schoolName: "St. Mary's School",
-    gateName: 'Main Gate A',
-    shift: 'Morning (06:30 - 14:30)',
-    status: 'ON_DUTY',
-    scansToday: 312,
-    releasesToday: 298,
-    visitorsLogged: 8,
-    overridesCount: 1,
-    lastActive: 'Just now',
-    compliance: '100%',
-  },
-  {
-    id: 'GT-02',
-    name: 'Officer Musa Danladi',
-    schoolName: 'Greenfield Academy',
-    gateName: 'North Gate 1',
-    shift: 'Morning (06:30 - 14:30)',
-    status: 'ON_DUTY',
-    scansToday: 245,
-    releasesToday: 220,
-    visitorsLogged: 5,
-    overridesCount: 0,
-    lastActive: '1m ago',
-    compliance: '100%',
-  },
-  {
-    id: 'GT-03',
-    name: 'Officer Chioma Nwosu',
-    schoolName: 'Hope Academy',
-    gateName: 'Gate 2 (Primary)',
-    shift: 'Morning (06:30 - 14:30)',
-    status: 'ATTENTION',
-    scansToday: 186,
-    releasesToday: 150,
-    visitorsLogged: 6,
-    overridesCount: 3,
-    lastActive: '30s ago',
-    compliance: '89%',
-  },
-  {
-    id: 'GT-04',
-    name: 'Officer Segun Adeleke',
-    schoolName: 'Whitesands School',
-    gateName: 'Admin Gate B',
-    shift: 'Morning (06:30 - 14:30)',
-    status: 'ON_DUTY',
-    scansToday: 210,
-    releasesToday: 189,
-    visitorsLogged: 7,
-    overridesCount: 1,
-    lastActive: '2m ago',
-    compliance: '97%',
-  },
-];
-
-const INITIAL_GATE_ACTIVITIES = [
-  {
-    id: 'GA-991',
-    time: '10:28 AM',
-    school: "St. Mary's School",
-    gate: 'Gate A',
-    officer: 'Sgt. Babatunde Lawal',
-    student: 'Chinedu Eze (JSS 2)',
-    actor: 'Mrs. Ngozi Eze (Mother)',
-    actorType: 'Parent Pickup',
-    verification: 'QR Code + NFC Tag',
-    status: 'APPROVED',
-  },
-  {
-    id: 'GA-992',
-    time: '10:25 AM',
-    school: 'Hope Academy',
-    gate: 'Gate 2',
-    officer: 'Officer Chioma Nwosu',
-    student: 'Aisha Bello (Primary 4)',
-    actor: 'Uncle Tunde Bello',
-    actorType: 'Emergency Guardian',
-    verification: 'Manual Override (Phone Confirmed with Mother)',
-    status: 'OVERRIDE_APPROVED',
-  },
-  {
-    id: 'GA-993',
-    time: '10:21 AM',
-    school: 'Greenfield Academy',
-    gate: 'North Gate 1',
-    officer: 'Officer Musa Danladi',
-    student: 'David Adeleke (Primary 1)',
-    actor: 'Emeka Johnson (MyEduRide Escort)',
-    actorType: 'Escort Handoff',
-    verification: 'Escort Biometric + Student Badge QR',
-    status: 'APPROVED',
-  },
-  {
-    id: 'GA-994',
-    time: '10:14 AM',
-    school: 'Whitesands School',
-    gate: 'Admin Gate B',
-    officer: 'Officer Segun Adeleke',
-    student: 'Zainab Mohammed (SS 1)',
-    actor: 'Unregistered Driver',
-    actorType: 'Unauthorized Attempt',
-    verification: 'BLOCKED — Unregistered Driver QR Mismatch',
-    status: 'SECURITY_BLOCKED',
-  },
-];
-
-const INITIAL_SAFETY_INCIDENTS = [
-  {
-    id: 'INC-401',
-    severity: 'CRITICAL',
-    title: 'Speed Threshold Violation & Route Deviation Alert',
-    escort: 'Kazeem Oladipo (EMR-3309)',
-    school: 'Corona School VI',
-    time: '10:12 AM',
-    status: 'INVESTIGATING',
-    description: 'Vehicle exceeded 65km/h in 30km/h school safety zone along Ozumba Mbadiwe.',
-    actionRequired: 'Contact escort, review dash telemetry, issue temporary suspension if unexcused.',
-  },
-  {
-    id: 'INC-402',
-    severity: 'HIGH',
-    title: 'Trip Congestion & Prolonged Delay (>25m)',
-    escort: 'Samuel Efiong (SCH-072)',
-    school: 'CitiLights School',
-    time: '10:05 AM',
-    status: 'ACTION_TAKEN',
-    description: 'Vehicle halted in gridlock near Gbagada. Parents automatically notified with live ETA.',
-    actionRequired: 'Monitoring route clearance; alternate route dispatched to driver via MIGO.',
-  },
-  {
-    id: 'INC-403',
-    severity: 'HIGH',
-    title: 'Unauthorized Gate Pickup Attempt Blocked',
-    escort: 'N/A (Gate Security)',
-    school: 'Whitesands School',
-    time: '09:50 AM',
-    status: 'RESOLVED',
-    description: 'Individual attempting pickup failed ID verification. Student remained safely with gate staff.',
-    actionRequired: 'Parent called and confirmed they did not authorize individual. Security notified.',
-  },
-];
-
-const INITIAL_ESCALATIONS = [
-  {
-    id: 'ESC-701',
-    type: 'PARENT',
-    from: 'Dr. (Mrs) Folashade Williams',
-    student: 'Tobi Williams',
-    escort: 'Kazeem Oladipo (EMR-3309)',
-    subject: 'Driver harsh braking & abrupt stops',
-    urgency: 'HIGH',
-    status: 'OPEN',
-    date: 'Today, 09:30 AM',
-    details: 'Parent observed sudden braking on morning route. Requested escort compliance check.',
-  },
-  {
-    id: 'ESC-702',
-    type: 'SCHOOL',
-    from: 'Principal, Hope Academy',
-    student: 'Multiple Students',
-    escort: 'Fatima Bello (SCH-045)',
-    subject: 'Morning gate arrival 15 minutes past schedule',
-    urgency: 'MEDIUM',
-    status: 'UNDER_REVIEW',
-    date: 'Today, 08:45 AM',
-    details: 'School admin noted route departure was delayed from first pickup node.',
-  },
-];
-
-const INITIAL_SCHOOLS_ROSTER = [
-  {
-    id: 'SCH-01',
-    name: "St. Mary's School",
-    address: '12 Education Drive, Ikeja',
-    studentsCount: 312,
-    escortsCount: 14,
-    gatesCount: 2,
-    status: 'ONLINE',
-    complianceRate: '99.4%',
-    principal: 'Mrs. Folake Adesina',
-  },
-  {
-    id: 'SCH-02',
-    name: 'Greenfield Academy',
-    address: '44 University Road, Yaba',
-    studentsCount: 245,
-    escortsCount: 10,
-    gatesCount: 2,
-    status: 'ONLINE',
-    complianceRate: '98.8%',
-    principal: 'Mr. Jude Okafor',
-  },
-  {
-    id: 'SCH-03',
-    name: 'Hope Academy',
-    address: '8 Anthony Way, Maryland',
-    studentsCount: 186,
-    escortsCount: 8,
-    gatesCount: 1,
-    status: 'ATTENTION',
-    complianceRate: '94.2%',
-    principal: 'Dr. (Mrs) Ngozi Obi',
-  },
-  {
-    id: 'SCH-04',
-    name: 'Whitesands School',
-    address: 'Plot 5 Admiralty Crescent, Lekki Phase 1',
-    studentsCount: 210,
-    escortsCount: 9,
-    gatesCount: 2,
-    status: 'ONLINE',
-    complianceRate: '99.1%',
-    principal: 'Mr. Emmanuel Adeleke',
-  },
-  {
-    id: 'SCH-05',
-    name: 'CitiLights School',
-    address: '18 Gbagada Expressway, Gbagada',
-    studentsCount: 198,
-    escortsCount: 8,
-    gatesCount: 1,
-    status: 'ONLINE',
-    complianceRate: '96.5%',
-    principal: 'Mrs. Patience Danladi',
-  },
-];
-
-const INITIAL_VEHICLES_FLEET = [
-  {
-    id: 'VEH-101',
-    plateNumber: 'KJA-892-AA',
-    model: 'Toyota HiAce (14 Seater)',
-    type: 'BUS',
-    escortName: 'Emeka Johnson',
-    schoolName: "St. Mary's School",
-    status: 'IN_TRANSIT',
-    speed: '34 km/h',
-    fuel: '85%',
-    trackerStatus: 'ACTIVE',
-  },
-  {
-    id: 'VEH-102',
-    plateNumber: 'LND-412-XY',
-    model: 'Ford Transit (12 Seater)',
-    type: 'VAN',
-    escortName: 'Grace Afolabi',
-    schoolName: 'Greenfield Academy',
-    status: 'IN_TRANSIT',
-    speed: '28 km/h',
-    fuel: '92%',
-    trackerStatus: 'ACTIVE',
-  },
-  {
-    id: 'VEH-103',
-    plateNumber: 'GGE-219-BC',
-    model: 'Mercedes Sprinter (18 Seater)',
-    type: 'BUS',
-    escortName: 'Fatima Bello',
-    schoolName: 'Hope Academy',
-    status: 'IN_TRANSIT',
-    speed: '31 km/h',
-    fuel: '70%',
-    trackerStatus: 'ACTIVE',
-  },
-  {
-    id: 'VEH-104',
-    plateNumber: 'AGL-552-DE',
-    model: 'Nissan Urvan (14 Seater)',
-    type: 'BUS',
-    escortName: 'Daniel Okoro',
-    schoolName: 'Whitesands School',
-    status: 'STANDBY',
-    speed: '0 km/h',
-    fuel: '95%',
-    trackerStatus: 'ACTIVE',
-  },
-  {
-    id: 'VEH-105',
-    plateNumber: 'APP-901-LK',
-    model: 'Toyota HiAce (14 Seater)',
-    type: 'BUS',
-    escortName: 'Kazeem Oladipo',
-    schoolName: 'Corona School VI',
-    status: 'FLAGGED',
-    speed: '0 km/h',
-    fuel: '80%',
-    trackerStatus: 'FLAGGED',
-  },
-];
-
 export function CityManagerCommandControl({
   selectedCity = 'LAGOS MAINLAND',
   onCityChange,
@@ -497,6 +79,7 @@ export function CityManagerCommandControl({
 }: CityManagerCommandControlProps) {
   // Local active section state ensures tabs always toggle immediately
   const [currentTab, setCurrentTab] = useState<string>(activeSection || 'dashboard');
+  const [loading, setLoading] = useState(false);
 
   useEffect(() => {
     if (activeSection) {
@@ -514,13 +97,87 @@ export function CityManagerCommandControl({
     }
   };
 
-  const [escorts, setEscorts] = useState(INITIAL_ESCORT_ROSTER);
-  const [gateOfficers, setGateOfficers] = useState(INITIAL_GATE_OFFICERS);
-  const [gateActivities, setGateActivities] = useState(INITIAL_GATE_ACTIVITIES);
-  const [safetyIncidents, setSafetyIncidents] = useState(INITIAL_SAFETY_INCIDENTS);
-  const [escalations, setEscalations] = useState(INITIAL_ESCALATIONS);
-  const [schools, setSchools] = useState(INITIAL_SCHOOLS_ROSTER);
-  const [vehicles, setVehicles] = useState(INITIAL_VEHICLES_FLEET);
+  const [escorts, setEscorts] = useState<any[]>([]);
+  const [gateOfficers, setGateOfficers] = useState<any[]>([]);
+  const [gateActivities, setGateActivities] = useState<any[]>([]);
+  const [safetyIncidents, setSafetyIncidents] = useState<any[]>([]);
+  const [escalations, setEscalations] = useState<any[]>([]);
+  const [schools, setSchools] = useState<any[]>([]);
+  const [vehicles, setVehicles] = useState<any[]>([]);
+  const [deputisingRecords, setDeputisingRecords] = useState<any[]>([]);
+  const [parentRequests, setParentRequests] = useState<any[]>([]);
+  const [auditLogs, setAuditLogs] = useState<any[]>([]);
+
+  // Fetch Live City Manager Operations Data
+  useEffect(() => {
+    setLoading(true);
+    fetch(`/api/city-manager/operations?city=${encodeURIComponent(selectedCity)}`)
+      .then((res) => res.json())
+      .then((data) => {
+        if (data && !data.error) {
+          if (Array.isArray(data.schools)) {
+            setSchools(
+              data.schools.map((s: any) => ({
+                id: s.id,
+                name: s.name || 'School Campus',
+                area: s.address || selectedCity,
+                escortsCount: 0,
+                studentsCount: 0,
+                gatesCount: 1,
+                gateOfficers: 'Gate Officer',
+                status: 'ONLINE',
+                avgMorningEta: '07:30 AM',
+                complianceScore: 100,
+              }))
+            );
+          }
+          if (Array.isArray(data.escorts)) {
+            setEscorts(
+              data.escorts.map((e: any) => ({
+                id: e.id,
+                name: e.full_name || 'Verified Escort',
+                type: e.operating_area?.toLowerCase().includes('school') ? 'school' : 'myeduride',
+                phone: e.phone || '—',
+                status: e.availability_status === 'available' ? 'AVAILABLE' : e.status === 'ACTIVE' ? 'ON_TRIP' : 'STANDBY',
+                schoolName: e.operating_area || selectedCity,
+                vehicle: e.application_data?.assignedVehicle || e.application_data?.regNumber || 'Verified Vehicle',
+                currentTripId: null,
+                route: e.operating_area ? `${e.operating_area} Corridor` : 'Designated Route',
+                studentsCount: 0,
+                speed: '0 km/h',
+                battery: '100%',
+                lastPing: 'Live',
+                complianceScore: 100,
+                rating: 5.0,
+                tripsToday: 0,
+                avatar: e.application_data?.photo || '',
+                notes: 'Verified escort profile on file.',
+              }))
+            );
+          }
+          if (Array.isArray(data.audit)) {
+            setAuditLogs(
+              data.audit.map((a: any) => ({
+                id: a.id,
+                time: a.created_at ? new Date(a.created_at).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' }) : 'Just now',
+                actor: a.user_id ? 'City Manager' : 'System',
+                target: a.entity_type || 'Operations',
+                action: a.action || 'AUDIT_LOGGED',
+                details: a.metadata ? JSON.stringify(a.metadata) : 'Operational event recorded.',
+              }))
+            );
+          }
+          if (Array.isArray(data.deputising_records)) {
+            setDeputisingRecords(data.deputising_records);
+          }
+          if (Array.isArray(data.parent_requests)) {
+            setParentRequests(data.parent_requests);
+          }
+        }
+      })
+      .catch((err) => console.warn('[city-manager-command] fetch operations error:', err))
+      .finally(() => setLoading(false));
+  }, [selectedCity]);
 
   // Escort Sub-Filter: 'ALL' | 'MYEDURIDE' | 'SCHOOL'
   const [escortTypeFilter, setEscortTypeFilter] = useState<'ALL' | 'myeduride' | 'school'>('ALL');
@@ -574,45 +231,7 @@ export function CityManagerCommandControl({
   // AI Assistant Chat Widget State
   const [aiPrompt, setAiPrompt] = useState('');
   const [aiChatLogs, setAiChatLogs] = useState([
-    { type: 'insight', text: 'All 52 schools in Lagos Mainland are online. Morning check-in completion is at 94.2%.' },
-    { type: 'insight', text: 'Route 3 (Gbagada → CitiLights) is running 18m behind schedule due to expressway roadwork.' },
-    { type: 'insight', text: 'Kazeem Oladipo (EMR-3309) has triggered 2 speed violations. City Manager review recommended.' },
-  ]);
-
-  // City Audit Trail State
-  const [auditLogs, setAuditLogs] = useState([
-    {
-      id: 'AUD-901',
-      time: '10:30 AM',
-      actor: 'City Manager (You)',
-      target: 'Kazeem Oladipo (EMR-3309)',
-      action: 'SAFETY_FLAG_ISSUED',
-      details: 'Flagged for school-zone speed violation review.',
-    },
-    {
-      id: 'AUD-902',
-      time: '10:15 AM',
-      actor: 'Officer Chioma Nwosu',
-      target: 'Aisha Bello',
-      action: 'GATE_OVERRIDE_RECORDED',
-      details: 'Manual override pickup approved after direct parent telephone verification.',
-    },
-    {
-      id: 'AUD-903',
-      time: '09:40 AM',
-      actor: 'City Manager (You)',
-      target: 'Emeka Johnson (EMR-2031)',
-      action: 'CREDENTIALS_RE-VERIFIED',
-      details: 'Annual driver licence renewal confirmed and unlocked.',
-    },
-    {
-      id: 'AUD-904',
-      time: '08:15 AM',
-      actor: 'City Operations System',
-      target: '52 City Schools',
-      action: 'MORNING_DISPATCH_COMMENCED',
-      details: '245 Escorts synchronized and morning safety perimeter activated.',
-    },
+    { type: 'insight', text: 'MIGO SAVI Operational Intelligence online. Ask about escorts, gates, and route oversight.' },
   ]);
 
   // Filtered Escorts List
@@ -808,11 +427,11 @@ export function CityManagerCommandControl({
           </div>
           <div className="mt-2">
             <div className="flex items-baseline gap-1.5">
-              <span className="text-xl font-black text-white">52</span>
-              <span className="text-[10px] font-bold text-slate-400">/ 58</span>
+              <span className="text-xl font-black text-white">{schools.length}</span>
+              <span className="text-[10px] font-bold text-slate-400">Schools</span>
             </div>
             <span className="inline-block mt-1 px-1.5 py-0.2 rounded text-[9px] font-extrabold bg-emerald-500/20 text-emerald-400">
-              89.7% Live
+              {schools.length > 0 ? '100% Verified' : 'No Schools'}
             </span>
           </div>
         </div>
@@ -829,9 +448,9 @@ export function CityManagerCommandControl({
             <UserCheck size={15} className="text-blue-400" />
           </div>
           <div className="mt-2">
-            <span className="text-xl font-black text-white">245</span>
+            <span className="text-xl font-black text-white">{escorts.length}</span>
             <div className="text-[9px] text-slate-400 font-semibold mt-0.5 truncate">
-              MyEduRide: <strong className="text-white">172</strong> · Sch: <strong className="text-white">73</strong>
+              MyEduRide: <strong className="text-white">{escorts.filter(e => e.type === 'myeduride').length}</strong> · Sch: <strong className="text-white">{escorts.filter(e => e.type === 'school').length}</strong>
             </div>
           </div>
         </div>
@@ -849,11 +468,11 @@ export function CityManagerCommandControl({
           </div>
           <div className="mt-2">
             <div className="flex items-baseline gap-1.5">
-              <span className="text-xl font-black text-white">64</span>
-              <span className="text-[10px] font-bold text-emerald-400 font-mono">ON DUTY</span>
+              <span className="text-xl font-black text-white">{gateOfficers.length}</span>
+              <span className="text-[10px] font-bold text-emerald-400 font-mono">{gateOfficers.length > 0 ? 'ON DUTY' : 'STANDBY'}</span>
             </div>
             <span className="inline-block mt-1 px-1.5 py-0.2 rounded text-[9px] font-extrabold bg-purple-500/20 text-purple-300">
-              4 Overrides Today
+              {gateActivities.length} Overrides
             </span>
           </div>
         </div>
@@ -870,26 +489,26 @@ export function CityManagerCommandControl({
             <Navigation size={15} className="text-cyan-400" />
           </div>
           <div className="mt-2">
-            <span className="text-xl font-black text-white">164</span>
+            <span className="text-xl font-black text-white">{escorts.filter(e => e.status === 'ON_TRIP').length}</span>
             <div className="text-[9px] text-slate-400 font-semibold mt-0.5 truncate">
-              On Time: <strong className="text-emerald-400">158</strong> · Delayed: <strong className="text-amber-400">6</strong>
+              Deputised: <strong className="text-emerald-400">{deputisingRecords.length}</strong>
             </div>
           </div>
         </div>
 
         {/* Stat 5: Students En Route */}
         <div
-          onClick={() => switchTab('trips-management')}
+          onClick={() => switchTab('assignments')}
           className="bg-[#0b1c30] rounded-2xl border border-slate-800 p-3 flex flex-col justify-between cursor-pointer hover:border-slate-700"
         >
           <div className="flex items-center justify-between">
-            <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">En Route</span>
+            <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Parent Bookings</span>
             <Users size={15} className="text-indigo-400" />
           </div>
           <div className="mt-2">
-            <span className="text-xl font-black text-white">2,368</span>
+            <span className="text-xl font-black text-white">{parentRequests.length}</span>
             <span className="inline-block mt-1 px-1.5 py-0.2 rounded text-[9px] font-extrabold bg-indigo-500/20 text-indigo-300">
-              Delivered: 1,987
+              Requests
             </span>
           </div>
         </div>
@@ -903,15 +522,15 @@ export function CityManagerCommandControl({
         >
           <div className="flex items-center justify-between">
             <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Incidents</span>
-            <AlertTriangle size={15} className="text-red-400 animate-bounce" />
+            <AlertTriangle size={15} className={safetyIncidents.length > 0 ? "text-red-400 animate-bounce" : "text-slate-400"} />
           </div>
           <div className="mt-2">
             <div className="flex items-baseline gap-1.5">
-              <span className="text-xl font-black text-red-400">2</span>
+              <span className="text-xl font-black text-red-400">{safetyIncidents.length}</span>
               <span className="text-[10px] font-bold text-amber-400">Open</span>
             </div>
             <span className="inline-block mt-1 px-1.5 py-0.2 rounded text-[9px] font-extrabold bg-red-500/20 text-red-300">
-              1 Critical Review
+              {safetyIncidents.length > 0 ? `${safetyIncidents.length} Open` : 'Zero Incidents'}
             </span>
           </div>
         </div>
@@ -922,13 +541,13 @@ export function CityManagerCommandControl({
           className="bg-[#0b1c30] rounded-2xl border border-slate-800 p-3 flex flex-col justify-between cursor-pointer hover:border-slate-700"
         >
           <div className="flex items-center justify-between">
-            <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Punctuality</span>
+            <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Audit Trail</span>
             <Clock size={15} className="text-emerald-400" />
           </div>
           <div className="mt-2">
-            <span className="text-xl font-black text-emerald-400">96.4%</span>
+            <span className="text-xl font-black text-emerald-400">{auditLogs.length}</span>
             <span className="inline-block mt-1 px-1.5 py-0.2 rounded text-[9px] font-extrabold bg-emerald-500/20 text-emerald-400">
-              Avg ETA: 18 min
+              Logged Events
             </span>
           </div>
         </div>
@@ -946,11 +565,11 @@ export function CityManagerCommandControl({
           </div>
           <div className="mt-2">
             <div className="flex items-baseline gap-1.5">
-              <span className="text-xl font-black text-amber-400">2</span>
+              <span className="text-xl font-black text-amber-400">{escalations.length}</span>
               <span className="text-[10px] font-bold text-slate-400">Tickets</span>
             </div>
             <span className="inline-block mt-1 px-1.5 py-0.2 rounded text-[9px] font-extrabold bg-amber-500/20 text-amber-300">
-              Parent & School
+              {escalations.length > 0 ? `${escalations.length} Pending` : 'All Resolved'}
             </span>
           </div>
         </div>
@@ -964,14 +583,14 @@ export function CityManagerCommandControl({
           { id: 'dashboard', label: 'Live Command Map & Radar', icon: Radio },
           { id: 'escorts', label: 'Monitor Escorts (MyEduRide & School)', icon: UserCheck, count: escorts.length },
           { id: 'gate-monitor', label: 'Gate Officers & Gate Stream', icon: DoorOpen, count: gateOfficers.length },
-          { id: 'trips-management', label: 'Active Trips & Operational Timing', icon: Navigation, count: 164 },
-          { id: 'assignments', label: 'Bookings & Escort Assignments', icon: ClipboardList },
-          { id: 'safety-incidents', label: 'Safety Incidents & Panic Triage', icon: AlertTriangle, count: safetyIncidents.length, alert: true },
+          { id: 'trips-management', label: 'Active Trips & Operational Timing', icon: Navigation, count: escorts.filter(e => e.status === 'ON_TRIP').length },
+          { id: 'assignments', label: 'Bookings & Escort Assignments', icon: ClipboardList, count: parentRequests.length },
+          { id: 'safety-incidents', label: 'Safety Incidents & Panic Triage', icon: AlertTriangle, count: safetyIncidents.length, alert: safetyIncidents.length > 0 },
           { id: 'escalations', label: 'Parent & School Escalations', icon: AlertCircle, count: escalations.length },
           { id: 'communication', label: 'Approved Dispatch & Broadcasts', icon: MessageSquare },
           { id: 'schools', label: 'Schools', icon: School, count: schools.length },
           { id: 'vehicles', label: 'Vehicles Fleet', icon: Car, count: vehicles.length },
-          { id: 'audit-logs', label: 'City Governance & Audit Ledger', icon: Shield },
+          { id: 'audit-logs', label: 'City Governance & Audit Ledger', icon: Shield, count: auditLogs.length },
         ].map((tab) => {
           const TabIcon = tab.icon;
           const isActive = currentTab === tab.id || (currentTab === 'live-operations' && tab.id === 'dashboard');
@@ -1025,128 +644,71 @@ export function CityManagerCommandControl({
                       <span className="w-2 h-2 rounded-full bg-emerald-500 animate-ping"></span>
                     </h3>
                     <p className="text-[11px] text-slate-400">
-                      Real-time GPS telemetry for 245 escorts, 52 schools, and 64 gate stations in {selectedCity}
+                      Real-time GPS telemetry for {escorts.length} escorts, {schools.length} schools, and {gateOfficers.length} gate stations in {selectedCity}
                     </p>
                   </div>
                 </div>
 
                 <div className="flex items-center gap-3 text-[11px] font-bold">
                   <span className="flex items-center gap-1 text-emerald-400">
-                    <span className="w-2 h-2 rounded-full bg-emerald-500"></span> Normal Flow (158)
+                    <span className="w-2 h-2 rounded-full bg-emerald-500"></span> Normal Flow ({escorts.filter(e => e.status === 'ON_TRIP' || e.status === 'AVAILABLE').length})
                   </span>
                   <span className="flex items-center gap-1 text-amber-400">
-                    <span className="w-2 h-2 rounded-full bg-amber-500"></span> Delayed / Congested (6)
+                    <span className="w-2 h-2 rounded-full bg-amber-500"></span> Delayed ({escorts.filter(e => e.status === 'DELAYED').length})
                   </span>
                   <span className="flex items-center gap-1 text-red-400">
-                    <span className="w-2 h-2 rounded-full bg-red-500"></span> Speed / Safety Alert (1)
+                    <span className="w-2 h-2 rounded-full bg-red-500"></span> Speed / Safety Alert ({safetyIncidents.length})
                   </span>
                 </div>
               </div>
 
               {/* Simulated Tactical Map Canvas */}
-              <div className="relative my-3 flex-1 min-h-[380px] rounded-2xl overflow-hidden bg-slate-900 border border-slate-800 bg-[radial-gradient(#1e293b_1px,transparent_1px)] [background-size:16px_16px]">
-                {/* SVG Route Vectors */}
-                <div className="absolute inset-0 opacity-40 pointer-events-none">
-                  <svg className="w-full h-full text-slate-700" xmlns="http://www.w3.org/2000/svg">
-                    <path d="M 20 100 Q 200 80 400 150 T 800 250" fill="none" stroke="#00A859" strokeWidth="3" strokeDasharray="6,6" className="animate-pulse" />
-                    <path d="M 150 0 Q 180 200 250 400" fill="none" stroke="#3b82f6" strokeWidth="2.5" />
-                    <path d="M 450 0 Q 380 200 520 400" fill="none" stroke="#f59e0b" strokeWidth="2.5" />
-                  </svg>
-                </div>
-
-                {/* Map Geographic Markers */}
-                <span className="absolute top-4 left-8 text-xs font-black text-slate-500 tracking-wider">Ikeja GRA</span>
-                <span className="absolute top-12 left-1/2 -translate-x-1/2 text-xs font-black text-slate-500 tracking-wider">Maryland / Ojota</span>
-                <span className="absolute top-28 left-1/4 text-xs font-black text-slate-500 tracking-wider">Surulere</span>
-                <span className="absolute bottom-20 left-1/3 text-xs font-black text-slate-500 tracking-wider">Yaba Tech Hub</span>
-                <span className="absolute bottom-8 right-1/4 text-xs font-black text-slate-500 tracking-wider">Victoria Island</span>
-
-                {/* Live Pins */}
-                {/* School Pin */}
-                <div className="absolute top-16 left-28 group cursor-pointer z-10">
-                  <div className="w-7 h-7 rounded-full bg-blue-600 text-white flex items-center justify-center shadow-lg border-2 border-white hover:scale-125 transition-transform">
-                    <School size={14} />
-                  </div>
-                  <span className="absolute top-8 left-1/2 -translate-x-1/2 bg-slate-950 text-white text-[9px] px-2 py-0.5 rounded shadow whitespace-nowrap opacity-0 group-hover:opacity-100 transition-opacity">
-                    St. Mary's School (Gate Active)
-                  </span>
-                </div>
-
-                {/* Escort 1: On Trip Normal */}
-                <div
-                  onClick={() => setTripDetailModal(escorts[0])}
-                  className="absolute top-28 left-1/2 cursor-pointer z-20 group"
-                >
-                  <div className="w-8 h-8 rounded-full bg-emerald-600 text-white flex items-center justify-center shadow-xl border-2 border-white animate-bounce">
-                    <Car size={15} />
-                  </div>
-                  <div className="absolute -top-7 left-1/2 -translate-x-1/2 bg-emerald-950 text-emerald-300 border border-emerald-500/50 text-[9px] font-black px-2 py-0.5 rounded-full shadow whitespace-nowrap">
-                    EMR-2031 (34 km/h)
-                  </div>
-                </div>
-
-                {/* Escort 2: Delayed */}
-                <div
-                  onClick={() => setTripDetailModal(escorts[4])}
-                  className="absolute bottom-24 left-1/3 cursor-pointer z-20 group"
-                >
-                  <div className="w-8 h-8 rounded-full bg-amber-500 text-slate-950 flex items-center justify-center shadow-xl border-2 border-white">
-                    <Clock size={15} />
-                  </div>
-                  <div className="absolute -top-7 left-1/2 -translate-x-1/2 bg-amber-950 text-amber-300 border border-amber-500/50 text-[9px] font-black px-2 py-0.5 rounded-full shadow whitespace-nowrap">
-                    SCH-072 (DELAY +18m)
-                  </div>
-                </div>
-
-                {/* Escort 3: Speed Alert Flagged */}
-                <div
-                  onClick={() => setTripDetailModal(escorts[5])}
-                  className="absolute bottom-14 right-1/3 cursor-pointer z-20 group"
-                >
-                  <div className="w-8 h-8 rounded-full bg-red-600 text-white flex items-center justify-center shadow-xl border-2 border-white animate-pulse">
-                    <AlertTriangle size={15} />
-                  </div>
-                  <div className="absolute -top-7 left-1/2 -translate-x-1/2 bg-red-950 text-red-300 border border-red-500/50 text-[9px] font-black px-2 py-0.5 rounded-full shadow whitespace-nowrap">
-                    EMR-3309 (OVERSPEED)
-                  </div>
-                </div>
-
-                {/* Live Floating Trip Inspector Card */}
-                <div className="absolute top-4 right-4 bg-slate-950/90 backdrop-blur-md text-white rounded-2xl p-4 shadow-2xl border border-slate-700 max-w-[260px] animate-in fade-in z-30">
-                  <div className="flex items-center justify-between pb-2 border-b border-slate-800">
-                    <div className="flex items-center gap-1.5">
-                      <span className="w-2 h-2 rounded-full bg-emerald-500 animate-ping"></span>
-                      <span className="text-xs font-black text-emerald-400">LIVE TRIP FEED</span>
+              <div className="relative my-3 flex-1 min-h-[380px] rounded-2xl overflow-hidden bg-slate-900 border border-slate-800 bg-[radial-gradient(#1e293b_1px,transparent_1px)] [background-size:16px_16px] flex items-center justify-center">
+                {escorts.length === 0 ? (
+                  <div className="text-center p-8 space-y-3 z-10">
+                    <div className="w-12 h-12 rounded-2xl bg-slate-800 text-slate-400 flex items-center justify-center mx-auto border border-slate-700">
+                      <Navigation size={22} />
                     </div>
-                    <span className="px-1.5 py-0.5 bg-emerald-500/20 text-emerald-300 text-[9px] font-extrabold rounded">
-                      TRP-1092
-                    </span>
+                    <h4 className="text-sm font-bold text-white">No Active GPS Telemetry Signals in {selectedCity}</h4>
+                    <p className="text-xs text-slate-400 max-w-sm mx-auto">
+                      When approved escorts and school transit fleets commence active routes in this jurisdiction, live radar coordinates and vehicle telemetry will appear on this grid in real time.
+                    </p>
                   </div>
+                ) : (
+                  <>
+                    {/* SVG Route Vectors */}
+                    <div className="absolute inset-0 opacity-40 pointer-events-none">
+                      <svg className="w-full h-full text-slate-700" xmlns="http://www.w3.org/2000/svg">
+                        <path d="M 20 100 Q 200 80 400 150 T 800 250" fill="none" stroke="#00A859" strokeWidth="3" strokeDasharray="6,6" className="animate-pulse" />
+                        <path d="M 150 0 Q 180 200 250 400" fill="none" stroke="#3b82f6" strokeWidth="2.5" />
+                      </svg>
+                    </div>
 
-                  <div className="mt-2.5 space-y-1.5 text-[11px] text-slate-300">
-                    <p><strong className="text-slate-400">Escort:</strong> Emeka Johnson (EMR-2031)</p>
-                    <p><strong className="text-slate-400">Route:</strong> Ikeja GRA → St. Mary's School</p>
-                    <p><strong className="text-slate-400">Students:</strong> 12 Manifest (All Scanned)</p>
-                    <p><strong className="text-slate-400">Speed:</strong> 34 km/h · <strong className="text-emerald-400">ETA:</strong> 10:32 AM</p>
-                  </div>
-
-                  <div className="mt-3 pt-2.5 border-t border-slate-800 flex gap-2">
-                    <button
-                      type="button"
-                      onClick={() => setContactModal({ open: true, target: escorts[0], targetType: 'ESCORT', message: '', channel: 'IN_APP' })}
-                      className="flex-1 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-[10px] text-center"
-                    >
-                      Contact Escort
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => setTripDetailModal(escorts[0])}
-                      className="py-1.5 px-2.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-200 font-bold text-[10px]"
-                    >
-                      Details ↗
-                    </button>
-                  </div>
-                </div>
+                    {/* Live Pins for active escorts */}
+                    {escorts.slice(0, 4).map((escort, index) => {
+                      const posClasses = [
+                        'top-24 left-1/4',
+                        'top-1/2 left-1/2',
+                        'bottom-20 left-1/3',
+                        'bottom-16 right-1/4',
+                      ];
+                      return (
+                        <div
+                          key={escort.id}
+                          onClick={() => setTripDetailModal(escort)}
+                          className={`absolute ${posClasses[index % posClasses.length]} cursor-pointer z-20 group`}
+                        >
+                          <div className="w-8 h-8 rounded-full bg-emerald-600 text-white flex items-center justify-center shadow-xl border-2 border-white animate-bounce">
+                            <Car size={15} />
+                          </div>
+                          <div className="absolute -top-7 left-1/2 -translate-x-1/2 bg-emerald-950 text-emerald-300 border border-emerald-500/50 text-[9px] font-black px-2 py-0.5 rounded-full shadow whitespace-nowrap">
+                            {escort.name} ({escort.speed})
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </>
+                )}
               </div>
             </div>
 
@@ -1323,12 +885,12 @@ export function CityManagerCommandControl({
               />
             </div>
 
-            <div className="flex items-center gap-2 text-xs font-bold text-slate-400">
+            <div className="flex items-center gap-2 text-xs font-bold text-slate-400 flex-wrap">
               <span>Status:</span>
-              <span className="px-2 py-0.5 rounded-md bg-emerald-500/20 text-emerald-400">ON TRIP (3)</span>
-              <span className="px-2 py-0.5 rounded-md bg-blue-500/20 text-blue-400">AVAILABLE (1)</span>
-              <span className="px-2 py-0.5 rounded-md bg-amber-500/20 text-amber-400">DELAYED (1)</span>
-              <span className="px-2 py-0.5 rounded-md bg-red-500/20 text-red-400">FLAGGED (1)</span>
+              <span className="px-2 py-0.5 rounded-md bg-emerald-500/20 text-emerald-400">ON TRIP ({escorts.filter(e => e.status === 'ON_TRIP').length})</span>
+              <span className="px-2 py-0.5 rounded-md bg-blue-500/20 text-blue-400">AVAILABLE ({escorts.filter(e => e.status === 'AVAILABLE').length})</span>
+              <span className="px-2 py-0.5 rounded-md bg-amber-500/20 text-amber-400">DELAYED ({escorts.filter(e => e.status === 'DELAYED').length})</span>
+              <span className="px-2 py-0.5 rounded-md bg-red-500/20 text-red-400">FLAGGED ({escorts.filter(e => e.status === 'FLAGGED').length})</span>
             </div>
           </div>
 
@@ -1347,153 +909,163 @@ export function CityManagerCommandControl({
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-800/80 font-medium text-slate-200">
-                {filteredEscorts.map((escort) => {
-                  const initials = escort.name
-                    .split(' ')
-                    .map((n) => n[0])
-                    .slice(0, 2)
-                    .join('')
-                    .toUpperCase();
+                {filteredEscorts.length === 0 ? (
+                  <tr>
+                    <td colSpan={7} className="text-center py-12 text-slate-400">
+                      <UserCheck className="w-8 h-8 text-slate-600 mx-auto mb-2" />
+                      <p className="text-sm font-bold text-slate-300">No Escorts Registered in {selectedCity}</p>
+                      <p className="text-xs text-slate-500 mt-1">Escort applications verified and approved by the City Manager will appear in this live supervisory roster.</p>
+                    </td>
+                  </tr>
+                ) : (
+                  filteredEscorts.map((escort) => {
+                    const initials = (escort.name || 'E')
+                      .split(' ')
+                      .map((n: string) => n[0])
+                      .slice(0, 2)
+                      .join('')
+                      .toUpperCase();
 
-                  return (
-                    <tr key={escort.id} className="hover:bg-slate-800/40 transition-colors">
-                      {/* Name & ID */}
-                      <td className="p-3.5">
-                        <div className="flex items-center gap-3">
-                          <div className="w-10 h-10 rounded-xl bg-slate-800 border border-slate-700 flex items-center justify-center font-bold text-white shrink-0">
-                            {initials}
+                    return (
+                      <tr key={escort.id} className="hover:bg-slate-800/40 transition-colors">
+                        {/* Name & ID */}
+                        <td className="p-3.5">
+                          <div className="flex items-center gap-3">
+                            <div className="w-10 h-10 rounded-xl bg-slate-800 border border-slate-700 flex items-center justify-center font-bold text-white shrink-0">
+                              {initials}
+                            </div>
+                            <div>
+                              <strong className="text-white block">{escort.name}</strong>
+                              <span className="text-[10px] text-slate-400 font-mono">{escort.id} · {escort.phone}</span>
+                            </div>
                           </div>
-                          <div>
-                            <strong className="text-white block">{escort.name}</strong>
-                            <span className="text-[10px] text-slate-400 font-mono">{escort.id} · {escort.phone}</span>
-                          </div>
-                        </div>
-                      </td>
+                        </td>
 
-                      {/* Type & School */}
-                      <td className="p-3.5">
-                        <div className="space-y-1">
+                        {/* Type & School */}
+                        <td className="p-3.5">
+                          <div className="space-y-1">
+                            <span
+                              className={`px-2 py-0.5 rounded-full text-[9px] font-extrabold uppercase ${
+                                escort.type === 'myeduride'
+                                  ? 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/30'
+                                  : 'bg-purple-500/20 text-purple-300 border border-purple-500/30'
+                              }`}
+                            >
+                              {escort.type === 'myeduride' ? 'MyEduRide Escort' : 'School Escort'}
+                            </span>
+                            <p className="text-[11px] text-slate-300 font-semibold">{escort.schoolName}</p>
+                          </div>
+                        </td>
+
+                        {/* Vehicle */}
+                        <td className="p-3.5">
+                          <div className="text-[11px]">
+                            <strong className="text-slate-200 block">{escort.vehicle}</strong>
+                            <span className="text-[10px] text-slate-400 font-mono">
+                              {escort.currentTripId ? `Active on ${escort.currentTripId}` : 'No Active Trip'}
+                            </span>
+                          </div>
+                        </td>
+
+                        {/* Live Telemetry */}
+                        <td className="p-3.5">
+                          <div className="space-y-1 text-[11px]">
+                            <div className="flex items-center gap-2">
+                              <span className="text-emerald-400 font-bold">{escort.speed}</span>
+                              <span className="text-slate-500">·</span>
+                              <span className="text-cyan-400 font-mono">Bat: {escort.battery}</span>
+                            </div>
+                            <p className="text-[10px] text-slate-400 truncate max-w-[170px]">{escort.route}</p>
+                          </div>
+                        </td>
+
+                        {/* Status */}
+                        <td className="p-3.5 text-center">
                           <span
-                            className={`px-2 py-0.5 rounded-full text-[9px] font-extrabold uppercase ${
-                              escort.type === 'myeduride'
-                                ? 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/30'
-                                : 'bg-purple-500/20 text-purple-300 border border-purple-500/30'
+                            className={`px-2.5 py-1 rounded-full text-[10px] font-extrabold uppercase border ${
+                              escort.status === 'ON_TRIP'
+                                ? 'bg-emerald-500/20 text-emerald-400 border-emerald-500/40'
+                                : escort.status === 'AVAILABLE'
+                                ? 'bg-blue-500/20 text-blue-300 border-blue-500/40'
+                                : escort.status === 'DELAYED'
+                                ? 'bg-amber-500/20 text-amber-300 border-amber-500/40 animate-pulse'
+                                : escort.status === 'FLAGGED'
+                                ? 'bg-red-500/20 text-red-400 border-red-500/40 font-black'
+                                : escort.status === 'SUSPENDED'
+                                ? 'bg-amber-950 text-amber-400 border-amber-500/50'
+                                : 'bg-red-950 text-red-400 border-red-500/50'
                             }`}
                           >
-                            {escort.type === 'myeduride' ? 'MyEduRide Escort' : 'School Escort'}
+                            {escort.status.replace(/_/g, ' ')}
                           </span>
-                          <p className="text-[11px] text-slate-300 font-semibold">{escort.schoolName}</p>
-                        </div>
-                      </td>
+                        </td>
 
-                      {/* Vehicle */}
-                      <td className="p-3.5">
-                        <div className="text-[11px]">
-                          <strong className="text-slate-200 block">{escort.vehicle}</strong>
-                          <span className="text-[10px] text-slate-400 font-mono">
-                            {escort.currentTripId ? `Active on ${escort.currentTripId}` : 'No Active Trip'}
-                          </span>
-                        </div>
-                      </td>
-
-                      {/* Live Telemetry */}
-                      <td className="p-3.5">
-                        <div className="space-y-1 text-[11px]">
-                          <div className="flex items-center gap-2">
-                            <span className="text-emerald-400 font-bold">{escort.speed}</span>
-                            <span className="text-slate-500">·</span>
-                            <span className="text-cyan-400 font-mono">Bat: {escort.battery}</span>
+                        {/* Compliance & Rating */}
+                        <td className="p-3.5 text-center">
+                          <div className="inline-block text-center">
+                            <span className="text-xs font-black text-amber-400">{escort.rating} ★</span>
+                            <span className="block text-[10px] font-bold text-emerald-400">{escort.complianceScore}% Safe</span>
                           </div>
-                          <p className="text-[10px] text-slate-400 truncate max-w-[170px]">{escort.route}</p>
-                        </div>
-                      </td>
+                        </td>
 
-                      {/* Status */}
-                      <td className="p-3.5 text-center">
-                        <span
-                          className={`px-2.5 py-1 rounded-full text-[10px] font-extrabold uppercase border ${
-                            escort.status === 'ON_TRIP'
-                              ? 'bg-emerald-500/20 text-emerald-400 border-emerald-500/40'
-                              : escort.status === 'AVAILABLE'
-                              ? 'bg-blue-500/20 text-blue-300 border-blue-500/40'
-                              : escort.status === 'DELAYED'
-                              ? 'bg-amber-500/20 text-amber-300 border-amber-500/40 animate-pulse'
-                              : escort.status === 'FLAGGED'
-                              ? 'bg-red-500/20 text-red-400 border-red-500/40 font-black'
-                              : escort.status === 'SUSPENDED'
-                              ? 'bg-amber-950 text-amber-400 border-amber-500/50'
-                              : 'bg-red-950 text-red-400 border-red-500/50'
-                          }`}
-                        >
-                          {escort.status.replace(/_/g, ' ')}
-                        </span>
-                      </td>
+                        {/* Actions */}
+                        <td className="p-3.5 text-right">
+                          <div className="flex items-center justify-end gap-1.5">
+                            <button
+                              type="button"
+                              onClick={() =>
+                                setContactModal({
+                                  open: true,
+                                  target: escort,
+                                  targetType: 'ESCORT',
+                                  message: '',
+                                  channel: 'IN_APP',
+                                })
+                              }
+                              className="p-2 rounded-xl bg-slate-800 hover:bg-emerald-600 text-slate-300 hover:text-white transition-colors"
+                              title="Contact Escort"
+                            >
+                              <PhoneCall size={14} />
+                            </button>
 
-                      {/* Compliance & Rating */}
-                      <td className="p-3.5 text-center">
-                        <div className="inline-block text-center">
-                          <span className="text-xs font-black text-amber-400">{escort.rating} ★</span>
-                          <span className="block text-[10px] font-bold text-emerald-400">{escort.complianceScore}% Safe</span>
-                        </div>
-                      </td>
+                            <button
+                              type="button"
+                              onClick={() =>
+                                setDisciplinaryModal({
+                                  open: true,
+                                  escort,
+                                  actionType: 'SUSPEND',
+                                  reason: '',
+                                  durationDays: '7',
+                                })
+                              }
+                              className="p-2 rounded-xl bg-amber-500/20 hover:bg-amber-500 text-amber-300 hover:text-slate-950 transition-colors"
+                              title="Suspend Escort Access"
+                            >
+                              <Slash size={14} />
+                            </button>
 
-                      {/* Actions */}
-                      <td className="p-3.5 text-right">
-                        <div className="flex items-center justify-end gap-1.5">
-                          <button
-                            type="button"
-                            onClick={() =>
-                              setContactModal({
-                                open: true,
-                                target: escort,
-                                targetType: 'ESCORT',
-                                message: '',
-                                channel: 'IN_APP',
-                              })
-                            }
-                            className="p-2 rounded-xl bg-slate-800 hover:bg-emerald-600 text-slate-300 hover:text-white transition-colors"
-                            title="Contact Escort"
-                          >
-                            <PhoneCall size={14} />
-                          </button>
-
-                          <button
-                            type="button"
-                            onClick={() =>
-                              setDisciplinaryModal({
-                                open: true,
-                                escort,
-                                actionType: 'SUSPEND',
-                                reason: '',
-                                durationDays: '7',
-                              })
-                            }
-                            className="p-2 rounded-xl bg-amber-500/20 hover:bg-amber-500 text-amber-300 hover:text-slate-950 transition-colors"
-                            title="Suspend Escort Access"
-                          >
-                            <Slash size={14} />
-                          </button>
-
-                          <button
-                            type="button"
-                            onClick={() =>
-                              setDisciplinaryModal({
-                                open: true,
-                                escort,
-                                actionType: 'BLOCK',
-                                reason: '',
-                              })
-                            }
-                            className="p-2 rounded-xl bg-red-500/20 hover:bg-red-600 text-red-300 hover:text-white transition-colors"
-                            title="Block Escort Access"
-                          >
-                            <Ban size={14} />
-                          </button>
-                        </div>
-                      </td>
-                    </tr>
-                  );
-                })}
+                            <button
+                              type="button"
+                              onClick={() =>
+                                setDisciplinaryModal({
+                                  open: true,
+                                  escort,
+                                  actionType: 'BLOCK',
+                                  reason: '',
+                                })
+                              }
+                              className="p-2 rounded-xl bg-red-500/20 hover:bg-red-600 text-red-300 hover:text-white transition-colors"
+                              title="Block Escort Access"
+                            >
+                              <Ban size={14} />
+                            </button>
+                          </div>
+                        </td>
+                      </tr>
+                    );
+                  })
+                )}
               </tbody>
             </table>
           </div>
@@ -1525,55 +1097,63 @@ export function CityManagerCommandControl({
                 </span>
               </div>
 
-              <div className="space-y-3">
-                {gateOfficers.map((officer) => (
-                  <div
-                    key={officer.id}
-                    className="p-3.5 rounded-2xl bg-slate-900/80 border border-slate-800 flex flex-wrap items-center justify-between gap-3 hover:border-slate-700 transition-all"
-                  >
-                    <div className="flex items-center gap-3">
-                      <div className="w-10 h-10 rounded-xl bg-purple-950/60 border border-purple-500/40 text-purple-300 flex items-center justify-center font-black">
-                        GT
+              {gateOfficers.length === 0 ? (
+                <div className="text-center py-12 text-slate-400 border border-slate-800 rounded-2xl bg-slate-900/50">
+                  <DoorOpen className="w-8 h-8 text-slate-600 mx-auto mb-2" />
+                  <p className="text-sm font-bold text-slate-300">No Gate Officers On Duty in {selectedCity}</p>
+                  <p className="text-xs text-slate-500 mt-1">When school gate stations log morning or afternoon shifts, active officer rosters will stream here.</p>
+                </div>
+              ) : (
+                <div className="space-y-3">
+                  {gateOfficers.map((officer) => (
+                    <div
+                      key={officer.id}
+                      className="p-3.5 rounded-2xl bg-slate-900/80 border border-slate-800 flex flex-wrap items-center justify-between gap-3 hover:border-slate-700 transition-all"
+                    >
+                      <div className="flex items-center gap-3">
+                        <div className="w-10 h-10 rounded-xl bg-purple-950/60 border border-purple-500/40 text-purple-300 flex items-center justify-center font-black">
+                          GT
+                        </div>
+                        <div>
+                          <strong className="text-white text-xs block">{officer.name}</strong>
+                          <span className="text-[11px] text-slate-300 font-semibold">{officer.schoolName} ({officer.gateName})</span>
+                          <p className="text-[10px] text-slate-400 font-mono mt-0.5">{officer.shift}</p>
+                        </div>
                       </div>
-                      <div>
-                        <strong className="text-white text-xs block">{officer.name}</strong>
-                        <span className="text-[11px] text-slate-300 font-semibold">{officer.schoolName} ({officer.gateName})</span>
-                        <p className="text-[10px] text-slate-400 font-mono mt-0.5">{officer.shift}</p>
+
+                      <div className="flex items-center gap-4 text-xs font-semibold">
+                        <div className="text-right">
+                          <span className="text-slate-400 block text-[10px]">Scanned In / Released</span>
+                          <span className="font-mono text-emerald-400 font-bold">{officer.scansToday} / {officer.releasesToday}</span>
+                        </div>
+
+                        <div className="text-right">
+                          <span className="text-slate-400 block text-[10px]">Manual Overrides</span>
+                          <span className={`font-mono font-bold ${officer.overridesCount > 1 ? 'text-amber-400' : 'text-slate-300'}`}>
+                            {officer.overridesCount}
+                          </span>
+                        </div>
+
+                        <button
+                          type="button"
+                          onClick={() =>
+                            setContactModal({
+                              open: true,
+                              target: officer,
+                              targetType: 'GATE_OFFICER',
+                              message: '',
+                              channel: 'IN_APP',
+                            })
+                          }
+                          className="px-3 py-1.5 rounded-xl bg-slate-800 hover:bg-purple-600 text-slate-200 hover:text-white text-xs font-bold transition-all flex items-center gap-1"
+                        >
+                          <PhoneCall size={12} /> Contact
+                        </button>
                       </div>
                     </div>
-
-                    <div className="flex items-center gap-4 text-xs font-semibold">
-                      <div className="text-right">
-                        <span className="text-slate-400 block text-[10px]">Scanned In / Released</span>
-                        <span className="font-mono text-emerald-400 font-bold">{officer.scansToday} / {officer.releasesToday}</span>
-                      </div>
-
-                      <div className="text-right">
-                        <span className="text-slate-400 block text-[10px]">Manual Overrides</span>
-                        <span className={`font-mono font-bold ${officer.overridesCount > 1 ? 'text-amber-400' : 'text-slate-300'}`}>
-                          {officer.overridesCount}
-                        </span>
-                      </div>
-
-                      <button
-                        type="button"
-                        onClick={() =>
-                          setContactModal({
-                            open: true,
-                            target: officer,
-                            targetType: 'GATE_OFFICER',
-                            message: '',
-                            channel: 'IN_APP',
-                          })
-                        }
-                        className="px-3 py-1.5 rounded-xl bg-slate-800 hover:bg-purple-600 text-slate-200 hover:text-white text-xs font-bold transition-all flex items-center gap-1"
-                      >
-                        <PhoneCall size={12} /> Contact
-                      </button>
-                    </div>
-                  </div>
-                ))}
-              </div>
+                  ))}
+                </div>
+              )}
             </div>
 
             {/* Right: Live Gate Stream */}
@@ -1586,48 +1166,56 @@ export function CityManagerCommandControl({
                 <span className="text-[10px] text-slate-400 font-mono">Real-time Check-ins & Releases</span>
               </div>
 
-              <div className="space-y-2.5 max-h-[480px] overflow-y-auto pr-1 custom-scrollbar">
-                {gateActivities.map((act) => (
-                  <div
-                    key={act.id}
-                    className={`p-3 rounded-2xl border text-xs ${
-                      act.status === 'SECURITY_BLOCKED'
-                        ? 'bg-red-950/30 border-red-500/40 text-red-200'
-                        : act.status === 'OVERRIDE_APPROVED'
-                        ? 'bg-amber-950/30 border-amber-500/40 text-amber-200'
-                        : 'bg-slate-900/90 border-slate-800 text-slate-200'
-                    }`}
-                  >
-                    <div className="flex items-center justify-between text-[10px] font-mono text-slate-400 pb-1 mb-1 border-b border-slate-800/60">
-                      <span>{act.time} · {act.school}</span>
-                      <span
-                        className={`px-1.5 py-0.2 rounded font-extrabold ${
-                          act.status === 'SECURITY_BLOCKED'
-                            ? 'bg-red-500 text-white'
-                            : act.status === 'OVERRIDE_APPROVED'
-                            ? 'bg-amber-500 text-slate-950'
-                            : 'bg-emerald-500/20 text-emerald-400'
-                        }`}
-                      >
-                        {act.status}
-                      </span>
-                    </div>
-
-                    <div className="space-y-1">
-                      <div className="flex justify-between">
-                        <strong className="text-white">{act.student}</strong>
-                        <span className="text-slate-400 text-[11px]">{act.gate}</span>
+              {gateActivities.length === 0 ? (
+                <div className="text-center py-12 text-slate-400 border border-slate-800 rounded-2xl bg-slate-900/50">
+                  <Radio className="w-8 h-8 text-slate-600 mx-auto mb-2" />
+                  <p className="text-sm font-bold text-slate-300">No Gate Activities Recorded Today</p>
+                  <p className="text-xs text-slate-500 mt-1">Real-time QR, NFC, biometric student gate check-ins and handoffs will appear live.</p>
+                </div>
+              ) : (
+                <div className="space-y-2.5 max-h-[480px] overflow-y-auto pr-1 custom-scrollbar">
+                  {gateActivities.map((act) => (
+                    <div
+                      key={act.id}
+                      className={`p-3 rounded-2xl border text-xs ${
+                        act.status === 'SECURITY_BLOCKED'
+                          ? 'bg-red-950/30 border-red-500/40 text-red-200'
+                          : act.status === 'OVERRIDE_APPROVED'
+                          ? 'bg-amber-950/30 border-amber-500/40 text-amber-200'
+                          : 'bg-slate-900/90 border-slate-800 text-slate-200'
+                      }`}
+                    >
+                      <div className="flex items-center justify-between text-[10px] font-mono text-slate-400 pb-1 mb-1 border-b border-slate-800/60">
+                        <span>{act.time} · {act.school}</span>
+                        <span
+                          className={`px-1.5 py-0.2 rounded font-extrabold ${
+                            act.status === 'SECURITY_BLOCKED'
+                              ? 'bg-red-500 text-white'
+                              : act.status === 'OVERRIDE_APPROVED'
+                              ? 'bg-amber-500 text-slate-950'
+                              : 'bg-emerald-500/20 text-emerald-400'
+                          }`}
+                        >
+                          {act.status}
+                        </span>
                       </div>
-                      <p className="text-[11px] text-slate-300">
-                        <strong className="text-slate-400">Actor:</strong> {act.actor} ({act.actorType})
-                      </p>
-                      <p className="text-[10px] text-slate-400 italic">
-                        Verified by: {act.officer} via {act.verification}
-                      </p>
+
+                      <div className="space-y-1">
+                        <div className="flex justify-between">
+                          <strong className="text-white">{act.student}</strong>
+                          <span className="text-slate-400 text-[11px]">{act.gate}</span>
+                        </div>
+                        <p className="text-[11px] text-slate-300">
+                          <strong className="text-slate-400">Actor:</strong> {act.actor} ({act.actorType})
+                        </p>
+                        <p className="text-[10px] text-slate-400 italic">
+                          Verified by: {act.officer} via {act.verification}
+                        </p>
+                      </div>
                     </div>
-                  </div>
-                ))}
-              </div>
+                  ))}
+                </div>
+              )}
             </div>
           </div>
         </div>
@@ -1642,34 +1230,34 @@ export function CityManagerCommandControl({
           <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
             <div className="bg-[#0b1c30] rounded-2xl border border-slate-800 p-4">
               <div className="flex items-center justify-between">
-                <span className="text-xs font-bold text-slate-400">Morning Pickup Punctuality</span>
+                <span className="text-xs font-bold text-slate-400">Punctuality Score</span>
                 <Clock size={16} className="text-emerald-400" />
               </div>
               <div className="mt-2 flex items-baseline gap-2">
-                <span className="text-2xl font-black text-emerald-400">97.1%</span>
-                <span className="text-xs text-slate-400">Peak (06:30 - 08:30)</span>
+                <span className="text-2xl font-black text-emerald-400">100%</span>
+                <span className="text-xs text-slate-400">Jurisdiction Compliance</span>
               </div>
             </div>
 
             <div className="bg-[#0b1c30] rounded-2xl border border-slate-800 p-4">
               <div className="flex items-center justify-between">
-                <span className="text-xs font-bold text-slate-400">Average Transit Duration</span>
+                <span className="text-xs font-bold text-slate-400">Active Transit Escorts</span>
                 <Navigation size={16} className="text-cyan-400" />
               </div>
               <div className="mt-2 flex items-baseline gap-2">
-                <span className="text-2xl font-black text-white">21.4 min</span>
-                <span className="text-xs text-slate-400">Per Route Manifest</span>
+                <span className="text-2xl font-black text-white">{escorts.length}</span>
+                <span className="text-xs text-slate-400">Active Escorts</span>
               </div>
             </div>
 
             <div className="bg-[#0b1c30] rounded-2xl border border-slate-800 p-4">
               <div className="flex items-center justify-between">
-                <span className="text-xs font-bold text-slate-400">Delay Incidents Today</span>
+                <span className="text-xs font-bold text-slate-400">Emergency Deputised</span>
                 <AlertTriangle size={16} className="text-amber-400" />
               </div>
               <div className="mt-2 flex items-baseline gap-2">
-                <span className="text-2xl font-black text-amber-400">6 Trips</span>
-                <span className="text-xs text-slate-400">Avg delay: +14 mins</span>
+                <span className="text-2xl font-black text-amber-400">{deputisingRecords.length}</span>
+                <span className="text-xs text-slate-400">Deputised Records</span>
               </div>
             </div>
           </div>
@@ -1684,7 +1272,7 @@ export function CityManagerCommandControl({
                 <p className="text-xs text-slate-400">Active student movements and transit checkpoint verification</p>
               </div>
               <span className="px-3 py-1 rounded-full bg-cyan-500/20 text-cyan-300 text-xs font-bold border border-cyan-500/30">
-                164 Live Vehicles
+                {escorts.filter(e => e.status === 'ON_TRIP').length} Active Trips
               </span>
             </div>
 
@@ -1702,50 +1290,60 @@ export function CityManagerCommandControl({
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-800/80 font-medium text-slate-200">
-                  {escorts.map((e) => (
-                    <tr key={e.id} className="hover:bg-slate-800/40 transition-colors">
-                      <td className="p-3">
-                        <span className="font-mono font-bold text-white block">{e.currentTripId || 'STANDBY'}</span>
-                        <span className="text-[10px] text-slate-400 truncate block max-w-[200px]">{e.route}</span>
-                      </td>
-                      <td className="p-3">
-                        <strong className="text-white block">{e.name}</strong>
-                        <span className="text-[10px] text-slate-400 font-mono">{e.vehicle}</span>
-                      </td>
-                      <td className="p-3">
-                        <span className="text-slate-200 font-semibold">{e.schoolName}</span>
-                      </td>
-                      <td className="p-3 text-center">
-                        <span className="font-mono font-bold text-white text-xs px-2 py-0.5 rounded-lg bg-slate-800">
-                          {e.studentsCount > 0 ? `${e.studentsCount} Students` : '0'}
-                        </span>
-                      </td>
-                      <td className="p-3 text-center">
-                        <span className="text-emerald-400 font-bold block">{e.speed}</span>
-                        <span className="text-[10px] text-slate-400 font-mono">Bat: {e.battery}</span>
-                      </td>
-                      <td className="p-3 text-center">
-                        <span
-                          className={`px-2 py-0.5 rounded-full text-[10px] font-extrabold ${
-                            e.status === 'DELAYED'
-                              ? 'bg-amber-500/20 text-amber-400 border border-amber-500/40'
-                              : 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/40'
-                          }`}
-                        >
-                          {e.status === 'DELAYED' ? 'Delayed (+18m)' : 'On Schedule'}
-                        </span>
-                      </td>
-                      <td className="p-3 text-right">
-                        <button
-                          type="button"
-                          onClick={() => setTripDetailModal(e)}
-                          className="px-3 py-1 rounded-xl bg-slate-800 hover:bg-emerald-600 text-slate-200 hover:text-white font-bold text-xs transition-colors"
-                        >
-                          View ↗
-                        </button>
+                  {escorts.length === 0 ? (
+                    <tr>
+                      <td colSpan={7} className="text-center py-12 text-slate-400">
+                        <Navigation className="w-8 h-8 text-slate-600 mx-auto mb-2" />
+                        <p className="text-sm font-bold text-slate-300">No Active Trips Dispatched in {selectedCity}</p>
+                        <p className="text-xs text-slate-500 mt-1">Live trip telemetry will appear here when escorts start scheduled runs.</p>
                       </td>
                     </tr>
-                  ))}
+                  ) : (
+                    escorts.map((e) => (
+                      <tr key={e.id} className="hover:bg-slate-800/40 transition-colors">
+                        <td className="p-3">
+                          <span className="font-mono font-bold text-white block">{e.currentTripId || 'STANDBY'}</span>
+                          <span className="text-[10px] text-slate-400 truncate block max-w-[200px]">{e.route}</span>
+                        </td>
+                        <td className="p-3">
+                          <strong className="text-white block">{e.name}</strong>
+                          <span className="text-[10px] text-slate-400 font-mono">{e.vehicle}</span>
+                        </td>
+                        <td className="p-3">
+                          <span className="text-slate-200 font-semibold">{e.schoolName}</span>
+                        </td>
+                        <td className="p-3 text-center">
+                          <span className="font-mono font-bold text-white text-xs px-2 py-0.5 rounded-lg bg-slate-800">
+                            {e.studentsCount > 0 ? `${e.studentsCount} Students` : '0'}
+                          </span>
+                        </td>
+                        <td className="p-3 text-center">
+                          <span className="text-emerald-400 font-bold block">{e.speed}</span>
+                          <span className="text-[10px] text-slate-400 font-mono">Bat: {e.battery}</span>
+                        </td>
+                        <td className="p-3 text-center">
+                          <span
+                            className={`px-2 py-0.5 rounded-full text-[10px] font-extrabold ${
+                              e.status === 'DELAYED'
+                                ? 'bg-amber-500/20 text-amber-400 border border-amber-500/40'
+                                : 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/40'
+                            }`}
+                          >
+                            {e.status === 'DELAYED' ? 'Delayed (+18m)' : 'On Schedule'}
+                          </span>
+                        </td>
+                        <td className="p-3 text-right">
+                          <button
+                            type="button"
+                            onClick={() => setTripDetailModal(e)}
+                            className="px-3 py-1 rounded-xl bg-slate-800 hover:bg-emerald-600 text-slate-200 hover:text-white font-bold text-xs transition-colors"
+                          >
+                            View ↗
+                          </button>
+                        </td>
+                      </tr>
+                    ))
+                  )}
                 </tbody>
               </table>
             </div>
@@ -1784,72 +1382,80 @@ export function CityManagerCommandControl({
           </div>
 
           <div className="space-y-3">
-            {safetyIncidents.map((inc) => (
-              <div
-                key={inc.id}
-                className={`p-4 rounded-2xl border flex flex-col md:flex-row items-start md:items-center justify-between gap-4 transition-all ${
-                  inc.severity === 'CRITICAL'
-                    ? 'bg-red-950/40 border-red-500/60 shadow-lg ring-1 ring-red-500/40'
-                    : 'bg-slate-900 border-slate-800'
-                }`}
-              >
-                <div className="space-y-1.5 flex-1">
-                  <div className="flex items-center gap-2 flex-wrap">
-                    <span
-                      className={`px-2 py-0.5 rounded-full text-[10px] font-black uppercase ${
-                        inc.severity === 'CRITICAL' ? 'bg-red-600 text-white' : 'bg-amber-500 text-slate-950'
-                      }`}
-                    >
-                      {inc.severity}
-                    </span>
-                    <span className="font-mono text-slate-400 text-xs">{inc.id} · {inc.time}</span>
-                    <span className="text-white font-bold text-xs">{inc.school}</span>
+            {safetyIncidents.length === 0 ? (
+              <div className="text-center py-12 text-slate-400 border border-slate-800 rounded-2xl bg-slate-900/50">
+                <ShieldCheck className="w-8 h-8 text-emerald-400 mx-auto mb-2" />
+                <p className="text-sm font-bold text-slate-300">Zero Open Safety Incidents</p>
+                <p className="text-xs text-slate-500 mt-1">Real-time SOS triggers, speed violations, and transit alerts in {selectedCity} will triage here.</p>
+              </div>
+            ) : (
+              safetyIncidents.map((inc) => (
+                <div
+                  key={inc.id}
+                  className={`p-4 rounded-2xl border flex flex-col md:flex-row items-start md:items-center justify-between gap-4 transition-all ${
+                    inc.severity === 'CRITICAL'
+                      ? 'bg-red-950/40 border-red-500/60 shadow-lg ring-1 ring-red-500/40'
+                      : 'bg-slate-900 border-slate-800'
+                  }`}
+                >
+                  <div className="space-y-1.5 flex-1">
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <span
+                        className={`px-2 py-0.5 rounded-full text-[10px] font-black uppercase ${
+                          inc.severity === 'CRITICAL' ? 'bg-red-600 text-white' : 'bg-amber-500 text-slate-950'
+                        }`}
+                      >
+                        {inc.severity}
+                      </span>
+                      <span className="font-mono text-slate-400 text-xs">{inc.id} · {inc.time}</span>
+                      <span className="text-white font-bold text-xs">{inc.school}</span>
+                    </div>
+
+                    <h4 className="text-sm font-bold text-white">{inc.title}</h4>
+                    <p className="text-xs text-slate-300">{inc.description}</p>
+                    <p className="text-[11px] text-emerald-400 font-semibold">
+                      <strong className="text-slate-400">Action Plan:</strong> {inc.actionRequired}
+                    </p>
                   </div>
 
-                  <h4 className="text-sm font-bold text-white">{inc.title}</h4>
-                  <p className="text-xs text-slate-300">{inc.description}</p>
-                  <p className="text-[11px] text-emerald-400 font-semibold">
-                    <strong className="text-slate-400">Action Plan:</strong> {inc.actionRequired}
-                  </p>
-                </div>
+                  <div className="flex items-center gap-2 shrink-0">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        const matched = escorts.find((e) => inc.escort && inc.escort.includes(e.id));
+                        if (matched) {
+                          setDisciplinaryModal({
+                            open: true,
+                            escort: matched,
+                            actionType: 'SUSPEND',
+                            reason: `Suspension triggered by safety incident ${inc.id}: ${inc.title}`,
+                            durationDays: '7',
+                          });
+                        } else {
+                          toast.info('Direct escort profile attached to this incident.');
+                        }
+                      }}
+                      className="px-3 py-2 rounded-xl bg-amber-500 text-slate-950 hover:bg-amber-400 font-bold text-xs flex items-center gap-1"
+                    >
+                      <Slash size={12} /> Disciplinary Action
+                    </button>
 
-                <div className="flex items-center gap-2 shrink-0">
-                  <button
-                    type="button"
-                    onClick={() => {
-                      const matched = escorts.find((e) => inc.escort.includes(e.id));
-                      if (matched) {
-                        setDisciplinaryModal({
-                          open: true,
-                          escort: matched,
-                          actionType: 'SUSPEND',
-                          reason: `Suspension triggered by safety incident ${inc.id}: ${inc.title}`,
-                          durationDays: '7',
-                        });
-                      } else {
-                        toast.info('Direct escort profile attached to this incident.');
-                      }
-                    }}
-                    className="px-3 py-2 rounded-xl bg-amber-500 text-slate-950 hover:bg-amber-400 font-bold text-xs flex items-center gap-1"
-                  >
-                    <Slash size={12} /> Disciplinary Action
-                  </button>
-
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setSafetyIncidents((prev) =>
-                        prev.map((i) => (i.id === inc.id ? { ...i, status: 'RESOLVED' } : i))
-                      );
-                      toast.success(`Incident ${inc.id} marked as RESOLVED.`);
-                    }}
-                    className="px-3 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-xs flex items-center gap-1"
-                  >
-                    <Check size={12} /> Resolve Incident
-                  </button>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setSafetyIncidents((prev) =>
+                          prev.map((i) => (i.id === inc.id ? { ...i, status: 'RESOLVED' } : i))
+                        );
+                        toast.success(`Incident ${inc.id} marked as RESOLVED.`);
+                      }}
+                      className="px-3 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-xs flex items-center gap-1"
+                    >
+                      <Check size={12} /> Resolve Incident
+                    </button>
+                  </div>
                 </div>
-              </div>
-            ))}
+              ))
+            )}
           </div>
         </div>
       )}
@@ -1878,65 +1484,73 @@ export function CityManagerCommandControl({
           </div>
 
           <div className="space-y-3">
-            {escalations.map((esc) => (
-              <div key={esc.id} className="p-4 rounded-2xl bg-slate-900 border border-slate-800 space-y-2.5">
-                <div className="flex items-center justify-between text-xs">
-                  <div className="flex items-center gap-2">
-                    <span
-                      className={`px-2 py-0.5 rounded-md text-[10px] font-black uppercase ${
-                        esc.type === 'PARENT' ? 'bg-indigo-500/20 text-indigo-300' : 'bg-purple-500/20 text-purple-300'
-                      }`}
-                    >
-                      {esc.type} ESCALATION
-                    </span>
-                    <strong className="text-white">{esc.from}</strong>
-                    <span className="text-slate-400 font-mono text-[10px]">({esc.date})</span>
-                  </div>
-
-                  <span className="px-2 py-0.5 rounded-full bg-amber-500/20 text-amber-300 text-[10px] font-bold">
-                    {esc.status}
-                  </span>
-                </div>
-
-                <h4 className="text-sm font-bold text-white">{esc.subject}</h4>
-                <p className="text-xs text-slate-300 leading-relaxed">{esc.details}</p>
-
-                <div className="pt-2 border-t border-slate-800/80 flex items-center justify-between gap-3">
-                  <div className="text-[11px] text-slate-400 font-mono">
-                    Related Student: <strong className="text-white">{esc.student}</strong> · Escort: <strong className="text-white">{esc.escort}</strong>
-                  </div>
-
-                  <div className="flex items-center gap-2">
-                    <button
-                      type="button"
-                      onClick={() =>
-                        setContactModal({
-                          open: true,
-                          target: { name: esc.from },
-                          targetType: 'PARENT',
-                          message: '',
-                          channel: 'IN_APP',
-                        })
-                      }
-                      className="px-3 py-1.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-bold flex items-center gap-1"
-                    >
-                      <PhoneCall size={12} /> Contact Stakeholder
-                    </button>
-
-                    <button
-                      type="button"
-                      onClick={() => {
-                        setEscalations((prev) => prev.filter((e) => e.id !== esc.id));
-                        toast.success(`Escalation ticket ${esc.id} resolved and archived.`);
-                      }}
-                      className="px-3 py-1.5 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold flex items-center gap-1"
-                    >
-                      <Check size={12} /> Resolve Ticket
-                    </button>
-                  </div>
-                </div>
+            {escalations.length === 0 ? (
+              <div className="text-center py-12 text-slate-400 border border-slate-800 rounded-2xl bg-slate-900/50">
+                <CheckCircle2 className="w-8 h-8 text-emerald-400 mx-auto mb-2" />
+                <p className="text-sm font-bold text-slate-300">All Escalations Resolved</p>
+                <p className="text-xs text-slate-500 mt-1">No active parent queries or school transport tickets pending resolution in {selectedCity}.</p>
               </div>
-            ))}
+            ) : (
+              escalations.map((esc) => (
+                <div key={esc.id} className="p-4 rounded-2xl bg-slate-900 border border-slate-800 space-y-2.5">
+                  <div className="flex items-center justify-between text-xs">
+                    <div className="flex items-center gap-2">
+                      <span
+                        className={`px-2 py-0.5 rounded-md text-[10px] font-black uppercase ${
+                          esc.type === 'PARENT' ? 'bg-indigo-500/20 text-indigo-300' : 'bg-purple-500/20 text-purple-300'
+                        }`}
+                      >
+                        {esc.type} ESCALATION
+                      </span>
+                      <strong className="text-white">{esc.from}</strong>
+                      <span className="text-slate-400 font-mono text-[10px]">({esc.date})</span>
+                    </div>
+
+                    <span className="px-2 py-0.5 rounded-full bg-amber-500/20 text-amber-300 text-[10px] font-bold">
+                      {esc.status}
+                    </span>
+                  </div>
+
+                  <h4 className="text-sm font-bold text-white">{esc.subject}</h4>
+                  <p className="text-xs text-slate-300 leading-relaxed">{esc.details}</p>
+
+                  <div className="pt-2 border-t border-slate-800/80 flex items-center justify-between gap-3">
+                    <div className="text-[11px] text-slate-400 font-mono">
+                      Related Student: <strong className="text-white">{esc.student}</strong> · Escort: <strong className="text-white">{esc.escort}</strong>
+                    </div>
+
+                    <div className="flex items-center gap-2">
+                      <button
+                        type="button"
+                        onClick={() =>
+                          setContactModal({
+                            open: true,
+                            target: { name: esc.from },
+                            targetType: 'PARENT',
+                            message: '',
+                            channel: 'IN_APP',
+                          })
+                        }
+                        className="px-3 py-1.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-bold flex items-center gap-1"
+                      >
+                        <PhoneCall size={12} /> Contact Stakeholder
+                      </button>
+
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setEscalations((prev) => prev.filter((e) => e.id !== esc.id));
+                          toast.success(`Escalation ticket ${esc.id} resolved and archived.`);
+                        }}
+                        className="px-3 py-1.5 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold flex items-center gap-1"
+                      >
+                        <Check size={12} /> Resolve Ticket
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              ))
+            )}
           </div>
         </div>
       )}
@@ -1973,7 +1587,7 @@ export function CityManagerCommandControl({
             <div className="p-4 rounded-2xl bg-slate-900 border border-slate-800 space-y-2">
               <div className="flex items-center justify-between text-xs font-bold">
                 <span className="text-emerald-400">MyEduRide Escort Dispatch</span>
-                <span className="px-1.5 py-0.5 rounded bg-emerald-500/20 text-emerald-300 text-[10px]">172 Active</span>
+                <span className="px-1.5 py-0.5 rounded bg-emerald-500/20 text-emerald-300 text-[10px]">{escorts.filter(e => e.type === 'myeduride').length} Active</span>
               </div>
               <p className="text-xs text-slate-400">Instant direct push dispatch, route orders, and automated safety check-ins.</p>
               <button
@@ -1988,7 +1602,7 @@ export function CityManagerCommandControl({
             <div className="p-4 rounded-2xl bg-slate-900 border border-slate-800 space-y-2">
               <div className="flex items-center justify-between text-xs font-bold">
                 <span className="text-purple-400">Gate Security Officers</span>
-                <span className="px-1.5 py-0.5 rounded bg-purple-500/20 text-purple-300 text-[10px]">64 On Duty</span>
+                <span className="px-1.5 py-0.5 rounded bg-purple-500/20 text-purple-300 text-[10px]">{gateOfficers.length} On Duty</span>
               </div>
               <p className="text-xs text-slate-400">Direct gate clearance alerts, emergency visitor advisories, and override queries.</p>
               <button
@@ -2003,7 +1617,7 @@ export function CityManagerCommandControl({
             <div className="p-4 rounded-2xl bg-slate-900 border border-slate-800 space-y-2">
               <div className="flex items-center justify-between text-xs font-bold">
                 <span className="text-blue-400">School Administration</span>
-                <span className="px-1.5 py-0.5 rounded bg-blue-500/20 text-blue-300 text-[10px]">52 Online</span>
+                <span className="px-1.5 py-0.5 rounded bg-blue-500/20 text-blue-300 text-[10px]">{schools.length} Online</span>
               </div>
               <p className="text-xs text-slate-400">Liaison with school principals, transport directors, and emergency contacts.</p>
               <button
@@ -2032,42 +1646,50 @@ export function CityManagerCommandControl({
                 <h3 className="text-sm font-black tracking-wide uppercase text-white">
                   City Schools Operations & Connectivity Roster
                 </h3>
-                <p className="text-xs text-slate-400">Real-time status of 52 active schools in {selectedCity}</p>
+                <p className="text-xs text-slate-400">Real-time status of {schools.length} active schools in {selectedCity}</p>
               </div>
             </div>
             <span className="px-3 py-1 rounded-full bg-emerald-500/20 text-emerald-300 text-xs font-bold border border-emerald-500/30">
-              52 Online / 58 Enrolled
+              {schools.length} Enrolled
             </span>
           </div>
 
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
-            {schools.map((sch) => (
-              <div key={sch.id} className="p-4 rounded-2xl bg-slate-900 border border-slate-800 space-y-2.5 hover:border-slate-700 transition-all">
-                <div className="flex items-center justify-between">
-                  <span className="px-2 py-0.5 rounded-full bg-emerald-500/20 text-emerald-400 text-[10px] font-extrabold border border-emerald-500/30">
-                    {sch.status}
-                  </span>
-                  <span className="font-mono text-slate-400 text-xs">{sch.id}</span>
+          {schools.length === 0 ? (
+            <div className="text-center py-12 text-slate-400 border border-slate-800 rounded-2xl bg-slate-900/50">
+              <School className="w-8 h-8 text-slate-600 mx-auto mb-2" />
+              <p className="text-sm font-bold text-slate-300">No Schools Registered in {selectedCity}</p>
+              <p className="text-xs text-slate-500 mt-1">Institutions approved for MyEduRide transit supervision in this city will list here.</p>
+            </div>
+          ) : (
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
+              {schools.map((sch) => (
+                <div key={sch.id} className="p-4 rounded-2xl bg-slate-900 border border-slate-800 space-y-2.5 hover:border-slate-700 transition-all">
+                  <div className="flex items-center justify-between">
+                    <span className="px-2 py-0.5 rounded-full bg-emerald-500/20 text-emerald-400 text-[10px] font-extrabold border border-emerald-500/30">
+                      {sch.status}
+                    </span>
+                    <span className="font-mono text-slate-400 text-xs">{sch.id}</span>
+                  </div>
+                  <h4 className="text-sm font-bold text-white">{sch.name}</h4>
+                  <p className="text-xs text-slate-400">{sch.address || sch.area}</p>
+                  <div className="pt-2 border-t border-slate-800 flex items-center justify-between text-xs">
+                    <div>
+                      <span className="text-slate-400 block text-[10px]">Students</span>
+                      <strong className="text-white">{sch.studentsCount}</strong>
+                    </div>
+                    <div>
+                      <span className="text-slate-400 block text-[10px]">Escorts</span>
+                      <strong className="text-cyan-400">{sch.escortsCount}</strong>
+                    </div>
+                    <div>
+                      <span className="text-slate-400 block text-[10px]">Compliance</span>
+                      <strong className="text-emerald-400">{sch.complianceScore || 100}%</strong>
+                    </div>
+                  </div>
                 </div>
-                <h4 className="text-sm font-bold text-white">{sch.name}</h4>
-                <p className="text-xs text-slate-400">{sch.address}</p>
-                <div className="pt-2 border-t border-slate-800 flex items-center justify-between text-xs">
-                  <div>
-                    <span className="text-slate-400 block text-[10px]">Students</span>
-                    <strong className="text-white">{sch.studentsCount}</strong>
-                  </div>
-                  <div>
-                    <span className="text-slate-400 block text-[10px]">Escorts</span>
-                    <strong className="text-cyan-400">{sch.escortsCount}</strong>
-                  </div>
-                  <div>
-                    <span className="text-slate-400 block text-[10px]">Compliance</span>
-                    <strong className="text-emerald-400">{sch.complianceRate}</strong>
-                  </div>
-                </div>
-              </div>
-            ))}
-          </div>
+              ))}
+            </div>
+          )}
         </div>
       )}
 
@@ -2085,11 +1707,11 @@ export function CityManagerCommandControl({
                 <h3 className="text-sm font-black tracking-wide uppercase text-white">
                   Vehicle Fleet Registry & GPS Telemetry
                 </h3>
-                <p className="text-xs text-slate-400">Tracking 198 registered vehicles operating in {selectedCity}</p>
+                <p className="text-xs text-slate-400">Tracking {vehicles.length} registered vehicles operating in {selectedCity}</p>
               </div>
             </div>
             <span className="px-3 py-1 rounded-full bg-cyan-500/20 text-cyan-300 text-xs font-bold border border-cyan-500/30">
-              164 On Trips
+              {vehicles.length} Vehicles
             </span>
           </div>
 
@@ -2106,35 +1728,45 @@ export function CityManagerCommandControl({
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-800/80 font-medium text-slate-200">
-                {vehicles.map((v) => (
-                  <tr key={v.id} className="hover:bg-slate-800/40 transition-colors">
-                    <td className="p-3">
-                      <strong className="text-white block">{v.model}</strong>
-                      <span className="text-[10px] text-slate-400 font-mono">{v.id}</span>
-                    </td>
-                    <td className="p-3">
-                      <span className="font-mono font-bold text-slate-200 block">{v.plateNumber}</span>
-                      <span className="text-[9px] px-1.5 py-0.2 rounded bg-slate-800 text-slate-400">{v.type}</span>
-                    </td>
-                    <td className="p-3">
-                      <span className="text-white font-semibold">{v.escortName}</span>
-                    </td>
-                    <td className="p-3">
-                      <span className="text-slate-300">{v.schoolName}</span>
-                    </td>
-                    <td className="p-3 text-center">
-                      <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold ${
-                        v.status === 'IN_TRANSIT' ? 'bg-emerald-500/20 text-emerald-400' : v.status === 'STANDBY' ? 'bg-blue-500/20 text-blue-300' : 'bg-red-500/20 text-red-400'
-                      }`}>
-                        {v.status}
-                      </span>
-                    </td>
-                    <td className="p-3 text-right font-mono">
-                      <span className="text-emerald-400 font-bold block">{v.speed}</span>
-                      <span className="text-[10px] text-slate-400">Fuel: {v.fuel}</span>
+                {vehicles.length === 0 ? (
+                  <tr>
+                    <td colSpan={6} className="text-center py-12 text-slate-400">
+                      <Car className="w-8 h-8 text-slate-600 mx-auto mb-2" />
+                      <p className="text-sm font-bold text-slate-300">No Vehicles Registered in {selectedCity}</p>
+                      <p className="text-xs text-slate-500 mt-1">Verified vehicle inspection records and trackers will be listed here.</p>
                     </td>
                   </tr>
-                ))}
+                ) : (
+                  vehicles.map((v) => (
+                    <tr key={v.id} className="hover:bg-slate-800/40 transition-colors">
+                      <td className="p-3">
+                        <strong className="text-white block">{v.model}</strong>
+                        <span className="text-[10px] text-slate-400 font-mono">{v.id}</span>
+                      </td>
+                      <td className="p-3">
+                        <span className="font-mono font-bold text-slate-200 block">{v.plateNumber}</span>
+                        <span className="text-[9px] px-1.5 py-0.2 rounded bg-slate-800 text-slate-400">{v.type}</span>
+                      </td>
+                      <td className="p-3">
+                        <span className="text-white font-semibold">{v.escortName}</span>
+                      </td>
+                      <td className="p-3">
+                        <span className="text-slate-300">{v.schoolName}</span>
+                      </td>
+                      <td className="p-3 text-center">
+                        <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold ${
+                          v.status === 'IN_TRANSIT' ? 'bg-emerald-500/20 text-emerald-400' : v.status === 'STANDBY' ? 'bg-blue-500/20 text-blue-300' : 'bg-red-500/20 text-red-400'
+                        }`}>
+                          {v.status}
+                        </span>
+                      </td>
+                      <td className="p-3 text-right font-mono">
+                        <span className="text-emerald-400 font-bold block">{v.speed}</span>
+                        <span className="text-[10px] text-slate-400">Fuel: {v.fuel}</span>
+                      </td>
+                    </tr>
+                  ))
+                )}
               </tbody>
             </table>
           </div>
@@ -2171,27 +1803,35 @@ export function CityManagerCommandControl({
           </div>
 
           <div className="space-y-2.5">
-            {auditLogs.map((log) => (
-              <div
-                key={log.id}
-                className="p-3.5 rounded-2xl bg-slate-900 border border-slate-800 flex flex-wrap items-center justify-between gap-3 text-xs"
-              >
-                <div className="flex items-center gap-3">
-                  <span className="font-mono text-[10px] text-slate-400 bg-slate-800 px-2 py-0.5 rounded">
-                    {log.time}
-                  </span>
-                  <div>
-                    <strong className="text-white block">{log.action.replace(/_/g, ' ')}</strong>
-                    <p className="text-slate-300 text-[11px]">{log.details}</p>
+            {auditLogs.length === 0 ? (
+              <div className="text-center py-12 text-slate-400 border border-slate-800 rounded-2xl bg-slate-900/50">
+                <Shield className="w-8 h-8 text-slate-600 mx-auto mb-2" />
+                <p className="text-sm font-bold text-slate-300">No Audit Events Logged</p>
+                <p className="text-xs text-slate-500 mt-1">Supervisory assignments, verifications, disciplinary actions, and emergency overrides will be recorded here.</p>
+              </div>
+            ) : (
+              auditLogs.map((log) => (
+                <div
+                  key={log.id}
+                  className="p-3.5 rounded-2xl bg-slate-900 border border-slate-800 flex flex-wrap items-center justify-between gap-3 text-xs"
+                >
+                  <div className="flex items-center gap-3">
+                    <span className="font-mono text-[10px] text-slate-400 bg-slate-800 px-2 py-0.5 rounded">
+                      {log.time}
+                    </span>
+                    <div>
+                      <strong className="text-white block">{log.action.replace(/_/g, ' ')}</strong>
+                      <p className="text-slate-300 text-[11px]">{log.details}</p>
+                    </div>
+                  </div>
+
+                  <div className="text-right text-[11px] font-mono">
+                    <span className="text-emerald-400 font-bold block">Actor: {log.actor}</span>
+                    <span className="text-slate-400">Target: {log.target}</span>
                   </div>
                 </div>
-
-                <div className="text-right text-[11px] font-mono">
-                  <span className="text-emerald-400 font-bold block">Actor: {log.actor}</span>
-                  <span className="text-slate-400">Target: {log.target}</span>
-                </div>
-              </div>
-            ))}
+              ))
+            )}
           </div>
         </div>
       )}

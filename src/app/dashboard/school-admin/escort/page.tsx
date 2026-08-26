@@ -23,6 +23,7 @@ import {
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { photoSrc } from '@/lib/photo';
+import StudentAvatar from '@/components/shared/StudentAvatar';
 import EscortDetailDrawer from '@/components/school-admin/EscortDetailDrawer';
 
 export default function EscortRecordsHubPage() {
@@ -255,13 +256,12 @@ export default function EscortRecordsHubPage() {
             >
               {/* Escort Identity & Photo */}
               <div className="flex items-center gap-3.5 min-w-[240px]">
-                <div className="w-12 h-12 rounded-2xl overflow-hidden bg-slate-100 border border-slate-200 shrink-0 flex items-center justify-center">
-                  {escort.avatar_url ? (
-                    <img src={photoSrc(escort.avatar_url)} alt="" className="w-full h-full object-cover" />
-                  ) : (
-                    <UserCheck size={22} className="text-slate-400" />
-                  )}
-                </div>
+                <StudentAvatar
+                  photoUrl={escort.avatar_url}
+                  fullName={escort.full_name}
+                  size="md"
+                  className="w-12 h-12 rounded-2xl shrink-0"
+                />
                 <div className="min-w-0">
                   <div className="flex items-center gap-2">
                     <p className="text-xs font-black text-slate-900 truncate">{escort.full_name}</p>

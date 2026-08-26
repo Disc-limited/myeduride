@@ -70,8 +70,8 @@ export default function GateOfficerDashboard() {
   const [mobileOpen, setMobileOpen] = useState(false);
   const [currentTime, setCurrentTime] = useState<Date | null>(null);
   const [schoolId, setSchoolId] = useState('');
-  const [schoolInfo, setSchoolInfo] = useState({ name: 'Gracefield International School', address: 'Ikeja, Lagos State', logo_url: '', primary_color: '#1B4D3E' });
-  const [officerInfo, setOfficerInfo] = useState({ name: 'David Okafor', role: 'Gate Officer', gate: 'Gate A - Main Gate' });
+  const [schoolInfo, setSchoolInfo] = useState({ name: 'School Campus', address: 'Campus Location', logo_url: '', primary_color: '#1B4D3E' });
+  const [officerInfo, setOfficerInfo] = useState({ name: 'Gate Officer', role: 'Gate Officer', gate: 'Main Security Gate' });
   
   // Data States
   const [allStudents, setAllStudents] = useState<any[]>([]);
@@ -147,8 +147,8 @@ export default function GateOfficerDashboard() {
       }
       if (data.school) {
         setSchoolInfo({
-          name: data.school.name || 'Gracefield International School',
-          address: data.school.address || 'Ikeja, Lagos State',
+          name: data.school.name || 'School Campus',
+          address: data.school.address || 'Campus Location',
           logo_url: data.school.logo_url || '',
           primary_color: data.school.primary_color || '#1B4D3E',
         });

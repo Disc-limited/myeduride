@@ -285,6 +285,23 @@ export async function POST(request: NextRequest) {
 
       savedStaffProfile = staffProfile;
 
+      // Synchronize user_profiles and users tables so avatars display platform-wide
+      if (photoUrl) {
+        await supabase
+          .from('user_profiles')
+          .update({ avatar_url: photoUrl, photo_url: photoUrl })
+          .eq('id', userId);
+
+        try {
+          await supabase
+            .from('users')
+            .update({ avatar_url: photoUrl })
+            .eq('id', userId);
+        } catch {
+          // optional
+        }
+      }
+
       if (mayAssignClass && class_id && staffProfile) {
         await supabase.from('teacher_class_assignments').upsert(
           {

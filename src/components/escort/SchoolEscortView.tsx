@@ -57,69 +57,25 @@ export default function SchoolEscortView({
   const [tripStep, setTripStep] = useState<number>(3); // 1: Trip Started, 2: Picking Up, 3: All On Board, 4: Arrived School, 5: Afternoon Pickup, 6: Home Dropoff, 7: Trip Completed
 
   // Student Pickup Queue Data
-  const [pickupQueue, setPickupQueue] = useState([
-    {
-      id: 'STU-01',
-      name: 'David James',
-      address: '21, Bluebell Drive, Silver Estate',
-      dist: '300 m',
-      status: 'pending',
-    },
-    {
-      id: 'STU-02',
-      name: 'Esther Paul',
-      address: '12, Lotus Close, Silver Estate',
-      dist: '650 m',
-      status: 'pending',
-    },
-    {
-      id: 'STU-03',
-      name: 'Michael Obi',
-      address: '9, Orchid Road, Silver Estate',
-      dist: '1.1 km',
-      status: 'pending',
-    },
-    {
-      id: 'STU-04',
-      name: 'Sarah Yusuf',
-      address: '17, Palm Springs, Silver Estate',
-      dist: '1.4 km',
-      status: 'pending',
-    },
-    {
-      id: 'STU-05',
-      name: 'Daniel Peter',
-      address: '25, Bluebell Drive, Silver Estate',
-      dist: '1.6 km',
-      status: 'pending',
-    },
-    {
-      id: 'STU-06',
-      name: 'Victory Bello',
-      address: '4, Lotus Close, Silver Estate',
-      dist: '2.1 km',
-      status: 'pending',
-    },
-  ]);
+  const [pickupQueue, setPickupQueue] = useState<any[]>([]);
 
   // On Board Students Data
-  const [onBoardStudents, setOnBoardStudents] = useState([
-    { id: 'OB-01', name: 'David James', time: 'Boarded 06:52 AM', photo: 'https://images.unsplash.com/photo-1544717305-2782549b5136?auto=format&fit=crop&w=120&q=80' },
-    { id: 'OB-02', name: 'Sarah Yusuf', time: 'Boarded 07:08 AM', photo: 'https://images.unsplash.com/photo-1517841905240-472988babdf9?auto=format&fit=crop&w=120&q=80' },
-    { id: 'OB-03', name: 'Esther Paul', time: 'Boarded 06:58 AM', photo: 'https://images.unsplash.com/photo-1494790108377-be9c29b29330?auto=format&fit=crop&w=120&q=80' },
-    { id: 'OB-04', name: 'Daniel Peter', time: 'Boarded 07:12 AM', photo: 'https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?auto=format&fit=crop&w=120&q=80' },
-    { id: 'OB-05', name: 'Michael Obi', time: 'Boarded 07:03 AM', photo: 'https://images.unsplash.com/photo-1500648767791-00dcc994a43e?auto=format&fit=crop&w=120&q=80' },
-    { id: 'OB-06', name: 'Victory Bello', time: 'Boarded 07:18 AM', photo: 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&w=120&q=80' },
-  ]);
+  const [onBoardStudents, setOnBoardStudents] = useState<any[]>([]);
 
   // Activity Feed
-  const [activityFeed] = useState([
-    { id: 1, text: 'Parent (Mrs. Bello) confirmed David James is ready.', time: '07:31 AM', type: 'parent' },
-    { id: 2, text: 'David James has been boarded successfully.', time: '07:32 AM', type: 'board' },
-    { id: 3, text: 'Gate Officer marked gate open.', time: '07:30 AM', type: 'gate' },
-    { id: 4, text: 'City Manager broadcast: Traffic on Lekki-Epe Expressway is light.', time: '07:28 AM', type: 'info' },
-    { id: 5, text: '2 new students marked ready for pickup.', time: '07:25 AM', type: 'ready' },
-  ]);
+  const [activityFeed, setActivityFeed] = useState<any[]>([]);
+
+  useEffect(() => {
+    fetch('/api/escorts/dashboard-live')
+      .then((res) => res.json())
+      .then((data) => {
+        if (data?.success && data?.students?.morning) {
+          setPickupQueue(data.students.morning);
+          setOnBoardStudents(data.students.morning.filter((s: any) => s.status === 'PICKED'));
+        }
+      })
+      .catch((err) => console.warn('[SchoolEscortView] fetch notice:', err));
+  }, []);
 
   const handleScanId = (student: any) => {
     onOpenVerificationModal(student);
@@ -150,9 +106,9 @@ export default function SchoolEscortView({
               <Users size={14} className="text-[#0A1128]" />
               <span className="font-medium text-[11px]">Assigned Students</span>
             </div>
-            <div className="font-extrabold text-xl text-slate-900 leading-tight">18</div>
+            <div className="font-extrabold text-xl text-slate-900 leading-tight">{pickupQueue.length}</div>
             <button
-              onClick={() => toast.info('Displaying 18 assigned students list')}
+              onClick={() => toast.info(`Displaying ${pickupQueue.length} assigned students list`)}
               className="text-[10px] text-emerald-600 font-bold hover:underline"
             >
               View Details
@@ -165,8 +121,10 @@ export default function SchoolEscortView({
               <UserCheck size={14} className="text-emerald-600" />
               <span className="font-medium text-[11px]">Picked Up</span>
             </div>
-            <div className="font-extrabold text-xl text-slate-900 leading-tight">6</div>
-            <span className="text-[10px] text-emerald-600 font-bold block">33%</span>
+            <div className="font-extrabold text-xl text-slate-900 leading-tight">{onBoardStudents.length}</div>
+            <span className="text-[10px] text-emerald-600 font-bold block">
+              {pickupQueue.length > 0 ? `${Math.round((onBoardStudents.length / pickupQueue.length) * 100)}%` : '0%'}
+            </span>
           </div>
 
           {/* Stat 3: Remaining */}
@@ -175,26 +133,24 @@ export default function SchoolEscortView({
               <Clock size={14} className="text-amber-500" />
               <span className="font-medium text-[11px]">Remaining</span>
             </div>
-            <div className="font-extrabold text-xl text-slate-900 leading-tight">12</div>
-            <span className="text-[10px] text-amber-600 font-bold block">67%</span>
+            <div className="font-extrabold text-xl text-slate-900 leading-tight">{Math.max(0, pickupQueue.length - onBoardStudents.length)}</div>
+            <span className="text-[10px] text-amber-600 font-bold block">
+              {pickupQueue.length > 0 ? `${Math.round(((pickupQueue.length - onBoardStudents.length) / pickupQueue.length) * 100)}%` : '0%'}
+            </span>
           </div>
 
           {/* Stat 4: Driver */}
           <div className="p-3 bg-slate-50 rounded-xl border border-slate-200/80 space-y-1">
             <span className="text-[10px] text-slate-400 font-medium block">Driver</span>
             <div className="flex items-center gap-2">
-              <div className="w-7 h-7 rounded-full bg-slate-800 border border-emerald-500 overflow-hidden shrink-0">
-                <img
-                  src="https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?auto=format&fit=crop&w=100&q=80"
-                  alt="Emeka Okoro"
-                  className="w-full h-full object-cover"
-                />
+              <div className="w-7 h-7 rounded-full bg-slate-800 border border-emerald-500 flex items-center justify-center font-bold text-[10px] text-white shrink-0">
+                DR
               </div>
               <div className="min-w-0">
                 <div className="font-bold text-slate-900 truncate leading-tight text-xs">
-                  Emeka Okoro
+                  Assigned Driver
                 </div>
-                <span className="text-[9px] text-slate-500 font-mono block">0812 345 6789</span>
+                <span className="text-[9px] text-slate-500 font-mono block">Active Shift</span>
               </div>
             </div>
           </div>
@@ -202,14 +158,14 @@ export default function SchoolEscortView({
           {/* Stat 5: Vehicle */}
           <div className="p-3 bg-slate-50 rounded-xl border border-slate-200/80 space-y-1">
             <span className="text-[10px] text-slate-400 font-medium block">Vehicle</span>
-            <div className="font-extrabold text-xs text-slate-900">KJA 123 XY</div>
-            <span className="text-[9px] text-slate-500 block truncate">Hiace Bus (18 Seater)</span>
+            <div className="font-extrabold text-xs text-slate-900">Standard Vehicle</div>
+            <span className="text-[9px] text-slate-500 block truncate">Operational</span>
           </div>
 
           {/* Stat 6: Departure Time */}
           <div className="p-3 bg-slate-50 rounded-xl border border-slate-200/80 space-y-1">
             <span className="text-[10px] text-slate-400 font-medium block">Departure Time</span>
-            <div className="font-extrabold text-xs text-slate-900">06:45 AM</div>
+            <div className="font-extrabold text-xs text-slate-900">Scheduled</div>
             <span className="bg-emerald-100 text-emerald-800 text-[9px] font-bold px-1.5 py-0.5 rounded">
               On Time
             </span>
@@ -218,7 +174,7 @@ export default function SchoolEscortView({
           {/* Stat 7: Est. Completion */}
           <div className="p-3 bg-slate-50 rounded-xl border border-slate-200/80 space-y-1">
             <span className="text-[10px] text-slate-400 font-medium block">Est. Completion</span>
-            <div className="font-extrabold text-xs text-slate-900">08:15 AM</div>
+            <div className="font-extrabold text-xs text-slate-900">Scheduled</div>
             <span className="bg-emerald-100 text-emerald-800 text-[9px] font-bold px-1.5 py-0.5 rounded">
               On Time
             </span>
@@ -227,7 +183,7 @@ export default function SchoolEscortView({
           {/* Stat 8: Progress Donut */}
           <div className="p-2 bg-slate-50 rounded-xl border border-slate-200/80 flex flex-col items-center justify-center text-center">
             <div className="w-11 h-11 rounded-full border-4 border-emerald-500 border-t-emerald-200 flex items-center justify-center font-extrabold text-xs text-slate-900">
-              33%
+              {pickupQueue.length > 0 ? `${Math.round((onBoardStudents.length / pickupQueue.length) * 100)}%` : '0%'}
             </div>
             <span className="text-[9px] text-slate-500 font-semibold mt-1">Completed</span>
           </div>
@@ -444,33 +400,41 @@ export default function SchoolEscortView({
 
           {/* Queue Items */}
           <div className="space-y-2 max-h-[300px] overflow-y-auto pr-1">
-            {pickupQueue.map((item) => (
-              <div
-                key={item.id}
-                className="p-2.5 bg-slate-50 rounded-xl border border-slate-200/80 flex items-center justify-between gap-2 hover:bg-slate-100 transition-all text-xs"
-              >
-                <div className="min-w-0 flex-1">
-                  <div className="font-bold text-slate-900 truncate">{item.name}</div>
-                  <div className="text-[10px] text-slate-500 truncate">{item.address}</div>
-                </div>
-
-                <div className="flex items-center gap-1.5 shrink-0">
-                  <span className="text-[10px] font-mono text-slate-400 mr-1">{item.dist}</span>
-                  <button
-                    onClick={() => handleScanId(item)}
-                    className="bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-[10px] px-2.5 py-1 rounded-lg transition-all"
-                  >
-                    Scan ID
-                  </button>
-                  <button
-                    onClick={() => handleOverride(item)}
-                    className="bg-slate-200 hover:bg-slate-300 text-slate-700 font-bold text-[10px] px-2 py-1 rounded-lg transition-all"
-                  >
-                    Override
-                  </button>
-                </div>
+            {pickupQueue.length === 0 ? (
+              <div className="p-6 text-center text-slate-400 bg-slate-50 rounded-xl border border-slate-100">
+                <Users size={20} className="mx-auto mb-1 text-slate-300" />
+                <p className="font-semibold text-slate-600 text-xs">Queue Empty</p>
+                <p className="text-[10px]">No assigned students in pickup queue.</p>
               </div>
-            ))}
+            ) : (
+              pickupQueue.map((item) => (
+                <div
+                  key={item.id}
+                  className="p-2.5 bg-slate-50 rounded-xl border border-slate-200/80 flex items-center justify-between gap-2 hover:bg-slate-100 transition-all text-xs"
+                >
+                  <div className="min-w-0 flex-1">
+                    <div className="font-bold text-slate-900 truncate">{item.name}</div>
+                    <div className="text-[10px] text-slate-500 truncate">{item.address}</div>
+                  </div>
+
+                  <div className="flex items-center gap-1.5 shrink-0">
+                    <span className="text-[10px] font-mono text-slate-400 mr-1">{item.dist || ''}</span>
+                    <button
+                      onClick={() => handleScanId(item)}
+                      className="bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-[10px] px-2.5 py-1 rounded-lg transition-all"
+                    >
+                      Scan ID
+                    </button>
+                    <button
+                      onClick={() => handleOverride(item)}
+                      className="bg-slate-200 hover:bg-slate-300 text-slate-700 font-bold text-[10px] px-2 py-1 rounded-lg transition-all"
+                    >
+                      Override
+                    </button>
+                  </div>
+                </div>
+              ))
+            )}
           </div>
 
           <button
@@ -486,27 +450,39 @@ export default function SchoolEscortView({
       {/* 4. LOWER GRID (4 COLUMNS: ON BOARD, VERIFICATION, QUICK ACTIONS, ACTIVITY FEED) */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-5">
         
-        {/* CARD 1: ON BOARD (6) */}
+        {/* CARD 1: ON BOARD */}
         <div className="bg-white rounded-2xl border border-slate-200/80 p-4 shadow-sm flex flex-col justify-between space-y-3">
           <div className="flex items-center justify-between border-b border-slate-100 pb-2">
             <h4 className="font-extrabold text-xs text-slate-900 uppercase tracking-wider">
-              ON BOARD (6)
+              ON BOARD ({onBoardStudents.length})
             </h4>
             <span className="text-[11px] text-emerald-600 font-bold cursor-pointer hover:underline">
               View All
             </span>
           </div>
 
-          <div className="grid grid-cols-2 gap-2 text-xs">
-            {onBoardStudents.map((ob) => (
-              <div key={ob.id} className="p-2 bg-slate-50 rounded-xl border border-slate-100 flex items-center gap-2">
-                <img src={ob.photo} alt={ob.name} className="w-7 h-7 rounded-full object-cover border border-emerald-400" />
-                <div className="min-w-0">
-                  <div className="font-bold text-slate-900 truncate text-[11px]">{ob.name}</div>
-                  <div className="text-[9px] text-slate-400 truncate">{ob.time}</div>
-                </div>
+          <div className="space-y-2 text-xs">
+            {onBoardStudents.length === 0 ? (
+              <div className="p-6 text-center text-slate-400 bg-slate-50 rounded-xl border border-slate-100">
+                <UserCheck size={20} className="mx-auto mb-1 text-slate-300" />
+                <p className="font-semibold text-slate-600 text-xs">No Students On Board</p>
+                <p className="text-[10px]">Verified boarded students will list here.</p>
               </div>
-            ))}
+            ) : (
+              <div className="grid grid-cols-2 gap-2">
+                {onBoardStudents.map((ob) => (
+                  <div key={ob.id} className="p-2 bg-slate-50 rounded-xl border border-slate-100 flex items-center gap-2">
+                    <div className="w-7 h-7 rounded-full bg-emerald-600 text-white font-bold flex items-center justify-center text-[10px]">
+                      {ob.name?.substring(0, 2)?.toUpperCase() || 'ST'}
+                    </div>
+                    <div className="min-w-0">
+                      <div className="font-bold text-slate-900 truncate text-[11px]">{ob.name}</div>
+                      <div className="text-[9px] text-slate-400 truncate">{ob.time}</div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
           </div>
 
           <button
@@ -653,15 +629,23 @@ export default function SchoolEscortView({
           </div>
 
           <div className="space-y-2 text-xs">
-            {activityFeed.map((act) => (
-              <div key={act.id} className="flex items-start justify-between gap-2 text-[11px]">
-                <div className="flex items-start gap-1.5 text-slate-700">
-                  <span className="w-2 h-2 rounded-full bg-emerald-500 shrink-0 mt-1" />
-                  <span className="font-medium leading-tight">{act.text}</span>
-                </div>
-                <span className="text-[10px] text-slate-400 font-mono shrink-0">{act.time}</span>
+            {activityFeed.length === 0 ? (
+              <div className="p-6 text-center text-slate-400 bg-slate-50 rounded-xl border border-slate-100">
+                <Clock size={20} className="mx-auto mb-1 text-slate-300" />
+                <p className="font-semibold text-slate-600 text-xs">No Recent Activity</p>
+                <p className="text-[10px]">Real-time operational events will appear here.</p>
               </div>
-            ))}
+            ) : (
+              activityFeed.map((act) => (
+                <div key={act.id} className="flex items-start justify-between gap-2 text-[11px]">
+                  <div className="flex items-start gap-1.5 text-slate-700">
+                    <span className="w-2 h-2 rounded-full bg-emerald-500 shrink-0 mt-1" />
+                    <span className="font-medium leading-tight">{act.text}</span>
+                  </div>
+                  <span className="text-[10px] text-slate-400 font-mono shrink-0">{act.time}</span>
+                </div>
+              ))
+            )}
           </div>
 
           <button
