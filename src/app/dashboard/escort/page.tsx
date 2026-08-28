@@ -783,6 +783,7 @@ export default function EscortDashboardPage() {
 
               {activeNav === 'shared-ride' && (
                 <MyEduRideEscortView
+                  liveDashboardData={liveDashboardData}
                   onOpenVerificationModal={handleOpenVerification}
                   onOpenIncidentModal={() => setIncidentModalOpen(true)}
                 />

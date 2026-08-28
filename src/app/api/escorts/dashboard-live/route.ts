@@ -22,7 +22,7 @@ export async function GET(request: NextRequest) {
     let userProfile: any = null;
     let schoolData: any = null;
 
-    // 1. Fetch live escort application record
+    // 1. Fetch live escort application record cleanly for logged in session
     const allApps = await getEscortApplications();
     if (session) {
       const emailQuery = (session.email || session.username || '').toLowerCase();
@@ -34,9 +34,24 @@ export async function GET(request: NextRequest) {
           (session.user_id && a.id === session.user_id)
       );
     }
-    if (!escortProfile && allApps.length > 0) {
-      escortProfile = allApps[0];
+
+    // DO NOT default to allApps[0] if session is present but unlinked, to prevent user cross-contamination!
+    if (!escortProfile && !session) {
+      if (allApps.length > 0) escortProfile = allApps[0];
     }
+
+    // Collect all unique identity tokens for this escort
+    const escortIdentifiers = Array.from(
+      new Set(
+        [
+          escortProfile?.id,
+          escortProfile?.user_id,
+          escortProfile?.escort_code,
+          session?.user_id,
+          session?.email,
+        ].filter(Boolean)
+      )
+    );
 
     // 2. Fetch live user profile from user_profiles table
     if (session?.user_id) {
@@ -89,7 +104,6 @@ export async function GET(request: NextRequest) {
     let assignedVehicle: any = null;
 
     if (schoolId) {
-      // First try to find route assigned directly to this escort
       const { data: routes } = await supabase
         .from('transport_routes')
         .select('*')
@@ -98,12 +112,11 @@ export async function GET(request: NextRequest) {
 
       if (routes && routes.length > 0) {
         assignedRoute =
-          routes.find((r) => r.assigned_escort_user_id === session?.user_id) ||
+          routes.find((r) => escortIdentifiers.includes(r.assigned_escort_user_id)) ||
           routes[0];
       }
 
       if (assignedRoute) {
-        // Fetch stops
         const { data: stops } = await supabase
           .from('transport_route_stops')
           .select('*')
@@ -112,7 +125,6 @@ export async function GET(request: NextRequest) {
 
         routeStops = stops || [];
 
-        // Fetch vehicle
         if (assignedRoute.assigned_vehicle_id) {
           const { data: vehicle } = await supabase
             .from('school_vehicles')
@@ -124,7 +136,6 @@ export async function GET(request: NextRequest) {
       }
     }
 
-    // Fallback vehicle info from escort profile
     if (!assignedVehicle) {
       assignedVehicle = {
         vehicle_name: escortProfile?.vehicle?.type || escortProfile?.vehicleType || 'Toyota HiAce Bus',
@@ -134,28 +145,16 @@ export async function GET(request: NextRequest) {
       };
     }
 
-    // 4. Fetch Assigned Students & Pickup Requests
-    let assignedStudents: any[] = [];
-
-    // 4.1 Query City Manager escort_assignments for this escort
+    // 4. Query live City Manager escort_assignments across all escort identifiers
     let liveAssignments: any[] = [];
-    const escortAppId = escortProfile?.id;
-    const escortUserId = session?.user_id;
-
     try {
-      if (escortAppId || escortUserId) {
-        let query = supabase.from('escort_assignments').select('*');
-        if (escortAppId && escortUserId) {
-          query = query.or(`escort_application_id.eq.${escortAppId},escort_application_id.eq.${escortUserId}`);
-        } else if (escortAppId) {
-          query = query.eq('escort_application_id', escortAppId);
-        } else {
-          query = query.eq('escort_application_id', escortUserId);
-        }
-
-        const { data: assignmentsData } = await query
+      if (escortIdentifiers.length > 0) {
+        const { data: assignmentsData } = await supabase
+          .from('escort_assignments')
+          .select('*')
+          .in('escort_application_id', escortIdentifiers)
           .order('created_at', { ascending: false })
-          .limit(20);
+          .limit(50);
 
         if (assignmentsData && assignmentsData.length > 0) {
           liveAssignments = assignmentsData;
@@ -168,77 +167,104 @@ export async function GET(request: NextRequest) {
     // 4.2 Fetch linked transport_bookings
     const assignmentBookingIds = liveAssignments.map((a) => a.booking_id).filter(Boolean);
     let liveBookings: any[] = [];
-    if (assignmentBookingIds.length > 0) {
-      try {
-        const { data: bData } = await supabase
-          .from('transport_bookings')
-          .select(`
-            *,
-            student:students(id, first_name, last_name, photo_url, school_classes(name)),
-            parent:user_profiles!user_id(full_name, phone)
-          `)
-          .in('id', assignmentBookingIds);
+    try {
+      let bQuery = supabase
+        .from('transport_bookings')
+        .select(`
+          *,
+          student:students(id, first_name, last_name, photo_url, student_id_number, school_classes(name)),
+          parent:user_profiles!user_id(full_name, phone)
+        `);
 
-        if (bData) {
-          liveBookings = bData;
-        }
-      } catch (err) {
-        console.warn('[dashboard-live] transport_bookings query notice:', err);
+      if (assignmentBookingIds.length > 0) {
+        const { data: bData } = await bQuery.in('id', assignmentBookingIds);
+        if (bData) liveBookings = bData;
+      }
+    } catch (err) {
+      console.warn('[dashboard-live] transport_bookings query notice:', err);
+    }
+
+    // 4.3 Aggregate all student IDs from routes, assignments, and bookings
+    let routeStudentIds: string[] = [];
+    if (assignedRoute) {
+      const { data: rAssignments } = await supabase
+        .from('student_route_assignments')
+        .select('student_id')
+        .eq('route_id', assignedRoute.id)
+        .eq('is_active', true);
+
+      if (rAssignments && rAssignments.length > 0) {
+        routeStudentIds = rAssignments.map((a) => a.student_id);
       }
     }
 
-    if (schoolId) {
-      // Fetch route assigned students or active school students
-      let studentIds: string[] = [];
-      if (assignedRoute) {
-        const { data: rAssignments } = await supabase
-          .from('student_route_assignments')
-          .select('student_id')
-          .eq('route_id', assignedRoute.id)
-          .eq('is_active', true);
+    const cmStudentIds = liveAssignments.map((a) => a.student_id).filter(Boolean);
+    const bookingStudentIds = liveBookings.map((b) => b.student_id || b.student?.id).filter(Boolean);
+    const allTargetStudentIds = Array.from(new Set([...routeStudentIds, ...cmStudentIds, ...bookingStudentIds]));
 
-        if (rAssignments && rAssignments.length > 0) {
-          studentIds = rAssignments.map((a) => a.student_id);
-        }
-      }
+    let assignedStudents: any[] = [];
+    if (allTargetStudentIds.length > 0) {
+      const { data: stList } = await supabase
+        .from('students')
+        .select(`
+          id, first_name, last_name, student_id_number, photo_url, is_active,
+          class:school_classes(name)
+        `)
+        .in('id', allTargetStudentIds);
 
-      // Merge student IDs from City Manager escort_assignments
-      const cmStudentIds = liveAssignments.map((a) => a.student_id).filter(Boolean);
-      const allTargetStudentIds = Array.from(new Set([...studentIds, ...cmStudentIds]));
-
-      let studentsQuery = supabase
+      assignedStudents = stList || [];
+    } else if (schoolId) {
+      const { data: defaultSt } = await supabase
         .from('students')
         .select(`
           id, first_name, last_name, student_id_number, photo_url, is_active,
           class:school_classes(name)
         `)
         .eq('school_id', schoolId)
-        .eq('is_active', true);
+        .eq('is_active', true)
+        .limit(10);
 
-      if (allTargetStudentIds.length > 0) {
-        studentsQuery = studentsQuery.in('id', allTargetStudentIds);
-      } else {
-        studentsQuery = studentsQuery.limit(10);
-      }
-
-      const { data: stList } = await studentsQuery;
-      assignedStudents = stList || [];
+      assignedStudents = defaultSt || [];
     }
 
-    // 5. Fetch Today's Attendance & Pickup Requests for status reconciliation
+    // Merge student objects directly attached in liveBookings into assignedStudents
+    for (const b of liveBookings) {
+      if (b.student) {
+        const existingIdx = assignedStudents.findIndex((s) => s.id === b.student.id);
+        if (existingIdx >= 0) {
+          assignedStudents[existingIdx].parent_name = b.parent?.full_name || assignedStudents[existingIdx].parent_name;
+          assignedStudents[existingIdx].parent_phone = b.parent?.phone || assignedStudents[existingIdx].parent_phone;
+          assignedStudents[existingIdx].pickup_address = b.notes || b.address || assignedStudents[existingIdx].pickup_address;
+        } else {
+          assignedStudents.push({
+            id: b.student.id,
+            first_name: b.student.first_name,
+            last_name: b.student.last_name,
+            student_id_number: b.student.student_id_number || `BK-${b.id.substring(0, 6).toUpperCase()}`,
+            photo_url: b.student.photo_url || null,
+            is_active: true,
+            class: b.student.school_classes || b.student.class,
+            parent_name: b.parent?.full_name || 'Parent / Guardian',
+            parent_phone: b.parent?.phone || '0803 456 7890',
+            pickup_address: b.notes || 'Designated Home Pickup',
+          });
+        }
+      }
+    }
+
+    // 5. Fetch Today's Attendance for status reconciliation
     let attendanceToday: any[] = [];
     if (schoolId) {
       const { data: att } = await supabase
         .from('attendance_records')
         .select('student_id, type, timestamp')
-        .eq('school_id', schoolId)
         .gte('timestamp', startIso)
         .lte('timestamp', endIso);
 
       attendanceToday = att || [];
     }
 
-    // Map students with live trip status
+    // Map students into rich manifest
     const studentManifest = assignedStudents.map((st, idx) => {
       const arrival = attendanceToday.find((a) => a.student_id === st.id && a.type === 'arrival');
       const departure = attendanceToday.find((a) => a.student_id === st.id && a.type === 'departure');
@@ -250,19 +276,19 @@ export async function GET(request: NextRequest) {
         status = 'ON_BOARD';
       }
 
-      const cls = Array.isArray(st.class) ? st.class[0]?.name : st.class?.name;
+      const cls = Array.isArray(st.class) ? st.class[0]?.name : (st.class?.name || st.class_name || 'MyEduRide Transit');
 
       return {
         id: st.id,
-        name: `${st.first_name} ${st.last_name}`.trim(),
+        name: st.name || `${st.first_name || ''} ${st.last_name || ''}`.trim() || 'Assigned Student',
         student_id_number: st.student_id_number || `2026-${1000 + idx}`,
-        class_name: cls || 'Class',
+        class_name: cls,
         photo_url: st.photo_url || null,
-        pickup_address: routeStops[idx % Math.max(routeStops.length, 1)]?.stop_name || 'Designated Stop',
+        pickup_address: st.pickup_address || routeStops[idx % Math.max(routeStops.length, 1)]?.stop_name || 'Designated Stop',
         status,
-        pickup_time: routeStops[idx % Math.max(routeStops.length, 1)]?.pickup_time || '07:15 AM',
-        parent_phone: '0803 456 7890',
-        parent_name: 'Parent / Guardian',
+        pickup_time: st.pickup_time || routeStops[idx % Math.max(routeStops.length, 1)]?.pickup_time || '07:15 AM',
+        parent_phone: st.parent_phone || '0803 456 7890',
+        parent_name: st.parent_name || 'Parent / Guardian',
       };
     });
 

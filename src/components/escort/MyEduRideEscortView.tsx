@@ -25,11 +25,13 @@ import {
 import { toast } from 'sonner';
 
 interface MyEduRideEscortViewProps {
+  liveDashboardData?: any;
   onOpenVerificationModal: (student?: any) => void;
   onOpenIncidentModal: () => void;
 }
 
 export default function MyEduRideEscortView({
+  liveDashboardData,
   onOpenVerificationModal,
   onOpenIncidentModal,
 }: MyEduRideEscortViewProps) {
@@ -55,10 +57,13 @@ export default function MyEduRideEscortView({
       .catch((err) => console.warn('[MyEduRideEscortView] fetch notice:', err));
   }, []);
 
+  const manifestStudents = liveDashboardData?.students?.manifest || [];
+  const displayRoster = manifestStudents.length > 0 ? manifestStudents : discAssignments;
+
   // Operational metrics
   const operationsMetrics = {
     fleetStatus: 'Active & Verified',
-    totalPassengers: discAssignments.length,
+    totalPassengers: displayRoster.length,
     routeOptimisationScore: '100% Optimal',
     speedAlerts: 0,
     discSupervisor: 'City Manager Operations',
@@ -240,21 +245,35 @@ export default function MyEduRideEscortView({
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100 font-medium text-slate-800">
-                {discAssignments.length === 0 ? (
+                {displayRoster.length === 0 ? (
                   <tr>
                     <td colSpan={5} className="py-8 text-center text-slate-400">
                       No students currently assigned to this transit corridor in the database.
                     </td>
                   </tr>
                 ) : (
-                  discAssignments.map((st) => (
+                  displayRoster.map((st: any) => (
                     <tr key={st.id} className="hover:bg-slate-50">
-                      <td className="py-3.5 px-3 font-bold text-slate-900">{st.name}</td>
-                      <td className="py-3.5 px-3">{st.school}</td>
-                      <td className="py-3.5 px-3 text-slate-600">{st.route}</td>
+                      <td className="py-3.5 px-3 font-bold text-slate-900">
+                        <div className="flex items-center gap-2">
+                          {st.photo_url ? (
+                            <img src={st.photo_url} alt={st.name} className="w-6 h-6 rounded-full object-cover border border-slate-200" />
+                          ) : (
+                            <div className="w-6 h-6 rounded-full bg-slate-100 text-slate-600 flex items-center justify-center text-[10px] font-bold">
+                              {st.name?.substring(0, 1) || 'S'}
+                            </div>
+                          )}
+                          <span>{st.name}</span>
+                        </div>
+                      </td>
+                      <td className="py-3.5 px-3">{st.class_name || st.school || 'MyEduRide Transit'}</td>
+                      <td className="py-3.5 px-3 text-slate-600">{st.pickup_address || st.route || 'Designated Home Pickup'}</td>
                       <td className="py-3.5 px-3">
-                        <span className="bg-emerald-100 text-emerald-800 text-[10px] font-bold px-2 py-0.5 rounded-full">
-                          {st.status === 'boarded' ? `Boarded (${st.time})` : 'Pending'}
+                        <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${
+                          st.status === 'ON_BOARD' || st.status === 'boarded' ? 'bg-emerald-100 text-emerald-800' :
+                          st.status === 'DROPPED_OFF' ? 'bg-blue-100 text-blue-800' : 'bg-amber-100 text-amber-800'
+                        }`}>
+                          {st.status || 'SCHEDULED'}
                         </span>
                       </td>
                       <td className="py-3.5 px-3">
