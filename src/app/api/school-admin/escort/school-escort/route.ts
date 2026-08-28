@@ -180,7 +180,7 @@ export async function POST(request: NextRequest) {
         emergencyContact: escort_data.emergencyContact || '',
         created_at: nowUtcIso(),
       };
-
+      
       await saveEscortApplication(escortRecord);
 
       // Log to audit trail

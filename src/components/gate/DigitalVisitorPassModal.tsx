@@ -21,10 +21,11 @@ import { toast } from 'sonner';
 
 interface DigitalVisitorPassModalProps {
   visitor: any;
+  schoolName?: string;
   onClose: () => void;
 }
 
-export default function DigitalVisitorPassModal({ visitor, onClose }: DigitalVisitorPassModalProps) {
+export default function DigitalVisitorPassModal({ visitor, schoolName, onClose }: DigitalVisitorPassModalProps) {
   const [copied, setCopied] = useState(false);
 
   if (!visitor) return null;

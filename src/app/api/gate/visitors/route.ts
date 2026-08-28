@@ -3,6 +3,8 @@ import { NextRequest, NextResponse } from 'next/server';
 import { getSessionFromRequest, isAuthorizedSchoolAdmin } from '@/lib/auth/auth-server';
 import { getAdminClient } from '@/lib/supabase/admin';
 import { nowUtcIso } from '@/lib/utils/time';
+import { writeGateActivityLog } from '@/lib/gate/activity-log';
+import { writeAuditLog } from '@/lib/audit/log';
 
 export const dynamic = 'force-dynamic';
 
@@ -119,17 +121,33 @@ export async function POST(request: NextRequest) {
 
       if (insertError) throw insertError;
 
-      await supabase.from('gate_activity_log').insert({
+      await writeGateActivityLog(supabase, {
         school_id: primarySchoolId,
-        action_type: 'VISITOR_ENTRY_REGISTERED',
+        gate_officer_user_id: session.user_id,
+        action_type: 'manual_override',
         pickup_person_name: newVisitor.full_name,
         pickup_person_phone: newVisitor.phone,
         details: {
+          event: 'VISITOR_ENTRY_REGISTERED',
           visitor_id: newVisitor.id,
           digital_pass_token: digitalPassToken,
           purpose: newVisitor.purpose_of_visit,
           person_to_see: newVisitor.person_to_see,
           vehicle_plate: newVisitor.vehicle_plate,
+        },
+      });
+
+      await writeAuditLog(supabase, {
+        school_id: primarySchoolId,
+        actor_user_id: session.user_id,
+        action: 'gate_visitor_registered',
+        entity_type: 'gate_visitors',
+        entity_id: newVisitor.id,
+        details: {
+          full_name: newVisitor.full_name,
+          phone: newVisitor.phone,
+          purpose: newVisitor.purpose_of_visit,
+          digital_pass_token: digitalPassToken,
         },
       });
 
@@ -175,15 +193,26 @@ export async function POST(request: NextRequest) {
 
         if (updateError) throw updateError;
 
-        await supabase.from('gate_activity_log').insert({
+        await writeGateActivityLog(supabase, {
           school_id: primarySchoolId,
-          action_type: 'VISITOR_EXIT_LOGGED',
+          gate_officer_user_id: session.user_id,
+          action_type: 'manual_override',
           pickup_person_name: visitor.full_name,
           pickup_person_phone: visitor.phone,
           details: {
+            event: 'VISITOR_EXIT_LOGGED',
             visitor_id: visitor.id,
             duration_minutes: durationMins,
           },
+        });
+
+        await writeAuditLog(supabase, {
+          school_id: primarySchoolId,
+          actor_user_id: session.user_id,
+          action: 'gate_visitor_exit',
+          entity_type: 'gate_visitors',
+          entity_id: visitor.id,
+          details: { duration_minutes: durationMins },
         });
 
         return NextResponse.json({

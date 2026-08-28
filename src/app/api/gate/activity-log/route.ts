@@ -118,3 +118,80 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({ error: message }, { status: 500 });
   }
 }
+
+/**
+ * POST /api/gate/activity-log
+ * Records gate incidents, emergency escalations, and manual gate logs.
+ */
+export async function POST(request: NextRequest) {
+  try {
+    const session = getSessionFromRequest(request);
+    if (!session) return NextResponse.json({ error: 'Not authenticated' }, { status: 401 });
+
+    const body = await request.json();
+    const { action, school_id, category, description, student_id, details } = body;
+
+    const primarySchoolId =
+      school_id ||
+      session.roles?.find((r) => r.school_id)?.school_id;
+
+    if (!primarySchoolId) {
+      return NextResponse.json({ error: 'school_id required' }, { status: 400 });
+    }
+
+    const allowed = session.roles.some(
+      (r) =>
+        r.school_id === primarySchoolId &&
+        ['gate_officer', 'school_admin', 'super_admin'].includes(r.role)
+    );
+    if (!allowed && !sessionHasRole(session, 'super_admin')) {
+      return NextResponse.json({ error: 'Access denied' }, { status: 403 });
+    }
+
+    const supabase = getAdminClient();
+
+    const incidentCategory = category || 'Security';
+    const incidentDesc = description || 'Gate incident reported';
+
+    // 1. Write to audit_logs
+    const { writeAuditLog } = await import('@/lib/audit/log');
+    await writeAuditLog(supabase, {
+      school_id: primarySchoolId,
+      actor_user_id: session.user_id,
+      student_id: student_id || null,
+      action: 'gate_incident_reported',
+      entity_type: 'gate_activity_logs',
+      details: {
+        category: incidentCategory,
+        description: incidentDesc,
+        officer_name: (session as any).full_name || (session as any).username || 'Gate Officer',
+        ...(details || {}),
+      },
+    });
+
+    // 2. Write to gate_activity_logs
+    const { writeGateActivityLog } = await import('@/lib/gate/activity-log');
+    await writeGateActivityLog(supabase, {
+      school_id: primarySchoolId,
+      gate_officer_user_id: session.user_id,
+      student_id: student_id || null,
+      action_type: 'manual_override',
+      details: {
+        is_incident: true,
+        category: incidentCategory,
+        description: incidentDesc,
+        ...(details || {}),
+      },
+    });
+
+    return NextResponse.json({
+      success: true,
+      message: `Incident report (${incidentCategory}) recorded successfully.`,
+    });
+  } catch (err: unknown) {
+    const message = err instanceof Error ? err.message : 'Failed to record incident';
+    console.error('[gate/activity-log POST]', message);
+    return NextResponse.json({ error: message }, { status: 500 });
+  }
+}
+

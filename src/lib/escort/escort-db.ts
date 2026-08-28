@@ -270,6 +270,8 @@ export async function registerEscortApplication(data: EscortApplicationData) {
   };
 }
 
+export const saveEscortApplication = registerEscortApplication;
+
 /**
  * Fetch all submitted escort applications for City Manager
  */

@@ -33,6 +33,11 @@ import SchoolEscortView from '@/components/escort/SchoolEscortView';
 import PrivateEscortView from '@/components/escort/PrivateEscortView';
 import MyEduRideEscortView from '@/components/escort/MyEduRideEscortView';
 import SharedEscortDashboard from '@/components/escort/SharedEscortDashboard';
+import EscortTripsView from '@/components/escort/EscortTripsView';
+import EscortStudentsView from '@/components/escort/EscortStudentsView';
+import EscortWalletView from '@/components/escort/EscortWalletView';
+import EscortEmergencyView from '@/components/escort/EscortEmergencyView';
+import EscortChatView from '@/components/escort/EscortChatView';
 import PickupVerificationModal from '@/components/escort/PickupVerificationModal';
 import IncidentReportModal from '@/components/escort/IncidentReportModal';
 import EscortApprovalNotificationModal from '@/components/escort/EscortApprovalNotificationModal';
@@ -611,53 +616,113 @@ export default function EscortDashboardPage() {
         <div className="bg-slate-900 text-white px-4 py-2 flex flex-wrap items-center justify-between gap-3 border-b border-slate-800 text-xs shrink-0">
           <div className="flex items-center gap-2">
             <span className="font-extrabold text-brand-green uppercase tracking-wider text-[11px] flex items-center gap-1">
-              <ShieldCheck className="w-3.5 h-3.5 text-emerald-400" /> Approval Workflow Demo:
+              <ShieldCheck className="w-3.5 h-3.5 text-emerald-400" /> Approval Workflow:
             </span>
             <span className="text-slate-300">
-              Status: <strong className="text-emerald-400 font-mono">{approvalStatus.replace(/_/g, ' ')}</strong>
+              Status:{' '}
+              <strong className="text-emerald-400 font-mono">
+                {approvalStatus.replace(/_/g, ' ')}
+                {approvalStatus === 'ACTIVATED' && ' (VERIFIED)'}
+              </strong>
             </span>
           </div>
 
           <div className="flex items-center gap-1.5 bg-slate-800 p-1 rounded-xl text-[10px] font-bold border border-slate-700">
             <button
-              onClick={() => setApprovalStatus('PENDING_CITY_MANAGER_REVIEW')}
+              type="button"
+              disabled={approvalStatus === 'ACTIVATED'}
+              onClick={() => {
+                if (approvalStatus === 'ACTIVATED') {
+                  toast.warning('Account is officially activated. Status cannot be downgraded.');
+                  return;
+                }
+                setApprovalStatus('PENDING_CITY_MANAGER_REVIEW');
+              }}
+              title={approvalStatus === 'ACTIVATED' ? 'Disabled: Account is officially activated' : '1. Pending Review'}
               className={`px-2 py-0.5 rounded-lg transition-all ${
-                approvalStatus === 'PENDING_CITY_MANAGER_REVIEW' ? 'bg-amber-500 text-slate-950 font-bold' : 'text-slate-400 hover:text-white'
+                approvalStatus === 'ACTIVATED'
+                  ? 'opacity-30 cursor-not-allowed text-slate-500'
+                  : approvalStatus === 'PENDING_CITY_MANAGER_REVIEW'
+                  ? 'bg-amber-500 text-slate-950 font-bold'
+                  : 'text-slate-400 hover:text-white cursor-pointer'
               }`}
             >
               1. Pending Review
             </button>
             <button
-              onClick={() => setApprovalStatus('CORRECTION_REQUESTED')}
+              type="button"
+              disabled={approvalStatus === 'ACTIVATED'}
+              onClick={() => {
+                if (approvalStatus === 'ACTIVATED') {
+                  toast.warning('Account is officially activated. Status cannot be downgraded.');
+                  return;
+                }
+                setApprovalStatus('CORRECTION_REQUESTED');
+              }}
+              title={approvalStatus === 'ACTIVATED' ? 'Disabled: Account is officially activated' : '2. Correction'}
               className={`px-2 py-0.5 rounded-lg transition-all ${
-                approvalStatus === 'CORRECTION_REQUESTED' ? 'bg-amber-500 text-slate-950 font-bold' : 'text-slate-400 hover:text-white'
+                approvalStatus === 'ACTIVATED'
+                  ? 'opacity-30 cursor-not-allowed text-slate-500'
+                  : approvalStatus === 'CORRECTION_REQUESTED'
+                  ? 'bg-amber-500 text-slate-950 font-bold'
+                  : 'text-slate-400 hover:text-white cursor-pointer'
               }`}
             >
               2. Correction
             </button>
             <button
-              onClick={() => setApprovalStatus('REJECTED')}
+              type="button"
+              disabled={approvalStatus === 'ACTIVATED'}
+              onClick={() => {
+                if (approvalStatus === 'ACTIVATED') {
+                  toast.warning('Account is officially activated. Status cannot be downgraded.');
+                  return;
+                }
+                setApprovalStatus('REJECTED');
+              }}
+              title={approvalStatus === 'ACTIVATED' ? 'Disabled: Account is officially activated' : '3. Rejected'}
               className={`px-2 py-0.5 rounded-lg transition-all ${
-                approvalStatus === 'REJECTED' ? 'bg-red-600 text-white font-bold' : 'text-slate-400 hover:text-white'
+                approvalStatus === 'ACTIVATED'
+                  ? 'opacity-30 cursor-not-allowed text-slate-500'
+                  : approvalStatus === 'REJECTED'
+                  ? 'bg-red-600 text-white font-bold'
+                  : 'text-slate-400 hover:text-white cursor-pointer'
               }`}
             >
               3. Rejected
             </button>
             <button
-              onClick={() => setApprovalStatus('CITY_MANAGER_APPROVED')}
+              type="button"
+              disabled={approvalStatus === 'ACTIVATED'}
+              onClick={() => {
+                if (approvalStatus === 'ACTIVATED') {
+                  toast.warning('Account is officially activated. Status cannot be downgraded.');
+                  return;
+                }
+                setApprovalStatus('CITY_MANAGER_APPROVED');
+              }}
+              title={approvalStatus === 'ACTIVATED' ? 'Disabled: Account is officially activated' : '4. CM Approved'}
               className={`px-2 py-0.5 rounded-lg transition-all ${
-                approvalStatus === 'CITY_MANAGER_APPROVED' ? 'bg-brand-green text-white font-bold shadow-xs' : 'text-slate-400 hover:text-white'
+                approvalStatus === 'ACTIVATED'
+                  ? 'opacity-30 cursor-not-allowed text-slate-500'
+                  : approvalStatus === 'CITY_MANAGER_APPROVED'
+                  ? 'bg-brand-green text-white font-bold shadow-xs'
+                  : 'text-slate-400 hover:text-white cursor-pointer'
               }`}
             >
               4. CM Approved
             </button>
             <button
+              type="button"
               onClick={() => setApprovalStatus('ACTIVATED')}
-              className={`px-2 py-0.5 rounded-lg transition-all ${
-                approvalStatus === 'ACTIVATED' ? 'bg-blue-600 text-white font-bold shadow-xs' : 'text-slate-400 hover:text-white'
+              className={`px-2 py-0.5 rounded-lg transition-all cursor-pointer ${
+                approvalStatus === 'ACTIVATED'
+                  ? 'bg-emerald-500 text-white font-black shadow-xs flex items-center gap-1'
+                  : 'text-slate-400 hover:text-white'
               }`}
             >
-              5. Activated
+              {approvalStatus === 'ACTIVATED' && <CheckCircle2 size={11} className="text-white" />}
+              <span>5. Activated</span>
             </button>
           </div>
         </div>
@@ -665,37 +730,98 @@ export default function EscortDashboardPage() {
         {/* MAIN CANVAS BODY */}
         <main className="flex-1 p-4 md:p-6 space-y-6">
           {approvalStatus === 'ACTIVATED' ? (
-            <SharedEscortDashboard
-              session={session}
-              escortData={escortData}
-              liveDashboardData={liveDashboardData}
-              onRefreshData={fetchLiveData}
-              onOpenVerificationModal={handleOpenVerification}
-              onOpenIncidentModal={() => setIncidentModalOpen(true)}
-              onOpenAccountModal={() => setShowAccountModal(true)}
-              isAvailableForOtherSchools={liveDashboardData?.escort?.availableForOtherSchools ?? escortData?.availableForOtherSchools ?? true}
-              onToggleAvailableForOtherSchools={async () => {
-                const nextVal = !(liveDashboardData?.escort?.availableForOtherSchools ?? escortData?.availableForOtherSchools ?? true);
-                setEscortData({ ...escortData, availableForOtherSchools: nextVal });
-                if (liveDashboardData?.escort) {
-                  setLiveDashboardData({
-                    ...liveDashboardData,
-                    escort: { ...liveDashboardData.escort, availableForOtherSchools: nextVal },
-                  });
-                }
-                toast.success(`Status updated: ${nextVal ? 'Available for other schools' : 'Primary school only'}`);
-                try {
-                  await fetch('/api/escorts/dashboard-live', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ action: 'toggle_availability', availableForOtherSchools: nextVal, appId: escortData?.id }),
-                  });
-                  fetchLiveData();
-                } catch (e) {
-                  console.warn('Availability toggle DB sync warning:', e);
-                }
-              }}
-            />
+            <>
+              {activeNav === 'dashboard' && (
+                <SharedEscortDashboard
+                  session={session}
+                  escortData={escortData}
+                  liveDashboardData={liveDashboardData}
+                  onRefreshData={fetchLiveData}
+                  onOpenVerificationModal={handleOpenVerification}
+                  onOpenIncidentModal={() => setIncidentModalOpen(true)}
+                  onOpenAccountModal={() => setShowAccountModal(true)}
+                  isAvailableForOtherSchools={liveDashboardData?.escort?.availableForOtherSchools ?? escortData?.availableForOtherSchools ?? true}
+                  onToggleAvailableForOtherSchools={async () => {
+                    const nextVal = !(liveDashboardData?.escort?.availableForOtherSchools ?? escortData?.availableForOtherSchools ?? true);
+                    setEscortData({ ...escortData, availableForOtherSchools: nextVal });
+                    if (liveDashboardData?.escort) {
+                      setLiveDashboardData({
+                        ...liveDashboardData,
+                        escort: { ...liveDashboardData.escort, availableForOtherSchools: nextVal },
+                      });
+                    }
+                    toast.success(`Status updated: ${nextVal ? 'Available for other schools' : 'Primary school only'}`);
+                    try {
+                      await fetch('/api/escorts/dashboard-live', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ action: 'toggle_availability', availableForOtherSchools: nextVal, appId: escortData?.id }),
+                      });
+                      fetchLiveData();
+                    } catch (e) {
+                      console.warn('Availability toggle DB sync warning:', e);
+                    }
+                  }}
+                />
+              )}
+
+              {(activeNav === 'trips' || activeNav === 'schedule' || activeNav === 'reports') && (
+                <EscortTripsView
+                  liveDashboardData={liveDashboardData}
+                  onRefreshData={fetchLiveData}
+                  onOpenVerificationModal={handleOpenVerification}
+                  onOpenIncidentModal={() => setIncidentModalOpen(true)}
+                />
+              )}
+
+              {activeNav === 'students' && (
+                <EscortStudentsView
+                  liveDashboardData={liveDashboardData}
+                  onOpenVerificationModal={handleOpenVerification}
+                />
+              )}
+
+              {activeNav === 'shared-ride' && (
+                <MyEduRideEscortView
+                  onOpenVerificationModal={handleOpenVerification}
+                  onOpenIncidentModal={() => setIncidentModalOpen(true)}
+                />
+              )}
+
+              {(activeNav === 'wallet' || activeNav === 'earnings' || activeNav === 'edusave' || activeNav === 'eduinsured') && (
+                <EscortWalletView
+                  liveDashboardData={liveDashboardData}
+                  onRefreshData={fetchLiveData}
+                />
+              )}
+
+              {activeNav === 'chat' && (
+                <EscortChatView
+                  liveDashboardData={liveDashboardData}
+                />
+              )}
+
+              {(activeNav === 'city-manager' || activeNav === 'emergency') && (
+                <EscortEmergencyView
+                  liveDashboardData={liveDashboardData}
+                  onRefreshData={fetchLiveData}
+                />
+              )}
+
+              {activeNav === 'settings' && (
+                <div className="bg-white rounded-3xl p-6 border border-slate-200 shadow-sm space-y-4">
+                  <h3 className="font-black text-lg text-slate-900">Escort Profile &amp; Settings</h3>
+                  <p className="text-xs text-slate-500">Manage your duty preferences, security credentials, and vehicle settings.</p>
+                  <button
+                    type="button"
+                    onClick={() => setShowAccountModal(true)}
+                    className="px-4 py-2.5 rounded-2xl bg-emerald-600 hover:bg-emerald-700 text-white font-extrabold text-xs shadow-xs cursor-pointer"
+                  >
+                    Open Account &amp; Password Settings
+                  </button>
+                </div>
+              )}
+            </>
           ) : (
             <div className="max-w-2xl mx-auto my-8 bg-white rounded-3xl p-6 sm:p-8 shadow-2xl border border-slate-200 text-center animate-in fade-in">
               
@@ -887,6 +1013,40 @@ export default function EscortDashboardPage() {
 
       {showAccountModal && (
         <AccountSettingsModal onClose={() => setShowAccountModal(false)} />
+      )}
+
+      {/* NOTIFICATIONS DRAWER */}
+      {notificationsOpen && (
+        <div className="fixed inset-0 z-50 bg-slate-950/50 flex justify-end">
+          <div className="bg-white w-full max-w-md h-full shadow-2xl p-5 overflow-y-auto flex flex-col">
+            <div className="flex items-center justify-between pb-3 border-b border-slate-100 mb-4">
+              <h3 className="font-extrabold text-base text-slate-900 flex items-center gap-2">
+                <Bell size={18} className="text-emerald-600" /> Notifications &amp; Alerts
+              </h3>
+              <button onClick={() => setNotificationsOpen(false)} className="text-slate-400 hover:text-slate-600 cursor-pointer">
+                <X size={20} />
+              </button>
+            </div>
+            <div className="space-y-2.5 flex-1">
+              {(liveDashboardData?.notifications?.list || []).map((n: any) => (
+                <div key={n.id} className="p-3.5 bg-slate-50 rounded-2xl border border-slate-100 space-y-1">
+                  <p className="font-extrabold text-slate-900 text-xs">{n.title || 'Transit Notification'}</p>
+                  <p className="text-[11px] text-slate-600">{n.message || n.body || 'Operational update received.'}</p>
+                  <span className="text-[9px] text-slate-400 font-mono">
+                    {n.created_at ? new Date(n.created_at).toLocaleTimeString() : 'Recent'}
+                  </span>
+                </div>
+              ))}
+              {(liveDashboardData?.notifications?.list || []).length === 0 && (
+                <div className="py-16 text-center text-slate-400 text-xs">
+                  <CheckCircle2 size={32} className="mx-auto text-emerald-500 mb-2" />
+                  <p className="font-bold text-slate-700">No New Notifications</p>
+                  <p className="text-[11px] text-slate-400 mt-0.5">You are fully up to date.</p>
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
       )}
     </div>
   );
