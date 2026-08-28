@@ -136,6 +136,57 @@ export async function GET(request: NextRequest) {
 
     // 4. Fetch Assigned Students & Pickup Requests
     let assignedStudents: any[] = [];
+
+    // 4.1 Query City Manager escort_assignments for this escort
+    let liveAssignments: any[] = [];
+    const escortAppId = escortProfile?.id;
+    const escortUserId = session?.user_id;
+
+    try {
+      if (escortAppId || escortUserId) {
+        let query = supabase.from('escort_assignments').select('*');
+        if (escortAppId && escortUserId) {
+          query = query.or(`escort_application_id.eq.${escortAppId},escort_application_id.eq.${escortUserId}`);
+        } else if (escortAppId) {
+          query = query.eq('escort_application_id', escortAppId);
+        } else {
+          query = query.eq('escort_application_id', escortUserId);
+        }
+
+        const { data: assignmentsData } = await query
+          .order('created_at', { ascending: false })
+          .limit(20);
+
+        if (assignmentsData && assignmentsData.length > 0) {
+          liveAssignments = assignmentsData;
+        }
+      }
+    } catch (err) {
+      console.warn('[dashboard-live] escort_assignments query notice:', err);
+    }
+
+    // 4.2 Fetch linked transport_bookings
+    const assignmentBookingIds = liveAssignments.map((a) => a.booking_id).filter(Boolean);
+    let liveBookings: any[] = [];
+    if (assignmentBookingIds.length > 0) {
+      try {
+        const { data: bData } = await supabase
+          .from('transport_bookings')
+          .select(`
+            *,
+            student:students(id, first_name, last_name, photo_url, school_classes(name)),
+            parent:user_profiles!user_id(full_name, phone)
+          `)
+          .in('id', assignmentBookingIds);
+
+        if (bData) {
+          liveBookings = bData;
+        }
+      } catch (err) {
+        console.warn('[dashboard-live] transport_bookings query notice:', err);
+      }
+    }
+
     if (schoolId) {
       // Fetch route assigned students or active school students
       let studentIds: string[] = [];
@@ -151,6 +202,10 @@ export async function GET(request: NextRequest) {
         }
       }
 
+      // Merge student IDs from City Manager escort_assignments
+      const cmStudentIds = liveAssignments.map((a) => a.student_id).filter(Boolean);
+      const allTargetStudentIds = Array.from(new Set([...studentIds, ...cmStudentIds]));
+
       let studentsQuery = supabase
         .from('students')
         .select(`
@@ -160,8 +215,8 @@ export async function GET(request: NextRequest) {
         .eq('school_id', schoolId)
         .eq('is_active', true);
 
-      if (studentIds.length > 0) {
-        studentsQuery = studentsQuery.in('id', studentIds);
+      if (allTargetStudentIds.length > 0) {
+        studentsQuery = studentsQuery.in('id', allTargetStudentIds);
       } else {
         studentsQuery = studentsQuery.limit(10);
       }
@@ -312,6 +367,8 @@ export async function GET(request: NextRequest) {
         eduInsuRedActive: true,
       },
       emergencies: activeEmergencyDispatches,
+      assignments: liveAssignments,
+      bookings: liveBookings,
       stats: {
         totalTrips: 184,
         totalStudents: studentManifest.length,

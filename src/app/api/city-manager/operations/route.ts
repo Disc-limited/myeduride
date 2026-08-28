@@ -159,6 +159,32 @@ export async function POST(request: NextRequest) {
 
       if (updateErr) throw updateErr;
 
+      // Insert active record into escort_assignments table for live Escort Dashboard tracking
+      const { data: newAssignment } = await db
+        .from('escort_assignments')
+        .insert({
+          booking_id: booking_id,
+          escort_application_id: escort_id,
+          school_id: updatedBooking?.school_id || null,
+          student_id: updatedBooking?.student_id || null,
+          assignment_type: 'standard',
+          assigned_by: session.user_id,
+          notes: notes || 'Assigned & Approved by City Manager',
+          status: 'active',
+          created_at: nowUtcIso(),
+          updated_at: nowUtcIso(),
+        })
+        .select()
+        .maybeSingle();
+
+      if (newAssignment) {
+        try {
+          await notifyAssignment(db, newAssignment, 'assigned');
+        } catch (e) {
+          console.warn('[city-manager operations] notifyAssignment warning:', e);
+        }
+      }
+
       await audit(db, session.user_id, 'PARENT_BOOKING_APPROVED', 'transport_booking', booking_id, {
         escort_id,
         security_pin: securityPin,
@@ -168,6 +194,7 @@ export async function POST(request: NextRequest) {
         success: true,
         message: `Booking approved and assigned to ${escortName}. Parent notified with Security PIN: ${securityPin}`,
         booking: updatedBooking,
+        assignment: newAssignment,
       });
     }
 

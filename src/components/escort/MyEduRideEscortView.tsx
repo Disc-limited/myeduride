@@ -1,7 +1,7 @@
 // @ts-nocheck
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import {
   Shield,
   Users,
@@ -43,6 +43,17 @@ export default function MyEduRideEscortView({
 
   // Student assignments across schools from live database
   const [discAssignments, setDiscAssignments] = useState<any[]>([]);
+
+  useEffect(() => {
+    fetch('/api/escorts/dashboard-live')
+      .then((res) => res.json())
+      .then((data) => {
+        if (data?.success && data?.assignments) {
+          setDiscAssignments(data.assignments);
+        }
+      })
+      .catch((err) => console.warn('[MyEduRideEscortView] fetch notice:', err));
+  }, []);
 
   // Operational metrics
   const operationsMetrics = {
