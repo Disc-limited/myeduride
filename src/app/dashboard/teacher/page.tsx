@@ -23,6 +23,8 @@ import { useFileUpload } from '@/hooks/useFileUpload';
 import { ChatAttachmentPreview } from '@/components/chat/ChatAttachmentPreview';
 import { ChatMediaBubble } from '@/components/chat/ChatMediaBubble';
 import { VoiceRecordButton } from '@/components/chat/VoiceRecordButton';
+import SchoolNoticeBanner from '@/components/shared/SchoolNoticeBanner';
+import SchoolNoticesInboxView from '@/components/shared/SchoolNoticesInboxView';
 
 export default function TeacherDashboard() {
   const [students, setStudents] = useState([]);
@@ -438,6 +440,14 @@ export default function TeacherDashboard() {
 
   return (
     <div className="space-y-6 pb-20 sm:pb-8">
+      {/* OFFICIAL SCHOOL NOTICES & PUBLIC HOLIDAY ADVISORIES */}
+      <SchoolNoticeBanner role="teachers" schoolId={schoolId} />
+
+      {activeTab === 'notices' ? (
+        <SchoolNoticesInboxView role="teachers" schoolId={schoolId} />
+      ) : (
+        <>
+
       {/* Unassigned Class Warning Banner */}
       {isUnassigned && (
         <div className="bg-amber-500/10 border border-amber-500/30 rounded-3xl p-4 sm:p-5 flex items-start gap-4 text-amber-900 shadow-sm animate-in fade-in">
@@ -1217,6 +1227,8 @@ export default function TeacherDashboard() {
           </button>
         </div>
       </div>
+      </>
+      )}
 
       {/* 6. Mobile Bottom Navigation Bar */}
       <div className="fixed bottom-0 left-0 right-0 z-40 bg-white border-t border-slate-200 py-2 px-4 flex items-center justify-around lg:hidden shadow-lg">

@@ -37,6 +37,8 @@ import { ChatAttachmentPreview } from '@/components/chat/ChatAttachmentPreview';
 import { ChatMediaBubble } from '@/components/chat/ChatMediaBubble';
 import { VoiceRecordButton } from '@/components/chat/VoiceRecordButton';
 import { AccountSettingsModal } from '@/components/shared/AccountSettingsModal';
+import SchoolNoticeBanner from '@/components/shared/SchoolNoticeBanner';
+import SchoolNoticesInboxView from '@/components/shared/SchoolNoticesInboxView';
 
 // Revamped Dashboard Components
 import ParentHeader from '@/components/parent/ParentHeader';
@@ -608,7 +610,11 @@ export default function ParentDashboard() {
         />
         {/* Main Content Dashboard - EXACT 9-COL / 3-COL STRUCTURE */}
         <main className="flex-1 p-4 sm:p-6 lg:p-6 overflow-y-auto">
-          {activeTab === 'safety' || activeTab === 'edrive' ? (
+          {activeTab === 'notices' ? (
+            <div className="max-w-[1600px] mx-auto space-y-5">
+              <SchoolNoticesInboxView role="parents" />
+            </div>
+          ) : activeTab === 'safety' || activeTab === 'edrive' ? (
             <div className="max-w-[1600px] mx-auto space-y-5">
               <SafetyConnectView
                 initialTab={activeTab === 'edrive' ? 'edrive' : safetyPillar}
@@ -622,6 +628,9 @@ export default function ParentDashboard() {
               {/* LEFT & CENTER MAIN AREA (9 COLUMNS out of 12) */}
               <div className="lg:col-span-9 space-y-5 min-w-0">
                 
+                {/* OFFICIAL SCHOOL NOTICES & PUBLIC HOLIDAY ADVISORIES */}
+                <SchoolNoticeBanner role="parents" />
+
                 {/* ROW 1: Hero Greeting (2/3) + Live Journey (1/3) */}
                 <div className="grid grid-cols-1 md:grid-cols-12 gap-5">
                   <div className="md:col-span-7 lg:col-span-7">

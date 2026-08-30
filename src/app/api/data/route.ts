@@ -464,6 +464,8 @@ export async function POST(request: NextRequest) {
       }
 
       case 'get_staff_dashboard': {
+        let schoolId: string | null = null;
+
         const { data: role } = await supabase
           .from('user_school_roles')
           .select('school_id')
@@ -473,11 +475,41 @@ export async function POST(request: NextRequest) {
           .limit(1)
           .maybeSingle();
 
-        if (!role?.school_id) {
-          return NextResponse.json({ error: 'No staff school' }, { status: 403 });
+        schoolId = role?.school_id || null;
+
+        if (!schoolId && session.user_id) {
+          const { data: staff } = await supabase
+            .from('staff_profiles')
+            .select('school_id')
+            .or(`user_id.eq.${session.user_id}${session.email ? `,email.eq.${session.email}` : ''}`)
+            .limit(1)
+            .maybeSingle();
+          if (staff?.school_id) schoolId = staff.school_id;
         }
 
-        const schoolId = role.school_id;
+        if (!schoolId && session.user_id) {
+          const { data: prof } = await supabase
+            .from('user_profiles')
+            .select('school_id, primary_school_id')
+            .eq('id', session.user_id)
+            .maybeSingle();
+          schoolId = prof?.school_id || prof?.primary_school_id || null;
+        }
+
+        if (!schoolId && session.user_id) {
+          const { data: anyRole } = await supabase
+            .from('user_school_roles')
+            .select('school_id')
+            .eq('user_id', session.user_id)
+            .eq('is_active', true)
+            .limit(1)
+            .maybeSingle();
+          schoolId = anyRole?.school_id || null;
+        }
+
+        if (!schoolId) {
+          return NextResponse.json({ error: 'No staff school' }, { status: 403 });
+        }
         
         // FIXED: Safety fallback from .single() to .maybeSingle()
         const { data: school } = await supabase.from('schools').select('name').eq('id', schoolId).maybeSingle();

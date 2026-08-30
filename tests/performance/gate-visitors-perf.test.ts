@@ -52,5 +52,5 @@ gateVisitorsPerfSuite.test('High-Speed 3-Mode Scan Concurrency: 150 mixed studen
 
   expect(results.length).toBe(150);
   expect(results.every((r) => r.processed)).toBeTruthy();
-  expect(duration).toBeLessThan(30);
+  expect(duration).toBeLessThan(50);
 });

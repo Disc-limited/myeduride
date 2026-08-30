@@ -19,11 +19,13 @@ import {
   UserCheck,
   Sparkles,
   Navigation,
+  Megaphone,
 } from 'lucide-react';
 import { toast } from 'sonner';
 
 export type ParentTabType =
   | 'dashboard'
+  | 'notices'
   | 'children'
   | 'safety'
   | 'edrive'
@@ -41,6 +43,7 @@ interface ParentSidebarProps {
   activeSafetyPillar?: SafetyPillarTab;
   onSelectSafetyPillar?: (pillar: SafetyPillarTab) => void;
   unreadChatCount?: number;
+  unreadNoticesCount?: number;
   isCollapsed?: boolean;
   onToggleCollapse?: () => void;
   isMobileDrawer?: boolean;
@@ -53,6 +56,7 @@ export default function ParentSidebar({
   activeSafetyPillar = 'school_escort',
   onSelectSafetyPillar,
   unreadChatCount = 0,
+  unreadNoticesCount = 1,
   isCollapsed = false,
   onToggleCollapse,
   isMobileDrawer = false,
@@ -74,6 +78,7 @@ export default function ParentSidebar({
         { id: 'edrive', label: 'E-Drive Tracking', pillar: 'edrive' as SafetyPillarTab, icon: Navigation },
       ],
     },
+    { id: 'notices', label: 'School Notices', icon: Megaphone, badge: unreadNoticesCount > 0 ? unreadNoticesCount : undefined },
     { id: 'children', label: 'My Children', icon: Users },
     { id: 'wallet', label: 'Wallet', icon: Wallet },
     { id: 'reports', label: 'Reports', icon: BarChart3 },

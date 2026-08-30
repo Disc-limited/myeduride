@@ -40,6 +40,7 @@ import {
   Volume2
 } from 'lucide-react';
 import { toast } from 'sonner';
+import SchoolNoticeBanner from '@/components/shared/SchoolNoticeBanner';
 
 interface SchoolEscortViewProps {
   onOpenVerificationModal: (student?: any) => void;
@@ -88,6 +89,9 @@ export default function SchoolEscortView({
 
   return (
     <div className="space-y-5">
+      {/* OFFICIAL SCHOOL NOTICES & PUBLIC HOLIDAY ADVISORIES */}
+      <SchoolNoticeBanner role="escorts" schoolId={liveDashboardData?.escort?.school_id || liveDashboardData?.escort?.primary_school_id} />
+
       {/* 1. TODAY'S ASSIGNMENT BAR */}
       <div className="bg-white rounded-2xl border border-slate-200/80 p-4 shadow-sm space-y-3">
         <div className="flex items-center justify-between">

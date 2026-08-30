@@ -23,6 +23,7 @@ import {
   FileText
 } from 'lucide-react';
 import { toast } from 'sonner';
+import SchoolNoticeBanner from '@/components/shared/SchoolNoticeBanner';
 
 interface MyEduRideEscortViewProps {
   liveDashboardData?: any;
@@ -95,6 +96,9 @@ export default function MyEduRideEscortView({
           <span>Live Operations Link Active</span>
         </div>
       </div>
+
+      {/* OFFICIAL SCHOOL NOTICES & PUBLIC HOLIDAY ADVISORIES */}
+      <SchoolNoticeBanner role="escorts" schoolId={liveDashboardData?.escort?.school_id || liveDashboardData?.escort?.primary_school_id} />
 
       {/* SECTION TABS HEADER */}
       <div className="bg-white rounded-2xl border border-slate-200/80 p-2 shadow-sm flex flex-wrap gap-1.5 text-xs font-semibold">

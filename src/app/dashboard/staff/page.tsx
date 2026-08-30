@@ -47,6 +47,8 @@ import {
   Camera
 } from 'lucide-react';
 import { toast } from 'sonner';
+import SchoolNoticeBanner from '@/components/shared/SchoolNoticeBanner';
+import SchoolNoticesInboxView from '@/components/shared/SchoolNoticesInboxView';
 
 export default function StaffDashboardPage() {
   // Main session & school state
@@ -97,6 +99,24 @@ export default function StaffDashboardPage() {
   });
   const [notificationsOpen, setNotificationsOpen] = useState(false);
   const [selectedAnnouncement, setSelectedAnnouncement] = useState<any>(null);
+  const [realNotices, setRealNotices] = useState<any[]>([]);
+
+  useEffect(() => {
+    const loadNotices = () => {
+      fetch(`/api/school-notices/active?user_role=teachers&_t=${Date.now()}`, { cache: 'no-store' })
+        .then((res) => res.json())
+        .then((data) => {
+          if (data?.success && data?.notices) {
+            setRealNotices(data.notices);
+          }
+        })
+        .catch((err) => console.warn('[staff-dashboard] notices fetch error:', err));
+    };
+
+    loadNotices();
+    const interval = setInterval(loadNotices, 8000);
+    return () => clearInterval(interval);
+  }, [schoolId]);
 
   // EduChat States
   const [students, setStudents] = useState<any[]>([]);
@@ -482,39 +502,50 @@ export default function StaffDashboardPage() {
     );
   }
 
-  // Sample static announcements
-  const announcementsList = [
-    {
-      id: 1,
-      title: 'Staff Meeting',
-      category: 'Meeting',
-      icon: Megaphone,
-      iconBg: 'bg-blue-50 text-blue-600',
-      description: 'There will be a staff meeting on Monday, 26th May 2026 at 10:00 AM.',
-      time: '2h ago',
-      date: '26th May 2026',
-    },
-    {
-      id: 2,
-      title: 'Safety Update',
-      category: 'Security',
-      icon: ShieldCheck,
-      iconBg: 'bg-emerald-50 text-emerald-600',
-      description: 'Please ensure you adhere to all safety protocols while on campus.',
-      time: 'Yesterday',
-      date: '22nd May 2026',
-    },
-    {
-      id: 3,
-      title: 'Public Holiday',
-      category: 'Calendar',
-      icon: Calendar,
-      iconBg: 'bg-amber-50 text-amber-600',
-      description: 'School will be closed on Thursday, 29th May 2026 for Public Holiday.',
-      time: '2d ago',
-      date: '29th May 2026',
-    },
-  ];
+  // Dynamic announcements list from DB school_notices with static fallbacks
+  const announcementsList = realNotices.length > 0
+    ? realNotices.map((n: any) => ({
+        id: n.id,
+        title: n.title,
+        category: n.category === 'public_holiday' ? 'Public Holiday' : n.category === 'urgent' ? 'Urgent' : 'General',
+        icon: n.category === 'public_holiday' ? Calendar : n.category === 'urgent' ? AlertTriangle : Megaphone,
+        iconBg: n.category === 'public_holiday' ? 'bg-amber-50 text-amber-600' : n.category === 'urgent' ? 'bg-red-50 text-red-600' : 'bg-emerald-50 text-emerald-600',
+        description: n.message,
+        time: n.created_at ? formatTimeLagos(n.created_at) : 'Recent',
+        date: n.created_at ? new Date(n.created_at).toLocaleDateString() : 'Today',
+      }))
+    : [
+        {
+          id: 1,
+          title: 'Staff Meeting',
+          category: 'Meeting',
+          icon: Megaphone,
+          iconBg: 'bg-blue-50 text-blue-600',
+          description: 'There will be a staff meeting on Monday, 26th May 2026 at 10:00 AM.',
+          time: '2h ago',
+          date: '26th May 2026',
+        },
+        {
+          id: 2,
+          title: 'Safety Update',
+          category: 'Security',
+          icon: ShieldCheck,
+          iconBg: 'bg-emerald-50 text-emerald-600',
+          description: 'Please ensure you adhere to all safety protocols while on campus.',
+          time: 'Yesterday',
+          date: '22nd May 2026',
+        },
+        {
+          id: 3,
+          title: 'Public Holiday',
+          category: 'Calendar',
+          icon: Calendar,
+          iconBg: 'bg-amber-50 text-amber-600',
+          description: 'School will be closed on Thursday, 29th May 2026 for Public Holiday.',
+          time: '2d ago',
+          date: '29th May 2026',
+        },
+      ];
 
   // Sidebar Items Definition
   const sidebarItems = [
@@ -796,6 +827,9 @@ export default function StaffDashboardPage() {
 
           {/* MAIN TAB CONTENT CONTAINER */}
           <div className="p-4 md:p-6 w-full max-w-full mx-auto space-y-6">
+            {/* OFFICIAL SCHOOL NOTICES & PUBLIC HOLIDAY ADVISORIES */}
+            <SchoolNoticeBanner role="teachers" schoolId={schoolId} />
+
             {/* NOTIFICATIONS DROPDOWN POPUP */}
             {notificationsOpen && (
               <div className="bg-white rounded-2xl shadow-xl border border-slate-200 p-4 max-w-sm w-full absolute right-6 top-20 z-50 space-y-3">
@@ -1759,44 +1793,7 @@ export default function StaffDashboardPage() {
 
             {/* TAB 5: ANNOUNCEMENTS */}
             {activeTab === 'announcements' && (
-              <div className="bg-white rounded-2xl border border-slate-200 p-6 shadow-sm space-y-6">
-                <div className="flex items-center justify-between border-b border-slate-100 pb-4">
-                  <div>
-                    <h3 className="font-extrabold text-xl text-slate-900">Staff Announcements</h3>
-                    <p className="text-xs text-slate-500">Official circulars and school updates</p>
-                  </div>
-                </div>
-
-                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                  {announcementsList.map((item) => {
-                    const Icon = item.icon;
-                    return (
-                      <div
-                        key={item.id}
-                        onClick={() => setSelectedAnnouncement(item)}
-                        className="bg-slate-50 hover:bg-slate-100 border border-slate-200 rounded-2xl p-5 cursor-pointer transition-all space-y-3"
-                      >
-                        <div className="flex items-center justify-between">
-                          <div className={`p-2.5 rounded-xl ${item.iconBg}`}>
-                            <Icon size={20} />
-                          </div>
-                          <span className="text-xs text-slate-400 font-medium">{item.time}</span>
-                        </div>
-                        <div>
-                          <h4 className="font-bold text-base text-slate-900">{item.title}</h4>
-                          <p className="text-xs text-slate-600 mt-1 line-clamp-3 leading-relaxed">
-                            {item.description}
-                          </p>
-                        </div>
-                        <div className="pt-2 border-t border-slate-200/60 flex items-center justify-between text-xs text-emerald-600 font-bold">
-                          <span>{item.date}</span>
-                          <ArrowRight size={14} />
-                        </div>
-                      </div>
-                    );
-                  })}
-                </div>
-              </div>
+              <SchoolNoticesInboxView role="teachers" schoolId={schoolId} />
             )}
 
             {/* TAB 6: MY PROFILE */}

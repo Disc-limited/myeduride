@@ -12,10 +12,10 @@ export default function NotificationsInbox({ schoolId, compact = false }) {
   const [loading, setLoading] = useState(true);
 
   const load = useCallback(async () => {
-    if (!schoolId) return;
     setLoading(true);
     try {
-      const params = new URLSearchParams({ school_id: schoolId, limit: '80' });
+      const params = new URLSearchParams({ limit: '80' });
+      if (schoolId) params.set('school_id', schoolId);
       const res = await fetch(`/api/notifications/inbox?${params}`, { credentials: 'include' });
       const json = await res.json();
       if (!res.ok) throw new Error(json.error);

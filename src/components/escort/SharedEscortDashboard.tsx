@@ -48,6 +48,7 @@ import {
   Radio
 } from 'lucide-react';
 import { toast } from 'sonner';
+import SchoolNoticeBanner from '@/components/shared/SchoolNoticeBanner';
 
 interface SharedEscortDashboardProps {
   session?: any;
@@ -124,6 +125,8 @@ export default function SharedEscortDashboard({
 
   return (
     <div className="space-y-6 font-sans text-slate-800 text-xs">
+      {/* OFFICIAL SCHOOL NOTICES & PUBLIC HOLIDAY ADVISORIES */}
+      <SchoolNoticeBanner role="escorts" schoolId={liveDashboardData?.escort?.school_id || liveDashboardData?.escort?.primary_school_id || escortData?.school_id || escortData?.primary_school_id} />
 
       {/* ========================================================================= */}
       {/* 1. HERO ROW: GIGO/MIGO AI BANNER + TODAY'S TRIP SUMMARY */}

@@ -42,6 +42,8 @@ import {
   Menu,
 } from 'lucide-react';
 import NotificationsInbox from '@/components/notifications/NotificationsInbox';
+import SchoolNoticeBanner from '@/components/shared/SchoolNoticeBanner';
+import SchoolNoticesInboxView from '@/components/shared/SchoolNoticesInboxView';
 import StudentPickupVerify from '@/components/pickup/StudentPickupVerify';
 import StudentIdScanPanel from '@/components/gate/StudentIdScanPanel';
 import StaffIdScanPanel from '@/components/gate/StaffIdScanPanel';
@@ -374,6 +376,7 @@ export default function GateOfficerDashboard() {
                 { id: 'ready-queue', label: 'Ready for Pickup', icon: Car, action: () => setActiveNav('ready-queue') },
                 { id: 'my-reports', label: 'Gate Activity Log', icon: BarChart3, action: () => setActiveNav('my-reports') },
                 { id: 'audit-log', label: 'Attendance Audit', icon: FileText, action: () => setActiveNav('audit-log') },
+                { id: 'school-notices', label: 'School Notices', icon: Megaphone, action: () => setActiveNav('school-notices') },
                 { id: 'incident-reports', label: 'Incident Reports', icon: AlertCircle, action: () => setShowIncidentModal(true) },
                 { id: 'educhat', label: 'EduChat', icon: MessageSquare, badge: '7', action: () => { setActiveNav('dashboard'); setTimeout(() => document.getElementById('educhat-widget')?.scrollIntoView({ behavior: 'smooth' }), 50); } },
                 { id: 'settings', label: 'Settings', icon: Settings },
@@ -545,6 +548,8 @@ export default function GateOfficerDashboard() {
               </div>
               <AttendanceSignLog schoolId={schoolId} title="Sign In / Out Audit Log" searchable={true} />
             </div>
+          ) : activeNav === 'school-notices' ? (
+            <SchoolNoticesInboxView role="gate_officers" schoolId={schoolId} />
           ) : activeNav === 'ready-queue' ? (
             <div className="bg-white rounded-2xl p-6 border border-slate-200 shadow-xs space-y-4">
               <div className="flex items-center justify-between border-b border-slate-100 pb-3">
@@ -616,6 +621,9 @@ export default function GateOfficerDashboard() {
                   </button>
                 </div>
               </div>
+
+              {/* OFFICIAL SCHOOL NOTICES & PUBLIC HOLIDAY ADVISORIES */}
+              <SchoolNoticeBanner role="gate_officers" schoolId={schoolId} className="mb-4" />
 
               {/* ROW 1: 7 KPI STAT CARDS */}
               <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-7 gap-3">

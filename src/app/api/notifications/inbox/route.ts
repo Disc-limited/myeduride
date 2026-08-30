@@ -10,10 +10,40 @@ export async function GET(request: NextRequest) {
     const session = getSessionFromRequest(request);
     if (!session) return NextResponse.json({ error: 'Not authenticated' }, { status: 401 });
 
-    const schoolId = request.nextUrl.searchParams.get('school_id');
-    const limit = Math.min(parseInt(request.nextUrl.searchParams.get('limit') || '50', 10), 100);
+    let schoolId = request.nextUrl.searchParams.get('school_id');
+    if (schoolId === 'undefined' || schoolId === 'null') schoolId = null;
 
+    const limit = Math.min(parseInt(request.nextUrl.searchParams.get('limit') || '50', 10), 100);
     const supabase = getAdminClient();
+    const sessAny = session as any;
+
+    // Fallback schoolId resolution
+    if (!schoolId) {
+      schoolId = sessAny.primary_school_id || sessAny.school_id || sessAny.primary_school?.id || null;
+    }
+
+    if (!schoolId && session.user_id) {
+      const { data: profile } = await supabase
+        .from('user_profiles')
+        .select('school_id, primary_school_id')
+        .eq('id', session.user_id)
+        .maybeSingle();
+      if (profile?.school_id || profile?.primary_school_id) {
+        schoolId = profile.school_id || profile.primary_school_id;
+      }
+    }
+
+    if (!schoolId && session.user_id) {
+      const { data: staff } = await supabase
+        .from('staff_profiles')
+        .select('school_id')
+        .eq('user_id', session.user_id)
+        .limit(1)
+        .maybeSingle();
+      if (staff?.school_id) schoolId = staff.school_id;
+    }
+
+    // 1. Fetch user notifications
     let query = supabase
       .from('notifications')
       .select('*, student:students(first_name, last_name)')
@@ -23,11 +53,67 @@ export async function GET(request: NextRequest) {
 
     if (schoolId) query = query.eq('school_id', schoolId);
 
-    const { data, error } = await query;
-    if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+    const { data: userNotifs, error: notifErr } = await query;
+    if (notifErr) return NextResponse.json({ error: notifErr.message }, { status: 500 });
 
-    // Exclude chat notifications from general notification box (EduChart has its own unread badge)
-    const cleanData = (data || []).filter((n: any) => {
+    const notificationsList: any[] = [...(userNotifs || [])];
+
+    // 2. Fetch school broadcast notices if schoolId exists
+    if (schoolId) {
+      try {
+        const { data: schoolNotices } = await supabase
+          .from('school_notices')
+          .select('*')
+          .eq('school_id', schoolId)
+          .order('created_at', { ascending: false })
+          .limit(20);
+
+        if (schoolNotices) {
+          const userRole = (sessAny.role || sessAny.roles?.[0] || '').toLowerCase();
+          for (const sn of schoolNotices) {
+            const targets = sn.target_audiences || [];
+            const isMatch =
+              targets.length === 0 ||
+              targets.includes('all') ||
+              !userRole ||
+              (userRole.includes('parent') && targets.includes('parents')) ||
+              ((userRole.includes('teacher') || userRole.includes('staff')) && targets.includes('teachers')) ||
+              (userRole.includes('escort') && targets.includes('escorts')) ||
+              ((userRole.includes('gate') || userRole.includes('gatemanager')) && targets.includes('gate_officers'));
+
+            if (isMatch) {
+              // Avoid duplicates
+              const exists = notificationsList.some(
+                (n) => n.title === sn.title || n.message === sn.message
+              );
+              if (!exists) {
+                notificationsList.push({
+                  id: sn.id,
+                  user_id: session.user_id,
+                  school_id: sn.school_id,
+                  title: `[Notice] ${sn.title}`,
+                  message: sn.message,
+                  type: 'notice',
+                  media_url: sn.media_url || null,
+                  is_read: false,
+                  created_at: sn.created_at,
+                });
+              }
+            }
+          }
+        }
+      } catch (err) {
+        console.warn('[inbox] school_notices query warning:', err);
+      }
+    }
+
+    // Sort composite list by created_at DESC
+    notificationsList.sort(
+      (a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime()
+    );
+
+    // Exclude raw chat strings
+    const cleanData = notificationsList.filter((n: any) => {
       const msg = n.message || '';
       return !msg.startsWith('[sender_id:') && !msg.includes('[Message from');
     });

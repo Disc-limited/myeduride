@@ -41,6 +41,8 @@ import EscortChatView from '@/components/escort/EscortChatView';
 import PickupVerificationModal from '@/components/escort/PickupVerificationModal';
 import IncidentReportModal from '@/components/escort/IncidentReportModal';
 import EscortApprovalNotificationModal from '@/components/escort/EscortApprovalNotificationModal';
+import SchoolNoticeBanner from '@/components/shared/SchoolNoticeBanner';
+import SchoolNoticesInboxView from '@/components/shared/SchoolNoticesInboxView';
 import { CheckCircle2, Lock, AlertTriangle, XCircle, CreditCard, ArrowRight, Sparkles, RefreshCw } from 'lucide-react';
 
 export default function EscortDashboardPage() {
@@ -729,6 +731,9 @@ export default function EscortDashboardPage() {
 
         {/* MAIN CANVAS BODY */}
         <main className="flex-1 p-4 md:p-6 space-y-6">
+          {/* OFFICIAL SCHOOL NOTICES & PUBLIC HOLIDAY ADVISORIES */}
+          <SchoolNoticeBanner role="escorts" schoolId={liveDashboardData?.escort?.school_id || liveDashboardData?.escort?.primary_school_id || escortData?.school_id || escortData?.primary_school_id} className="mb-4" />
+
           {approvalStatus === 'ACTIVATED' ? (
             <>
               {activeNav === 'dashboard' && (
@@ -794,6 +799,10 @@ export default function EscortDashboardPage() {
                   liveDashboardData={liveDashboardData}
                   onRefreshData={fetchLiveData}
                 />
+              )}
+
+              {activeNav === 'school-notices' && (
+                <SchoolNoticesInboxView role="escorts" schoolId={liveDashboardData?.escort?.school_id || liveDashboardData?.escort?.primary_school_id || escortData?.school_id || escortData?.primary_school_id} />
               )}
 
               {activeNav === 'chat' && (

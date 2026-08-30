@@ -39,10 +39,13 @@ import {
 } from 'lucide-react';
 import Link from 'next/link';
 import StudentAvatar from '@/components/shared/StudentAvatar';
+import SendNoticeModal from '@/components/school-admin/SendNoticeModal';
 
 export default function SchoolAdminDashboard() {
   const [schoolName, setSchoolName] = useState('Greenfield International School');
   const [userName, setUserName] = useState('Admin');
+  const [schoolId, setSchoolId] = useState('');
+  const [noticeModalOpen, setNoticeModalOpen] = useState(false);
   const [showWalletBalance, setShowWalletBalance] = useState(true);
   const [currentDate, setCurrentDate] = useState(new Date());
 
@@ -76,6 +79,11 @@ export default function SchoolAdminDashboard() {
       }
       if (session.primary_school?.name) {
         setSchoolName(session.primary_school.name);
+      }
+      if (session.primary_school_id) {
+        setSchoolId(session.primary_school_id);
+      } else if (session.primary_school?.id) {
+        setSchoolId(session.primary_school.id);
       }
     }
     loadDashboard();
@@ -135,6 +143,9 @@ export default function SchoolAdminDashboard() {
       const schoolData = await fetchData('get_school_admin_data', { role: 'school_admin' });
       if (schoolData.school?.name) {
         setSchoolName(schoolData.school.name);
+      }
+      if (schoolData.school_id) {
+        setSchoolId(schoolData.school_id);
       }
       let escortMetrics = null;
       try {
@@ -241,7 +252,7 @@ export default function SchoolAdminDashboard() {
     { label: 'MyEduRide Escorts', icon: <Shield size={18} />, color: 'bg-[#0B1E36] text-white font-extrabold shadow-sm', href: '/dashboard/school-admin/escort/myeduride-escort' },
     { label: 'Pickup List', icon: <Car size={18} />, color: 'bg-blue-100 text-blue-700', href: '/dashboard/school-admin/pickup-persons' },
     { label: 'Vehicles', icon: <Car size={18} />, color: 'bg-emerald-100 text-emerald-700', href: '/dashboard/school-admin/vehicles' },
-    { label: 'Send Notice', icon: <Send size={18} />, color: 'bg-sky-100 text-sky-700', href: '/dashboard/school-admin/messages' },
+    { label: 'Send Notice', icon: <Send size={18} />, color: 'bg-sky-100 text-sky-700', isNotice: true },
     { label: 'View Reports', icon: <FileText size={18} />, color: 'bg-cyan-100 text-cyan-700', href: '/dashboard/school-admin/reports' },
     { label: 'Wallet', icon: <WalletIcon size={18} />, color: 'bg-amber-100 text-amber-700', href: '/dashboard/school-admin/wallet' },
     { label: 'Gate Manager', icon: <DoorOpen size={18} />, color: 'bg-rose-100 text-rose-700', href: '/dashboard/gate' },
@@ -698,22 +709,44 @@ export default function SchoolAdminDashboard() {
         <div className="lg:col-span-5 bg-white rounded-3xl p-5 sm:p-6 border border-slate-200/80 shadow-sm flex flex-col justify-between">
           <h3 className="text-base font-extrabold text-slate-900 mb-4">Quick Actions</h3>
           <div className="grid grid-cols-5 gap-3">
-            {quickActions.map((action) => (
-              <Link
-                key={action.label}
-                href={action.href}
-                className="flex flex-col items-center text-center group cursor-pointer"
-              >
-                <div
-                  className={`w-12 h-12 rounded-2xl ${action.color} flex items-center justify-center mb-1.5 transition-transform group-hover:scale-110 shadow-sm`}
+            {quickActions.map((action) => {
+              if (action.isNotice) {
+                return (
+                  <button
+                    key={action.label}
+                    type="button"
+                    onClick={() => setNoticeModalOpen(true)}
+                    className="flex flex-col items-center text-center group cursor-pointer"
+                  >
+                    <div
+                      className={`w-12 h-12 rounded-2xl ${action.color} flex items-center justify-center mb-1.5 transition-transform group-hover:scale-110 shadow-sm`}
+                    >
+                      {action.icon}
+                    </div>
+                    <span className="text-[11px] font-bold text-slate-700 group-hover:text-emerald-700 leading-tight">
+                      {action.label}
+                    </span>
+                  </button>
+                );
+              }
+
+              return (
+                <Link
+                  key={action.label}
+                  href={action.href}
+                  className="flex flex-col items-center text-center group cursor-pointer"
                 >
-                  {action.icon}
-                </div>
-                <span className="text-[11px] font-bold text-slate-700 group-hover:text-emerald-700 leading-tight">
-                  {action.label}
-                </span>
-              </Link>
-            ))}
+                  <div
+                    className={`w-12 h-12 rounded-2xl ${action.color} flex items-center justify-center mb-1.5 transition-transform group-hover:scale-110 shadow-sm`}
+                  >
+                    {action.icon}
+                  </div>
+                  <span className="text-[11px] font-bold text-slate-700 group-hover:text-emerald-700 leading-tight">
+                    {action.label}
+                  </span>
+                </Link>
+              );
+            })}
           </div>
         </div>
 
@@ -878,6 +911,14 @@ export default function SchoolAdminDashboard() {
           <span className="text-emerald-700 font-bold">Powered by DISC</span>
         </div>
       </footer>
+
+      {/* SCHOOL NOTICE & BROADCAST CONSOLE MODAL */}
+      <SendNoticeModal
+        isOpen={noticeModalOpen}
+        onClose={() => setNoticeModalOpen(false)}
+        schoolId={schoolId}
+        schoolName={schoolName}
+      />
     </div>
   );
 }
