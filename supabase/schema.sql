@@ -1264,7 +1264,87 @@ CREATE INDEX IF NOT EXISTS idx_gate_visitors_school_date ON gate_visitors(school
 CREATE INDEX IF NOT EXISTS idx_emergency_deputising_school ON emergency_deputising(school_id, status);
 CREATE INDEX IF NOT EXISTS idx_pickup_authorizations_student ON pickup_authorizations(student_id, slot_number);
 
+-- ==============================================================================
+-- SHARED RIDES, TRANSPORT BOOKINGS, WALLETS & AUDIT LOGS
+-- ==============================================================================
+
+CREATE TABLE IF NOT EXISTS shared_ride_escorts (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  escort_user_id UUID REFERENCES user_profiles(id) ON DELETE SET NULL,
+  escort_name TEXT NOT NULL,
+  escort_phone TEXT,
+  avatar_url TEXT,
+  pickup_address TEXT NOT NULL,
+  dropoff_address TEXT NOT NULL,
+  departure_time TEXT DEFAULT '07:00 AM',
+  return_time TEXT DEFAULT '02:30 PM',
+  vehicle_model TEXT DEFAULT 'Toyota Hiace',
+  vehicle_reg TEXT DEFAULT 'LAG-1024-XY',
+  available_seats INT DEFAULT 4,
+  total_seats INT DEFAULT 6,
+  price_per_seat NUMERIC(12, 2) DEFAULT 1700.00,
+  status TEXT DEFAULT 'active',
+  created_at TIMESTAMPTZ DEFAULT NOW(),
+  updated_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+CREATE TABLE IF NOT EXISTS shared_ride_bookings (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  parent_user_id UUID NOT NULL REFERENCES user_profiles(id) ON DELETE CASCADE,
+  student_id UUID REFERENCES students(id) ON DELETE SET NULL,
+  escort_route_id UUID REFERENCES shared_ride_escorts(id) ON DELETE SET NULL,
+  total_amount NUMERIC(12, 2) NOT NULL DEFAULT 0.00,
+  pickup_address TEXT,
+  dropoff_address TEXT,
+  status TEXT DEFAULT 'confirmed',
+  notes TEXT,
+  created_at TIMESTAMPTZ DEFAULT NOW(),
+  updated_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+CREATE TABLE IF NOT EXISTS transport_bookings (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  school_id UUID REFERENCES schools(id) ON DELETE CASCADE,
+  student_id UUID REFERENCES students(id) ON DELETE SET NULL,
+  parent_user_id UUID REFERENCES user_profiles(id) ON DELETE SET NULL,
+  source TEXT DEFAULT 'parent',
+  pickup_address TEXT,
+  pickup_lat DOUBLE PRECISION,
+  pickup_lng DOUBLE PRECISION,
+  requested_pickup_at TIMESTAMPTZ,
+  notes TEXT,
+  priority TEXT DEFAULT 'standard',
+  status TEXT DEFAULT 'pending',
+  created_at TIMESTAMPTZ DEFAULT NOW(),
+  updated_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+CREATE TABLE IF NOT EXISTS wallets (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  user_id UUID NOT NULL REFERENCES user_profiles(id) ON DELETE CASCADE UNIQUE,
+  balance NUMERIC(14, 2) NOT NULL DEFAULT 0.00,
+  currency TEXT NOT NULL DEFAULT 'NGN',
+  created_at TIMESTAMPTZ DEFAULT NOW(),
+  updated_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+CREATE TABLE IF NOT EXISTS audit_logs (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  user_id UUID REFERENCES user_profiles(id) ON DELETE SET NULL,
+  user_role TEXT,
+  action TEXT NOT NULL,
+  resource TEXT,
+  resource_id TEXT,
+  details JSONB DEFAULT '{}'::jsonb,
+  created_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+CREATE INDEX IF NOT EXISTS idx_shared_ride_escorts_status ON shared_ride_escorts(status);
+CREATE INDEX IF NOT EXISTS idx_shared_ride_bookings_parent ON shared_ride_bookings(parent_user_id, created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_transport_bookings_parent ON transport_bookings(parent_user_id);
+CREATE INDEX IF NOT EXISTS idx_wallets_user ON wallets(user_id);
+CREATE INDEX IF NOT EXISTS idx_audit_logs_user_action ON audit_logs(user_id, action, created_at DESC);
+
 -- ============ END OF SCHEMA ============
--- Fresh database setup complete. supabase/migrations/ is not used — this file is authoritative.
 
 

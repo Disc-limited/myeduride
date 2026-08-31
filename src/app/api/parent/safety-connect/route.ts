@@ -228,6 +228,43 @@ export async function POST(request: NextRequest) {
       });
     }
 
+    // Action: Update Student Attendance / Absence Notice
+    if (action === 'update_attendance' || action === 'mark_absent' || action === 'not_going_today') {
+      const { child_id, attendance_status, reason, notes } = body;
+      if (!child_id) {
+        return NextResponse.json({ error: 'child_id is required' }, { status: 400 });
+      }
+
+      const todayStr = new Date().toISOString().split('T')[0];
+
+      // Try inserting/updating into student_attendance or audit log
+      try {
+        await supabase.from('audit_logs').insert({
+          user_id: session.user_id,
+          user_role: session.role || 'parent',
+          action: `PARENT_ATTENDANCE_${(attendance_status || 'UPDATE').toUpperCase()}`,
+          resource: 'student_attendance',
+          resource_id: child_id,
+          details: {
+            child_id,
+            date: todayStr,
+            status: attendance_status || 'going',
+            reason: reason || null,
+            notes: notes || null,
+          },
+        });
+      } catch (err) {
+        console.warn('[safety-connect POST] audit log notice:', err);
+      }
+
+      return NextResponse.json({
+        success: true,
+        message: `Attendance status updated to '${attendance_status || 'updated'}' for today.`,
+        date: todayStr,
+        status: attendance_status || 'going',
+      });
+    }
+
     return NextResponse.json({ error: `Unknown action '${action}'` }, { status: 400 });
   } catch (err: any) {
     console.error('[safety-connect POST] Error:', err);

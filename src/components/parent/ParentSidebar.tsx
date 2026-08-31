@@ -20,6 +20,12 @@ import {
   Sparkles,
   Navigation,
   Megaphone,
+  CheckCircle2,
+  MapPin,
+  Clock,
+  Camera,
+  ArrowDownRight,
+  CalendarCheck,
 } from 'lucide-react';
 import { toast } from 'sonner';
 
@@ -27,6 +33,7 @@ export type ParentTabType =
   | 'dashboard'
   | 'notices'
   | 'children'
+  | 'attendance'
   | 'safety'
   | 'edrive'
   | 'wallet'
@@ -35,7 +42,7 @@ export type ParentTabType =
   | 'migoai'
   | 'settings';
 
-export type SafetyPillarTab = 'school_escort' | 'myeduride_escort' | 'edrive';
+export type SafetyPillarTab = 'school_escort' | 'myeduride_escort' | 'shared_ride_escort' | 'edrive';
 
 interface ParentSidebarProps {
   activeTab: ParentTabType;
@@ -63,6 +70,7 @@ export default function ParentSidebar({
   onCloseMobileDrawer,
 }: ParentSidebarProps) {
   const [safetySubmenuOpen, setSafetySubmenuOpen] = useState(true);
+  const [reportsSubmenuOpen, setReportsSubmenuOpen] = useState(true);
 
   const menuItems = [
     { id: 'dashboard', label: 'Dashboard', icon: LayoutDashboard },
@@ -73,15 +81,33 @@ export default function ParentSidebar({
       badge: 'Live',
       children: [
         { id: 'safety_hub', label: 'Safety Hub', pillar: 'school_escort' as SafetyPillarTab, icon: ShieldAlert },
-        { id: 'school_escort', label: 'School Escorts', pillar: 'school_escort' as SafetyPillarTab, icon: UserCheck },
+        { id: 'school_escort', label: 'School Escort', pillar: 'school_escort' as SafetyPillarTab, icon: UserCheck },
+        { id: 'escort_assigned', label: 'Escort Assigned', pillar: 'school_escort' as SafetyPillarTab, icon: CheckCircle2 },
+        { id: 'live_location', label: 'Live Location', pillar: 'school_escort' as SafetyPillarTab, icon: MapPin },
+        { id: 'history', label: 'History', pillar: 'school_escort' as SafetyPillarTab, icon: Clock },
         { id: 'myeduride_escort', label: 'MyEduRide Escort', pillar: 'myeduride_escort' as SafetyPillarTab, icon: Sparkles },
+        { id: 'shared_ride_escort', label: 'Shared Ride Escort', pillar: 'shared_ride_escort' as SafetyPillarTab, icon: Car },
         { id: 'edrive', label: 'E-Drive Tracking', pillar: 'edrive' as SafetyPillarTab, icon: Navigation },
       ],
     },
     { id: 'notices', label: 'School Notices', icon: Megaphone, badge: unreadNoticesCount > 0 ? unreadNoticesCount : undefined },
     { id: 'children', label: 'My Children', icon: Users },
+    { id: 'attendance', label: 'Attendance', icon: CalendarCheck },
     { id: 'wallet', label: 'Wallet', icon: Wallet },
-    { id: 'reports', label: 'Reports', icon: BarChart3 },
+    {
+      id: 'reports',
+      label: 'Reports',
+      icon: BarChart3,
+      children: [
+        { id: 'gate_activity_report', label: 'Gate Activity Report', icon: Camera },
+        { id: 'escort_movement_report', label: 'Escort Movement Report', icon: Car },
+        { id: 'financial_report', label: 'Financial Report', icon: Wallet },
+        { id: 'wallet_report', label: 'Wallet Report', icon: Wallet },
+        { id: 'withdrawal_report', label: 'Withdrawal Report', icon: ArrowDownRight },
+        { id: 'referral_report', label: 'Referral & Bonus Report', icon: Gift },
+        { id: 'notifications_report', label: 'Notification Report', icon: Megaphone },
+      ],
+    },
     { id: 'educhat', label: 'EduChat', icon: MessageSquare, badge: unreadChatCount },
     { id: 'migoai', label: 'Migo AI', icon: Bot },
     { id: 'settings', label: 'Settings', icon: Settings },
@@ -98,6 +124,12 @@ export default function ParentSidebar({
     if (id === 'safety') {
       setActiveTab('safety');
       setSafetySubmenuOpen(!safetySubmenuOpen);
+      if (isMobileDrawer && onCloseMobileDrawer) onCloseMobileDrawer();
+      return;
+    }
+    if (id === 'reports') {
+      setActiveTab('reports');
+      setReportsSubmenuOpen(!reportsSubmenuOpen);
       if (isMobileDrawer && onCloseMobileDrawer) onCloseMobileDrawer();
       return;
     }
@@ -173,7 +205,7 @@ export default function ParentSidebar({
             const Icon = item.icon;
             const isActive = activeTab === item.id;
             const hasChildren = Boolean(item.children && item.children.length > 0);
-            const isSubOpen = item.id === 'safety' ? safetySubmenuOpen : false;
+            const isSubOpen = item.id === 'safety' ? safetySubmenuOpen : item.id === 'reports' ? reportsSubmenuOpen : false;
 
             return (
               <div key={item.id} className="space-y-1">
@@ -225,16 +257,27 @@ export default function ParentSidebar({
                 {/* Submenu for Safety Connect */}
                 {hasChildren && isSubOpen && !isCollapsed && (
                   <div className="ml-5 pl-2.5 border-l border-slate-800 space-y-0.5 py-1">
-                    {item.children?.map((child) => {
+                    {item.children?.map((child: any) => {
                       const ChildIcon = child.icon;
-                      const isPillarSelected = activeTab === 'safety' && activeSafetyPillar === child.pillar;
+                      const isPillarSelected = child.pillar
+                        ? activeTab === 'safety' && activeSafetyPillar === child.pillar
+                        : activeTab === item.id;
 
                       return (
                         <button
                           key={child.id}
                           type="button"
-                          onClick={() => handlePillarClick(child.pillar)}
-                          className={`w-full flex items-center gap-2 px-2.5 py-1.5 rounded-lg text-[11px] font-medium transition-all ${
+                          onClick={() => {
+                            if (child.pillar) {
+                              handlePillarClick(child.pillar);
+                            } else {
+                              setActiveTab(item.id as ParentTabType);
+                              if (onCloseMobileDrawer) onCloseMobileDrawer();
+                              const el = document.getElementById(child.id);
+                              if (el) el.scrollIntoView({ behavior: 'smooth' });
+                            }
+                          }}
+                          className={`w-full flex items-center gap-2 px-2.5 py-1.5 rounded-lg text-[11px] font-medium transition-all cursor-pointer ${
                             isPillarSelected
                               ? 'bg-slate-800/90 text-emerald-400 font-bold'
                               : 'text-slate-400 hover:text-slate-200 hover:bg-slate-850'

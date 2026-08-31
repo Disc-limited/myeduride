@@ -43,6 +43,9 @@ import SchoolNoticesInboxView from '@/components/shared/SchoolNoticesInboxView';
 // Revamped Dashboard Components
 import ParentHeader from '@/components/parent/ParentHeader';
 import ParentSidebar, { ParentTabType } from '@/components/parent/ParentSidebar';
+import SafetyConnectView from '@/components/parent/SafetyConnectView';
+import ParentReportsOverviewView from '@/components/parent/ParentReportsOverviewView';
+import ParentAttendanceView from '@/components/parent/ParentAttendanceView';
 import HeroGreetingCard from '@/components/parent/HeroGreetingCard';
 import LiveJourneyCard from '@/components/parent/LiveJourneyCard';
 import TodaysHighlightsCard, { HighlightItem } from '@/components/parent/TodaysHighlightsCard';
@@ -56,7 +59,6 @@ import QuickActionsGrid from '@/components/parent/QuickActionsGrid';
 import SchoolAnnouncementsCard from '@/components/parent/SchoolAnnouncementsCard';
 import UpcomingEventsCard from '@/components/parent/UpcomingEventsCard';
 import MigoAIFloatingWidget from '@/components/parent/MigoAIFloatingWidget';
-import SafetyConnectView from '@/components/parent/SafetyConnectView';
 import PickupAuthorizationModal from '@/components/parent/PickupAuthorizationModal';
 
 // Helper to sanitize internal technical metadata like [sender_id:...] and [Message from ...]
@@ -488,7 +490,7 @@ export default function ParentDashboard() {
         setActiveTab('safety');
         break;
       case 'attendance_report':
-        setShowAttendanceModal(true);
+        setActiveTab('attendance');
         break;
       case 'ask_migo':
         setShowMigoAI(true);
@@ -551,7 +553,6 @@ export default function ParentDashboard() {
               setSafetyPillar('edrive');
               setActiveTab('safety');
             }
-            if (tab === 'reports') setShowAttendanceModal(true);
             if (tab === 'migoai') setShowMigoAI(true);
           }}
           activeSafetyPillar={safetyPillar}
@@ -578,7 +579,6 @@ export default function ParentDashboard() {
               setSafetyPillar('edrive');
               setActiveTab('safety');
             }
-            if (tab === 'reports') setShowAttendanceModal(true);
             if (tab === 'migoai') setShowMigoAI(true);
           }}
           activeSafetyPillar={safetyPillar}
@@ -621,6 +621,14 @@ export default function ParentDashboard() {
                 childrenList={safeChildren}
                 onClose={() => setActiveTab('dashboard')}
               />
+            </div>
+          ) : activeTab === 'reports' ? (
+            <div className="max-w-[1600px] mx-auto space-y-5">
+              <ParentReportsOverviewView childrenList={safeChildren} />
+            </div>
+          ) : activeTab === 'attendance' ? (
+            <div className="max-w-[1600px] mx-auto space-y-5">
+              <ParentAttendanceView childrenList={safeChildren} />
             </div>
           ) : (
             <div className="grid grid-cols-1 lg:grid-cols-12 gap-5 max-w-[1600px] mx-auto">
@@ -686,7 +694,7 @@ export default function ParentDashboard() {
                       lateCount={0}
                       absentCount={safeChildren.filter((c) => !c?.present_today).length || 1}
                       attendanceRate={safeChildren.length > 0 ? Math.round((safeChildren.filter((c) => c?.present_today).length / safeChildren.length) * 100) : 80}
-                      onViewAll={() => setShowAttendanceModal(true)}
+                      onViewAll={() => setActiveTab('attendance')}
                     />
                   </div>
                 </div>

@@ -31,8 +31,10 @@ import {
 import { toast } from 'sonner';
 import { photoSrc } from '@/lib/photo';
 import StudentAvatar from '@/components/shared/StudentAvatar';
+import SharedRideEscortView from '@/components/parent/SharedRideEscortView';
+import SchoolEscortView from '@/components/parent/SchoolEscortView';
 
-export type SafetyPillarTab = 'school_escort' | 'myeduride_escort' | 'edrive';
+export type SafetyPillarTab = 'school_escort' | 'myeduride_escort' | 'shared_ride_escort' | 'edrive';
 
 interface SafetyConnectViewProps {
   initialTab?: SafetyPillarTab;
@@ -219,155 +221,23 @@ export default function SafetyConnectView({
 
       {/* Pillar Body Content */}
       <div className="p-5 sm:p-6 bg-slate-50/50">
-        {/* ========================================================================= */}
-        {/* PILLAR 1: SCHOOL ESCORT                                                   */}
-        {/* ========================================================================= */}
-        {activePillar === 'school_escort' && data?.school_escort && (
-          <div className="space-y-5 animate-in fade-in duration-200">
-            {/* Live Emergency Deputising Notice (Only when active deputy exists) */}
-            {(data.school_escort.deputy_escort || (data as any).deputy_escort) && (
-              <div className="bg-gradient-to-r from-red-50 via-rose-50 to-amber-50 border border-red-200 rounded-3xl p-4.5 space-y-2.5 shadow-xs">
-                <div className="flex items-center justify-between">
-                  <span className="px-2.5 py-0.5 rounded-full bg-red-600 text-white text-[10px] font-black uppercase tracking-wider flex items-center gap-1 animate-pulse">
-                    ● Emergency Deputised Escort On Duty
-                  </span>
-                  <span className="text-[10px] font-mono text-slate-500">Authorized by City Manager</span>
-                </div>
-                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-xs">
-                  <div className="space-y-1">
-                    <p className="font-extrabold text-slate-900">
-                      {data.school_escort.deputy_escort?.name || (data as any).deputy_escort?.name || 'Assigned Deputy'} (MyEduRide Certified Escort) is currently deputising for your child's route.
-                    </p>
-                    <p className="text-[11px] text-slate-600">
-                      Reason: <strong>{data.school_escort.deputy_escort?.reason || (data as any).deputy_escort?.reason || 'Standby Deputising'}</strong>
-                    </p>
-                    <p className="text-[10px] text-slate-500 font-mono">
-                      Vehicle: {data.school_escort.deputy_escort?.vehicle || (data as any).deputy_escort?.vehicle || '—'} · Phone: {data.school_escort.deputy_escort?.phone || (data as any).deputy_escort?.phone || '—'}
-                    </p>
-                  </div>
-                  {data.school_escort.deputy_escort?.phone && (
-                    <div className="flex items-center gap-2 shrink-0">
-                      <a
-                        href={`tel:${data.school_escort.deputy_escort.phone}`}
-                        className="px-3 py-1.5 rounded-xl bg-red-600 hover:bg-red-700 text-white text-xs font-bold flex items-center gap-1 shadow-xs"
-                      >
-                        <Phone size={12} /> Call Deputy
-                      </a>
-                    </div>
-                  )}
-                </div>
-              </div>
+        {loading && !data ? (
+          <div className="py-16 text-center space-y-3">
+            <div className="w-8 h-8 border-3 border-emerald-600 border-t-transparent rounded-full animate-spin mx-auto" />
+            <p className="text-xs font-bold text-slate-400">Loading Safety Connect Command Center...</p>
+          </div>
+        ) : (
+          <>
+            {/* ========================================================================= */}
+            {/* PILLAR 1: SCHOOL ESCORT                                                   */}
+            {/* ========================================================================= */}
+            {activePillar === 'school_escort' && (
+              <SchoolEscortView
+                childrenList={childrenList}
+                escortData={data?.school_escort}
+                onSelectSafetyPillar={(p) => setActivePillar(p as SafetyPillarTab)}
+              />
             )}
-
-            <div className="bg-white p-5 rounded-3xl border border-slate-200 shadow-2xs space-y-4">
-              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-4 border-b border-slate-100">
-                <div className="flex items-center gap-4">
-                  <StudentAvatar
-                    photoUrl={data.school_escort.avatar_url}
-                    fullName={data.school_escort.full_name}
-                    size="lg"
-                    className="w-16 h-16 rounded-2xl border-2 border-emerald-500 shrink-0"
-                  />
-                  <div>
-                    <div className="flex items-center gap-2">
-                      <h3 className="text-lg font-black text-slate-900">{data.school_escort.full_name}</h3>
-                      <span className="px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-800 text-[10px] font-black uppercase">
-                        Verified School Escort
-                      </span>
-                    </div>
-                    <p className="text-xs text-slate-500 font-medium">{data.school_escort.school_name}</p>
-                    <p className="text-[11px] text-slate-400 font-mono">Driver License: {data.school_escort.driver_license}</p>
-                  </div>
-                </div>
-
-                <div className="flex items-center gap-2">
-                  <a
-                    href={`tel:${data.school_escort.phone}`}
-                    className="px-3.5 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold flex items-center gap-1.5 transition-all shadow-xs"
-                  >
-                    <Phone size={13} /> Call Escort
-                  </a>
-                  <a
-                    href={`https://wa.me/${data.school_escort.phone.replace(/[^0-9]/g, '')}`}
-                    target="_blank"
-                    rel="noreferrer"
-                    className="px-3.5 py-2 rounded-xl bg-emerald-50 hover:bg-emerald-100 text-emerald-800 text-xs font-bold flex items-center gap-1.5 border border-emerald-200 transition-all"
-                  >
-                    <MessageCircle size={13} /> WhatsApp
-                  </a>
-                </div>
-              </div>
-
-              {/* Vehicle and Route Spec Grid */}
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 text-xs">
-                {/* Vehicle Box */}
-                <div className="p-4 rounded-2xl bg-slate-50 border border-slate-100 space-y-2">
-                  <span className="text-[10px] font-black uppercase text-slate-400 tracking-wider flex items-center gap-1">
-                    <Car size={13} className="text-slate-600" /> Assigned Fleet Vehicle
-                  </span>
-                  <p className="text-sm font-black text-slate-900">{data.school_escort.vehicle.reg_number}</p>
-                  <div className="text-[11px] text-slate-600 space-y-0.5">
-                    <p>Model: <strong>{data.school_escort.vehicle.make_model}</strong></p>
-                    <p>Capacity: <strong>{data.school_escort.vehicle.capacity} Passenger Seats</strong></p>
-                    <p>Roadworthiness: <strong className="text-emerald-700">{data.school_escort.vehicle.roadworthiness_expiry}</strong></p>
-                  </div>
-                </div>
-
-                {/* Route Box */}
-                <div className="p-4 rounded-2xl bg-slate-50 border border-slate-100 space-y-2">
-                  <span className="text-[10px] font-black uppercase text-slate-400 tracking-wider flex items-center gap-1">
-                    <Compass size={13} className="text-slate-600" /> Assigned Route &amp; Stop
-                  </span>
-                  <p className="text-sm font-black text-slate-900">{data.school_escort.route.code}</p>
-                  <div className="text-[11px] text-slate-600 space-y-0.5">
-                    <p>Corridor: <strong>{data.school_escort.route.name}</strong></p>
-                    <p>Morning Pickup: <strong>{data.school_escort.route.departure_morning}</strong></p>
-                    <p>Afternoon Return: <strong>{data.school_escort.route.departure_afternoon}</strong></p>
-                    <p>Child Stop: <strong className="text-emerald-800 font-bold">{data.school_escort.route.child_designated_stop}</strong></p>
-                  </div>
-                </div>
-              </div>
-
-              {/* Status & Fallback Action Bar */}
-              <div className="p-4 rounded-2xl bg-emerald-50/70 border border-emerald-200 flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-xs">
-                <div className="flex items-center gap-2">
-                  <span className="w-2.5 h-2.5 rounded-full bg-emerald-600 animate-pulse" />
-                  <span className="font-bold text-emerald-950">
-                    Live Operational Status: <strong>{data.school_escort.operational_status}</strong>
-                  </span>
-                </div>
-
-                <button
-                  type="button"
-                  onClick={() => {
-                    setBookingModalOpen(true);
-                  }}
-                  className="px-3.5 py-1.5 rounded-xl bg-amber-400 hover:bg-amber-500 text-slate-950 font-black text-[11px] flex items-center gap-1 cursor-pointer transition-all shadow-xs"
-                >
-                  <Sparkles size={13} /> School Escort Unavailable? Request MyEduRide Ride <ArrowRight size={13} />
-                </button>
-              </div>
-            </div>
-          </div>
-        )}
-        {activePillar === 'school_escort' && !data?.school_escort && (
-          <div className="bg-white p-8 rounded-3xl border border-slate-200 text-center space-y-3 shadow-2xs">
-            <div className="w-12 h-12 bg-slate-100 rounded-2xl flex items-center justify-center mx-auto text-slate-400">
-              <UserCheck size={24} />
-            </div>
-            <h3 className="text-sm font-black text-slate-900">No School Escort Currently Assigned</h3>
-            <p className="text-xs text-slate-500 max-w-sm mx-auto">
-              {selectedChildObj.first_name} does not have a designated school bus escort assigned today. You can book an on-demand MyEduRide Escort or monitor private commutes via E-Drive.
-            </p>
-            <button
-              type="button"
-              onClick={() => setBookingModalOpen(true)}
-              className="mt-2 px-4 py-2 bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold rounded-xl shadow-xs inline-flex items-center gap-1.5 cursor-pointer"
-            >
-              <Sparkles size={14} /> Request MyEduRide Escort
-            </button>
-          </div>
-        )}
 
         {/* ========================================================================= */}
         {/* PILLAR 2: MYEDURIDE ESCORT (5-STAGE WORKFLOW & AREA ASSIGNMENT)             */}
@@ -533,6 +403,16 @@ export default function SafetyConnectView({
         )}
 
         {/* ========================================================================= */}
+        {/* PILLAR: SHARED RIDE ESCORT                                                */}
+        {/* ========================================================================= */}
+        {activePillar === 'shared_ride_escort' && (
+          <SharedRideEscortView
+            childrenList={childrenList}
+            onSelectSafetyPillar={(p) => setActivePillar(p as SafetyPillarTab)}
+          />
+        )}
+
+        {/* ========================================================================= */}
         {/* PILLAR 3: E-DRIVE (LIVE TRACKING & MOBILITY TELEMETRY)                     */}
         {/* ========================================================================= */}
         {activePillar === 'edrive' && data?.edrive && (
@@ -570,19 +450,35 @@ export default function SafetyConnectView({
 
             {/* Boarding Event & Corridor Waypoint Progress */}
             <div className="bg-white p-5 rounded-3xl border border-slate-200 shadow-2xs space-y-4 text-xs">
-              <div className="p-3.5 rounded-2xl bg-slate-50 border border-slate-100 flex items-center justify-between">
-                <div>
-                  <p className="font-black text-slate-900">
-                    ✓ {selectedChildObj.first_name} Boarded at {data.edrive.child_boarding_event.boarded_at}
-                  </p>
-                  <p className="text-[11px] text-slate-500">
-                    Stop: {data.edrive.child_boarding_event.boarded_stop} · Verified by {data.edrive.child_boarding_event.scanned_by}
-                  </p>
+              {data.edrive.child_boarding_event ? (
+                <div className="p-3.5 rounded-2xl bg-slate-50 border border-slate-100 flex items-center justify-between">
+                  <div>
+                    <p className="font-black text-slate-900">
+                      ✓ {selectedChildObj.first_name} Boarded at {data.edrive.child_boarding_event.boarded_at || '7:42 AM'}
+                    </p>
+                    <p className="text-[11px] text-slate-500">
+                      Stop: {data.edrive.child_boarding_event.boarded_stop || 'School Gate'} · Verified by {data.edrive.child_boarding_event.scanned_by || 'Escort'}
+                    </p>
+                  </div>
+                  <span className="px-2 py-1 rounded-md bg-emerald-100 text-emerald-800 font-mono text-[10px] font-bold">
+                    {data.edrive.child_boarding_event.verification_method || 'NIN / QR Verified'}
+                  </span>
                 </div>
-                <span className="px-2 py-1 rounded-md bg-emerald-100 text-emerald-800 font-mono text-[10px] font-bold">
-                  {data.edrive.child_boarding_event.verification_method}
-                </span>
-              </div>
+              ) : (
+                <div className="p-3.5 rounded-2xl bg-slate-50 border border-slate-100 flex items-center justify-between text-xs">
+                  <div>
+                    <p className="font-bold text-slate-700">
+                      ● {selectedChildObj.first_name} Boarding Status: Pending
+                    </p>
+                    <p className="text-[11px] text-slate-500">
+                      Child has not boarded the transit vehicle yet for this session.
+                    </p>
+                  </div>
+                  <span className="px-2 py-1 rounded-md bg-amber-100 text-amber-900 font-mono text-[10px] font-bold">
+                    Awaiting Scan
+                  </span>
+                </div>
+              )}
 
               {/* Waypoint Timeline */}
               <div className="space-y-2">
@@ -625,6 +521,8 @@ export default function SafetyConnectView({
               </div>
             </div>
           </div>
+        )}
+          </>
         )}
       </div>
 

@@ -95,9 +95,8 @@ export default function SchoolNoticesInboxView({
   const fetchNotices = async (showLoadingSpinner = false) => {
     if (showLoadingSpinner) setLoading(true);
     try {
-      const url = `/api/school-notices/active?user_role=${encodeURIComponent(role)}${
-        schoolId ? `&school_id=${encodeURIComponent(schoolId)}` : ''
-      }&_t=${Date.now()}`;
+      const url = `/api/school-notices/active?user_role=${encodeURIComponent(role)}${schoolId ? `&school_id=${encodeURIComponent(schoolId)}` : ''
+        }&_t=${Date.now()}`;
       const res = await fetch(url, { credentials: 'include', cache: 'no-store' });
       const data = await res.json();
       if (res.ok && data.notices) {
@@ -193,11 +192,10 @@ export default function SchoolNoticesInboxView({
         <div className="flex items-center gap-2 overflow-x-auto w-full md:w-auto pb-1 md:pb-0 scrollbar-none">
           <button
             onClick={() => setSelectedCategory('all')}
-            className={`px-3.5 py-2 rounded-xl text-xs font-bold whitespace-nowrap transition-all flex items-center gap-1.5 ${
-              selectedCategory === 'all'
-                ? 'bg-slate-900 text-white shadow-sm'
-                : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
-            }`}
+            className={`px-3.5 py-2 rounded-xl text-xs font-bold whitespace-nowrap transition-all flex items-center gap-1.5 ${selectedCategory === 'all'
+              ? 'bg-slate-900 text-white shadow-sm'
+              : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
+              }`}
           >
             <Inbox size={14} />
             <span>All Notices</span>
@@ -214,11 +212,10 @@ export default function SchoolNoticesInboxView({
               <button
                 key={key}
                 onClick={() => setSelectedCategory(key)}
-                className={`px-3.5 py-2 rounded-xl text-xs font-bold whitespace-nowrap transition-all flex items-center gap-1.5 ${
-                  isSelected
-                    ? `${cfg.bg} ${cfg.text} border ${cfg.border} shadow-sm`
-                    : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
-                }`}
+                className={`px-3.5 py-2 rounded-xl text-xs font-bold whitespace-nowrap transition-all flex items-center gap-1.5 ${isSelected
+                  ? `${cfg.bg} ${cfg.text} border ${cfg.border} shadow-sm`
+                  : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
+                  }`}
               >
                 <Icon size={14} />
                 <span>{cfg.label}</span>
@@ -294,11 +291,10 @@ export default function SchoolNoticesInboxView({
             return (
               <div
                 key={item.id}
-                className={`bg-white rounded-3xl border transition-all relative overflow-hidden ${
-                  isRead
-                    ? 'border-slate-200 opacity-90'
-                    : 'border-slate-300 shadow-md ring-1 ring-emerald-500/20'
-                }`}
+                className={`bg-white rounded-3xl border transition-all relative overflow-hidden ${isRead
+                  ? 'border-slate-200 opacity-90'
+                  : 'border-slate-300 shadow-md ring-1 ring-emerald-500/20'
+                  }`}
               >
                 {/* Status Bar Indicator */}
                 {!isRead && (
@@ -334,11 +330,10 @@ export default function SchoolNoticesInboxView({
 
                       <button
                         onClick={() => toggleReadStatus(item.id)}
-                        className={`px-3 py-1 rounded-xl text-xs font-bold transition-all ${
-                          isRead
-                            ? 'bg-slate-100 text-slate-500 hover:bg-slate-200'
-                            : 'bg-emerald-50 text-emerald-700 hover:bg-emerald-100'
-                        }`}
+                        className={`px-3 py-1 rounded-xl text-xs font-bold transition-all ${isRead
+                          ? 'bg-slate-100 text-slate-500 hover:bg-slate-200'
+                          : 'bg-emerald-50 text-emerald-700 hover:bg-emerald-100'
+                          }`}
                       >
                         {isRead ? 'Mark Unread' : 'Mark Read'}
                       </button>
