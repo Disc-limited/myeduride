@@ -17,6 +17,7 @@ import { safetyConnectDomainSuite } from './unit/safety-connect-domain.test';
 import { parentBookingWorkflowDomainSuite } from './unit/parent-booking-workflow.test';
 import { pickupAuthorizationDomainSuite } from './unit/pickup-authorization-domain.test';
 import { emergencyDeputisingDomainSuite } from './unit/emergency-deputising-domain.test';
+import { telemetryTrackerUnitSuite } from './unit/telemetry-tracker.test';
 import { pickupControlApiSuite } from './integration/pickup-control-api.test';
 import { escortApisSuite } from './integration/escort-apis.test';
 import { routesVehiclesApiSuite } from './integration/routes-vehicles-api.test';
@@ -64,6 +65,7 @@ async function runAllTests() {
     parentBookingWorkflowDomainSuite,
     pickupAuthorizationDomainSuite,
     emergencyDeputisingDomainSuite,
+    telemetryTrackerUnitSuite,
     pickupControlApiSuite,
     escortApisSuite,
     routesVehiclesApiSuite,

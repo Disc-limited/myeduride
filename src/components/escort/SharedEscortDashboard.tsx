@@ -45,10 +45,13 @@ import {
   Compass,
   Trophy,
   Wifi,
-  Radio
+  Radio,
+  Battery,
+  Zap
 } from 'lucide-react';
 import { toast } from 'sonner';
 import SchoolNoticeBanner from '@/components/shared/SchoolNoticeBanner';
+import { useEscortTelemetryTracker } from '@/hooks/useEscortTelemetryTracker';
 
 interface SharedEscortDashboardProps {
   session?: any;
@@ -98,14 +101,37 @@ export default function SharedEscortDashboard({
   const morningList = liveDashboardData?.students?.morning || [];
   const afternoonList = liveDashboardData?.students?.afternoon || [];
 
-  // Handle Morning Trip Start Action
+  // Active Trip & Real-Time Telemetry Broadcaster
+  const isTripActive = morningTripStarted || afternoonTripStarted;
+  const currentTripSessionId = liveDashboardData?.activeSession?.id || `trip-${escortCode}-${new Date().toISOString().slice(0, 10)}`;
+
+  const {
+    isBroadcasting,
+    currentSpeedKmh,
+    currentHeading,
+    gpsAccuracy,
+    pingCount,
+    batteryLevel,
+  } = useEscortTelemetryTracker({
+    sessionId: currentTripSessionId,
+    schoolId: liveDashboardData?.escort?.school_id || escortData?.school_id,
+    vehicleId: liveDashboardData?.vehicle?.id || escortData?.vehicle_id,
+    isActive: isTripActive,
+    onError: (err) => toast.error(`GPS Notice: ${err}`),
+  });
+
+  // Handle Morning Trip Start / Stop Action
   const handleStartMorningTrip = () => {
-    if (morningList.length === 0) {
-      toast.info('No morning student pickups scheduled.');
-      return;
+    if (!morningTripStarted) {
+      if (morningList.length === 0) {
+        toast.info('No morning student pickups scheduled.');
+      }
+      setMorningTripStarted(true);
+      toast.success('Morning trip started! Live GPS telemetry broadcasting to parents & gate.');
+    } else {
+      setMorningTripStarted(false);
+      toast.success('Morning trip completed! Safe arrival logged.');
     }
-    setMorningTripStarted(true);
-    toast.success('Morning trip to school started! Live navigation active.');
   };
 
   // Handle Afternoon Trip Checklist Toggle
@@ -113,20 +139,76 @@ export default function SharedEscortDashboard({
     setChecklist((prev) => ({ ...prev, [key]: !prev[key] }));
   };
 
-  // Handle Afternoon Trip Start
+  // Handle Afternoon Trip Start / Stop
   const handleStartAfternoonTrip = () => {
-    if (!checklist.seatStudents || !checklist.ensureSeatbelts || !checklist.checkBelongings) {
-      toast.error('Please complete all safety checks before starting the trip.');
-      return;
+    if (!afternoonTripStarted) {
+      if (!checklist.seatStudents || !checklist.ensureSeatbelts || !checklist.checkBelongings) {
+        toast.error('Please complete all safety checks before starting the trip.');
+        return;
+      }
+      setAfternoonTripStarted(true);
+      toast.success('Afternoon trip started safely! Live tracking broadcasting.');
+    } else {
+      setAfternoonTripStarted(false);
+      toast.success('Afternoon trip completed! All dropoffs logged.');
     }
-    setAfternoonTripStarted(true);
-    toast.success('Afternoon trip started safely!');
   };
 
   return (
     <div className="space-y-6 font-sans text-slate-800 text-xs">
       {/* OFFICIAL SCHOOL NOTICES & PUBLIC HOLIDAY ADVISORIES */}
       <SchoolNoticeBanner role="escorts" schoolId={liveDashboardData?.escort?.school_id || liveDashboardData?.escort?.primary_school_id || escortData?.school_id || escortData?.primary_school_id} />
+
+      {/* LIVE TELEMETRY RADAR BROADCAST RIBBON (Active during trips) */}
+      {isBroadcasting && (
+        <div className="bg-gradient-to-r from-slate-900 via-emerald-950 to-slate-900 border border-emerald-500/40 rounded-2xl p-3.5 shadow-lg shadow-emerald-950/30 text-white flex flex-wrap items-center justify-between gap-3 animate-in fade-in">
+          <div className="flex items-center gap-3">
+            <div className="w-10 h-10 rounded-xl bg-emerald-500/20 border border-emerald-500/40 flex items-center justify-center text-emerald-400">
+              <Radio className="w-5 h-5 animate-pulse" />
+            </div>
+            <div>
+              <div className="flex items-center gap-2">
+                <span className="font-extrabold text-sm text-white">
+                  Live GPS Radar Active
+                </span>
+                <span className="bg-emerald-500/30 text-emerald-300 border border-emerald-500/50 text-[10px] font-black px-2 py-0.5 rounded-full flex items-center gap-1">
+                  <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-ping" />
+                  Pinging (3s)
+                </span>
+              </div>
+              <p className="text-[11px] text-slate-400">
+                Broadcasting live vehicle telemetry to {schoolName} Gate & Parents
+              </p>
+            </div>
+          </div>
+
+          {/* Telemetry Pills */}
+          <div className="flex items-center gap-2.5 text-xs font-bold">
+            <div className="bg-slate-800/80 border border-slate-700 px-3 py-1.5 rounded-xl flex items-center gap-1.5">
+              <Zap className="w-3.5 h-3.5 text-amber-400" />
+              <span>{currentSpeedKmh > 0 ? `${currentSpeedKmh} km/h` : 'Moving'}</span>
+            </div>
+
+            <div className="bg-slate-800/80 border border-slate-700 px-3 py-1.5 rounded-xl flex items-center gap-1.5">
+              <Compass className="w-3.5 h-3.5 text-blue-400" />
+              <span>{currentHeading}° Bearing</span>
+            </div>
+
+            {gpsAccuracy !== null && (
+              <div className="bg-slate-800/80 border border-slate-700 px-3 py-1.5 rounded-xl text-slate-300 hidden sm:flex items-center gap-1">
+                <span>±{gpsAccuracy}m GPS accuracy</span>
+              </div>
+            )}
+
+            {batteryLevel !== null && (
+              <div className="bg-slate-800/80 border border-slate-700 px-3 py-1.5 rounded-xl text-slate-300 flex items-center gap-1">
+                <Battery className="w-3.5 h-3.5 text-emerald-400" />
+                <span>{batteryLevel}%</span>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
 
       {/* ========================================================================= */}
       {/* 1. HERO ROW: GIGO/MIGO AI BANNER + TODAY'S TRIP SUMMARY */}
@@ -445,11 +527,15 @@ export default function SharedEscortDashboard({
             </p>
             <button
               type="button"
-              disabled={morningList.length === 0}
+              disabled={morningList.length === 0 && !morningTripStarted}
               onClick={handleStartMorningTrip}
-              className="w-full py-2.5 px-4 rounded-xl bg-[#00A859] hover:bg-emerald-600 disabled:opacity-50 text-white font-extrabold text-xs transition-all shadow-md shadow-emerald-600/20 flex items-center justify-center gap-2 cursor-pointer"
+              className={`w-full py-2.5 px-4 rounded-xl ${
+                morningTripStarted
+                  ? 'bg-rose-600 hover:bg-rose-700 shadow-rose-600/20'
+                  : 'bg-[#00A859] hover:bg-emerald-600 shadow-emerald-600/20'
+              } disabled:opacity-50 text-white font-extrabold text-xs transition-all shadow-md flex items-center justify-center gap-2 cursor-pointer`}
             >
-              <span>▶ Start Trip to School</span>
+              <span>{morningTripStarted ? '■ Complete Morning Trip' : '▶ Start Trip to School'}</span>
             </button>
           </div>
         </div>
@@ -597,9 +683,13 @@ export default function SharedEscortDashboard({
           <button
             type="button"
             onClick={handleStartAfternoonTrip}
-            className="w-full py-2.5 px-4 rounded-xl bg-blue-600 hover:bg-blue-700 text-white font-extrabold text-xs transition-all shadow-md shadow-blue-600/20 flex items-center justify-center gap-2 cursor-pointer"
+            className={`w-full py-2.5 px-4 rounded-xl ${
+              afternoonTripStarted
+                ? 'bg-rose-600 hover:bg-rose-700 shadow-rose-600/20'
+                : 'bg-blue-600 hover:bg-blue-700 shadow-blue-600/20'
+            } text-white font-extrabold text-xs transition-all shadow-md flex items-center justify-center gap-2 cursor-pointer`}
           >
-            <span>▶ Start Trip</span>
+            <span>{afternoonTripStarted ? '■ Complete Afternoon Trip' : '▶ Start Trip'}</span>
           </button>
         </div>
 

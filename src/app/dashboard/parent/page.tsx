@@ -137,6 +137,21 @@ export default function ParentDashboard() {
 
   // Wallet State
   const [walletBalance, setWalletBalance] = useState(25600); // ₦25,600.00 or 0 if empty
+  const [liveTrackingData, setLiveTrackingData] = useState<any>(null);
+
+  // Fetch Live Tracking directly from Database
+  const fetchLiveTracking = async (childId?: string) => {
+    try {
+      const url = childId ? `/api/parent/live-tracking?child_id=${childId}` : '/api/parent/live-tracking';
+      const res = await fetch(url, { credentials: 'include', cache: 'no-store' });
+      if (res.ok) {
+        const json = await res.json();
+        setLiveTrackingData(json);
+      }
+    } catch (e) {
+      console.error('Failed to fetch live tracking data:', e);
+    }
+  };
 
   // Fetch unread chat count
   const fetchUnreadChatTotal = async () => {
@@ -277,6 +292,9 @@ export default function ParentDashboard() {
           student_id: f.student_id || firstId,
           pickup_person_name: f.is_self ? (sess?.full_name || '') : f.pickup_person_name,
         }));
+        fetchLiveTracking(firstId);
+      } else {
+        fetchLiveTracking();
       }
 
       const noticeRes = await fetch('/api/parents/pickup-notice', { credentials: 'include' }).catch(() => null);
@@ -290,6 +308,12 @@ export default function ParentDashboard() {
       setLoading(false);
     }
   };
+
+  useEffect(() => {
+    if (selectedChild) {
+      fetchLiveTracking(selectedChild);
+    }
+  }, [selectedChild]);
 
   useEffect(() => {
     const sess = getSession();
@@ -653,12 +677,21 @@ export default function ParentDashboard() {
                   </div>
                   <div className="md:col-span-5 lg:col-span-5">
                     <LiveJourneyCard
-                      childName={safeChildren[0] ? `${safeChildren[0].first_name} ${safeChildren[0].last_name}` : 'David James'}
-                      hasActiveJourney={true}
-                      onOpenLiveJourney={() => {
-                        setSafetyPillar('edrive');
-                        setActiveTab('safety');
-                      }}
+                      childName={liveTrackingData?.child?.name || (safeChildren[0] ? `${safeChildren[0].first_name} ${safeChildren[0].last_name}` : 'Student')}
+                      hasActiveJourney={Boolean(liveTrackingData?.hasActiveJourney)}
+                      escortName={liveTrackingData?.escort?.name || liveTrackingData?.route?.escortName || 'Assigned Escort'}
+                      escortCode={liveTrackingData?.escort?.code || liveTrackingData?.route?.escortCode || 'ESC'}
+                      escortPhone={liveTrackingData?.escort?.phone || liveTrackingData?.route?.escortPhone || ''}
+                      vehicleModel={liveTrackingData?.vehicle?.model || liveTrackingData?.route?.vehicleModel || 'School Bus'}
+                      licensePlate={liveTrackingData?.vehicle?.licensePlate || liveTrackingData?.route?.licensePlate || '—'}
+                      routeName={liveTrackingData?.route?.name || 'Designated Route'}
+                      studentsCount={liveTrackingData?.route?.stopsCount || 0}
+                      etaMinutes={liveTrackingData?.hasActiveJourney ? 8 : 0}
+                      etaTime={liveTrackingData?.hasActiveJourney ? '07:42 AM' : '—'}
+                      sessionId={liveTrackingData?.sessionId}
+                      targetStopName={liveTrackingData?.route?.stops?.[0]?.name || 'Designated Stop'}
+                      targetStopLat={liveTrackingData?.route?.stops?.[0]?.lat}
+                      targetStopLng={liveTrackingData?.route?.stops?.[0]?.lng}
                     />
                   </div>
                 </div>

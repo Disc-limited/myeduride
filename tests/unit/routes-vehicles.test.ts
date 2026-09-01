@@ -42,3 +42,19 @@ routesVehiclesUnitSuite.test('Parent Route Pinning Key: Deterministic serializat
   expect(key1).toBe(key2);
   expect(key1 === key3).toBeFalsy();
 });
+
+routesVehiclesUnitSuite.test('Haversine Distance & Bearing: Correctly calculates distance and compass bearing', () => {
+  const { calculateHaversineDistance, calculateBearing, estimateEtaMinutes } = require('../../src/lib/types/tracking-types');
+
+  // Ikeja (6.5954, 3.3515) to Maryland (6.5744, 3.3662)
+  const dist = calculateHaversineDistance(6.5954, 3.3515, 6.5744, 3.3662);
+  expect(dist > 2000).toBeTruthy();
+  expect(dist < 3500).toBeTruthy();
+
+  const bearing = calculateBearing(6.5954, 3.3515, 6.5744, 3.3662);
+  expect(bearing >= 0 && bearing <= 360).toBeTruthy();
+
+  const eta = estimateEtaMinutes(dist, 40);
+  expect(eta >= 1 && eta <= 15).toBeTruthy();
+});
+

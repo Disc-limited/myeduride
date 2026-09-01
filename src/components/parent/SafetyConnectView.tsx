@@ -33,6 +33,7 @@ import { photoSrc } from '@/lib/photo';
 import StudentAvatar from '@/components/shared/StudentAvatar';
 import SharedRideEscortView from '@/components/parent/SharedRideEscortView';
 import SchoolEscortView from '@/components/parent/SchoolEscortView';
+import LiveJourneyModal from '@/components/parent/LiveJourneyModal';
 
 export type SafetyPillarTab = 'school_escort' | 'myeduride_escort' | 'shared_ride_escort' | 'edrive';
 
@@ -52,6 +53,7 @@ export default function SafetyConnectView({
   const [data, setData] = useState<any>(null);
   const [loading, setLoading] = useState(true);
   const [bookingModalOpen, setBookingModalOpen] = useState(false);
+  const [liveRadarOpen, setLiveRadarOpen] = useState(false);
   const [bookingForm, setBookingForm] = useState({
     operating_area: 'Victoria Island / Oniru / Lekki',
     pickup_date: new Date().toISOString().split('T')[0],
@@ -519,9 +521,32 @@ export default function SafetyConnectView({
                   ))}
                 </div>
               </div>
+
+              {/* Action Button: Launch Full Live Radar */}
+              <button
+                type="button"
+                onClick={() => setLiveRadarOpen(true)}
+                className="w-full py-3 px-4 rounded-2xl bg-emerald-600 hover:bg-emerald-700 text-white font-extrabold text-xs flex items-center justify-center gap-2 transition-all shadow-md shadow-emerald-600/20 cursor-pointer"
+              >
+                <Radio className="w-4 h-4 animate-pulse" />
+                <span>Open Live Radar GPS Tracking Map</span>
+              </button>
             </div>
           </div>
         )}
+
+        {/* Live Journey Fullscreen Radar Modal */}
+        <LiveJourneyModal
+          isOpen={liveRadarOpen}
+          onClose={() => setLiveRadarOpen(false)}
+          childName={selectedChildObj ? `${selectedChildObj.first_name} ${selectedChildObj.last_name}` : 'David James'}
+          escortName="Officer John Okonkwo"
+          escortCode="ESC-4089"
+          vehicleModel="Toyota Hiace (Gold Shield)"
+          licensePlate="LAG-894-XA"
+          routeName="Ikeja - Maryland - Surulere Route"
+          sessionId="demo-active-session"
+        />
           </>
         )}
       </div>

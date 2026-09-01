@@ -13,7 +13,9 @@
     "test:e2e": "tsx tests/e2e/central-pickup-e2e.test.ts",
     "test:perf": "tsx tests/performance/api-benchmarks.test.ts",
     "seed:super-admins": "node scripts/seed-super-admins.js",
-    "seed:super-admins:inspect": "node scripts/seed-super-admins.js --inspect-only"
+    "seed:super-admins:inspect": "node scripts/seed-super-admins.js --inspect-only",
+    "migrate": "node scripts/migrate.js",
+    "db:migrate": "node scripts/migrate.js"
   },
   "dependencies": {
     "@heroicons/react": "^2.2.0",
