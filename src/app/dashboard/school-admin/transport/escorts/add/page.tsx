@@ -103,7 +103,11 @@ export default function AddSchoolEscortPage() {
         },
         (err) => {
           toast.dismiss();
-          toast.error(`GPS acquisition failed: ${err.message}. Using default city coordinates.`);
+          if (err.code === 1) {
+            toast.error('Location permission denied. Please allow location access in your browser settings.');
+          } else {
+            toast.error(`GPS acquisition failed: ${err.message}. Using default city coordinates.`);
+          }
         },
         { enableHighAccuracy: true, timeout: 10000 }
       );

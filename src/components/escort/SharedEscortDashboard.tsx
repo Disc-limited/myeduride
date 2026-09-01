@@ -47,10 +47,12 @@ import {
   Wifi,
   Radio,
   Battery,
-  Zap
+  Zap,
+  MapPinOff
 } from 'lucide-react';
 import { toast } from 'sonner';
 import SchoolNoticeBanner from '@/components/shared/SchoolNoticeBanner';
+import LocationPermissionModal from '@/components/shared/LocationPermissionModal';
 import { useEscortTelemetryTracker } from '@/hooks/useEscortTelemetryTracker';
 
 interface SharedEscortDashboardProps {
@@ -82,6 +84,8 @@ export default function SharedEscortDashboard({
   const [commTab, setCommTab] = useState<'all' | 'parents' | 'school' | 'cityManager'>('all');
   const [morningTripStarted, setMorningTripStarted] = useState(false);
   const [afternoonTripStarted, setAfternoonTripStarted] = useState(false);
+  const [isManualMode, setIsManualMode] = useState(false);
+  const [showLocationModal, setShowLocationModal] = useState(false);
   const [checklist, setChecklist] = useState({
     seatStudents: false,
     ensureSeatbelts: false,
@@ -105,19 +109,28 @@ export default function SharedEscortDashboard({
   const isTripActive = morningTripStarted || afternoonTripStarted;
   const currentTripSessionId = liveDashboardData?.activeSession?.id || `trip-${escortCode}-${new Date().toISOString().slice(0, 10)}`;
 
+  const handleTelemetryError = (err: string, code?: number) => {
+    // If permission was denied, prompt user with helper modal instead of throwing repeated alerts
+    if (code === 1) {
+      setShowLocationModal(true);
+    }
+  };
+
   const {
     isBroadcasting,
+    hasPermissionError,
     currentSpeedKmh,
     currentHeading,
     gpsAccuracy,
     pingCount,
     batteryLevel,
+    retryLocationAccess,
   } = useEscortTelemetryTracker({
     sessionId: currentTripSessionId,
     schoolId: liveDashboardData?.escort?.school_id || escortData?.school_id,
     vehicleId: liveDashboardData?.vehicle?.id || escortData?.vehicle_id,
-    isActive: isTripActive,
-    onError: (err) => toast.error(`GPS Notice: ${err}`),
+    isActive: isTripActive && !isManualMode,
+    onError: handleTelemetryError,
   });
 
   // Handle Morning Trip Start / Stop Action
@@ -130,6 +143,7 @@ export default function SharedEscortDashboard({
       toast.success('Morning trip started! Live GPS telemetry broadcasting to parents & gate.');
     } else {
       setMorningTripStarted(false);
+      setIsManualMode(false);
       toast.success('Morning trip completed! Safe arrival logged.');
     }
   };
@@ -150,6 +164,7 @@ export default function SharedEscortDashboard({
       toast.success('Afternoon trip started safely! Live tracking broadcasting.');
     } else {
       setAfternoonTripStarted(false);
+      setIsManualMode(false);
       toast.success('Afternoon trip completed! All dropoffs logged.');
     }
   };
@@ -159,8 +174,67 @@ export default function SharedEscortDashboard({
       {/* OFFICIAL SCHOOL NOTICES & PUBLIC HOLIDAY ADVISORIES */}
       <SchoolNoticeBanner role="escorts" schoolId={liveDashboardData?.escort?.school_id || liveDashboardData?.escort?.primary_school_id || escortData?.school_id || escortData?.primary_school_id} />
 
-      {/* LIVE TELEMETRY RADAR BROADCAST RIBBON (Active during trips) */}
-      {isBroadcasting && (
+      {/* LOCATION PERMISSION BLOCKED WARNING BANNER */}
+      {hasPermissionError && isTripActive && !isManualMode && (
+        <div className="bg-amber-50 border border-amber-300 rounded-2xl p-4 shadow-sm text-amber-950 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 animate-in fade-in">
+          <div className="flex items-center gap-3 min-w-0">
+            <div className="w-10 h-10 rounded-xl bg-amber-500 text-white flex items-center justify-center shrink-0 shadow-xs">
+              <MapPinOff className="w-5 h-5" />
+            </div>
+            <div>
+              <p className="font-extrabold text-sm text-slate-900">
+                Location Access Blocked on Browser
+              </p>
+              <p className="text-[11px] text-slate-600">
+                Live GPS broadcasting is paused. Enable location or continue in manual mode.
+              </p>
+            </div>
+          </div>
+
+          <div className="flex items-center gap-2 self-end sm:self-center shrink-0">
+            <button
+              type="button"
+              onClick={() => setShowLocationModal(true)}
+              className="px-3 py-1.5 rounded-xl bg-amber-600 hover:bg-amber-700 text-white font-extrabold text-xs transition-all shadow-xs cursor-pointer"
+            >
+              How to Enable Location
+            </button>
+            <button
+              type="button"
+              onClick={() => setIsManualMode(true)}
+              className="px-3 py-1.5 rounded-xl bg-white hover:bg-slate-100 border border-slate-300 text-slate-700 font-bold text-xs transition-all cursor-pointer"
+            >
+              Manual Mode
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* MANUAL TRANSIT MODE ACTIVE BANNER */}
+      {isManualMode && isTripActive && (
+        <div className="bg-blue-50 border border-blue-200 rounded-2xl p-3.5 shadow-sm text-blue-950 flex items-center justify-between gap-3 animate-in fade-in">
+          <div className="flex items-center gap-2.5">
+            <Compass className="w-4 h-4 text-blue-600 animate-spin" />
+            <div>
+              <span className="font-extrabold text-xs text-blue-950">Manual Transit Mode Active: </span>
+              <span className="text-[11px] text-blue-800">You can manually advance stops and scan students without GPS.</span>
+            </div>
+          </div>
+          <button
+            type="button"
+            onClick={() => {
+              setIsManualMode(false);
+              retryLocationAccess();
+            }}
+            className="px-3 py-1 rounded-xl bg-white hover:bg-blue-100 border border-blue-300 text-blue-800 font-extrabold text-xs transition-all cursor-pointer"
+          >
+            Retry GPS
+          </button>
+        </div>
+      )}
+
+      {/* LIVE TELEMETRY RADAR BROADCAST RIBBON (Active during trips with GPS) */}
+      {isBroadcasting && !hasPermissionError && !isManualMode && (
         <div className="bg-gradient-to-r from-slate-900 via-emerald-950 to-slate-900 border border-emerald-500/40 rounded-2xl p-3.5 shadow-lg shadow-emerald-950/30 text-white flex flex-wrap items-center justify-between gap-3 animate-in fade-in">
           <div className="flex items-center gap-3">
             <div className="w-10 h-10 rounded-xl bg-emerald-500/20 border border-emerald-500/40 flex items-center justify-center text-emerald-400">
@@ -209,6 +283,20 @@ export default function SharedEscortDashboard({
           </div>
         </div>
       )}
+
+      {/* LOCATION PERMISSION HELPER MODAL */}
+      <LocationPermissionModal
+        isOpen={showLocationModal}
+        onClose={() => setShowLocationModal(false)}
+        onRetry={() => {
+          retryLocationAccess();
+          toast.success('Retrying GPS location access...');
+        }}
+        onEnableManualMode={() => {
+          setIsManualMode(true);
+          toast.info('Switched to Manual Transit Mode.');
+        }}
+      />
 
       {/* ========================================================================= */}
       {/* 1. HERO ROW: GIGO/MIGO AI BANNER + TODAY'S TRIP SUMMARY */}

@@ -4,6 +4,8 @@ import { useState, useEffect, useRef, useCallback } from 'react';
 import { createClient } from '@/lib/supabase/client';
 import { TelemetryPoint } from '@/lib/types/tracking-types';
 
+export type GeolocationPermissionState = 'prompt' | 'granted' | 'denied' | 'unavailable';
+
 interface UseEscortTelemetryOptions {
   sessionId?: string;
   schoolId?: string;
@@ -11,7 +13,7 @@ interface UseEscortTelemetryOptions {
   isActive: boolean;
   currentStopIndex?: number;
   onPositionUpdate?: (point: TelemetryPoint) => void;
-  onError?: (errorMessage: string) => void;
+  onError?: (errorMessage: string, code?: number) => void;
 }
 
 export function useEscortTelemetryTracker({
@@ -24,39 +26,58 @@ export function useEscortTelemetryTracker({
   onError,
 }: UseEscortTelemetryOptions) {
   const [isBroadcasting, setIsBroadcasting] = useState(false);
+  const [permissionState, setPermissionState] = useState<GeolocationPermissionState>('prompt');
   const [currentSpeedKmh, setCurrentSpeedKmh] = useState(0);
   const [currentHeading, setCurrentHeading] = useState(0);
   const [gpsAccuracy, setGpsAccuracy] = useState<number | null>(null);
   const [lastPingAt, setLastPingAt] = useState<string | null>(null);
   const [pingCount, setPingCount] = useState(0);
   const [batteryLevel, setBatteryLevel] = useState<number | null>(null);
+  const [retryTrigger, setRetryTrigger] = useState(0);
 
   const watchIdRef = useRef<number | null>(null);
   const lastBroadcastTimeRef = useRef<number>(0);
   const lastDbSyncTimeRef = useRef<number>(0);
+  const lastErrorMessageRef = useRef<string | null>(null);
   const wakeLockRef = useRef<any>(null);
+
+  // Ref-stabilized callbacks to prevent unnecessary effect teardown / re-execution loops
+  const onPositionUpdateRef = useRef(onPositionUpdate);
+  const onErrorRef = useRef(onError);
+
+  useEffect(() => {
+    onPositionUpdateRef.current = onPositionUpdate;
+  }, [onPositionUpdate]);
+
+  useEffect(() => {
+    onErrorRef.current = onError;
+  }, [onError]);
+
   const supabase = createClient();
 
   // Battery status listener
   useEffect(() => {
     if (typeof window !== 'undefined' && 'getBattery' in navigator) {
-      (navigator as any).getBattery().then((battery: any) => {
-        setBatteryLevel(Math.round(battery.level * 100));
-        battery.addEventListener('levelchange', () => {
+      (navigator as any)
+        .getBattery()
+        .then((battery: any) => {
           setBatteryLevel(Math.round(battery.level * 100));
-        });
-      }).catch(() => {});
+          battery.addEventListener('levelchange', () => {
+            setBatteryLevel(Math.round(battery.level * 100));
+          });
+        })
+        .catch(() => {});
     }
   }, []);
 
-  // Screen Wake Lock handler to prevent phone from going to sleep while navigating
+  // Screen Wake Lock handler to prevent phone from sleeping while navigating
   const requestWakeLock = useCallback(async () => {
     try {
       if ('wakeLock' in navigator && (navigator as any).wakeLock) {
         wakeLockRef.current = await (navigator as any).wakeLock.request('screen');
       }
     } catch (e) {
-      console.warn('Screen WakeLock request skipped or failed:', e);
+      // Wake lock not supported or denied
     }
   }, []);
 
@@ -65,6 +86,13 @@ export function useEscortTelemetryTracker({
       wakeLockRef.current.release().catch(() => {});
       wakeLockRef.current = null;
     }
+  }, []);
+
+  // Manual retry trigger
+  const retryLocationAccess = useCallback(() => {
+    lastErrorMessageRef.current = null;
+    setPermissionState('prompt');
+    setRetryTrigger((prev) => prev + 1);
   }, []);
 
   useEffect(() => {
@@ -78,9 +106,31 @@ export function useEscortTelemetryTracker({
       return;
     }
 
-    if (!('geolocation' in navigator)) {
-      onError?.('Geolocation is not supported by this browser.');
+    if (typeof window === 'undefined' || !('geolocation' in navigator)) {
+      setPermissionState('unavailable');
+      if (lastErrorMessageRef.current !== 'unavailable') {
+        lastErrorMessageRef.current = 'unavailable';
+        onErrorRef.current?.('Geolocation is not supported by your browser.', 0);
+      }
       return;
+    }
+
+    // Query browser permission status if supported (Chrome, Edge, Firefox)
+    if ('permissions' in navigator && navigator.permissions?.query) {
+      navigator.permissions
+        .query({ name: 'geolocation' as PermissionName })
+        .then((permissionStatus) => {
+          setPermissionState(permissionStatus.state as GeolocationPermissionState);
+          permissionStatus.onchange = () => {
+            setPermissionState(permissionStatus.state as GeolocationPermissionState);
+            if (permissionStatus.state === 'granted') {
+              lastErrorMessageRef.current = null;
+            }
+          };
+        })
+        .catch(() => {
+          // Permissions API query not supported on some WebKit/Safari versions
+        });
     }
 
     requestWakeLock();
@@ -98,14 +148,16 @@ export function useEscortTelemetryTracker({
 
     watchIdRef.current = navigator.geolocation.watchPosition(
       async (pos) => {
+        setPermissionState('granted');
+        lastErrorMessageRef.current = null;
+
         const now = Date.now();
         const accuracy = pos.coords.accuracy;
         const speedKmh = pos.coords.speed !== null && pos.coords.speed >= 0 ? pos.coords.speed * 3.6 : 0;
         const heading = pos.coords.heading || 0;
 
-        // Discard erratic jitter (e.g. accuracy worse than 40m)
-        if (accuracy > 40) {
-          console.warn('GPS reading discarded due to low accuracy (>40m):', accuracy);
+        // Discard erratic jitter (e.g. accuracy worse than 45m)
+        if (accuracy > 45) {
           return;
         }
 
@@ -131,9 +183,9 @@ export function useEscortTelemetryTracker({
         setGpsAccuracy(telemetryPoint.accuracyMeters || 0);
         setLastPingAt(telemetryPoint.timestamp);
         setPingCount((prev) => prev + 1);
-        onPositionUpdate?.(telemetryPoint);
+        onPositionUpdateRef.current?.(telemetryPoint);
 
-        // 1. Fast Ephemeral WebSocket Broadcast (Sub-second latency to Parent & School Admin)
+        // 1. Fast Ephemeral WebSocket Broadcast (Sub-second latency)
         sessionChannel.send({
           type: 'broadcast',
           event: 'telemetry_ping',
@@ -158,7 +210,7 @@ export function useEscortTelemetryTracker({
           });
         }
 
-        // 2. Periodic Database Sync (every ~16 seconds) to prevent DB write contention
+        // 2. Periodic Database Sync (every ~16 seconds)
         if (now - lastDbSyncTimeRef.current > 16000) {
           lastDbSyncTimeRef.current = now;
           try {
@@ -181,8 +233,25 @@ export function useEscortTelemetryTracker({
         }
       },
       (error) => {
-        console.error('Geolocation watch error:', error);
-        onError?.(error.message);
+        // Handle Error States Gracefully
+        if (error.code === 1) {
+          // PERMISSION_DENIED: Instantly stop watching to prevent repeated errors / battery drain
+          setPermissionState('denied');
+          if (watchIdRef.current !== null) {
+            navigator.geolocation.clearWatch(watchIdRef.current);
+            watchIdRef.current = null;
+          }
+        } else if (error.code === 2) {
+          // POSITION_UNAVAILABLE
+          setPermissionState('unavailable');
+        }
+
+        // Deduplicate error notifications
+        const errKey = `${error.code}:${error.message}`;
+        if (lastErrorMessageRef.current !== errKey) {
+          lastErrorMessageRef.current = errKey;
+          onErrorRef.current?.(error.message, error.code);
+        }
       },
       {
         enableHighAccuracy: true,
@@ -208,19 +277,21 @@ export function useEscortTelemetryTracker({
     vehicleId,
     currentStopIndex,
     batteryLevel,
-    onPositionUpdate,
-    onError,
+    retryTrigger,
     requestWakeLock,
     releaseWakeLock,
   ]);
 
   return {
     isBroadcasting,
+    permissionState,
+    hasPermissionError: permissionState === 'denied' || permissionState === 'unavailable',
     currentSpeedKmh,
     currentHeading,
     gpsAccuracy,
     lastPingAt,
     pingCount,
     batteryLevel,
+    retryLocationAccess,
   };
 }

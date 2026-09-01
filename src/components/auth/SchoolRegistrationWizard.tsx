@@ -212,7 +212,11 @@ export default function SchoolRegistrationWizard({ onSwitchRole }: SchoolRegistr
       },
       (err) => {
         setIsLocating(false);
-        toast.error(`Could not retrieve location: ${err.message}`);
+        if (err.code === 1) {
+          toast.error('Location permission denied. Please allow location in your browser settings.');
+        } else {
+          toast.error(`Could not retrieve location: ${err.message}`);
+        }
       }
     );
   };
