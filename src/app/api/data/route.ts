@@ -848,6 +848,28 @@ export async function POST(request: NextRequest) {
         return NextResponse.json({ success: true });
       }
 
+      case 'get_school_vehicles': {
+        const s = session as any;
+        const schoolId = params?.school_id || s.primary_school_id || s.school_id || s.primary_school?.id;
+        let query = supabase.from('school_vehicles').select('*');
+        if (schoolId) {
+          query = query.eq('school_id', schoolId);
+        }
+        const { data: vehicles } = await query.order('created_at', { ascending: false });
+        return NextResponse.json({ vehicles: vehicles || [] });
+      }
+
+      case 'get_transport_routes': {
+        const s = session as any;
+        const schoolId = params?.school_id || s.primary_school_id || s.school_id || s.primary_school?.id;
+        let query = supabase.from('transport_routes').select('*, vehicle:school_vehicles(*), stops:transport_route_stops(*)');
+        if (schoolId) {
+          query = query.eq('school_id', schoolId);
+        }
+        const { data: routes } = await query.order('name', { ascending: true });
+        return NextResponse.json({ routes: routes || [] });
+      }
+
       default:
         return NextResponse.json({ error: 'Unknown action' }, { status: 400 });
     }

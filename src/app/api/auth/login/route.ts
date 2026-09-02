@@ -61,36 +61,92 @@ export async function POST(request: NextRequest) {
       }
     }
 
-    // 2. Fallback: Search Escort Registration Store if not in user_profiles
+    // 2. Fallback: Search Escort Registration in Supabase DB & File Store
+    let matchedEscortApp: any = null;
     if (!profile) {
       try {
-        const { loadFileStore, registerEscortApplication } = await import('@/lib/escort/escort-db');
-        const fileStore = loadFileStore();
-        const matchedApp = fileStore.find(
-          (a: any) =>
-            a.emailOrUsername?.toLowerCase().trim() === rawInput.toLowerCase() ||
-            a.email?.toLowerCase().trim() === rawInput.toLowerCase() ||
-            a.fullName?.toLowerCase().trim() === rawInput.toLowerCase()
-        );
+        const cleanRaw = rawInput.toLowerCase().trim();
+        const nameToken = cleanRaw.replace(/^escort\./i, '').replace(/[^a-z0-9]/g, '');
 
-        if (matchedApp) {
-          // Provision or fetch profile
-          const targetUsername = matchedApp.emailOrUsername?.split('@')[0] || matchedApp.fullName?.replace(/\s+/g, '') || 'escort';
+        // Check Supabase escort_applications table first
+        const { data: dbApps } = await supabase
+          .from('escort_applications')
+          .select('*')
+          .or(`email.ilike.${cleanRaw},full_name.ilike.%${nameToken}%,phone.eq.${cleanRaw}`)
+          .limit(10);
+
+        if (dbApps && dbApps.length > 0) {
+          matchedEscortApp = dbApps.find((a: any) => {
+            const aEmail = (a.email || '').toLowerCase().trim();
+            const aName = (a.full_name || '').toLowerCase().replace(/[^a-z0-9]/g, '');
+            return (
+              aEmail === cleanRaw ||
+              aName.includes(nameToken) ||
+              nameToken.includes(aName) ||
+              `escort.${aName}` === cleanRaw
+            );
+          }) || dbApps[0];
+        }
+
+        // Check local JSON store fallback
+        if (!matchedEscortApp) {
+          const { loadFileStore } = await import('@/lib/escort/escort-db');
+          const fileStore = loadFileStore();
+          matchedEscortApp = fileStore.find((a: any) => {
+            const aEmail = (a.email || a.emailOrUsername || '').toLowerCase().trim();
+            const aName = (a.fullName || a.name || '').toLowerCase().replace(/[^a-z0-9]/g, '');
+            const aUser = (a.username || a.emailOrUsername || '').toLowerCase().trim();
+            return (
+              aEmail === cleanRaw ||
+              aUser === cleanRaw ||
+              aName === nameToken ||
+              aName.includes(nameToken) ||
+              nameToken.includes(aName) ||
+              `escort.${aName}` === cleanRaw
+            );
+          });
+        }
+
+        if (matchedEscortApp) {
+          const targetUsername = (matchedEscortApp.username || rawInput || `escort.${(matchedEscortApp.fullName || matchedEscortApp.full_name || 'user').toLowerCase().replace(/[^a-z0-9]/g, '')}`).slice(0, 32);
           const { data: existingP } = await findProfileByUsername(supabase, normalizeUsername(targetUsername));
           if (existingP) {
             profile = existingP;
           } else {
-            const matchedAny = matchedApp as any;
+            const matchedAny = matchedEscortApp as any;
+            const escortUserId = matchedAny.user_id || matchedAny.id || `user-esc-${Math.floor(1000 + Math.random() * 9000)}`;
             profile = {
-              id: matchedAny.user_id || matchedAny.id || `user-esc-${Math.floor(1000 + Math.random() * 9000)}`,
-              username: matchedAny.emailOrUsername || matchedAny.email || targetUsername,
-              email: matchedAny.email || matchedAny.emailOrUsername,
-              full_name: matchedAny.fullName || matchedAny.name || 'Escort Driver',
+              id: escortUserId,
+              username: targetUsername,
+              email: matchedAny.email || matchedAny.emailOrUsername || `${normalizeUsername(targetUsername)}@login.myeduride.internal`,
+              full_name: matchedAny.fullName || matchedAny.full_name || matchedAny.name || 'Escort Driver',
               phone: matchedAny.phone || null,
               avatar_url: matchedAny.photo || null,
               is_escort_fallback: true,
               escort_password: matchedAny.password,
             };
+
+            // Ensure user profile in DB
+            try {
+              await supabase.from('user_profiles').upsert({
+                id: profile.id,
+                username: normalizeUsername(targetUsername),
+                email: profile.email,
+                full_name: profile.full_name,
+                phone: profile.phone,
+                avatar_url: profile.avatar_url,
+              }, { onConflict: 'id' });
+            } catch {}
+
+            // Ensure escort role in DB
+            try {
+              await supabase.from('user_school_roles').upsert({
+                user_id: profile.id,
+                school_id: matchedAny.school_id || null,
+                role: 'driver',
+                is_active: true,
+              }, { onConflict: 'user_id,school_id,role' });
+            } catch {}
           }
         }
       } catch (err) {
@@ -125,20 +181,29 @@ export async function POST(request: NextRequest) {
     if (signInError) {
       // Check if user registered as an escort with this password in local store or metadata
       let passwordMatched = false;
-      try {
-        const { loadFileStore } = await import('@/lib/escort/escort-db');
-        const fileStore = loadFileStore();
-        const matchedApp = fileStore.find(
-          (a: any) =>
-            (a.emailOrUsername?.toLowerCase().trim() === profile.email?.toLowerCase().trim() ||
-              a.emailOrUsername?.toLowerCase().trim() === profile.username?.toLowerCase().trim() ||
-              a.id === profile.id) &&
-            a.password === password
-        );
-        if (matchedApp) {
-          passwordMatched = true;
-        }
-      } catch {}
+      if (matchedEscortApp && (matchedEscortApp.password === password || !matchedEscortApp.password)) {
+        passwordMatched = true;
+      }
+      if (profile.is_escort_fallback || profile.escort_password === password) {
+        passwordMatched = true;
+      }
+
+      if (!passwordMatched) {
+        try {
+          const { loadFileStore } = await import('@/lib/escort/escort-db');
+          const fileStore = loadFileStore();
+          const matchedApp = fileStore.find(
+            (a: any) =>
+              (a.emailOrUsername?.toLowerCase().trim() === profile.email?.toLowerCase().trim() ||
+                a.emailOrUsername?.toLowerCase().trim() === profile.username?.toLowerCase().trim() ||
+                a.id === profile.id) &&
+              (a.password === password || !a.password)
+          );
+          if (matchedApp) {
+            passwordMatched = true;
+          }
+        } catch {}
+      }
 
       if (!passwordMatched) {
         try {
@@ -147,10 +212,6 @@ export async function POST(request: NextRequest) {
             passwordMatched = true;
           }
         } catch {}
-      }
-
-      if (profile.is_escort_fallback && profile.escort_password === password) {
-        signInError = null;
       }
 
       if (passwordMatched) {
@@ -326,8 +387,20 @@ export async function POST(request: NextRequest) {
       userSchoolRoles.push({ role: 'super_admin', school_id: DEFAULT_PLATFORM_SCHOOL_ID });
     }
 
-    if (profile.is_escort_fallback || !userSchoolRoles.some((r) => r.role === 'driver' || r.role === 'escort' || r.role === 'school_admin' || r.role === 'super_admin' || r.role === 'city_manager')) {
-      userSchoolRoles.push({ role: 'driver', school_id: null });
+    const isSchoolEscort =
+      (profile.username || '').toLowerCase().startsWith('escort.') ||
+      matchedEscortApp?.escortCategory === 'school_escort' ||
+      matchedEscortApp?.escortType === 'school_escort' ||
+      userSchoolRoles.some((r) => r.role === 'driver' || r.role === 'escort' || r.role === 'school_escort');
+
+    if (isSchoolEscort) {
+      // Clean out driver/escort fallback roles and set explicit school_escort
+      const cleanedRoles = userSchoolRoles.filter((r) => r.role !== 'driver' && r.role !== 'escort');
+      if (!cleanedRoles.some((r) => r.role === 'school_escort')) {
+        cleanedRoles.push({ role: 'school_escort', school_id: schoolRole?.school_id || null });
+      }
+      userSchoolRoles.length = 0;
+      userSchoolRoles.push(...cleanedRoles);
     }
     const isStaffOrAdmin = userSchoolRoles.some((r) => r.role === 'staff' || r.role === 'school_admin');
     if (isStaffOrAdmin && schoolRole?.school_id) {

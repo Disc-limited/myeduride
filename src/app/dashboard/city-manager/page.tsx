@@ -58,7 +58,7 @@ function CityManagerDashboardContent() {
   const [activeSection, setActiveSection] = useState<'dashboard' | 'tasks-approvals' | string>(
     sectionParam || 'dashboard'
   );
-  const [selectedCity, setSelectedCity] = useState('LAGOS MAINLAND');
+  const [selectedCity, setSelectedCity] = useState('ALL');
   const [mapFilter, setMapFilter] = useState('all');
   const [aiPrompt, setAiPrompt] = useState('');
 
@@ -85,6 +85,7 @@ function CityManagerDashboardContent() {
   // Escort Applications & Verification State (Live data fetched from API)
   const [escortApplications, setEscortApplications] = useState<any[]>([]);
   const [selectedAppId, setSelectedAppId] = useState<string>('');
+  const [escortPillarFilter, setEscortPillarFilter] = useState<'all' | 'myeduride' | 'school' | 'shared_ride'>('all');
   const [cmActionModal, setCmActionModal] = useState<{ open: boolean; type: 'correction' | 'reject' | null }>({
     open: false,
     type: null,
@@ -131,7 +132,26 @@ function CityManagerDashboardContent() {
       .catch((err) => console.warn('[city-manager] fetch applications notice:', err));
   }, [selectedCity]);
 
-  const selectedApp = escortApplications.find((a) => a.id === selectedAppId) || escortApplications[0];
+  // Counts for the 3 Escort Pillars
+  const countMyEduRide = escortApplications.filter(
+    (a) => a.escortCategory === 'myeduride_escort' || (!a.escortCategory && !a.createdBySchoolId)
+  ).length;
+  const countSchool = escortApplications.filter(
+    (a) => a.escortCategory === 'school_escort' || a.createdBySchoolId || a.schoolName
+  ).length;
+  const countSharedRide = escortApplications.filter(
+    (a) => a.escortCategory === 'shared_ride_escort' || a.service_type === 'shared_ride'
+  ).length;
+
+  const filteredEscortApplications = escortApplications.filter((app) => {
+    if (escortPillarFilter === 'all') return true;
+    if (escortPillarFilter === 'school') return app.escortCategory === 'school_escort' || app.createdBySchoolId || app.schoolName;
+    if (escortPillarFilter === 'shared_ride') return app.escortCategory === 'shared_ride_escort' || app.service_type === 'shared_ride';
+    if (escortPillarFilter === 'myeduride') return app.escortCategory === 'myeduride_escort' || (!app.escortCategory && !app.createdBySchoolId);
+    return true;
+  });
+
+  const selectedApp = filteredEscortApplications.find((a) => a.id === selectedAppId) || filteredEscortApplications[0] || escortApplications[0];
 
   // Action 1: Approve
   const handleApprove = async (appId: string) => {
@@ -342,11 +362,14 @@ function CityManagerDashboardContent() {
             onChange={(e) => setSelectedCity(e.target.value)}
             className="bg-slate-900 border border-slate-700 text-xs text-emerald-400 font-bold px-3 py-1.5 rounded-xl focus:ring-1 focus:ring-brand-green"
           >
+            <option value="ALL">All Jurisdictions (Pan-Nigeria)</option>
             <option value="LAGOS MAINLAND">Lagos Mainland</option>
             <option value="LAGOS ISLAND">Lagos Island</option>
             <option value="IKEJA">Ikeja</option>
             <option value="LEKKI">Lekki</option>
             <option value="ABUJA">Abuja</option>
+            <option value="EDO">Benin City / Edo</option>
+            <option value="OTHER">Other Jurisdictions</option>
           </select>
         </div>
       </div>
@@ -377,23 +400,85 @@ function CityManagerDashboardContent() {
           </div>
         </div>
 
+        {/* Category Pillar Filter Tabs */}
+        <div className="flex flex-wrap items-center gap-2 mt-4 pt-3 border-t border-slate-800/80">
+          <button
+            onClick={() => setEscortPillarFilter('all')}
+            className={`px-3.5 py-1.5 rounded-xl text-xs font-bold transition-all cursor-pointer flex items-center gap-1.5 ${
+              escortPillarFilter === 'all'
+                ? 'bg-emerald-500 text-slate-950 shadow-md shadow-emerald-500/20'
+                : 'bg-slate-800 text-slate-300 hover:bg-slate-700'
+            }`}
+          >
+            <span>All Escort Applications</span>
+            <span className="px-1.5 py-0.2 rounded-full text-[10px] font-black bg-slate-900/30">
+              {escortApplications.length}
+            </span>
+          </button>
+
+          <button
+            onClick={() => setEscortPillarFilter('school')}
+            className={`px-3.5 py-1.5 rounded-xl text-xs font-bold transition-all cursor-pointer flex items-center gap-1.5 ${
+              escortPillarFilter === 'school'
+                ? 'bg-amber-400 text-slate-950 shadow-md shadow-amber-400/20'
+                : 'bg-slate-800 text-slate-300 hover:bg-slate-700'
+            }`}
+          >
+            <School size={13} className="shrink-0" />
+            <span>School Escorts</span>
+            <span className="px-1.5 py-0.2 rounded-full text-[10px] font-black bg-slate-900/30">
+              {countSchool}
+            </span>
+          </button>
+
+          <button
+            onClick={() => setEscortPillarFilter('myeduride')}
+            className={`px-3.5 py-1.5 rounded-xl text-xs font-bold transition-all cursor-pointer flex items-center gap-1.5 ${
+              escortPillarFilter === 'myeduride'
+                ? 'bg-indigo-500 text-white shadow-md shadow-indigo-500/20'
+                : 'bg-slate-800 text-slate-300 hover:bg-slate-700'
+            }`}
+          >
+            <ShieldCheck size={13} className="shrink-0" />
+            <span>MyEduRide Escorts</span>
+            <span className="px-1.5 py-0.2 rounded-full text-[10px] font-black bg-slate-900/30">
+              {countMyEduRide}
+            </span>
+          </button>
+
+          <button
+            onClick={() => setEscortPillarFilter('shared_ride')}
+            className={`px-3.5 py-1.5 rounded-xl text-xs font-bold transition-all cursor-pointer flex items-center gap-1.5 ${
+              escortPillarFilter === 'shared_ride'
+                ? 'bg-cyan-400 text-slate-950 shadow-md shadow-cyan-400/20'
+                : 'bg-slate-800 text-slate-300 hover:bg-slate-700'
+            }`}
+          >
+            <Car size={13} className="shrink-0" />
+            <span>Shared Ride Escorts</span>
+            <span className="px-1.5 py-0.2 rounded-full text-[10px] font-black bg-slate-900/30">
+              {countSharedRide}
+            </span>
+          </button>
+        </div>
+
         {/* Main Split Grid: Left Application Selector list, Right Full Inspector */}
-        {escortApplications.length === 0 ? (
+        {filteredEscortApplications.length === 0 ? (
           <div className="mt-4 p-12 rounded-3xl border border-slate-800 bg-[#07172b] text-center space-y-3 shadow-xl">
             <div className="w-14 h-14 bg-slate-800/80 text-emerald-400 border border-slate-700 rounded-2xl flex items-center justify-center mx-auto">
               <ShieldCheck className="w-7 h-7" />
             </div>
-            <h3 className="text-base font-bold text-white">No Escort Applications in Queue</h3>
+            <h3 className="text-base font-bold text-white">No Applications in Queue</h3>
             <p className="text-xs text-slate-400 max-w-md mx-auto leading-relaxed">
-              There are currently no escort applications in review for <strong>{selectedCity}</strong>. When a driver or escort submits a live registration, their full application, NIN, driver's licence, vehicle details, and documents will appear here immediately for City Manager verification.
+              There are currently no {escortPillarFilter !== 'all' ? escortPillarFilter.replace('_', ' ') : ''} escort applications in review for <strong>{selectedCity}</strong>. When a driver or school escort submits an application, their full profile, NIN, licence, vehicle details, and documents will appear here immediately for City Manager verification.
             </p>
           </div>
         ) : (
           <div className="grid grid-cols-1 lg:grid-cols-12 gap-5 mt-4">
             {/* Left Column: Applicant Cards List */}
             <div className="lg:col-span-4 space-y-3">
-              <span className="text-[11px] font-bold text-slate-400 uppercase tracking-wider block">Submitted Applications</span>
-               {escortApplications.map((app) => {
+              <span className="text-[11px] font-bold text-slate-400 uppercase tracking-wider block">Submitted Applications ({filteredEscortApplications.length})</span>
+               {filteredEscortApplications.map((app) => {
                 const isSelected = app.id === selectedAppId;
                 const initials = (app.name || app.fullName || '??')
                   .split(' ')
@@ -401,6 +486,10 @@ function CityManagerDashboardContent() {
                   .slice(0, 2)
                   .join('')
                   .toUpperCase();
+                
+                const isSchool = app.escortCategory === 'school_escort' || app.createdBySchoolId || app.schoolName;
+                const isShared = app.escortCategory === 'shared_ride_escort' || app.service_type === 'shared_ride';
+                
                 return (
                   <div
                     key={app.id}
@@ -424,7 +513,7 @@ function CityManagerDashboardContent() {
                         </div>
                       )}
                       <div className="min-w-0 flex-1">
-                        <div className="flex items-center justify-between">
+                        <div className="flex items-center justify-between gap-1">
                           <h4 className="text-xs font-bold text-white truncate">{app.name || app.fullName || '—'}</h4>
                           {app.isResubmitted ? (
                             <span className="text-[9px] font-extrabold px-2 py-0.5 rounded-full bg-cyan-500/20 text-cyan-300 border border-cyan-500/40 animate-pulse">
@@ -445,7 +534,28 @@ function CityManagerDashboardContent() {
                             </span>
                           )}
                         </div>
-                        <p className="text-[10px] text-slate-400 font-mono mt-0.5">
+
+                        {/* Category Badge Pill */}
+                        <div className="flex items-center gap-1.5 mt-1">
+                          {isSchool ? (
+                            <span className="px-2 py-0.5 rounded-md text-[9px] font-bold bg-amber-500/20 text-amber-300 border border-amber-500/30 flex items-center gap-1 truncate max-w-[170px]">
+                              <School size={10} className="shrink-0" />
+                              <span className="truncate">{app.createdBySchoolName || 'School Escort'}</span>
+                            </span>
+                          ) : isShared ? (
+                            <span className="px-2 py-0.5 rounded-md text-[9px] font-bold bg-cyan-500/20 text-cyan-300 border border-cyan-500/30 flex items-center gap-1">
+                              <Car size={10} className="shrink-0" />
+                              <span>Shared Ride Escort</span>
+                            </span>
+                          ) : (
+                            <span className="px-2 py-0.5 rounded-md text-[9px] font-bold bg-indigo-500/20 text-indigo-300 border border-indigo-500/30 flex items-center gap-1">
+                              <ShieldCheck size={10} className="shrink-0" />
+                              <span>MyEduRide Escort</span>
+                            </span>
+                          )}
+                        </div>
+
+                        <p className="text-[10px] text-slate-400 font-mono mt-1">
                           {app.nin || <span className="text-slate-600 italic">NIN not provided</span>}
                           {(app.vehicle?.regNumber || app.regNumber) ? ` • ${app.vehicle?.regNumber || app.regNumber}` : ''}
                         </p>
@@ -681,11 +791,14 @@ function CityManagerDashboardContent() {
                   {selectedApp.uploadedDocDetails ? (
                     <div className="space-y-1.5 text-[11px]">
                       {[
-                        { id: 'national_id_front', title: 'National ID / NIN Slip (Front View)' },
-                        { id: 'national_id_back', title: 'National ID / NIN Slip (Back View)' },
+                        { id: 'national_id_front', title: 'National ID / NIN Slip' },
+                        { id: 'passport', title: 'International Passport / ID' },
                         { id: 'drivers_licence', title: "Driver's Licence" },
-                        { id: 'passport', title: 'International Passport' },
+                        { id: 'police_clearance', title: 'Police Character Clearance' },
+                        { id: 'medical_fitness', title: 'Medical Fitness Certificate' },
                         { id: 'selfie', title: 'Passport Portrait Photo' },
+                        { id: 'facial_scan', title: 'Facial Biometric Scan Token' },
+                        { id: 'fingerprint', title: 'Fingerprint Biometric Profile' },
                         { id: 'vehicle_license', title: 'Vehicle License & Reg' },
                         { id: 'signature', title: 'Digital Signature Confirmation' },
                       ].map((docItem) => {
@@ -1016,25 +1129,61 @@ function CityManagerDashboardContent() {
                       const docUrl =
                         selectedApp?.uploadedDocDetails?.[credentialModal.activeDocId]?.fileUrl ||
                         (credentialModal.activeDocId === 'national_id_front' || credentialModal.activeDocId === 'national_id'
-                          ? selectedApp?.uploadedDocDetails?.national_id_front?.fileUrl || selectedApp?.uploadedDocDetails?.national_id?.fileUrl
+                          ? selectedApp?.uploadedDocDetails?.national_id_front?.fileUrl || selectedApp?.uploadedDocDetails?.national_id?.fileUrl || selectedApp?.passportDocUrl
                           : credentialModal.activeDocId === 'national_id_back'
                           ? selectedApp?.uploadedDocDetails?.national_id_back?.fileUrl
                           : credentialModal.activeDocId === 'drivers_licence'
-                          ? selectedApp.driversLicence?.front || selectedApp.driversLicence?.back
+                          ? selectedApp?.uploadedDocDetails?.drivers_licence?.fileUrl || selectedApp.driversLicenceDocUrl || selectedApp.driversLicence?.front || selectedApp.driversLicence?.back
+                          : credentialModal.activeDocId === 'passport'
+                          ? selectedApp?.uploadedDocDetails?.passport?.fileUrl || selectedApp.passportDocUrl
+                          : credentialModal.activeDocId === 'police_clearance'
+                          ? selectedApp?.uploadedDocDetails?.police_clearance?.fileUrl || selectedApp.policeClearanceDocUrl
+                          : credentialModal.activeDocId === 'medical_fitness'
+                          ? selectedApp?.uploadedDocDetails?.medical_fitness?.fileUrl || selectedApp.medicalFitnessDocUrl
                           : credentialModal.activeDocId === 'selfie'
-                          ? selectedApp.photo
+                          ? selectedApp?.uploadedDocDetails?.selfie?.fileUrl || selectedApp.photo
+                          : credentialModal.activeDocId === 'facial_scan'
+                          ? selectedApp?.uploadedDocDetails?.facial_scan?.fileUrl || selectedApp.facialScanToken
+                          : credentialModal.activeDocId === 'fingerprint'
+                          ? selectedApp?.uploadedDocDetails?.fingerprint?.fileUrl || selectedApp.fingerprintToken
                           : credentialModal.activeDocId === 'vehicle_license'
                           ? selectedApp.vehicle?.photos?.[0]
                           : null);
 
                       if (docUrl) {
+                        if (typeof docUrl === 'string' && (docUrl.startsWith('data:image') || docUrl.startsWith('http') || docUrl.startsWith('/'))) {
+                          return (
+                            <img
+                              src={docUrl}
+                              alt="Uploaded Document Credential"
+                              style={{ transform: `scale(${credentialModal.zoomLevel})` }}
+                              className="max-h-[380px] w-auto object-contain rounded-xl shadow-2xl border border-slate-700/80 transition-transform duration-200"
+                            />
+                          );
+                        }
+
+                        // Biometric token / cryptographic hash viewer
                         return (
-                          <img
-                            src={docUrl}
-                            alt="Uploaded Document Credential"
-                            style={{ transform: `scale(${credentialModal.zoomLevel})` }}
-                            className="max-h-[380px] w-auto object-contain rounded-xl shadow-2xl border border-slate-700/80 transition-transform duration-200"
-                          />
+                          <div className="bg-slate-900 border border-emerald-500/30 rounded-2xl p-6 max-w-md w-full text-center space-y-4 shadow-2xl">
+                            <div className="w-16 h-16 rounded-2xl bg-emerald-500/10 border border-emerald-500/30 text-emerald-400 flex items-center justify-center mx-auto">
+                              <ShieldCheck className="w-8 h-8" />
+                            </div>
+                            <div>
+                              <h4 className="text-sm font-black text-white uppercase tracking-wider">
+                                {credentialModal.activeDocId.replace(/_/g, ' ')}
+                              </h4>
+                              <p className="text-xs text-emerald-400 font-bold mt-1">✓ Digital Biometric Profile Verified</p>
+                            </div>
+                            <div className="p-3 bg-slate-950 rounded-xl border border-slate-800 text-left">
+                              <span className="text-[10px] font-bold text-slate-500 uppercase tracking-widest block mb-1">Cryptographic Token:</span>
+                              <code className="text-xs text-brand-green font-mono break-all select-all">
+                                {docUrl}
+                              </code>
+                            </div>
+                            <p className="text-[11px] text-slate-400">
+                              Captured and authenticated via EduRide Hardware Scanner.
+                            </p>
+                          </div>
                         );
                       }
 

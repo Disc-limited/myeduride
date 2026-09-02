@@ -115,7 +115,7 @@ export function AdminSidebar({
             { label: 'Escort Directory', href: '/dashboard/school-admin/escort', icon: <UserCheck size={16} /> },
             { label: 'School Escorts', href: '/dashboard/school-admin/escort/school-escort', icon: <UserCheck size={16} /> },
             { label: 'MyEduRide Escorts', href: '/dashboard/school-admin/escort/myeduride-escort', icon: <Shield size={16} /> },
-            { label: 'Add School Escort', href: '/dashboard/school-admin/escort/school-escort', icon: <UserPlus size={16} /> },
+            { label: 'Add School Escort', href: '/dashboard/school-admin/escort/add', icon: <UserPlus size={16} /> },
           ],
         },
       ],

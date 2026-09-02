@@ -155,13 +155,13 @@ export default function SchoolEscortManagementPage() {
         </div>
 
         <div className="flex items-center gap-3">
-          <button
-            onClick={() => setAddModalOpen(true)}
+          <Link
+            href="/dashboard/school-admin/escort/add"
             className="px-5 py-3 rounded-2xl bg-[#00A859] hover:bg-emerald-600 text-white font-extrabold text-xs transition-all shadow-lg shadow-emerald-600/30 flex items-center gap-2 cursor-pointer shrink-0"
           >
             <Plus size={16} />
             <span>Add School Escort</span>
-          </button>
+          </Link>
         </div>
       </div>
 
