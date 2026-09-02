@@ -60,13 +60,15 @@ export default function HeroSection({ onOpenDemo, onOpenMigo }: HeroSectionProps
               </button>
             </div>
 
-            {/* Official App Store Download Badges */}
+           {/* Official App Store Download Badges */}
+            {/* 
             <div className="pt-3 border-t border-slate-200/80 max-w-md">
               <p className="text-[11px] font-bold text-slate-500 uppercase tracking-wider mb-2.5">
                 Download the App
               </p>
               <AppStoreBadges size="md" />
-            </div>
+            </div> 
+            */}
 
           </div>
 
