@@ -46,6 +46,12 @@ CREATE TABLE schools (
   setup_completed BOOLEAN DEFAULT FALSE,
   setup_step TEXT DEFAULT 'classes' CHECK (setup_step IN ('classes', 'fields', 'teachers', 'students', 'complete')),
   approval_status TEXT NOT NULL DEFAULT 'approved' CHECK (approval_status IN ('pending', 'approved', 'rejected')),
+  gps_lat NUMERIC(10, 7),
+  gps_lng NUMERIC(10, 7),
+  location_address TEXT,
+  location_landmark TEXT,
+  location_pinned_at TIMESTAMPTZ,
+  location_pinned_by UUID REFERENCES user_profiles(id) ON DELETE SET NULL,
   created_at TIMESTAMPTZ DEFAULT NOW(),
   updated_at TIMESTAMPTZ DEFAULT NOW()
 );
@@ -174,6 +180,13 @@ CREATE TABLE students (
   face_descriptor JSONB,
   qr_code_data TEXT UNIQUE NOT NULL,
   custom_fields JSONB DEFAULT '{}',
+  house_address TEXT,
+  house_lat NUMERIC(10, 7),
+  house_lng NUMERIC(10, 7),
+  house_landmark TEXT,
+  house_notes TEXT,
+  house_pinned_at TIMESTAMPTZ,
+  house_pinned_by UUID REFERENCES user_profiles(id) ON DELETE SET NULL,
   is_active BOOLEAN DEFAULT TRUE,
   created_at TIMESTAMPTZ DEFAULT NOW(),
   updated_at TIMESTAMPTZ DEFAULT NOW()

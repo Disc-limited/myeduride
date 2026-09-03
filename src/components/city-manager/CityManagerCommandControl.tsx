@@ -59,6 +59,7 @@ import {
 import { toast } from 'sonner';
 import StudentAvatar from '@/components/shared/StudentAvatar';
 import { CityManagerOperationsPanel } from '@/components/city-manager/CityManagerOperationsPanel';
+import InteractiveRouteCorridorMap from '@/components/routes/InteractiveRouteCorridorMap';
 
 export interface CityManagerCommandControlProps {
   selectedCity: string;
@@ -107,6 +108,37 @@ export function CityManagerCommandControl({
   const [deputisingRecords, setDeputisingRecords] = useState<any[]>([]);
   const [parentRequests, setParentRequests] = useState<any[]>([]);
   const [auditLogs, setAuditLogs] = useState<any[]>([]);
+  const [transitRoutes, setTransitRoutes] = useState<any[]>([]);
+  const [selectedCorridorRoute, setSelectedCorridorRoute] = useState<any>(null);
+  const [corridorSchool, setCorridorSchool] = useState<any>(null);
+  const [corridorMetrics, setCorridorMetrics] = useState<any>(null);
+  const [loadingCorridors, setLoadingCorridors] = useState(false);
+
+  const loadCorridors = async () => {
+    try {
+      setLoadingCorridors(true);
+      const res = await fetch('/api/school-admin/routes');
+      const json = await res.json();
+      if (json.success) {
+        setTransitRoutes(json.routes || []);
+        setCorridorSchool(json.school || null);
+        setCorridorMetrics(json.metrics || null);
+        if (json.routes?.length > 0) {
+          setSelectedCorridorRoute((prev) => prev || json.routes[0]);
+        }
+      }
+    } catch (err) {
+      console.error(err);
+    } finally {
+      setLoadingCorridors(false);
+    }
+  };
+
+  useEffect(() => {
+    if (currentTab === 'corridor-map') {
+      loadCorridors();
+    }
+  }, [currentTab]);
 
   // Fetch Live City Manager Operations Data
   useEffect(() => {
@@ -584,6 +616,7 @@ export function CityManagerCommandControl({
           { id: 'escorts', label: 'Monitor Escorts (MyEduRide & School)', icon: UserCheck, count: escorts.length },
           { id: 'gate-monitor', label: 'Gate Officers & Gate Stream', icon: DoorOpen, count: gateOfficers.length },
           { id: 'trips-management', label: 'Active Trips & Operational Timing', icon: Navigation, count: escorts.filter(e => e.status === 'ON_TRIP').length },
+          { id: 'corridor-map', label: 'Transit Corridors & Pinned Houses', icon: MapPin, count: corridorMetrics?.total_pinned_houses },
           { id: 'assignments', label: 'Bookings & Escort Assignments', icon: ClipboardList, count: parentRequests.length },
           { id: 'safety-incidents', label: 'Safety Incidents & Panic Triage', icon: AlertTriangle, count: safetyIncidents.length, alert: safetyIncidents.length > 0 },
           { id: 'escalations', label: 'Parent & School Escalations', icon: AlertCircle, count: escalations.length },
@@ -628,7 +661,7 @@ export function CityManagerCommandControl({
       {/* ========================================================================= */}
       {/* VIEW 1: LIVE COMMAND RADAR & TACTICAL MAP (DASHBOARD / LIVE-OPERATIONS / DEFAULT) */}
       {/* ========================================================================= */}
-      {(currentTab === 'dashboard' || currentTab === 'live-operations' || (!['escorts', 'gate-monitor', 'trips-management', 'safety-incidents', 'escalations', 'communication', 'schools', 'vehicles', 'assignments', 'performance', 'reports-analytics', 'settings-access', 'audit-logs'].includes(currentTab))) && (
+      {(currentTab === 'dashboard' || currentTab === 'live-operations' || (!['escorts', 'gate-monitor', 'trips-management', 'corridor-map', 'safety-incidents', 'escalations', 'communication', 'schools', 'vehicles', 'assignments', 'performance', 'reports-analytics', 'settings-access', 'audit-logs'].includes(currentTab))) && (
         <div className="space-y-4">
           <div className="grid grid-cols-1 lg:grid-cols-12 gap-4">
             {/* Left Col: Interactive Live Operations Radar Map */}
@@ -1350,6 +1383,81 @@ export function CityManagerCommandControl({
           </div>
         </div>
       )}
+
+      {/* ========================================================================= */}
+      {/* VIEW: TRANSIT CORRIDORS & PINNED HOUSES OVERSIGHT */}
+      {/* ========================================================================= */}
+      {currentTab === 'corridor-map' && (
+        <div className="space-y-4">
+          <div className="bg-[#0b1c30] rounded-2xl border border-slate-800 p-5 shadow-xl space-y-4">
+            <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 border-b border-slate-800 pb-3">
+              <div>
+                <h3 className="text-sm font-black tracking-wide uppercase text-white flex items-center gap-2">
+                  <span>School Transit Corridors & Pinned Houses Radar</span>
+                  <span className="w-2 h-2 rounded-full bg-teal-400 animate-ping"></span>
+                </h3>
+                <p className="text-xs text-slate-400 mt-0.5">
+                  Live tactical map: School campus gate, landmark pickup points, and doorstep houses pinned by parents.
+                </p>
+              </div>
+
+              <div className="flex items-center gap-2">
+                <span className="px-3 py-1.5 rounded-full bg-teal-500/20 text-teal-300 text-xs font-bold border border-teal-500/30">
+                  📌 {corridorMetrics?.total_pinned_houses ?? 0} Parent House Pins Synced
+                </span>
+              </div>
+            </div>
+
+            {/* Route Selector & Info */}
+            <div className="flex flex-wrap items-center justify-between gap-3 bg-slate-900/80 p-3 rounded-xl border border-slate-800">
+              <div className="flex items-center gap-2 flex-wrap">
+                <span className="text-xs font-bold text-slate-400">Select Corridor:</span>
+                <div className="flex flex-wrap gap-1.5">
+                  {transitRoutes.map((r) => (
+                    <button
+                      key={r.id}
+                      type="button"
+                      onClick={() => setSelectedCorridorRoute(r)}
+                      className={`px-3 py-1.5 rounded-xl font-bold text-xs transition-all cursor-pointer ${
+                        selectedCorridorRoute?.id === r.id
+                          ? 'bg-teal-600 text-white shadow-xs'
+                          : 'bg-slate-800 text-slate-300 hover:bg-slate-700'
+                      }`}
+                    >
+                      <span>{r.code} - {r.name}</span>
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              {selectedCorridorRoute && (
+                <div className="text-xs text-slate-400 font-medium">
+                  Escort: <strong className="text-white">{selectedCorridorRoute.assigned_escort_name}</strong> ·
+                  Vehicle: <strong className="text-white">{selectedCorridorRoute.assigned_vehicle}</strong> ·
+                  <span className="text-teal-400 font-bold ml-1">📌 {selectedCorridorRoute.pinned_by_parents_count ?? 0} Pinned Homes</span>
+                </div>
+              )}
+            </div>
+
+            {/* Interactive Route Corridor Map */}
+            {selectedCorridorRoute ? (
+              <InteractiveRouteCorridorMap
+                school={corridorSchool}
+                routeCode={selectedCorridorRoute.code}
+                routeName={selectedCorridorRoute.name}
+                stops={selectedCorridorRoute.stops || []}
+                students={selectedCorridorRoute.passenger_students || []}
+                heightClassName="h-[600px]"
+              />
+            ) : (
+              <div className="p-12 text-center text-slate-500 text-xs bg-slate-900/40 rounded-2xl border border-slate-800">
+                {loadingCorridors ? 'Loading transit corridors and student house coordinates...' : 'No active routes found for this jurisdiction.'}
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+
       {currentTab === 'assignments' && <CityManagerOperationsPanel />}
 
 

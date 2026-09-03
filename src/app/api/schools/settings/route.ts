@@ -109,6 +109,17 @@ export async function PUT(request: NextRequest) {
     if (body.latitude !== undefined) updates.latitude = body.latitude;
     if (body.longitude !== undefined) updates.longitude = body.longitude;
 
+    const latVal = body.gps_lat !== undefined ? body.gps_lat : body.latitude;
+    if (latVal !== undefined && latVal !== null && latVal !== '') updates.gps_lat = Number(latVal);
+    const lngVal = body.gps_lng !== undefined ? body.gps_lng : body.longitude;
+    if (lngVal !== undefined && lngVal !== null && lngVal !== '') updates.gps_lng = Number(lngVal);
+    if (body.location_address !== undefined) updates.location_address = body.location_address?.trim() || null;
+    if (body.location_landmark !== undefined) updates.location_landmark = body.location_landmark?.trim() || null;
+    if (latVal != null && lngVal != null && latVal !== '' && lngVal !== '') {
+      updates.location_pinned_at = new Date().toISOString();
+      updates.location_pinned_by = session.user_id;
+    }
+
     if (body.admin_name !== undefined) updates.admin_name = body.admin_name?.trim() || null;
     if (body.admin_position !== undefined) updates.admin_position = body.admin_position?.trim() || null;
     if (body.admin_email !== undefined) updates.admin_email = body.admin_email?.trim() || null;

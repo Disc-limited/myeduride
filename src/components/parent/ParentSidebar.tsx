@@ -33,6 +33,7 @@ export type ParentTabType =
   | 'dashboard'
   | 'notices'
   | 'children'
+  | 'pin_house'
   | 'attendance'
   | 'safety'
   | 'edrive'
@@ -92,6 +93,7 @@ export default function ParentSidebar({
     },
     { id: 'notices', label: 'School Notices', icon: Megaphone, badge: unreadNoticesCount > 0 ? unreadNoticesCount : undefined },
     { id: 'children', label: 'My Children', icon: Users },
+    { id: 'pin_house', label: '📍 Pin House Location', icon: MapPin, badge: 'GPS' },
     { id: 'attendance', label: 'Attendance', icon: CalendarCheck },
     { id: 'wallet', label: 'Wallet', icon: Wallet },
     {

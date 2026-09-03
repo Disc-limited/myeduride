@@ -27,6 +27,7 @@ import {
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { photoSrc } from '@/lib/photo';
+import InteractiveLocationPickerModal from '@/components/shared/InteractiveLocationPickerModal';
 
 interface SchoolEscortViewProps {
   childrenList?: any[];
@@ -47,6 +48,7 @@ export default function SchoolEscortView({
   const primaryChild = safeChildren[0] || null;
 
   // Children & attendance state
+  const [showLocationModal, setShowLocationModal] = useState(false);
   const [studentStatuses, setStudentStatuses] = useState<Record<string, 'going' | 'absent' | 'not_going'>>({});
   const [studentCount, setStudentCount] = useState<number>(safeChildren.length);
   const [isReadyForPickup, setIsReadyForPickup] = useState<boolean>(false);
@@ -441,15 +443,21 @@ export default function SchoolEscortView({
                 <div>
                   <span className="text-[10px] font-bold text-slate-400 uppercase block">Your Pinned Pickup Address</span>
                   <strong className="font-extrabold text-xs text-slate-900 leading-snug block mt-0.5">
-                    {escortData.pinned_address || escortData.route?.child_designated_stop || 'Parent Registered Address'}
+                    {primaryChild?.house_address || escortData?.pinned_address || escortData?.route?.child_designated_stop || 'No doorstep pinned yet'}
                   </strong>
+                  {primaryChild?.house_landmark && (
+                    <span className="text-[10px] text-slate-500 font-medium block mt-0.5">
+                      📍 Landmark: {primaryChild.house_landmark}
+                    </span>
+                  )}
                 </div>
                 <button
-                  onClick={() => toast.info('Re-pin address modal opened')}
-                  className="px-3 py-1.5 rounded-xl bg-white hover:bg-slate-100 border border-sky-300 text-sky-700 font-extrabold text-xs transition-all shadow-xs flex items-center gap-1 shrink-0 cursor-pointer"
+                  type="button"
+                  onClick={() => setShowLocationModal(true)}
+                  className="px-3.5 py-2 rounded-xl bg-teal-700 hover:bg-teal-800 text-white font-extrabold text-xs transition-all shadow-xs flex items-center gap-1.5 shrink-0 cursor-pointer"
                 >
-                  <Navigation size={13} />
-                  <span>Re-pin / Update Address</span>
+                  <MapPin size={13} />
+                  <span>{primaryChild?.house_lat ? 'Edit House Pin' : '📍 Pin House Location'}</span>
                 </button>
               </div>
 
@@ -787,6 +795,34 @@ export default function SchoolEscortView({
         </div>
       )}
 
+      {/* Interactive Child House Location Pinning Modal */}
+      <InteractiveLocationPickerModal
+        isOpen={showLocationModal}
+        onClose={() => setShowLocationModal(false)}
+        mode="parent"
+        child={
+          primaryChild
+            ? {
+                id: primaryChild.id,
+                name: `${primaryChild.first_name} ${primaryChild.last_name || ''}`.trim(),
+                class_name: primaryChild.class?.name,
+              }
+            : null
+        }
+        childrenList={safeChildren.map((c) => ({
+          id: c.id,
+          name: `${c.first_name} ${c.last_name || ''}`.trim(),
+          class_name: c.class?.name,
+        }))}
+        initialAddress={primaryChild?.house_address || escortData?.pinned_address}
+        initialLat={primaryChild?.house_lat}
+        initialLng={primaryChild?.house_lng}
+        initialLandmark={primaryChild?.house_landmark}
+        initialNotes={primaryChild?.house_notes}
+        onLocationSaved={() => {
+          toast.success('Pickup doorstep pin updated successfully!');
+        }}
+      />
     </div>
   );
 }

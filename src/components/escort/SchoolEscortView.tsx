@@ -604,12 +604,33 @@ export default function SchoolEscortView({
                       )}
                     </div>
                     <div className="min-w-0 flex-1">
-                      <div className="font-bold text-slate-900 truncate leading-tight">{item.name}</div>
-                      <div className="text-[10px] text-slate-500 truncate">{item.address || item.pickup_address || 'Designated Route Stop'}</div>
+                      <div className="flex items-center gap-1.5">
+                        <span className="font-bold text-slate-900 truncate leading-tight">{item.name}</span>
+                        {item.house_lat && item.house_lng ? (
+                          <span className="px-1.5 py-0.2 rounded bg-teal-100 text-teal-800 font-bold text-[9px] shrink-0">
+                            🏠 Pinned
+                          </span>
+                        ) : null}
+                      </div>
+                      <div className="text-[10px] text-slate-500 truncate">
+                        {item.house_lat && item.house_address ? `🏠 ${item.house_address}` : (item.address || item.pickup_address || 'Designated Route Stop')}
+                        {item.house_landmark ? ` · 📍 ${item.house_landmark}` : ''}
+                      </div>
                     </div>
                   </div>
 
                   <div className="flex items-center gap-1.5 shrink-0">
+                    {item.google_maps_nav_url ? (
+                      <a
+                        href={item.google_maps_nav_url}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="bg-teal-700 hover:bg-teal-800 text-white font-bold text-[10px] px-2 py-1 rounded-lg transition-all flex items-center gap-1 shrink-0"
+                        title="Navigate to student doorstep"
+                      >
+                        <Navigation size={10} /> Nav
+                      </a>
+                    ) : null}
                     <span className="text-[10px] font-mono text-slate-400 mr-1">
                       {item.distance || `${(0.3 + idx * 0.35).toFixed(1)} km`}
                     </span>

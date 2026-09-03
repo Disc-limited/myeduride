@@ -208,6 +208,7 @@ export async function GET(request: NextRequest) {
         .from('students')
         .select(`
           id, first_name, last_name, student_id_number, photo_url, is_active,
+          house_address, house_lat, house_lng, house_landmark, house_notes, house_pinned_at,
           class:school_classes(name)
         `)
         .in('id', allTargetStudentIds);
@@ -218,6 +219,7 @@ export async function GET(request: NextRequest) {
         .from('students')
         .select(`
           id, first_name, last_name, student_id_number, photo_url, is_active,
+          house_address, house_lat, house_lng, house_landmark, house_notes, house_pinned_at,
           class:school_classes(name)
         `)
         .eq('school_id', schoolId)
@@ -277,6 +279,10 @@ export async function GET(request: NextRequest) {
       }
 
       const cls = Array.isArray(st.class) ? st.class[0]?.name : (st.class?.name || st.class_name || 'MyEduRide Transit');
+      const hasHousePin = st.house_lat != null && st.house_lng != null;
+      const navUrl = hasHousePin
+        ? `https://www.google.com/maps/dir/?api=1&destination=${st.house_lat},${st.house_lng}`
+        : null;
 
       return {
         id: st.id,
@@ -284,7 +290,15 @@ export async function GET(request: NextRequest) {
         student_id_number: st.student_id_number || `2026-${1000 + idx}`,
         class_name: cls,
         photo_url: st.photo_url || null,
-        pickup_address: st.pickup_address || routeStops[idx % Math.max(routeStops.length, 1)]?.stop_name || 'Designated Stop',
+        pickup_address: st.house_address || st.pickup_address || routeStops[idx % Math.max(routeStops.length, 1)]?.stop_name || 'Designated Stop',
+        house_address: st.house_address || null,
+        house_lat: st.house_lat ? Number(st.house_lat) : null,
+        house_lng: st.house_lng ? Number(st.house_lng) : null,
+        house_landmark: st.house_landmark || null,
+        house_notes: st.house_notes || null,
+        house_pinned_at: st.house_pinned_at || null,
+        is_house_pinned: hasHousePin,
+        google_maps_nav_url: navUrl,
         status,
         pickup_time: st.pickup_time || routeStops[idx % Math.max(routeStops.length, 1)]?.pickup_time || '07:15 AM',
         parent_phone: st.parent_phone || '0803 456 7890',
@@ -295,7 +309,7 @@ export async function GET(request: NextRequest) {
     const morningStudents = studentManifest.map((s) => ({
       ...s,
       status: s.status === 'ON_BOARD' || s.status === 'DROPPED_OFF' ? 'PICKED' : 'NEXT',
-      address: s.pickup_address,
+      address: s.house_address || s.pickup_address,
       time: s.pickup_time,
       avatar: s.photo_url,
     }));
@@ -414,7 +428,11 @@ export async function GET(request: NextRequest) {
         name: schoolData?.name || 'Greenfield International School',
         city: schoolData?.city || 'Lekki',
         state: schoolData?.state || 'Lagos State',
-        address: schoolData?.address || 'Admiralty Way, Lekki Phase 1',
+        address: schoolData?.location_address || schoolData?.address || 'Admiralty Way, Lekki Phase 1',
+        gps_lat: schoolData?.gps_lat ? Number(schoolData.gps_lat) : null,
+        gps_lng: schoolData?.gps_lng ? Number(schoolData.gps_lng) : null,
+        landmark: schoolData?.location_landmark || '',
+        is_pinned: schoolData?.gps_lat != null && schoolData?.gps_lng != null,
         logo_url: schoolData?.logo_url || '/dashboard/logo.png',
       },
       driver: driverData,

@@ -7,6 +7,7 @@ import {
   FileCheck2,
   Bot,
   Sparkles,
+  MapPin,
 } from 'lucide-react';
 
 interface QuickActionsGridProps {
@@ -59,6 +60,15 @@ export default function QuickActionsGrid({ onActionClick }: QuickActionsGridProp
       icon: UserCheck,
       bgColor: 'bg-emerald-100 text-emerald-700',
       hoverColor: 'hover:bg-emerald-200/80',
+    },
+    {
+      key: 'pin_house',
+      label: 'Pin Pickup House',
+      fullLabel: 'Pin Child Pickup House Location',
+      description: 'Pin home doorstep on GPS map for school bus, city manager & escort route manifests',
+      icon: MapPin,
+      bgColor: 'bg-teal-100 text-teal-800',
+      hoverColor: 'hover:bg-teal-200/80',
     },
     {
       key: 'chat_school',

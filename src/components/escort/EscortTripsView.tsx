@@ -276,9 +276,42 @@ export default function EscortTripsView({
                 <div className="text-[10px] text-slate-600 bg-white p-2.5 rounded-xl border border-slate-100 space-y-1">
                   <p className="flex items-center gap-1.5">
                     <MapPin size={12} className="text-slate-400" />
-                    <span>{st.pickup_address || 'Designated Stop'}</span>
+                    <span>Stop: {st.pickup_address || 'Designated Stop'}</span>
                   </p>
-                  <p className="flex items-center gap-1.5 text-slate-500 font-medium">
+
+                  {/* House Pin & Direct Turn-by-Turn Navigation */}
+                  {st.house_lat && st.house_lng ? (
+                    <div className="pt-1.5 mt-1 border-t border-slate-100 space-y-1">
+                      <div className="flex items-start justify-between gap-1.5">
+                        <div className="min-w-0 flex-1">
+                          <span className="font-extrabold text-teal-800 block truncate">
+                            🏠 {st.house_address || 'Doorstep Pinned'}
+                          </span>
+                          {st.house_landmark && (
+                            <p className="text-[9px] text-slate-500 truncate">Landmark: {st.house_landmark}</p>
+                          )}
+                          {st.house_notes && (
+                            <p className="text-[9px] text-amber-800 font-medium truncate">Note: {st.house_notes}</p>
+                          )}
+                        </div>
+                        {st.google_maps_nav_url ? (
+                          <a
+                            href={st.google_maps_nav_url}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="px-2 py-1 rounded-lg bg-teal-700 hover:bg-teal-800 text-white font-extrabold text-[9px] flex items-center gap-1 shrink-0 shadow-2xs"
+                          >
+                            <Navigation size={10} />
+                            <span>Navigate</span>
+                          </a>
+                        ) : null}
+                      </div>
+                    </div>
+                  ) : (
+                    <p className="text-[9px] text-slate-400 italic">No house doorstep pinned by parent yet.</p>
+                  )}
+
+                  <p className="flex items-center gap-1.5 text-slate-500 font-medium pt-1">
                     <Phone size={12} className="text-slate-400" />
                     <span>Guardian: {st.parent_phone || '0803 123 4567'}</span>
                   </p>

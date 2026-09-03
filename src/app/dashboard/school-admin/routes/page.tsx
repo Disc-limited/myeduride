@@ -19,22 +19,29 @@ import {
   Compass,
   ArrowRight,
   Pencil,
-  Eye
+  Eye,
+  Building,
+  Home
 } from 'lucide-react';
 import { toast } from 'sonner';
+import InteractiveLocationPickerModal from '@/components/shared/InteractiveLocationPickerModal';
+import InteractiveRouteCorridorMap from '@/components/routes/InteractiveRouteCorridorMap';
 
 export default function SchoolTransportRoutesPage() {
   const [routes, setRoutes] = useState([]);
+  const [school, setSchool] = useState<any>(null);
+  const [showSchoolPinModal, setShowSchoolPinModal] = useState(false);
   const [metrics, setMetrics] = useState({
     total_routes: 0,
     total_stops: 0,
     total_enrolled_passengers: 0,
+    total_pinned_houses: 0,
     active_routes: 0,
   });
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState('');
   const [modalOpen, setModalOpen] = useState(false);
-  const [activeTab, setActiveTab] = useState<'routes' | 'stops' | 'manifests' | 'directions'>('routes');
+  const [activeTab, setActiveTab] = useState<'routes' | 'map' | 'stops' | 'manifests' | 'directions'>('routes');
   const [selectedRoute, setSelectedRoute] = useState(null);
   const [submitting, setSubmitting] = useState(false);
 
@@ -62,6 +69,9 @@ export default function SchoolTransportRoutesPage() {
       if (json.success) {
         setRoutes(json.routes || []);
         setMetrics(json.metrics || {});
+        if (json.school) {
+          setSchool(json.school);
+        }
         if (!selectedRoute && json.routes?.length > 0) {
           setSelectedRoute(json.routes[0]);
         }
@@ -168,6 +178,19 @@ export default function SchoolTransportRoutesPage() {
 
         <div className="flex items-center gap-3">
           <button
+            type="button"
+            onClick={() => setShowSchoolPinModal(true)}
+            className={`px-4 py-3 rounded-2xl font-extrabold text-xs transition-all flex items-center gap-2 cursor-pointer shrink-0 border ${
+              school?.is_pinned
+                ? 'bg-emerald-950/80 border-emerald-500/30 text-emerald-300 hover:bg-emerald-900'
+                : 'bg-amber-500 hover:bg-amber-600 text-slate-950 font-black'
+            }`}
+          >
+            <MapPin size={16} />
+            <span>{school?.is_pinned ? '📍 Edit Campus Gate Pin' : '⚠️ Pin School Campus Gate'}</span>
+          </button>
+
+          <button
             onClick={() => setModalOpen(true)}
             className="px-5 py-3 rounded-2xl bg-[#00A859] hover:bg-emerald-600 text-white font-extrabold text-xs transition-all shadow-lg shadow-emerald-600/30 flex items-center gap-2 cursor-pointer shrink-0"
           >
@@ -175,6 +198,47 @@ export default function SchoolTransportRoutesPage() {
             <span>Create New Route</span>
           </button>
         </div>
+      </div>
+
+      {/* School Campus Gate Geolocation Pin Status Banner */}
+      <div className={`p-4 rounded-3xl border flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 text-xs ${
+        school?.is_pinned
+          ? 'bg-emerald-50/80 border-emerald-200 text-emerald-950'
+          : 'bg-amber-50/90 border-amber-200 text-amber-950'
+      }`}>
+        <div className="flex items-center gap-3">
+          <div className={`w-10 h-10 rounded-2xl flex items-center justify-center shrink-0 font-black ${
+            school?.is_pinned ? 'bg-emerald-700 text-white shadow-xs' : 'bg-amber-600 text-white shadow-xs'
+          }`}>
+            <Building size={18} />
+          </div>
+          <div>
+            <div className="flex items-center gap-2 flex-wrap">
+              <span className="font-black text-sm text-slate-900">{school?.name || 'School Campus Hub'}:</span>
+              {school?.is_pinned ? (
+                <span className="px-2 py-0.5 rounded-md bg-emerald-200/80 text-emerald-900 font-mono font-bold text-[10px]">
+                  📍 Campus Pinned ({school.gps_lat?.toFixed(4)}, {school.gps_lng?.toFixed(4)})
+                </span>
+              ) : (
+                <span className="px-2 py-0.5 rounded-md bg-amber-200 text-amber-900 font-bold text-[10px]">
+                  ⚠️ Campus Gate Unpinned
+                </span>
+              )}
+            </div>
+            <p className="text-slate-600 mt-0.5">
+              📍 {school?.address || 'Set school campus & main gate coordinates for turn-by-turn route dispatch and escort GPS.'}
+              {school?.landmark ? ` · Landmark: ${school.landmark}` : ''}
+            </p>
+          </div>
+        </div>
+
+        <button
+          type="button"
+          onClick={() => setShowSchoolPinModal(true)}
+          className="px-4 py-2 rounded-xl bg-white border border-slate-200 text-xs font-bold text-slate-800 hover:bg-slate-50 transition-all shrink-0 cursor-pointer shadow-2xs"
+        >
+          {school?.is_pinned ? 'Update Campus Pin' : 'Drop Gate Pin Now'}
+        </button>
       </div>
 
       {/* KPI Metrics Ribbon */}
@@ -198,9 +262,9 @@ export default function SchoolTransportRoutesPage() {
         </div>
 
         <div className="bg-white rounded-2xl p-4 border border-slate-200 shadow-xs space-y-1">
-          <span className="text-[10px] font-black uppercase text-slate-400 tracking-wider">Parent Pinned Corridors</span>
-          <p className="text-2xl font-black text-teal-700">35 Pins</p>
-          <span className="text-xs text-teal-600 font-bold">Active Parent Monitoring</span>
+          <span className="text-[10px] font-black uppercase text-slate-400 tracking-wider">Parent Pinned Houses</span>
+          <p className="text-2xl font-black text-teal-700">{metrics.total_pinned_houses || 0} Homes</p>
+          <span className="text-xs text-teal-600 font-bold">Doorstep Coordinates Synced</span>
         </div>
       </div>
 
@@ -208,6 +272,7 @@ export default function SchoolTransportRoutesPage() {
       <div className="bg-white rounded-2xl p-1.5 border border-slate-200 shadow-xs flex flex-wrap gap-1.5">
         {[
           { id: 'routes', label: 'Route Corridors Overview' },
+          { id: 'map', label: 'Interactive Corridor & House Pins Map' },
           { id: 'stops', label: 'Landmark Stops Matrix & ETAs' },
           { id: 'manifests', label: 'Student Passenger Manifests' },
           { id: 'directions', label: 'Turn-by-Turn Escort Directions' },
@@ -284,7 +349,7 @@ export default function SchoolTransportRoutesPage() {
                     </div>
                     <div className="flex items-center justify-between">
                       <span className="text-slate-500">Parent Pins:</span>
-                      <span className="font-black text-teal-700">📌 {r.pinned_by_parents_count || 10} Families</span>
+                      <span className="font-black text-teal-700">📌 {r.pinned_by_parents_count || 0} Families</span>
                     </div>
                   </div>
                 </div>
@@ -299,6 +364,54 @@ export default function SchoolTransportRoutesPage() {
               </div>
             ))}
           </div>
+        </div>
+      )}
+
+      {/* TAB: INTERACTIVE CORRIDOR & HOUSE PINS MAP */}
+      {activeTab === 'map' && (
+        <div className="space-y-4">
+          <div className="bg-white p-4 rounded-2xl border border-slate-200 shadow-xs flex flex-wrap items-center justify-between gap-3">
+            <div className="flex items-center gap-2 flex-wrap">
+              <span className="text-xs font-bold text-slate-500">Select Corridor to Inspect:</span>
+              <div className="flex flex-wrap gap-1.5">
+                {routes.map((r) => (
+                  <button
+                    key={r.id}
+                    type="button"
+                    onClick={() => setSelectedRoute(r)}
+                    className={`px-3 py-1.5 rounded-xl font-bold text-xs transition-all cursor-pointer ${
+                      selectedRoute?.id === r.id
+                        ? 'bg-slate-900 text-white shadow-xs'
+                        : 'bg-slate-100 text-slate-700 hover:bg-slate-200'
+                    }`}
+                  >
+                    <span>{r.code} - {r.name}</span>
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            {selectedRoute && (
+              <span className="text-xs font-black text-teal-700 bg-teal-50 px-3 py-1.5 rounded-xl border border-teal-200">
+                📌 {selectedRoute.pinned_by_parents_count || 0} Parent House Pins on {selectedRoute.code}
+              </span>
+            )}
+          </div>
+
+          {selectedRoute ? (
+            <InteractiveRouteCorridorMap
+              school={school}
+              routeCode={selectedRoute.code}
+              routeName={selectedRoute.name}
+              stops={selectedRoute.stops || []}
+              students={selectedRoute.passenger_students || []}
+              heightClassName="h-[580px]"
+            />
+          ) : (
+            <div className="p-12 text-center bg-white rounded-3xl border border-slate-200 text-slate-400 text-xs">
+              No routes currently available to display on map.
+            </div>
+          )}
         </div>
       )}
 
@@ -363,13 +476,62 @@ export default function SchoolTransportRoutesPage() {
                 </span>
               </div>
 
-              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3.5">
                 {r.passenger_students?.map((stu) => (
-                  <div key={stu.student_id} className="p-3.5 rounded-2xl bg-slate-50 border border-slate-100 text-xs space-y-1">
-                    <p className="font-black text-slate-900">{stu.name}</p>
-                    <span className="text-[11px] text-slate-500 font-bold block">{stu.class}</span>
-                    <p className="text-slate-600 text-[11px]">📍 Designated Stop: <strong>{stu.stop}</strong></p>
-                    <p className="text-slate-500 text-[10px] font-mono">📞 Parent: {stu.parent_phone}</p>
+                  <div key={stu.student_id} className="p-4 rounded-2xl bg-slate-50 border border-slate-200/90 text-xs space-y-2 flex flex-col justify-between">
+                    <div className="space-y-1.5">
+                      <div className="flex items-start justify-between gap-2">
+                        <div>
+                          <p className="font-black text-slate-900 text-sm">{stu.name}</p>
+                          <span className="text-[11px] text-slate-500 font-bold block">{stu.class}</span>
+                        </div>
+                        {stu.is_house_pinned ? (
+                          <span className="px-2 py-0.5 rounded-md bg-teal-100 text-teal-800 font-bold text-[10px] whitespace-nowrap flex items-center gap-1">
+                            <span>🏠 House Pinned</span>
+                          </span>
+                        ) : (
+                          <span className="px-2 py-0.5 rounded-md bg-amber-100 text-amber-800 font-bold text-[10px] whitespace-nowrap">
+                            ⚠️ Awaiting House Pin
+                          </span>
+                        )}
+                      </div>
+
+                      <p className="text-slate-600 text-[11px]">🚏 Designated Stop: <strong>{stu.stop}</strong></p>
+
+                      {stu.is_house_pinned ? (
+                        <div className="p-2.5 rounded-xl bg-teal-50/80 border border-teal-200/80 text-[11px] space-y-1">
+                          <p className="font-bold text-teal-950">🏠 {stu.house_address}</p>
+                          {stu.house_landmark && (
+                            <p className="text-[10px] text-teal-800">Landmark: {stu.house_landmark}</p>
+                          )}
+                          {stu.house_notes && (
+                            <p className="text-[10px] text-amber-800 font-medium">Note: {stu.house_notes}</p>
+                          )}
+                          <span className="text-[9px] font-mono text-teal-700 block">
+                            GPS: {stu.house_lat?.toFixed(4)}, {stu.house_lng?.toFixed(4)}
+                          </span>
+                        </div>
+                      ) : (
+                        <div className="p-2 rounded-xl bg-slate-100 border border-slate-200 text-[10px] text-slate-500 italic">
+                          Parent has not pinned doorstep coordinates yet.
+                        </div>
+                      )}
+                    </div>
+
+                    <div className="flex items-center justify-between pt-1 border-t border-slate-200/60 text-[11px]">
+                      <span className="font-mono text-slate-500 text-[10px]">📞 {stu.parent_phone || 'Parent on file'}</span>
+                      {stu.is_house_pinned && stu.house_lat && stu.house_lng && (
+                        <a
+                          href={`https://www.google.com/maps/dir/?api=1&destination=${stu.house_lat},${stu.house_lng}`}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="font-bold text-teal-700 hover:text-teal-900 flex items-center gap-1 text-[11px]"
+                        >
+                          <span>Open Map</span>
+                          <ArrowRight size={12} />
+                        </a>
+                      )}
+                    </div>
                   </div>
                 ))}
                 {(!r.passenger_students || r.passenger_students.length === 0) && (
@@ -617,6 +779,22 @@ export default function SchoolTransportRoutesPage() {
           </div>
         </div>
       )}
+
+      {/* School Campus & Main Gate Geolocation Pinning Modal */}
+      <InteractiveLocationPickerModal
+        isOpen={showSchoolPinModal}
+        onClose={() => setShowSchoolPinModal(false)}
+        mode="school_admin"
+        schoolId={school?.id}
+        schoolName={school?.name}
+        initialAddress={school?.address}
+        initialLat={school?.gps_lat}
+        initialLng={school?.gps_lng}
+        initialLandmark={school?.landmark}
+        onLocationSaved={() => {
+          loadRoutes();
+        }}
+      />
     </div>
   );
 }

@@ -3,12 +3,13 @@
 
 import { useCallback, useEffect, useState } from 'react';
 import { fetchData } from '@/lib/api';
-import { Save, Upload } from 'lucide-react';
+import { Save, Upload, MapPin, Building } from 'lucide-react';
 import { toast } from 'sonner';
 import { schoolToSettingsForm } from '@/lib/time-input';
 import { AccountSettingsCard } from '@/components/shared/AccountSettingsCard';
 import { photoSrc } from '@/lib/photo';
 import Link from 'next/link';
+import InteractiveLocationPickerModal from '@/components/shared/InteractiveLocationPickerModal';
 
 export default function SchoolSettingsPage() {
   const [loading, setLoading] = useState(true);
@@ -19,6 +20,7 @@ export default function SchoolSettingsPage() {
   const [logoPreview, setLogoPreview] = useState('');
   const [signatureUploading, setSignatureUploading] = useState(false);
   const [signaturePreview, setSignaturePreview] = useState('');
+  const [showLocationModal, setShowLocationModal] = useState(false);
 
   const loadSettings = useCallback(async (id) => {
     const sid = id || schoolId;
@@ -145,6 +147,39 @@ export default function SchoolSettingsPage() {
               <label className="block text-sm font-medium text-gray-700 mb-1">Address</label>
               <input type="text" value={formData.address} onChange={(e) => setFormData((p) => ({ ...p, address: e.target.value }))} className="input" />
             </div>
+
+            {/* Campus Gate Geolocation Pin Section */}
+            <div className="p-4 rounded-2xl bg-emerald-50/80 border border-emerald-200/80 space-y-2.5">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                  <MapPin size={16} className="text-emerald-700" />
+                  <span className="text-sm font-bold text-emerald-950">Campus Gate Geolocation Pin</span>
+                </div>
+                {formData.gps_lat != null && formData.gps_lng != null ? (
+                  <span className="px-2 py-0.5 rounded-md bg-emerald-200/80 text-emerald-900 font-mono font-bold text-[10px]">
+                    📍 Pinned ({Number(formData.gps_lat).toFixed(4)}, {Number(formData.gps_lng).toFixed(4)})
+                  </span>
+                ) : (
+                  <span className="px-2 py-0.5 rounded-md bg-amber-200 text-amber-900 font-bold text-[10px]">
+                    ⚠️ Gate Unpinned
+                  </span>
+                )}
+              </div>
+              <p className="text-xs text-slate-600">
+                Pin your school&apos;s campus and main gate coordinates so escorts, parents, and city manager route maps know the exact terminal destination.
+              </p>
+              {formData.location_landmark && (
+                <p className="text-xs text-emerald-800 font-medium">📍 Landmark: {formData.location_landmark}</p>
+              )}
+              <button
+                type="button"
+                onClick={() => setShowLocationModal(true)}
+                className="px-4 py-2 rounded-xl bg-emerald-700 hover:bg-emerald-800 text-white font-bold text-xs flex items-center gap-1.5 shadow-xs transition-all cursor-pointer"
+              >
+                <MapPin size={14} />
+                <span>{formData.gps_lat != null ? 'Adjust Campus Gate Pin on Map' : '📍 Drop Campus Gate Pin on Map'}</span>
+              </button>
+            </div>
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-1">School Logo</label>
               <div className="flex items-center gap-3">
@@ -269,6 +304,22 @@ export default function SchoolSettingsPage() {
       <div className="mt-8 card">
         <AccountSettingsCard />
       </div>
+
+      {/* School Campus Gate Geolocation Pinning Modal */}
+      <InteractiveLocationPickerModal
+        isOpen={showLocationModal}
+        onClose={() => setShowLocationModal(false)}
+        mode="school_admin"
+        schoolId={schoolId}
+        schoolName={formData.name}
+        initialAddress={formData.address || formData.location_address}
+        initialLat={formData.gps_lat}
+        initialLng={formData.gps_lng}
+        initialLandmark={formData.location_landmark}
+        onLocationSaved={() => {
+          loadSettings(schoolId);
+        }}
+      />
     </div>
   );
 }

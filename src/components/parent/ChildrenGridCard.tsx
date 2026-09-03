@@ -21,16 +21,23 @@ export interface ChildStudent {
   escort_name?: string;
   route_name?: string;
   vehicle_model?: string;
+  house_address?: string | null;
+  house_lat?: number | null;
+  house_lng?: number | null;
+  house_landmark?: string | null;
+  house_notes?: string | null;
 }
 
 interface ChildrenGridCardProps {
   childrenList: ChildStudent[];
   onOpenChildProfile: (childId: string) => void;
+  onPinHouseLocation?: (child: ChildStudent) => void;
 }
 
 export default function ChildrenGridCard({
   childrenList = [],
   onOpenChildProfile,
+  onPinHouseLocation,
 }: ChildrenGridCardProps) {
   const displayKids: ChildStudent[] =
     childrenList && childrenList.length > 0
@@ -190,6 +197,45 @@ export default function ChildrenGridCard({
                   </span>
                   <p className="font-bold text-slate-800 truncate mt-0.5">{vehicle}</p>
                 </div>
+              </div>
+
+              {/* House Location Pinning Status & Direct Action */}
+              <div className="mb-3 p-2.5 rounded-2xl border flex items-center justify-between gap-2 text-xs transition-all bg-slate-50 border-slate-200">
+                <div className="flex items-center gap-2 min-w-0 flex-1">
+                  <span className={`w-6 h-6 rounded-lg flex items-center justify-center shrink-0 ${
+                    child.house_lat && child.house_lng ? 'bg-teal-100 text-teal-800' : 'bg-amber-100 text-amber-800'
+                  }`}>
+                    📍
+                  </span>
+                  <div className="min-w-0 flex-1">
+                    <p className="font-bold text-slate-900 truncate text-[11px]">
+                      {child.house_lat && child.house_lng ? (
+                        <span>Home: {child.house_address || 'GPS Coordinates Pinned'}</span>
+                      ) : (
+                        <span className="text-amber-800">No House Pin Set</span>
+                      )}
+                    </p>
+                    <span className="text-[10px] text-slate-500 block truncate">
+                      {child.house_lat && child.house_lng
+                        ? `${child.house_landmark ? `Landmark: ${child.house_landmark} · ` : ''}Visible to Bus & Escort`
+                        : 'Pin to show doorstep on school escort route'}
+                    </span>
+                  </div>
+                </div>
+
+                {onPinHouseLocation && (
+                  <button
+                    type="button"
+                    onClick={() => onPinHouseLocation(child)}
+                    className={`px-3 py-1.5 rounded-xl font-bold text-[11px] shrink-0 transition-all cursor-pointer ${
+                      child.house_lat && child.house_lng
+                        ? 'bg-teal-50 text-teal-800 border border-teal-200 hover:bg-teal-100'
+                        : 'bg-teal-700 text-white hover:bg-teal-800 shadow-xs'
+                    }`}
+                  >
+                    {child.house_lat && child.house_lng ? 'Edit Pin' : 'Pin House'}
+                  </button>
+                )}
               </div>
 
               {/* Action Link Button */}

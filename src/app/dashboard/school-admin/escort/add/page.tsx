@@ -62,7 +62,7 @@ export default function AddSchoolEscortPage() {
   const [form, setForm] = useState({
     // Step 1: Personal Info
     fullName: '',
-    nationality: 'Nigerian',
+    nationality: '',
     dob: '',
     religion: '',
     phone: '',
@@ -70,12 +70,12 @@ export default function AddSchoolEscortPage() {
     email: '',
     closestLandmark: '',
     residentialAddress: '',
-    lga: 'Ikeja',
-    state: 'Lagos',
+    lga: '',
+    state: '',
     emergencyContactName: '',
     emergencyContactPhone: '',
-    maritalStatus: 'Single',
-    childrenCount: '0',
+    maritalStatus: '',
+    childrenCount: '',
     photo: '',
 
     // Biometrics & IDs
@@ -85,14 +85,14 @@ export default function AddSchoolEscortPage() {
 
     // Dashboard Login Credentials (NEW)
     username: '',
-    password: 'EduRide#2026',
+    password: '',
     requirePasswordChange: true,
     sendCredentials: true,
 
     // Additional Info
-    qualification: 'SSCE / WAEC',
-    languages: 'English, Yoruba',
-    experienceYears: '3',
+    qualification: '',
+    languages: '',
+    experienceYears: '',
     previousEmployment: '',
 
     // Step 2: Verification & ID
@@ -105,7 +105,7 @@ export default function AddSchoolEscortPage() {
     medicalFitnessDocUrl: '',
 
     // Step 3: Employment & Assignment
-    employmentType: 'Full-Time',
+    employmentType: '',
     staffId: `ESC-${Math.floor(1000 + Math.random() * 9000)}`,
     assignedVehicleId: '',
     assignedRouteId: '',
@@ -249,26 +249,10 @@ export default function AddSchoolEscortPage() {
   const handleSubmit = async () => {
     setSubmitting(true);
     try {
-      const activeSession = getSession();
-      const payload = {
-        ...form,
-        schoolId: activeSession?.roles?.find((r: any) => r.school_id)?.school_id || activeSession?.primary_school_id || activeSession?.school_id || null,
-        sessionUser: activeSession ? {
-          userId: activeSession.user_id,
-          username: activeSession.username,
-          fullName: activeSession.full_name,
-          roles: activeSession.roles,
-        } : null,
-      };
-
       const res = await fetch('/api/school-admin/escorts/create', {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Cache-Control': 'no-cache',
-        },
-        body: JSON.stringify(payload),
-        credentials: 'include',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(form),
       });
 
       const json = await res.json();
@@ -277,7 +261,7 @@ export default function AddSchoolEscortPage() {
       }
 
       setCreatedEscortData(json);
-      toast.success('Escort registered and submitted to City Manager for review!');
+      toast.success('Escort registered and login credentials activated!');
     } catch (err: any) {
       console.error('Submission error:', err);
       toast.error(err.message || 'Failed to submit escort application.');
@@ -297,7 +281,7 @@ export default function AddSchoolEscortPage() {
 
   return (
     <div className="space-y-6 font-sans text-slate-800 text-xs pb-16">
-      
+
       {/* ------------------------------------------------------------- */}
       {/* 1. TOP BREADCRUMB & HEADER                                    */}
       {/* ------------------------------------------------------------- */}
@@ -322,15 +306,14 @@ export default function AddSchoolEscortPage() {
       {/* ------------------------------------------------------------- */}
       <div className="bg-white rounded-2xl border border-slate-200/80 p-3.5 shadow-xs">
         <div className="flex items-center justify-between max-w-4xl mx-auto overflow-x-auto gap-2 py-1">
-          
+
           {/* Step 1 */}
           <div className="flex items-center gap-2.5 shrink-0">
             <div
-              className={`w-7 h-7 rounded-full flex items-center justify-center font-extrabold text-xs transition-all ${
-                currentStep >= 1
+              className={`w-7 h-7 rounded-full flex items-center justify-center font-extrabold text-xs transition-all ${currentStep >= 1
                   ? 'bg-blue-600 text-white shadow-md shadow-blue-600/20'
                   : 'bg-slate-100 text-slate-400'
-              }`}
+                }`}
             >
               {currentStep > 1 ? <Check className="w-4 h-4" /> : '1'}
             </div>
@@ -344,11 +327,10 @@ export default function AddSchoolEscortPage() {
           {/* Step 2 */}
           <div className="flex items-center gap-2.5 shrink-0">
             <div
-              className={`w-7 h-7 rounded-full flex items-center justify-center font-extrabold text-xs transition-all ${
-                currentStep >= 2
+              className={`w-7 h-7 rounded-full flex items-center justify-center font-extrabold text-xs transition-all ${currentStep >= 2
                   ? 'bg-blue-600 text-white shadow-md shadow-blue-600/20'
                   : 'bg-slate-100 text-slate-400'
-              }`}
+                }`}
             >
               {currentStep > 2 ? <Check className="w-4 h-4" /> : '2'}
             </div>
@@ -362,11 +344,10 @@ export default function AddSchoolEscortPage() {
           {/* Step 3 */}
           <div className="flex items-center gap-2.5 shrink-0">
             <div
-              className={`w-7 h-7 rounded-full flex items-center justify-center font-extrabold text-xs transition-all ${
-                currentStep >= 3
+              className={`w-7 h-7 rounded-full flex items-center justify-center font-extrabold text-xs transition-all ${currentStep >= 3
                   ? 'bg-blue-600 text-white shadow-md shadow-blue-600/20'
                   : 'bg-slate-100 text-slate-400'
-              }`}
+                }`}
             >
               {currentStep > 3 ? <Check className="w-4 h-4" /> : '3'}
             </div>
@@ -380,11 +361,10 @@ export default function AddSchoolEscortPage() {
           {/* Step 4 */}
           <div className="flex items-center gap-2.5 shrink-0">
             <div
-              className={`w-7 h-7 rounded-full flex items-center justify-center font-extrabold text-xs transition-all ${
-                currentStep === 4
+              className={`w-7 h-7 rounded-full flex items-center justify-center font-extrabold text-xs transition-all ${currentStep === 4
                   ? 'bg-blue-600 text-white shadow-md shadow-blue-600/20'
                   : 'bg-slate-100 text-slate-400'
-              }`}
+                }`}
             >
               4
             </div>
@@ -400,16 +380,16 @@ export default function AddSchoolEscortPage() {
       {/* 3. MAIN WORKFLOW CONTAINER: 8 Cols Form + 4 Cols Sidebar       */}
       {/* ------------------------------------------------------------- */}
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
-        
+
         {/* LEFT FORM COLUMN (Col 8/12) */}
         <div className="lg:col-span-8 space-y-6">
-          
+
           {/* ========================================================= */}
           {/* STEP 1: PERSONAL INFORMATION, BIOMETRICS & LOGIN          */}
           {/* ========================================================= */}
           {currentStep === 1 && (
             <div className="space-y-6 animate-in fade-in">
-              
+
               {/* Card 1: Personal Information Grid */}
               <div className="bg-white rounded-3xl border border-slate-200/80 p-5 sm:p-7 shadow-xs space-y-6">
                 <div className="border-b border-slate-100 pb-3">
@@ -419,10 +399,10 @@ export default function AddSchoolEscortPage() {
                 </div>
 
                 <div className="grid grid-cols-1 md:grid-cols-12 gap-5">
-                  
+
                   {/* Left Form Inputs (Col 8) */}
                   <div className="md:col-span-8 grid grid-cols-1 sm:grid-cols-2 gap-4">
-                    
+
                     {/* Full Name */}
                     <div className="sm:col-span-1 space-y-1.5">
                       <label className="text-[11px] font-extrabold text-slate-700">
@@ -735,7 +715,7 @@ export default function AddSchoolEscortPage() {
                 </div>
 
                 <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                  
+
                   {/* Card 1: Passport for ID Card */}
                   <div className="bg-slate-50/80 rounded-2xl border border-slate-200/80 p-4 flex flex-col items-center justify-between text-center space-y-3">
                     <div className="w-12 h-12 rounded-2xl bg-white border border-slate-200 flex items-center justify-center text-blue-600 shadow-2xs">
@@ -753,11 +733,10 @@ export default function AddSchoolEscortPage() {
                     <button
                       type="button"
                       onClick={() => passportDocInputRef.current?.click()}
-                      className={`w-full py-2 px-3 rounded-xl border text-xs font-bold flex items-center justify-center gap-1.5 cursor-pointer transition-all shadow-2xs ${
-                        form.passportDocUrl
+                      className={`w-full py-2 px-3 rounded-xl border text-xs font-bold flex items-center justify-center gap-1.5 cursor-pointer transition-all shadow-2xs ${form.passportDocUrl
                           ? 'bg-emerald-50 border-emerald-300 text-emerald-700'
                           : 'bg-white hover:bg-slate-100 border-slate-300 text-slate-700'
-                      }`}
+                        }`}
                     >
                       {form.passportDocUrl ? (
                         <>
@@ -797,11 +776,10 @@ export default function AddSchoolEscortPage() {
                     <button
                       type="button"
                       onClick={() => openBioModal('facial')}
-                      className={`w-full py-2 px-3 rounded-xl border text-xs font-bold flex items-center justify-center gap-1.5 cursor-pointer transition-all shadow-2xs ${
-                        form.facialScanToken
+                      className={`w-full py-2 px-3 rounded-xl border text-xs font-bold flex items-center justify-center gap-1.5 cursor-pointer transition-all shadow-2xs ${form.facialScanToken
                           ? 'bg-emerald-50 border-emerald-300 text-emerald-700'
                           : 'bg-white hover:bg-slate-100 border-slate-300 text-slate-700'
-                      }`}
+                        }`}
                     >
                       {form.facialScanToken ? (
                         <>
@@ -834,11 +812,10 @@ export default function AddSchoolEscortPage() {
                     <button
                       type="button"
                       onClick={() => openBioModal('fingerprint')}
-                      className={`w-full py-2 px-3 rounded-xl border text-xs font-bold flex items-center justify-center gap-1.5 cursor-pointer transition-all shadow-2xs ${
-                        form.fingerprintToken
+                      className={`w-full py-2 px-3 rounded-xl border text-xs font-bold flex items-center justify-center gap-1.5 cursor-pointer transition-all shadow-2xs ${form.fingerprintToken
                           ? 'bg-emerald-50 border-emerald-300 text-emerald-700'
                           : 'bg-white hover:bg-slate-100 border-slate-300 text-slate-700'
-                      }`}
+                        }`}
                     >
                       {form.fingerprintToken ? (
                         <>
@@ -876,7 +853,7 @@ export default function AddSchoolEscortPage() {
                 </div>
 
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                  
+
                   {/* Username */}
                   <div className="space-y-1.5">
                     <label className="text-[11px] font-extrabold text-slate-700 flex items-center justify-between">
@@ -1041,7 +1018,7 @@ export default function AddSchoolEscortPage() {
                 </div>
 
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-5">
-                  
+
                   {/* National Identity Number (NIN) */}
                   <div className="sm:col-span-2 space-y-1.5 bg-slate-50 p-4 rounded-2xl border border-slate-200/80">
                     <div className="flex items-center justify-between">
@@ -1109,11 +1086,10 @@ export default function AddSchoolEscortPage() {
                     <button
                       type="button"
                       onClick={() => licenseDocInputRef.current?.click()}
-                      className={`w-full py-2.5 px-3.5 rounded-xl border text-xs font-bold flex items-center justify-center gap-2 cursor-pointer transition-all ${
-                        form.driversLicenceDocUrl
+                      className={`w-full py-2.5 px-3.5 rounded-xl border text-xs font-bold flex items-center justify-center gap-2 cursor-pointer transition-all ${form.driversLicenceDocUrl
                           ? 'bg-emerald-50 border-emerald-300 text-emerald-700'
                           : 'bg-white hover:bg-slate-50 border-slate-200 text-slate-700'
-                      }`}
+                        }`}
                     >
                       <Upload className="w-3.5 h-3.5" />
                       <span>{form.driversLicenceDocUrl ? 'License Uploaded ✔' : 'Upload File (PDF/JPG)'}</span>
@@ -1160,7 +1136,7 @@ export default function AddSchoolEscortPage() {
                 </div>
 
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-5">
-                  
+
                   {/* Employment Type */}
                   <div className="space-y-1.5">
                     <label className="text-[11px] font-extrabold text-slate-700">
@@ -1246,7 +1222,7 @@ export default function AddSchoolEscortPage() {
                   <div className="w-16 h-16 rounded-3xl bg-emerald-100 text-emerald-600 flex items-center justify-center mx-auto shadow-md shadow-emerald-500/10 animate-bounce">
                     <CheckCircle2 className="w-9 h-9" />
                   </div>
-                  
+
                   <div className="space-y-2">
                     <h2 className="text-xl font-black text-slate-900">
                       Escort Successfully Onboarded!
@@ -1404,7 +1380,7 @@ export default function AddSchoolEscortPage() {
 
         {/* RIGHT SIDEBAR WIDGETS (Col 4/12) (Matching Screenshot) */}
         <div className="lg:col-span-4 space-y-5">
-          
+
           {/* 1. ESCORT SUMMARY CARD */}
           <div className="bg-white rounded-3xl border border-slate-200/80 p-5 shadow-xs space-y-4">
             <h3 className="font-extrabold text-slate-900 text-sm border-b border-slate-100 pb-2.5">

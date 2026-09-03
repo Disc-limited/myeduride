@@ -387,15 +387,28 @@ export async function POST(request: NextRequest) {
       userSchoolRoles.push({ role: 'super_admin', school_id: DEFAULT_PLATFORM_SCHOOL_ID });
     }
 
-    const isSchoolEscort =
+    const isExplicitMyEduRideEscort =
+      matchedEscortApp?.escortCategory === 'myeduride_escort' ||
+      matchedEscortApp?.escortCategory === 'shared_escort' ||
+      matchedEscortApp?.escortType === 'myeduride_escort' ||
+      matchedEscortApp?.escortType === 'shared_escort';
+
+    const isExplicitSchoolEscort =
       (profile.username || '').toLowerCase().startsWith('escort.') ||
       matchedEscortApp?.escortCategory === 'school_escort' ||
       matchedEscortApp?.escortType === 'school_escort' ||
-      userSchoolRoles.some((r) => r.role === 'driver' || r.role === 'escort' || r.role === 'school_escort');
+      matchedEscortApp?.createdBySchoolName ||
+      matchedEscortApp?.school_id;
 
-    if (isSchoolEscort) {
-      // Clean out driver/escort fallback roles and set explicit school_escort
-      const cleanedRoles = userSchoolRoles.filter((r) => r.role !== 'driver' && r.role !== 'escort');
+    if (isExplicitMyEduRideEscort) {
+      const cleanedRoles = userSchoolRoles.filter((r) => r.role !== 'driver' && r.role !== 'escort' && r.role !== 'school_escort');
+      if (!cleanedRoles.some((r) => r.role === 'myeduride_escort')) {
+        cleanedRoles.push({ role: 'myeduride_escort', school_id: null });
+      }
+      userSchoolRoles.length = 0;
+      userSchoolRoles.push(...cleanedRoles);
+    } else if (isExplicitSchoolEscort || userSchoolRoles.some((r) => r.role === 'driver' || r.role === 'escort' || r.role === 'school_escort')) {
+      const cleanedRoles = userSchoolRoles.filter((r) => r.role !== 'driver' && r.role !== 'escort' && r.role !== 'myeduride_escort');
       if (!cleanedRoles.some((r) => r.role === 'school_escort')) {
         cleanedRoles.push({ role: 'school_escort', school_id: schoolRole?.school_id || null });
       }

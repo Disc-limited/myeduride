@@ -34,6 +34,13 @@ export async function GET(request: NextRequest) {
 
     const supabase = getAdminClient();
 
+    // 0. Fetch school location
+    const { data: schoolRow } = await supabase
+      .from('schools')
+      .select('id, name, address, gps_lat, gps_lng, location_address, location_landmark, location_pinned_at')
+      .eq('id', primarySchoolId)
+      .maybeSingle();
+
     // 1. Fetch routes
     const { data: dbRoutes, error: routesErr } = await supabase
       .from('transport_routes')
@@ -66,19 +73,35 @@ export async function GET(request: NextRequest) {
     if (routeIds.length > 0) {
       const { data: dbAssignments } = await supabase
         .from('student_route_assignments')
-        .select('student_id, morning_route_id, afternoon_route_id, morning_stop_id, afternoon_stop_id, student:students(id, first_name, last_name, class:school_classes(name), parent_phone)')
+        .select(`
+          student_id, morning_route_id, afternoon_route_id, morning_stop_id, afternoon_stop_id,
+          student:students(
+            id, first_name, last_name, photo_url, custom_fields,
+            class:school_classes(name),
+            house_address, house_lat, house_lng, house_landmark, house_notes, house_pinned_at
+          )
+        `)
         .eq('school_id', primarySchoolId)
         .eq('status', 'active');
 
       if (dbAssignments) {
         for (const sa of dbAssignments) {
           const stu = Array.isArray(sa.student) ? sa.student[0] : sa.student;
+          const isHousePinned = stu?.house_lat != null && stu?.house_lng != null;
           const stuObj = {
             student_id: sa.student_id,
             name: stu ? `${stu.first_name} ${stu.last_name}` : 'Student',
+            photo_url: stu?.photo_url || null,
             class: stu?.class?.name || 'Class',
             stop: 'Designated Stop',
-            parent_phone: stu?.parent_phone || null,
+            parent_phone: stu?.custom_fields?.parent_phone || null,
+            house_address: stu?.house_address || null,
+            house_lat: stu?.house_lat ? Number(stu.house_lat) : null,
+            house_lng: stu?.house_lng ? Number(stu.house_lng) : null,
+            house_landmark: stu?.house_landmark || null,
+            house_notes: stu?.house_notes || null,
+            house_pinned_at: stu?.house_pinned_at || null,
+            is_house_pinned: isHousePinned,
           };
 
           if (sa.morning_route_id) {
@@ -97,6 +120,7 @@ export async function GET(request: NextRequest) {
       const vehicleObj = Array.isArray(r.vehicle) ? r.vehicle[0] : r.vehicle;
       const stops = stopsByRoute[r.id] || [];
       const passengers = studentsByRoute[r.id] || [];
+      const pinnedHousesCount = passengers.filter((p) => p.is_house_pinned).length;
 
       return {
         id: r.id,
@@ -112,22 +136,36 @@ export async function GET(request: NextRequest) {
         directions_summary: r.directions_summary || 'Standard Route Corridor',
         stops,
         passenger_students: passengers,
-        pinned_by_parents_count: 0,
+        pinned_by_parents_count: pinnedHousesCount,
         created_at: r.created_at,
       };
     });
 
     const totalStops = routes.reduce((acc, r) => acc + (r.stops?.length || 0), 0);
     const totalPassengers = routes.reduce((acc, r) => acc + (r.passenger_students?.length || 0), 0);
+    const totalPinnedHouses = routes.reduce((acc, r) => acc + (r.pinned_by_parents_count || 0), 0);
 
     return NextResponse.json({
       success: true,
       timestamp: nowUtcIso(),
       school_id: primarySchoolId,
+      school: schoolRow
+        ? {
+            id: schoolRow.id,
+            name: schoolRow.name,
+            address: schoolRow.location_address || schoolRow.address,
+            gps_lat: schoolRow.gps_lat ? Number(schoolRow.gps_lat) : null,
+            gps_lng: schoolRow.gps_lng ? Number(schoolRow.gps_lng) : null,
+            landmark: schoolRow.location_landmark || '',
+            is_pinned: schoolRow.gps_lat != null && schoolRow.gps_lng != null,
+            pinned_at: schoolRow.location_pinned_at,
+          }
+        : null,
       metrics: {
         total_routes: routes.length,
         total_stops: totalStops,
         total_enrolled_passengers: totalPassengers,
+        total_pinned_houses: totalPinnedHouses,
         active_routes: routes.filter((r) => r.status === 'active').length,
       },
       routes,
@@ -297,6 +335,45 @@ export async function POST(request: NextRequest) {
         success: true,
         message: 'Student assigned to route and designated stop.',
         assignment,
+      });
+    }
+
+    if (action === 'pin_school_location') {
+      const { gps_lat, gps_lng, address, landmark } = body;
+      const lat = Number(gps_lat);
+      const lng = Number(gps_lng);
+      if (isNaN(lat) || isNaN(lng)) {
+        return NextResponse.json({ error: 'Valid latitude and longitude required' }, { status: 400 });
+      }
+
+      const nowIso = nowUtcIso();
+      const updatePayload: Record<string, any> = {
+        gps_lat: lat,
+        gps_lng: lng,
+        location_address: address?.trim() || null,
+        location_landmark: landmark?.trim() || null,
+        location_pinned_at: nowIso,
+        location_pinned_by: session.user_id,
+        updated_at: nowIso,
+      };
+
+      if (address?.trim()) {
+        updatePayload.address = address.trim();
+      }
+
+      const { data: updatedSchool, error: err } = await supabase
+        .from('schools')
+        .update(updatePayload)
+        .eq('id', primarySchoolId)
+        .select()
+        .single();
+
+      if (err) throw err;
+
+      return NextResponse.json({
+        success: true,
+        message: 'School campus gate pinned successfully.',
+        school: updatedSchool,
       });
     }
 

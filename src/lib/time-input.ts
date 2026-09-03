@@ -86,6 +86,10 @@ export function schoolToSettingsForm(school: Record<string, unknown> | null | un
     staff_gate_end: timeToInputValue(school.staff_gate_end as string) || '17:00',
     student_gate_start: timeToInputValue(school.student_gate_start as string) || '07:30',
     student_gate_end: timeToInputValue(school.student_gate_end as string) || '15:00',
+    gps_lat: school.gps_lat != null ? Number(school.gps_lat) : null,
+    gps_lng: school.gps_lng != null ? Number(school.gps_lng) : null,
+    location_address: String(school.location_address || ''),
+    location_landmark: String(school.location_landmark || ''),
   };
 }
 

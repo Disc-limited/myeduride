@@ -25,6 +25,8 @@ import {
   Bus,
   Phone,
   Shield,
+  MapPin,
+  Home,
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { showWhatsAppToast } from '@/lib/notifications/whatsapp-toast';
@@ -60,6 +62,8 @@ import SchoolAnnouncementsCard from '@/components/parent/SchoolAnnouncementsCard
 import UpcomingEventsCard from '@/components/parent/UpcomingEventsCard';
 import MigoAIFloatingWidget from '@/components/parent/MigoAIFloatingWidget';
 import PickupAuthorizationModal from '@/components/parent/PickupAuthorizationModal';
+import InteractiveLocationPickerModal from '@/components/shared/InteractiveLocationPickerModal';
+import ParentRoutePinningWidget from '@/components/routes/ParentRoutePinningWidget';
 
 // Helper to sanitize internal technical metadata like [sender_id:...] and [Message from ...]
 const cleanNotificationText = (text?: string) => {
@@ -96,6 +100,8 @@ export default function ParentDashboard() {
   const [showMigoAI, setShowMigoAI] = useState(false);
   const [showLiveJourneyModal, setShowLiveJourneyModal] = useState(false);
   const [showWalletModal, setShowWalletModal] = useState(false);
+  const [showLocationModal, setShowLocationModal] = useState(false);
+  const [locationModalChild, setLocationModalChild] = useState<any>(null);
 
   // Pickup Form state
   const [pickupForm, setPickupForm] = useState({
@@ -501,6 +507,10 @@ export default function ParentDashboard() {
       case 'authorize_pickup':
         setShowPickupModal(true);
         break;
+      case 'pin_house':
+        setLocationModalChild(safeChildren[0] || null);
+        setShowLocationModal(true);
+        break;
       case 'chat_school':
         setShowEduChatModal(true);
         break;
@@ -654,6 +664,53 @@ export default function ParentDashboard() {
             <div className="max-w-[1600px] mx-auto space-y-5">
               <ParentAttendanceView childrenList={safeChildren} />
             </div>
+          ) : activeTab === 'children' || activeTab === 'pin_house' ? (
+            <div className="max-w-[1600px] mx-auto space-y-6">
+              {/* Children Section Header */}
+              <div className="bg-white rounded-3xl p-6 border border-slate-200/80 shadow-xs flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
+                <div className="flex items-center gap-3.5">
+                  <div className="w-12 h-12 rounded-2xl bg-teal-100 text-teal-800 flex items-center justify-center font-black shrink-0">
+                    <MapPin size={24} />
+                  </div>
+                  <div>
+                    <h1 className="text-xl font-black text-slate-900 tracking-tight">
+                      My Children &amp; House Pickup Locations
+                    </h1>
+                    <p className="text-xs text-slate-500 font-medium mt-0.5">
+                      Pin doorstep house coordinates for each child so assigned school escorts, bus drivers, and school admins have exact turn-by-turn navigation.
+                    </p>
+                  </div>
+                </div>
+
+                <button
+                  type="button"
+                  onClick={() => {
+                    setLocationModalChild(safeChildren[0] || null);
+                    setShowLocationModal(true);
+                  }}
+                  className="px-5 py-3 rounded-2xl bg-teal-700 hover:bg-teal-800 text-white font-extrabold text-xs flex items-center gap-2 shadow-md transition-all cursor-pointer shrink-0"
+                >
+                  <MapPin size={16} />
+                  <span>📍 Pin Child House Location</span>
+                </button>
+              </div>
+
+              {/* Children Grid with Direct Pin Action */}
+              <ChildrenGridCard
+                childrenList={safeChildren}
+                onOpenChildProfile={(childId) => {
+                  setSelectedChild(childId);
+                  setShowAttendanceModal(true);
+                }}
+                onPinHouseLocation={(ch) => {
+                  setLocationModalChild(ch);
+                  setShowLocationModal(true);
+                }}
+              />
+
+              {/* Transit Corridors Widget */}
+              <ParentRoutePinningWidget studentId={safeChildren[0]?.id} />
+            </div>
           ) : (
             <div className="grid grid-cols-1 lg:grid-cols-12 gap-5 max-w-[1600px] mx-auto">
               
@@ -662,6 +719,55 @@ export default function ParentDashboard() {
                 
                 {/* OFFICIAL SCHOOL NOTICES & PUBLIC HOLIDAY ADVISORIES */}
                 <SchoolNoticeBanner role="parents" />
+
+                {/* PROMINENT CHILD HOUSE LOCATION PINNING CARD */}
+                <div className="bg-gradient-to-r from-teal-900 via-[#0d2830] to-slate-900 rounded-3xl p-5 sm:p-6 text-white border border-teal-500/30 shadow-xl flex flex-col md:flex-row items-start md:items-center justify-between gap-4">
+                  <div className="flex items-start gap-4">
+                    <div className="w-12 h-12 rounded-2xl bg-teal-500/20 border border-teal-400/40 text-teal-300 flex items-center justify-center shrink-0 font-black">
+                      <MapPin size={24} />
+                    </div>
+                    <div className="space-y-1">
+                      <div className="flex items-center gap-2 flex-wrap">
+                        <span className="font-extrabold text-base tracking-tight text-white">
+                          Child House Location Pinning
+                        </span>
+                        {safeChildren.some((c) => c.house_lat && c.house_lng) ? (
+                          <span className="px-2.5 py-0.5 rounded-full bg-teal-500/30 text-teal-200 border border-teal-400/40 font-bold text-[11px] flex items-center gap-1">
+                            <span className="w-1.5 h-1.5 rounded-full bg-teal-400" />
+                            GPS Doorstep Active
+                          </span>
+                        ) : (
+                          <span className="px-2.5 py-0.5 rounded-full bg-amber-500/30 text-amber-200 border border-amber-400/40 font-bold text-[11px] flex items-center gap-1 animate-pulse">
+                            <span className="w-1.5 h-1.5 rounded-full bg-amber-400" />
+                            Doorstep Pin Missing — Tap to Set
+                          </span>
+                        )}
+                      </div>
+                      <p className="text-xs text-slate-300 max-w-xl">
+                        Pin your child&apos;s house doorstep location on the map so assigned escorts, shuttle buses, and school administrators navigate directly to your house.
+                      </p>
+                      {safeChildren.length > 0 && safeChildren[0]?.house_address && (
+                        <p className="text-[11px] text-teal-300 font-medium">
+                          📍 Current Pinned Address: {safeChildren[0].house_address}
+                        </p>
+                      )}
+                    </div>
+                  </div>
+
+                  <div className="flex items-center gap-2 self-stretch md:self-auto shrink-0">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setLocationModalChild(safeChildren[0] || null);
+                        setShowLocationModal(true);
+                      }}
+                      className="w-full md:w-auto px-5 py-3 rounded-2xl bg-teal-400 hover:bg-teal-300 text-slate-950 font-black text-xs flex items-center justify-center gap-2 shadow-lg transition-all cursor-pointer"
+                    >
+                      <MapPin size={16} />
+                      <span>{safeChildren.some((c) => c.house_lat) ? 'Update House Pin' : '📍 Pin House Location Now'}</span>
+                    </button>
+                  </div>
+                </div>
 
                 {/* ROW 1: Hero Greeting (2/3) + Live Journey (1/3) */}
                 <div className="grid grid-cols-1 md:grid-cols-12 gap-5">
@@ -719,6 +825,10 @@ export default function ParentDashboard() {
                         setSelectedChild(childId);
                         setShowAttendanceModal(true);
                       }}
+                      onPinHouseLocation={(ch) => {
+                        setLocationModalChild(ch);
+                        setShowLocationModal(true);
+                      }}
                     />
                   </div>
                   <div className="md:col-span-5 lg:col-span-5">
@@ -731,6 +841,9 @@ export default function ParentDashboard() {
                     />
                   </div>
                 </div>
+
+                {/* PINNED TRANSIT CORRIDORS & HOUSE DOORSTEP WIDGET */}
+                <ParentRoutePinningWidget studentId={safeChildren[0]?.id} />
 
                 {/* ROW 4: Quick Actions Grid (4 cols) + School Announcements (4 cols) + Upcoming Events (4 cols) */}
                 <div className="grid grid-cols-1 md:grid-cols-3 gap-5">
@@ -850,7 +963,52 @@ export default function ParentDashboard() {
         }
         childrenList={safeChildren}
         onUpdated={() => {
-          loadParentDashboard();
+          loadData();
+        }}
+      />
+
+      {/* Interactive Child House Location Pinning Modal */}
+      <InteractiveLocationPickerModal
+        isOpen={showLocationModal}
+        onClose={() => setShowLocationModal(false)}
+        mode="parent"
+        child={
+          locationModalChild
+            ? {
+                id: locationModalChild.id,
+                name: `${locationModalChild.first_name} ${locationModalChild.last_name || ''}`.trim(),
+                class_name: locationModalChild.class?.name,
+              }
+            : null
+        }
+        childrenList={safeChildren.map((c) => ({
+          id: c.id,
+          name: `${c.first_name} ${c.last_name || ''}`.trim(),
+          class_name: c.class?.name,
+        }))}
+        initialAddress={locationModalChild?.house_address}
+        initialLat={locationModalChild?.house_lat}
+        initialLng={locationModalChild?.house_lng}
+        initialLandmark={locationModalChild?.house_landmark}
+        initialNotes={locationModalChild?.house_notes}
+        onLocationSaved={(result) => {
+          if (result?.location) {
+            setChildren((prev: any[]) =>
+              (prev || []).map((c) =>
+                result.target_students_count > 1 || !locationModalChild || c.id === locationModalChild.id
+                  ? {
+                      ...c,
+                      house_address: result.location.address,
+                      house_lat: result.location.lat,
+                      house_lng: result.location.lng,
+                      house_landmark: result.location.landmark,
+                      house_notes: result.location.notes,
+                    }
+                  : c
+              )
+            );
+          }
+          loadData();
         }}
       />
 
