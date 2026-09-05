@@ -22,6 +22,8 @@ import { assertGateDayOpen } from '@/lib/gate/school-day-gate';
 import { writeAuditLog } from '@/lib/audit/log';
 import { writeGateActivityLog } from '@/lib/gate/activity-log';
 
+export const dynamic = 'force-dynamic';
+
 export async function POST(request: NextRequest) {
   try {
     const session = getSessionFromRequest(request);

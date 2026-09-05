@@ -3,6 +3,8 @@ import { getAdminClient } from '@/lib/supabase/admin';
 import { getSessionFromRequest, sessionHasRole } from '@/lib/session';
 import { notifyParentsOfAttendance } from '@/lib/notifications/parent-notify';
 
+export const dynamic = 'force-dynamic';
+
 export async function POST(request: NextRequest) {
   try {
     const session = getSessionFromRequest(request);

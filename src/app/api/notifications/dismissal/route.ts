@@ -5,6 +5,8 @@ import { sendEmail } from '@/lib/notifications/email-service';
 import { sendPushToUser } from '@/lib/push/send';
 import { todayInLagos, nowUtcIso } from '@/lib/timezone';
 
+export const dynamic = 'force-dynamic';
+
 export async function POST(request: NextRequest) {
   try {
     const session = getSessionFromRequest(request);

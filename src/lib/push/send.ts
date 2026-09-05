@@ -1,11 +1,28 @@
 import webpush from 'web-push';
 
-// Configure web-push with VAPID keys
-webpush.setVapidDetails(
-  'mailto:notifications@myeduride.com',
-  process.env.NEXT_PUBLIC_VAPID_PUBLIC_KEY!,
-  process.env.VAPID_PRIVATE_KEY!
-);
+// Lazily configure web-push when VAPID keys are present
+let vapidConfigured = false;
+
+function ensureVapidConfigured(): boolean {
+  if (vapidConfigured) return true;
+  const publicKey = process.env.NEXT_PUBLIC_VAPID_PUBLIC_KEY;
+  const privateKey = process.env.VAPID_PRIVATE_KEY;
+  if (!publicKey || !privateKey) {
+    return false;
+  }
+  try {
+    webpush.setVapidDetails(
+      'mailto:notifications@myeduride.com',
+      publicKey,
+      privateKey
+    );
+    vapidConfigured = true;
+    return true;
+  } catch (err) {
+    console.warn('[push] Failed to configure VAPID details:', err);
+    return false;
+  }
+}
 
 interface PushPayload {
   title: string;
@@ -26,6 +43,9 @@ export async function sendPushNotification(
   subscription: PushSubscriptionData,
   payload: PushPayload
 ): Promise<boolean> {
+  if (!ensureVapidConfigured()) {
+    return false;
+  }
   try {
     await webpush.sendNotification(
       {

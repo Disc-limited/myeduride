@@ -3,6 +3,8 @@ import { createServiceRoleClient } from '@/lib/supabase/server';
 import { sendEmail } from '@/lib/notifications/email-service';
 import { sendPushToUser } from '@/lib/push/send';
 
+export const dynamic = 'force-dynamic';
+
 export async function POST(request: NextRequest) {
   try {
     const { student_id, school_id } = await request.json();

@@ -3,6 +3,8 @@ import { getAdminClient } from '@/lib/supabase/admin';
 import { getSessionFromRequest } from '@/lib/session';
 import { canManageGateSession } from '@/lib/gate/access';
 
+export const dynamic = 'force-dynamic';
+
 /** Start or end a gate officer scanning session (links attendance to gate_sessions). */
 export async function POST(request: NextRequest) {
   try {
