@@ -61,6 +61,9 @@ export default function SchoolEscortManagementPage() {
     emergencyContact: '',
   });
 
+  const [routes, setRoutes] = useState<any[]>([]);
+  const [vehicles, setVehicles] = useState<any[]>([]);
+
   const loadData = async () => {
     try {
       setLoading(true);
@@ -70,6 +73,8 @@ export default function SchoolEscortManagementPage() {
         setEscorts(json.escorts || []);
         setStudentManifests(json.student_manifests || {});
         setOperationalRecords(json.operational_records || []);
+        setRoutes(json.routes || []);
+        setVehicles(json.vehicles || []);
         setMetrics(json.metrics || {});
       }
     } catch (err) {
@@ -679,23 +684,39 @@ export default function SchoolEscortManagementPage() {
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 <div>
                   <label className="font-bold text-slate-700 block mb-1">Assigned Vehicle</label>
-                  <input
-                    type="text"
-                    placeholder="e.g. LAG-482-XA (HiAce 18-Seater)"
+                  <select
                     value={form.assignedVehicle}
                     onChange={(e) => setForm({ ...form, assignedVehicle: e.target.value })}
-                    className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl"
-                  />
+                    className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl font-medium text-slate-900"
+                  >
+                    <option value="">-- Select School Vehicle --</option>
+                    {vehicles.map((v) => (
+                      <option key={v.id} value={v.name}>
+                        {v.name}
+                      </option>
+                    ))}
+                    {form.assignedVehicle && !vehicles.some((v) => v.name === form.assignedVehicle) && (
+                      <option value={form.assignedVehicle}>{form.assignedVehicle}</option>
+                    )}
+                  </select>
                 </div>
                 <div>
                   <label className="font-bold text-slate-700 block mb-1">Assigned Transport Route</label>
-                  <input
-                    type="text"
-                    placeholder="e.g. Route A - Victoria Island"
+                  <select
                     value={form.assignedRoute}
                     onChange={(e) => setForm({ ...form, assignedRoute: e.target.value })}
-                    className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl"
-                  />
+                    className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl font-bold text-slate-900"
+                  >
+                    <option value="">-- Select Transport Route --</option>
+                    {routes.map((r) => (
+                      <option key={r.id} value={r.name}>
+                        {r.name}
+                      </option>
+                    ))}
+                    {form.assignedRoute && !routes.some((r) => r.name === form.assignedRoute) && (
+                      <option value={form.assignedRoute}>{form.assignedRoute}</option>
+                    )}
+                  </select>
                 </div>
               </div>
 

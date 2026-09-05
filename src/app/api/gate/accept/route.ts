@@ -314,6 +314,20 @@ export async function POST(request: NextRequest) {
       if (dismissCompleteErr) {
         console.error('[gate/accept] dismissal complete:', dismissCompleteErr.message);
       }
+
+      // If departure is parent direct pickup, close/override any active escort assignment for today
+      if (verification_method === 'parent_card_scan') {
+        const parentName = bodyPickupName?.trim() || 'Parent';
+        await supabase
+          .from('escort_assignments')
+          .update({
+            status: 'completed',
+            notes: `Overridden: Child picked up in-person by parent (${parentName}) directly at school gate`,
+          })
+          .eq('student_id', student_id)
+          .eq('service_date', today)
+          .eq('status', 'active');
+      }
     }
 
     await writeAuditLog(supabase, {

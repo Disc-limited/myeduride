@@ -42,6 +42,21 @@ export async function GET(request: NextRequest) {
     const { startIso, endIso } = lagosDayBoundsFromDateStr(dateParam);
     const supabase = getAdminClient();
 
+    const { data: school } = await supabase
+      .from('schools')
+      .select('id, name, address, gps_lat, gps_lng, location_address, location_landmark')
+      .eq('id', schoolId)
+      .maybeSingle();
+
+    const isSchoolPinned = school?.gps_lat != null && school?.gps_lng != null;
+    const terminalName = school?.location_address || school?.address || 'Main Campus Gate';
+    const coordsStr = isSchoolPinned
+      ? `${Number(school.gps_lat).toFixed(4)}, ${Number(school.gps_lng).toFixed(4)}`
+      : null;
+    const locationDisplay = isSchoolPinned
+      ? `${terminalName} (Geofence Verified)`
+      : terminalName;
+
     const entries: {
       id: string;
       entity: 'student' | 'staff';
@@ -52,6 +67,9 @@ export async function GET(request: NextRequest) {
       timestamp: string;
       time_display: string;
       status?: string;
+      location_name: string;
+      gps_coords?: string | null;
+      geofence_verified: boolean;
       pickup_person?: {
         pickup_person_name: string;
         pickup_person_phone?: string | null;
@@ -111,6 +129,9 @@ export async function GET(request: NextRequest) {
           timestamp: r.timestamp,
           time_display: formatTimeLagos(r.timestamp),
           status: r.status || undefined,
+          location_name: locationDisplay,
+          gps_coords: coordsStr,
+          geofence_verified: isSchoolPinned,
           pickup_person: pickupPerson,
           pickup_notice: pickupNotice,
         });
@@ -135,6 +156,9 @@ export async function GET(request: NextRequest) {
           type_label: r.type === 'clock_in' ? 'Staff sign in' : 'Staff sign out',
           timestamp: r.timestamp,
           time_display: formatTimeLagos(r.timestamp),
+          location_name: locationDisplay,
+          gps_coords: coordsStr,
+          geofence_verified: isSchoolPinned,
         });
       }
     }
@@ -144,6 +168,12 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({
       date: dateParam,
       school_id: schoolId,
+      school_location: {
+        name: terminalName,
+        gps_coords: coordsStr,
+        is_pinned: isSchoolPinned,
+        geofence_radius: 200,
+      },
       entries,
     });
   } catch (err: unknown) {

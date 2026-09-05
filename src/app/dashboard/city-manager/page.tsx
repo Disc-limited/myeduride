@@ -50,6 +50,7 @@ import { toast } from 'sonner';
 import StudentAvatar from '@/components/shared/StudentAvatar';
 import EscortApprovalNotificationModal from '@/components/escort/EscortApprovalNotificationModal';
 import { CityManagerCommandControl } from '@/components/city-manager/CityManagerCommandControl';
+import SchoolNoticeBanner from '@/components/shared/SchoolNoticeBanner';
 
 function CityManagerDashboardContent() {
   const searchParams = useSearchParams();
@@ -132,7 +133,7 @@ function CityManagerDashboardContent() {
       .catch((err) => console.warn('[city-manager] fetch applications notice:', err));
   }, [selectedCity]);
 
-  // Counts for the 3 Escort Pillars
+  // Counts for Escort Pillars & Pending Corrections
   const countMyEduRide = escortApplications.filter(
     (a) => a.escortCategory === 'myeduride_escort' || (!a.escortCategory && !a.createdBySchoolId)
   ).length;
@@ -142,9 +143,13 @@ function CityManagerDashboardContent() {
   const countSharedRide = escortApplications.filter(
     (a) => a.escortCategory === 'shared_ride_escort' || a.service_type === 'shared_ride'
   ).length;
+  const countCorrections = escortApplications.filter(
+    (a) => a.status === 'CORRECTION_PENDING' || !!a.proposed_correction
+  ).length;
 
   const filteredEscortApplications = escortApplications.filter((app) => {
     if (escortPillarFilter === 'all') return true;
+    if (escortPillarFilter === 'corrections') return app.status === 'CORRECTION_PENDING' || !!app.proposed_correction;
     if (escortPillarFilter === 'school') return app.escortCategory === 'school_escort' || app.createdBySchoolId || app.schoolName;
     if (escortPillarFilter === 'shared_ride') return app.escortCategory === 'shared_ride_escort' || app.service_type === 'shared_ride';
     if (escortPillarFilter === 'myeduride') return app.escortCategory === 'myeduride_escort' || (!app.escortCategory && !app.createdBySchoolId);
@@ -249,8 +254,7 @@ function CityManagerDashboardContent() {
     setEscortApplications((prev) =>
       prev.map((a) => (a.id === appId ? { ...a, status: 'ESCALATED' } : a))
     );
-    toast.info('Application escalated to Senior City Operations Manager.');
-
+    toast.warning('Application escalated to Senior Operations Board.');
     try {
       await fetch('/api/escorts/applications', {
         method: 'PATCH',
@@ -322,6 +326,9 @@ function CityManagerDashboardContent() {
 
   return (
     <div className="space-y-5 text-slate-100 pb-8">
+      {/* Official School Notices, Holiday Advisories & Event Broadcasts */}
+      <SchoolNoticeBanner role="city_managers" className="mb-2" />
+
       {/* Top Tab Bar: Navigation between Command Overview & Tasks & Approvals */}
       <div className="flex flex-wrap items-center justify-between gap-3 bg-[#081729] p-2.5 rounded-2xl border border-slate-800 shadow-md">
         <div className="flex items-center gap-2">
@@ -458,6 +465,21 @@ function CityManagerDashboardContent() {
             <span>Shared Ride Escorts</span>
             <span className="px-1.5 py-0.2 rounded-full text-[10px] font-black bg-slate-900/30">
               {countSharedRide}
+            </span>
+          </button>
+
+          <button
+            onClick={() => setEscortPillarFilter('corrections')}
+            className={`px-3.5 py-1.5 rounded-xl text-xs font-bold transition-all cursor-pointer flex items-center gap-1.5 ${
+              escortPillarFilter === 'corrections'
+                ? 'bg-amber-400 text-slate-950 shadow-md shadow-amber-400/20'
+                : 'bg-slate-800 text-slate-300 hover:bg-slate-700'
+            }`}
+          >
+            <AlertTriangle size={13} className="shrink-0 text-amber-400" />
+            <span>School Escort Corrections</span>
+            <span className="px-1.5 py-0.2 rounded-full text-[10px] font-black bg-amber-950 text-amber-300">
+              {countCorrections}
             </span>
           </button>
         </div>
@@ -663,6 +685,70 @@ function CityManagerDashboardContent() {
                   </div>
                 </div>
               </div>
+
+              {/* SCHOOL ADMIN PROPOSED CORRECTION APPROVAL CARD */}
+              {(selectedApp?.status === 'CORRECTION_PENDING' || selectedApp?.proposed_correction) && (
+                <div className="p-4 rounded-2xl bg-amber-950/40 border-2 border-amber-500/80 text-xs space-y-3 shadow-lg animate-in fade-in">
+                  <div className="flex flex-wrap items-center justify-between gap-2 border-b border-amber-500/30 pb-2">
+                    <div className="flex items-center gap-2">
+                      <AlertTriangle className="w-5 h-5 text-amber-400 shrink-0" />
+                      <div>
+                        <h4 className="font-black text-amber-300 text-sm uppercase tracking-wide">
+                          School Admin Escort Information Correction Submitted
+                        </h4>
+                        <p className="text-[11px] text-amber-200/80">
+                          The School Admin has edited this escort's profile. Review proposed changes below and approve to update live profile.
+                        </p>
+                      </div>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <button
+                        type="button"
+                        onClick={() => handleApproveEscortCorrection(selectedApp.id)}
+                        className="px-3.5 py-1.5 rounded-xl bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-black text-xs flex items-center gap-1 cursor-pointer shadow-md transition-all"
+                      >
+                        <CheckCircle2 size={14} /> Approve Correction
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => handleRejectEscortCorrection(selectedApp.id)}
+                        className="px-3.5 py-1.5 rounded-xl bg-red-600 hover:bg-red-700 text-white font-extrabold text-xs flex items-center gap-1 cursor-pointer shadow-md transition-all"
+                      >
+                        <UserX size={14} /> Reject
+                      </button>
+                    </div>
+                  </div>
+
+                  {selectedApp.proposed_correction?.correctionNotes && (
+                    <div className="p-2.5 rounded-xl bg-amber-900/50 border border-amber-500/40 font-mono text-[11px] text-amber-200">
+                      📌 <strong>School Admin Note:</strong> "{selectedApp.proposed_correction.correctionNotes}"
+                    </div>
+                  )}
+
+                  {/* Side-by-side comparison table */}
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-3 text-[11px] font-mono">
+                    <div className="p-3 rounded-xl bg-slate-900/80 border border-slate-800 space-y-1">
+                      <span className="text-[10px] font-black uppercase text-slate-400 block font-sans">Current Profile Data</span>
+                      <p className="text-white">Full Name: <strong>{selectedApp.fullName || selectedApp.name || '—'}</strong></p>
+                      <p className="text-slate-300">Phone: <strong>{selectedApp.phone || '—'}</strong></p>
+                      <p className="text-slate-300">Email: <strong>{selectedApp.email || selectedApp.emailOrUsername || '—'}</strong></p>
+                      <p className="text-slate-300">NIN: <strong>{selectedApp.nin || '—'}</strong></p>
+                      <p className="text-slate-300">Driver License: <strong>{selectedApp.driversLicence || selectedApp.driver_license || '—'}</strong></p>
+                      <p className="text-slate-300">Operating Area: <strong>{selectedApp.operatingArea || selectedApp.operating_area || '—'}</strong></p>
+                    </div>
+
+                    <div className="p-3 rounded-xl bg-amber-950/60 border border-amber-500/60 space-y-1">
+                      <span className="text-[10px] font-black uppercase text-amber-400 block font-sans">Proposed Correction (School Admin)</span>
+                      <p className="text-amber-200">Full Name: <strong className="text-white">{selectedApp.proposed_correction?.fullName || selectedApp.fullName || '—'}</strong></p>
+                      <p className="text-amber-200">Phone: <strong className="text-white">{selectedApp.proposed_correction?.phone || selectedApp.phone || '—'}</strong></p>
+                      <p className="text-amber-200">Email: <strong className="text-white">{selectedApp.proposed_correction?.email || selectedApp.email || '—'}</strong></p>
+                      <p className="text-amber-200">NIN: <strong className="text-white">{selectedApp.proposed_correction?.nin || selectedApp.nin || '—'}</strong></p>
+                      <p className="text-amber-200">Driver License: <strong className="text-white">{selectedApp.proposed_correction?.driverLicense || '—'}</strong></p>
+                      <p className="text-amber-200">Operating Area: <strong className="text-white">{selectedApp.proposed_correction?.operatingArea || '—'}</strong></p>
+                    </div>
+                  </div>
+                </div>
+              )}
 
               {/* Grid 4 Inspection Boxes */}
               <div className="grid grid-cols-1 md:grid-cols-2 gap-3.5">

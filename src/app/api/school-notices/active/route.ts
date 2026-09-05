@@ -164,12 +164,14 @@ export async function GET(request: NextRequest) {
       const isTeacher = normRole.includes('teacher') || normRole.includes('staff') || normRole.includes('instructor') || normRole.includes('admin');
       const isEscort = normRole.includes('escort') || normRole.includes('driver');
       const isGate = normRole.includes('gate') || normRole.includes('gatemanager') || normRole.includes('security');
+      const isCityManager = normRole.includes('city') || normRole.includes('manager');
 
       if (isParent && (targets.includes('parents') || targets.includes('parent'))) return true;
       if (isStudent && (targets.includes('students') || targets.includes('student'))) return true;
       if (isTeacher && (targets.includes('teachers') || targets.includes('teacher') || targets.includes('staff'))) return true;
       if (isEscort && (targets.includes('escorts') || targets.includes('escort'))) return true;
       if (isGate && (targets.includes('gate_officers') || targets.includes('gate_officer') || targets.includes('gate'))) return true;
+      if (isCityManager && (targets.includes('city_managers') || targets.includes('city_manager') || targets.includes('city'))) return true;
 
       return false;
     });

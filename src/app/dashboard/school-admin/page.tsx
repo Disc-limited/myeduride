@@ -51,6 +51,8 @@ export default function SchoolAdminDashboard() {
 
   const [dbActivities, setDbActivities] = useState<any[]>([]);
   const [dbNotifications, setDbNotifications] = useState<any[]>([]);
+  const [upcomingEvents, setUpcomingEvents] = useState<any[]>([]);
+  const [calendarEventDates, setCalendarEventDates] = useState<Set<string>>(new Set());
 
   const [stats, setStats] = useState({
     total_students: 0,
@@ -128,7 +130,13 @@ export default function SchoolAdminDashboard() {
       cells.push({ num: prevMonthDays - i, currentMonth: false });
     }
     for (let d = 1; d <= daysInMonth; d++) {
-      cells.push({ num: d, currentMonth: true, isToday: d === todayNum });
+      const dateStr = `${year}-${String(month + 1).padStart(2, '0')}-${String(d).padStart(2, '0')}`;
+      cells.push({
+        num: d,
+        currentMonth: true,
+        isToday: d === todayNum,
+        hasEvent: calendarEventDates.has(dateStr),
+      });
     }
     const remaining = 35 - cells.length;
     for (let i = 1; i <= (remaining > 0 ? remaining : 0); i++) {
@@ -136,7 +144,7 @@ export default function SchoolAdminDashboard() {
     }
 
     return { monthName, cells };
-  }, [currentDate]);
+  }, [currentDate, calendarEventDates]);
 
   const loadDashboard = async () => {
     try {
@@ -180,6 +188,29 @@ export default function SchoolAdminDashboard() {
         const notifRes = await fetchData(`notifications/inbox?school_id=${schoolData.school_id}&limit=10`);
         if (notifRes?.notifications && Array.isArray(notifRes.notifications)) {
           setDbNotifications(notifRes.notifications);
+        }
+      } catch {
+        /* ignore */
+      }
+
+      // Fetch official school calendar events & holidays
+      try {
+        const calRes = await fetch(`/api/schools/calendar?school_id=${schoolData.school_id}`, {
+          credentials: 'include',
+        });
+        const calJson = await calRes.json();
+        if (calJson?.events && Array.isArray(calJson.events)) {
+          const today = new Date().toISOString().slice(0, 10);
+          const upcoming = calJson.events
+            .filter((ev: any) => (ev.end_date || ev.start_date) >= today)
+            .slice(0, 4);
+          setUpcomingEvents(upcoming.length > 0 ? upcoming : calJson.events.slice(0, 4));
+
+          const dates = new Set<string>();
+          (calJson.days || []).forEach((d: any) => {
+            if (d.calendar_date) dates.add(d.calendar_date);
+          });
+          setCalendarEventDates(dates);
         }
       } catch {
         /* ignore */
@@ -246,12 +277,14 @@ export default function SchoolAdminDashboard() {
 
   const quickActions = [
     { label: 'Add Student', icon: <Plus size={18} />, color: 'bg-emerald-100 text-emerald-700', href: '/dashboard/school-admin/students/new' },
-    { label: 'Add Staff', icon: <Plus size={18} />, color: 'bg-purple-100 text-purple-700', href: '/dashboard/school-admin/staff/new' },
+    { label: 'Routes & Corridors', icon: <Navigation size={18} />, color: 'bg-emerald-800 text-white font-extrabold shadow-sm', href: '/dashboard/school-admin/routes' },
+    { label: 'Parent Pinned Houses', icon: <Users size={18} />, color: 'bg-teal-700 text-white font-extrabold shadow-sm', href: '/dashboard/school-admin/routes' },
     { label: 'Escort Records', icon: <UserCheck size={18} />, color: 'bg-teal-600 text-white font-extrabold shadow-sm', href: '/dashboard/school-admin/escort' },
     { label: 'School Escorts', icon: <Users size={18} />, color: 'bg-teal-100 text-teal-700', href: '/dashboard/school-admin/escort/school-escort' },
     { label: 'MyEduRide Escorts', icon: <Shield size={18} />, color: 'bg-[#0B1E36] text-white font-extrabold shadow-sm', href: '/dashboard/school-admin/escort/myeduride-escort' },
     { label: 'Pickup List', icon: <Car size={18} />, color: 'bg-blue-100 text-blue-700', href: '/dashboard/school-admin/pickup-persons' },
     { label: 'Vehicles', icon: <Car size={18} />, color: 'bg-emerald-100 text-emerald-700', href: '/dashboard/school-admin/vehicles' },
+    { label: 'Calendar & Events', icon: <CalendarIcon size={18} />, color: 'bg-emerald-100 text-emerald-800 font-bold shadow-sm', href: '/dashboard/school-admin/calendar' },
     { label: 'Send Notice', icon: <Send size={18} />, color: 'bg-sky-100 text-sky-700', isNotice: true },
     { label: 'View Reports', icon: <FileText size={18} />, color: 'bg-cyan-100 text-cyan-700', href: '/dashboard/school-admin/reports' },
     { label: 'Wallet', icon: <WalletIcon size={18} />, color: 'bg-amber-100 text-amber-700', href: '/dashboard/school-admin/wallet' },
@@ -809,25 +842,31 @@ export default function SchoolAdminDashboard() {
         {/* Wallet Summary */}
         <div className="lg:col-span-5 bg-white rounded-3xl p-5 sm:p-6 border border-slate-200/80 shadow-sm space-y-4">
           <div className="flex items-center justify-between">
-            <h3 className="text-base font-extrabold text-slate-900">Wallet Summary</h3>
-            <span className="text-xs font-bold text-slate-400">System Offline</span>
+            <h3 className="text-base font-extrabold text-slate-900">Wallet & Billing</h3>
+            <span className="text-xs font-bold text-emerald-700 bg-emerald-50 border border-emerald-200 px-2 py-0.5 rounded-full">
+              Active Term
+            </span>
           </div>
           <div className="grid grid-cols-2 gap-3">
             <div className="p-3.5 rounded-2xl bg-emerald-50 border border-emerald-100">
               <p className="text-[10px] font-bold text-emerald-800 uppercase">Current Balance</p>
               <p className="text-lg font-black text-emerald-950 mt-1">₦0.00</p>
+              <p className="text-[10px] text-emerald-700/80 mt-0.5">Operational Float</p>
             </div>
             <div className="p-3.5 rounded-2xl bg-amber-50 border border-amber-100">
-              <p className="text-[10px] font-bold text-amber-800 uppercase">Reward Balance</p>
-              <p className="text-lg font-black text-amber-950 mt-1">₦0.00</p>
+              <p className="text-[10px] font-bold text-amber-800 uppercase">Term Plan</p>
+              <p className="text-lg font-black text-amber-950 mt-1">Active</p>
+              <p className="text-[10px] text-amber-700/80 mt-0.5">Standard Tier</p>
             </div>
             <div className="p-3.5 rounded-2xl bg-sky-50 border border-sky-100">
-              <p className="text-[10px] font-bold text-sky-800 uppercase">Pending Top-up</p>
-              <p className="text-lg font-black text-sky-950 mt-1">₦0.00</p>
+              <p className="text-[10px] font-bold text-sky-800 uppercase">Pending Invoices</p>
+              <p className="text-lg font-black text-sky-950 mt-1">0</p>
+              <p className="text-[10px] text-sky-700/80 mt-0.5">All Cleared</p>
             </div>
-            <div className="p-3.5 rounded-2xl bg-rose-50 border border-rose-100">
-              <p className="text-[10px] font-bold text-rose-800 uppercase">This Month Spent</p>
-              <p className="text-lg font-black text-rose-950 mt-1">₦0.00</p>
+            <div className="p-3.5 rounded-2xl bg-slate-50 border border-slate-200">
+              <p className="text-[10px] font-bold text-slate-600 uppercase">Monthly Spend</p>
+              <p className="text-lg font-black text-slate-900 mt-1">₦0.00</p>
+              <p className="text-[10px] text-slate-500 mt-0.5">Current Cycle</p>
             </div>
           </div>
         </div>
@@ -836,18 +875,60 @@ export default function SchoolAdminDashboard() {
         <div className="lg:col-span-4 bg-white rounded-3xl p-5 sm:p-6 border border-slate-200/80 shadow-sm space-y-4">
           <div className="flex items-center justify-between">
             <h3 className="text-base font-extrabold text-slate-900">Upcoming Events</h3>
-            <Link href="/dashboard/school-admin/calendar" className="text-xs font-bold text-emerald-700">View all</Link>
+            <Link href="/dashboard/school-admin/calendar" className="text-xs font-bold text-emerald-700 hover:underline">
+              View all
+            </Link>
           </div>
-          <div className="space-y-3">
-            {upcomingEvents.map((evt, idx) => (
-              <div key={idx} className="flex items-center gap-3 p-2.5 rounded-2xl bg-slate-50 border border-slate-100">
-                <span className={`w-3 h-3 rounded-full ${evt.color} shrink-0`} />
-                <div>
-                  <p className="text-xs font-bold text-slate-900">{evt.title}</p>
-                  <p className="text-[10px] text-slate-500 font-mono">{evt.date}</p>
-                </div>
+          <div className="space-y-2.5">
+            {upcomingEvents.length > 0 ? (
+              upcomingEvents.map((evt: any, idx: number) => {
+                const isHoliday = evt.day_type === 'public_holiday';
+                const isClosure = evt.day_type === 'school_closure';
+                const badgeColor = isHoliday
+                  ? 'bg-rose-100 text-rose-800 border-rose-200'
+                  : isClosure
+                  ? 'bg-amber-100 text-amber-800 border-amber-200'
+                  : 'bg-emerald-100 text-emerald-800 border-emerald-200';
+                const dotColor = isHoliday ? 'bg-rose-500' : isClosure ? 'bg-amber-500' : 'bg-emerald-500';
+                const typeLabel = isHoliday ? 'Holiday' : isClosure ? 'Closure' : 'Event';
+
+                let dateDisplay = 'Date TBD';
+                if (evt.start_date) {
+                  const s = new Date(evt.start_date + 'T00:00:00');
+                  if (!evt.end_date || evt.start_date === evt.end_date) {
+                    dateDisplay = s.toLocaleDateString('en-US', { weekday: 'short', day: 'numeric', month: 'short' });
+                  } else {
+                    const e = new Date(evt.end_date + 'T00:00:00');
+                    dateDisplay = `${s.toLocaleDateString('en-US', { day: 'numeric', month: 'short' })} – ${e.toLocaleDateString('en-US', { day: 'numeric', month: 'short' })}`;
+                  }
+                }
+
+                return (
+                  <div key={evt.id || idx} className="flex items-center justify-between gap-3 p-2.5 rounded-2xl bg-slate-50 border border-slate-100 hover:bg-slate-100/70 transition">
+                    <div className="flex items-center gap-2.5 min-w-0">
+                      <span className={`w-2.5 h-2.5 rounded-full ${dotColor} shrink-0`} />
+                      <div className="min-w-0">
+                        <p className="text-xs font-bold text-slate-900 truncate">{evt.title}</p>
+                        <p className="text-[10px] text-slate-500 font-mono mt-0.5">{dateDisplay}</p>
+                      </div>
+                    </div>
+                    <span className={`text-[9px] font-extrabold px-2 py-0.5 rounded-full border shrink-0 ${badgeColor}`}>
+                      {typeLabel}
+                    </span>
+                  </div>
+                );
+              })
+            ) : (
+              <div className="py-6 text-center text-slate-400 text-xs font-medium bg-slate-50 rounded-2xl border border-dashed border-slate-200 space-y-2">
+                <p>No upcoming events or holidays scheduled.</p>
+                <Link
+                  href="/dashboard/school-admin/calendar"
+                  className="inline-flex items-center gap-1 text-[11px] font-bold text-emerald-700 hover:text-emerald-800 bg-emerald-50 hover:bg-emerald-100 px-3 py-1 rounded-lg transition"
+                >
+                  + Add School Event
+                </Link>
               </div>
-            ))}
+            )}
           </div>
         </div>
 
@@ -856,8 +937,9 @@ export default function SchoolAdminDashboard() {
           <div className="flex items-center justify-between">
             <h3 className="text-sm font-extrabold text-slate-900">{calendarData.monthName}</h3>
             <div className="flex items-center gap-1 text-slate-400">
-              <button type="button" className="p-1 hover:text-slate-700"><ChevronLeft size={14} /></button>
-              <button type="button" className="p-1 hover:text-slate-700"><ChevronRightIcon size={14} /></button>
+              <Link href="/dashboard/school-admin/calendar" className="p-1 hover:text-emerald-600 transition" title="Open Calendar">
+                <CalendarIcon size={14} />
+              </Link>
             </div>
           </div>
           <div className="grid grid-cols-7 gap-1 text-center text-[10px] font-bold text-slate-400">
@@ -865,18 +947,25 @@ export default function SchoolAdminDashboard() {
           </div>
           <div className="grid grid-cols-7 gap-1 text-center text-xs font-semibold text-slate-700">
             {calendarData.cells.map((c, idx) => (
-              <span
+              <div
                 key={idx}
-                className={
+                className={`relative flex flex-col items-center justify-center py-1 rounded-lg ${
                   c.isToday
-                    ? 'bg-emerald-600 text-white font-bold rounded-lg py-0.5'
+                    ? 'bg-emerald-600 text-white font-bold'
                     : c.currentMonth
                     ? 'text-slate-700'
                     : 'text-slate-300'
-                }
+                }`}
               >
-                {c.num}
-              </span>
+                <span>{c.num}</span>
+                {c.hasEvent && (
+                  <span
+                    className={`w-1 h-1 rounded-full ${
+                      c.isToday ? 'bg-white' : 'bg-emerald-500'
+                    } mt-0.5`}
+                  />
+                )}
+              </div>
             ))}
           </div>
         </div>

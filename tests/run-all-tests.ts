@@ -18,6 +18,8 @@ import { parentBookingWorkflowDomainSuite } from './unit/parent-booking-workflow
 import { pickupAuthorizationDomainSuite } from './unit/pickup-authorization-domain.test';
 import { emergencyDeputisingDomainSuite } from './unit/emergency-deputising-domain.test';
 import { telemetryTrackerUnitSuite } from './unit/telemetry-tracker.test';
+import { calendarGateInvariantsSuite } from './unit/calendar-gate-invariants.test';
+import { schoolGeofenceSuite } from './unit/school-geofence.test';
 import { pickupControlApiSuite } from './integration/pickup-control-api.test';
 import { escortApisSuite } from './integration/escort-apis.test';
 import { routesVehiclesApiSuite } from './integration/routes-vehicles-api.test';
@@ -66,6 +68,8 @@ async function runAllTests() {
     pickupAuthorizationDomainSuite,
     emergencyDeputisingDomainSuite,
     telemetryTrackerUnitSuite,
+    calendarGateInvariantsSuite,
+    schoolGeofenceSuite,
     pickupControlApiSuite,
     escortApisSuite,
     routesVehiclesApiSuite,

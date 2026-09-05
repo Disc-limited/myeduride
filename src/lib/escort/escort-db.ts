@@ -49,6 +49,9 @@ export type EscortApplicationData = {
   createdRole?: string;
   status?: string;
   createdAt?: string;
+  name?: string;
+  email?: string;
+  proposed_correction?: any;
 };
 
 // File path for persistent local store fallback
@@ -67,7 +70,7 @@ export function loadFileStore(): EscortApplicationData[] {
   return [];
 }
 
-function saveFileStore(apps: EscortApplicationData[]) {
+export function saveFileStore(apps: EscortApplicationData[]) {
   try {
     const dir = path.dirname(DATA_FILE);
     if (!fs.existsSync(dir)) {
@@ -312,6 +315,7 @@ export async function getEscortApplications(city?: string) {
           facialScanToken: row.facial_scan_token || parsed.facialScanToken,
           fingerprintToken: row.fingerprint_token || parsed.fingerprintToken,
           status: row.status || 'PENDING_CITY_MANAGER_REVIEW',
+          proposed_correction: row.proposed_correction || parsed.proposed_correction || null,
           city: row.city || row.lga || parsed.city || 'Lagos',
           state: row.state || parsed.state || 'Lagos',
           operatingArea: row.operating_area || parsed.operatingArea || 'Lagos Mainland',
@@ -326,21 +330,31 @@ export async function getEscortApplications(city?: string) {
     console.warn('[escort-db] Supabase fetch fallback to memory:', err);
   }
 
-  // 2. Merge in file store applications
+  // 2. Merge in file store applications & pending corrections
   const fileRecords = loadFileStore();
   fileRecords.forEach((fileRec) => {
-    if (!allApps.some((a) => a.id === fileRec.id || (fileRec.emailOrUsername && a.email === fileRec.emailOrUsername))) {
+    const existing = allApps.find(
+      (a) => a.id === fileRec.id || (fileRec.emailOrUsername && a.email?.toLowerCase() === fileRec.emailOrUsername?.toLowerCase())
+    );
+    if (existing) {
+      if (fileRec.status === 'CORRECTION_PENDING' || fileRec.proposed_correction) {
+        existing.status = fileRec.status || existing.status;
+        existing.proposed_correction = fileRec.proposed_correction || existing.proposed_correction;
+      }
+    } else {
       allApps.push({
         id: fileRec.id,
-        name: fileRec.fullName,
-        email: fileRec.emailOrUsername,
         phone: fileRec.phone,
         nin: fileRec.nin,
         status: fileRec.status || 'PENDING_CITY_MANAGER_REVIEW',
+        proposed_correction: fileRec.proposed_correction || null,
         city: fileRec.city || null,
         state: fileRec.state || null,
         registrationDate: fileRec.createdAt || new Date().toISOString().split('T')[0],
         ...fileRec,
+        name: fileRec.fullName || fileRec.name || 'Escort',
+        fullName: fileRec.fullName || fileRec.name || 'Escort',
+        email: fileRec.emailOrUsername || fileRec.email || '',
       });
     }
   });

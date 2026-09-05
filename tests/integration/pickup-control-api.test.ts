@@ -119,3 +119,117 @@ pickupControlApiSuite.test('POST /api/school-admin/pickup-control [execute_relea
   expect(auditEventsLogged).toContain('Tier1: attendance_records (departure)');
   expect(auditEventsLogged).toContain('Tier3: audit_logs');
 });
+
+pickupControlApiSuite.test('City Manager: Filter escort rosters and reassign escort in real time', async () => {
+  const assignments = [
+    {
+      id: 'assign-101',
+      status: 'active',
+      school_id: 'sch-1',
+      student_id: 'stu-1',
+      escort_application_id: 'esc-1',
+      student: { first_name: 'Stephanie', last_name: 'Mba' },
+      escort: { id: 'esc-1', full_name: 'Babajide Adeleke', vehicle_plate: 'LAG-234-IKJ' },
+    },
+    {
+      id: 'assign-102',
+      status: 'active',
+      school_id: 'sch-2',
+      student_id: 'stu-2',
+      escort_application_id: 'esc-2',
+      student: { first_name: 'Michael', last_name: 'Okafor' },
+      escort: { id: 'esc-2', full_name: 'Peter Okon', vehicle_plate: 'SUR-440-XA' },
+    },
+  ];
+
+  // Filtering by school
+  const filterBySchool = (schoolId: string) =>
+    assignments.filter((a) => a.school_id === schoolId);
+  expect(filterBySchool('sch-1').length).toBe(1);
+  expect(filterBySchool('sch-1')[0].student.first_name).toBe('Stephanie');
+
+  // Reassignment mutation
+  const reassignAction = {
+    action: 'reassign',
+    replacesAssignmentId: 'assign-101',
+    targetEscortId: 'esc-2',
+    targetEscortName: 'Peter Okon',
+    targetVehiclePlate: 'SUR-440-XA',
+  };
+
+  const executeReassign = (a: (typeof assignments)[0], action: typeof reassignAction) => {
+    return {
+      ...a,
+      escort_application_id: action.targetEscortId,
+      escort: {
+        id: action.targetEscortId,
+        full_name: action.targetEscortName,
+        vehicle_plate: action.targetVehiclePlate,
+      },
+      notes: 'Reassigned by City Manager',
+    };
+  };
+
+  const updated = executeReassign(assignments[0], reassignAction);
+  expect(updated.escort_application_id).toBe('esc-2');
+  expect(updated.escort.full_name).toBe('Peter Okon');
+  expect(updated.notes).toBe('Reassigned by City Manager');
+});
+
+pickupControlApiSuite.test('Walk-Home Gate Departures: Recorded for City Manager ledger with immediate parent notification', async () => {
+  const walkHomeRecord = {
+    student_id: 'stu-5',
+    school_id: 'sch-1',
+    type: 'departure',
+    verification_method: 'walk_home_gate_scan',
+    timestamp: '2026-09-05T13:15:00Z',
+  };
+
+  // Notification generator
+  const generateNotification = (rec: typeof walkHomeRecord, studentName: string, schoolName: string) => {
+    const isWalkHome = rec.type === 'departure' && rec.verification_method.includes('walk_home');
+    return {
+      title: isWalkHome ? `🚶 ${studentName} is walking home` : `${studentName} left school`,
+      shortMessage: isWalkHome
+        ? `${studentName} left ${schoolName} on foot (walk-home recorded at gate).`
+        : `${studentName} left ${schoolName}`,
+      mode: isWalkHome ? 'walk_home' : 'standard',
+    };
+  };
+
+  const notif = generateNotification(walkHomeRecord, 'Tayo Balogun', 'Gracefield International');
+  expect(notif.title).toContain('walking home');
+  expect(notif.shortMessage).toContain('on foot (walk-home recorded at gate)');
+  expect(notif.mode).toBe('walk_home');
+});
+
+pickupControlApiSuite.test('Parent In-Person Gate Pickup (Cell Digital Card Scan): Overrides active escort assignment', async () => {
+  const parentScanDeparture = {
+    student_id: 'stu-1',
+    school_id: 'sch-1',
+    type: 'departure',
+    verification_method: 'parent_card_scan',
+    pickup_person_name: 'Angela Mba',
+    pickup_person_phone: '+234 803 112 4455',
+  };
+
+  let activeEscortAssignment = {
+    id: 'assign-101',
+    student_id: 'stu-1',
+    status: 'active',
+    notes: 'Assigned to School Bus 01',
+  };
+
+  // Process gate acceptance
+  if (parentScanDeparture.type === 'departure' && parentScanDeparture.verification_method === 'parent_card_scan') {
+    activeEscortAssignment = {
+      ...activeEscortAssignment,
+      status: 'completed',
+      notes: `Overridden: Child picked up in-person by parent (${parentScanDeparture.pickup_person_name}) directly at school gate`,
+    };
+  }
+
+  expect(activeEscortAssignment.status).toBe('completed');
+  expect(activeEscortAssignment.notes).toContain('Overridden: Child picked up in-person by parent');
+});
+

@@ -2,7 +2,7 @@
 'use client';
 
 import { useCallback, useEffect, useState } from 'react';
-import { CheckCircle, LogOut as LogOutIcon, Search, User } from 'lucide-react';
+import { CheckCircle, LogOut as LogOutIcon, Search, User, MapPin } from 'lucide-react';
 import { toast } from 'sonner';
 import { todayInLagos } from '@/lib/timezone';
 
@@ -103,10 +103,16 @@ export default function AttendanceSignLog({
               </div>
               <div className="flex-1 min-w-0">
                 <p className="text-sm font-medium truncate">{e.name}</p>
-                <p className="text-xs text-slate-500">
-                  {e.type_label}
-                  {e.detail ? ` · ${e.detail}` : ''}
-                </p>
+                <div className="flex flex-wrap items-center gap-1.5 text-xs text-slate-500 mt-0.5">
+                  <span>{e.type_label}</span>
+                  {e.detail && <span>· {e.detail}</span>}
+                  {e.location_name && (
+                    <span className="inline-flex items-center gap-1 text-[11px] text-emerald-800 bg-emerald-50 border border-emerald-200/80 px-1.5 py-0.5 rounded-md font-medium">
+                      <MapPin size={10} className="text-emerald-600 shrink-0" />
+                      <span className="truncate max-w-[200px]">{e.location_name}</span>
+                    </span>
+                  )}
+                </div>
                 {(e.pickup_person?.pickup_person_name || e.pickup_notice?.pickup_person_name) && (
                   <div className="mt-2 rounded-lg border border-blue-200 bg-blue-50 px-2.5 py-2">
                     <p className="text-[10px] font-bold text-blue-900 uppercase tracking-wide">

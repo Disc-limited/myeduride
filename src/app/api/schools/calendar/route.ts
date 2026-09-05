@@ -5,6 +5,7 @@ import { getSessionFromRequest, sessionHasRole } from '@/lib/session';
 import { lagosDateStringsInRange, lagosWeekend } from '@/lib/attendance/lagos-dates';
 import { writeAuditLog } from '@/lib/audit/log';
 import { ensureSchoolCalendarSettings } from '@/lib/attendance/school-calendar';
+import { nowUtcIso } from '@/lib/timezone';
 
 export const dynamic = 'force-dynamic';
 
@@ -297,6 +298,47 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: error.message }, { status: 500 });
   }
 
+  // Atomically broadcast to school_notices so parents, escorts, and city managers receive notice
+  try {
+    const noticeCategory =
+      day_type === 'public_holiday'
+        ? 'public_holiday'
+        : day_type === 'closure'
+        ? 'urgent'
+        : 'event';
+
+    const dateDisplay = start === endDate ? start : `${start} to ${endDate}`;
+    const noticeTitle =
+      day_type === 'public_holiday'
+        ? `📅 Public Holiday: ${String(title).trim()}`
+        : day_type === 'closure'
+        ? `⚠️ School Closure: ${String(title).trim()}`
+        : `🎉 School Event: ${String(title).trim()}`;
+
+    const noticeMessage =
+      description?.trim() ||
+      `Official Announcement: ${title} (${dateDisplay}). Please note school attendance, gate access, and transit schedule.`;
+
+    const targetAudiences = Array.isArray(body.target_audiences) && body.target_audiences.length > 0
+      ? body.target_audiences
+      : ['parents', 'escorts', 'city_managers', 'teachers', 'gate_officers'];
+
+    await supabase.from('school_notices').insert({
+      school_id,
+      sender_user_id: session.user_id,
+      title: noticeTitle,
+      message: noticeMessage,
+      category: noticeCategory,
+      target_audiences: targetAudiences,
+      recipient_count: 0,
+      send_email: false,
+      media_url: batchId ? `calendar_batch:${batchId}` : `calendar_date:${start}`,
+      created_at: nowUtcIso(),
+    });
+  } catch (noticeErr) {
+    console.warn('[calendar/route.ts] school notice broadcast notice:', noticeErr);
+  }
+
   return NextResponse.json({
     success: true,
     batch_id: batchId,
@@ -335,6 +377,17 @@ export async function DELETE(request: NextRequest) {
       .eq('school_id', schoolId)
       .eq('batch_id', batchId);
     if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+
+    try {
+      await supabase
+        .from('school_notices')
+        .delete()
+        .eq('school_id', schoolId)
+        .eq('media_url', `calendar_batch:${batchId}`);
+    } catch {
+      /* ignore */
+    }
+
     return NextResponse.json({ success: true });
   }
 

@@ -45,11 +45,17 @@ export default function SchoolTransportRoutesPage() {
   const [selectedRoute, setSelectedRoute] = useState(null);
   const [submitting, setSubmitting] = useState(false);
 
-  // New Route Form
+  const [escorts, setEscorts] = useState<any[]>([]);
+  const [vehicles, setVehicles] = useState<any[]>([]);
+  const [editingRoute, setEditingRoute] = useState<any | null>(null);
+
+  // New / Edit Route Form
   const [form, setForm] = useState({
     name: '',
     code: '',
+    assigned_vehicle_id: '',
     assigned_vehicle: '',
+    assigned_escort_id: '',
     assigned_escort_name: '',
     assigned_escort_phone: '',
     departure_morning: '06:45 AM',
@@ -68,6 +74,8 @@ export default function SchoolTransportRoutesPage() {
       const json = await res.json();
       if (json.success) {
         setRoutes(json.routes || []);
+        setEscorts(json.escorts || []);
+        setVehicles(json.vehicles || []);
         setMetrics(json.metrics || {});
         if (json.school) {
           setSchool(json.school);
@@ -88,6 +96,50 @@ export default function SchoolTransportRoutesPage() {
     loadRoutes();
   }, []);
 
+  const openCreateModal = () => {
+    setEditingRoute(null);
+    setForm({
+      name: '',
+      code: '',
+      assigned_vehicle_id: '',
+      assigned_vehicle: '',
+      assigned_escort_id: '',
+      assigned_escort_name: '',
+      assigned_escort_phone: '',
+      departure_morning: '06:45 AM',
+      departure_afternoon: '03:15 PM',
+      directions_summary: '',
+      stops: [
+        { stop_number: 1, name: '', landmark: '', eta_morning: '06:50 AM', eta_afternoon: '03:45 PM' },
+        { stop_number: 2, name: 'School Campus Front Gate', landmark: 'Main Gate Security', eta_morning: '07:35 AM', eta_afternoon: '03:15 PM' },
+      ],
+    });
+    setModalOpen(true);
+  };
+
+  const openEditModal = (routeToEdit: any) => {
+    setEditingRoute(routeToEdit);
+    setForm({
+      name: routeToEdit.name || '',
+      code: routeToEdit.code || '',
+      assigned_vehicle_id: routeToEdit.assigned_vehicle_id || '',
+      assigned_vehicle: routeToEdit.assigned_vehicle || '',
+      assigned_escort_id: routeToEdit.assigned_escort_id || '',
+      assigned_escort_name: routeToEdit.assigned_escort_name || '',
+      assigned_escort_phone: routeToEdit.assigned_escort_phone || '',
+      departure_morning: routeToEdit.departure_morning || '06:45 AM',
+      departure_afternoon: routeToEdit.departure_afternoon || '03:15 PM',
+      directions_summary: routeToEdit.directions_summary || '',
+      stops: routeToEdit.stops?.length > 0
+        ? routeToEdit.stops.map((s: any) => ({ ...s }))
+        : [
+            { stop_number: 1, name: '', landmark: '', eta_morning: '06:50 AM', eta_afternoon: '03:45 PM' },
+            { stop_number: 2, name: 'School Campus Front Gate', landmark: 'Main Gate Security', eta_morning: '07:35 AM', eta_afternoon: '03:15 PM' },
+          ],
+    });
+    setModalOpen(true);
+  };
+
   const handleAddStopField = () => {
     setForm({
       ...form,
@@ -105,7 +157,7 @@ export default function SchoolTransportRoutesPage() {
     });
   };
 
-  const handleCreateRoute = async (e: React.FormEvent) => {
+  const handleSaveRoute = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!form.name || !form.code) {
       toast.error('Route name and code are required');
@@ -113,35 +165,23 @@ export default function SchoolTransportRoutesPage() {
     }
     setSubmitting(true);
     try {
+      const isEdit = !!editingRoute;
       const res = await fetch('/api/school-admin/routes', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          action: 'create_route',
+          action: isEdit ? 'update_route' : 'create_route',
+          route_id: editingRoute?.id,
           route_data: form,
         }),
       });
       const json = await res.json();
       if (json.success) {
-        toast.success(json.message || 'Transport Route created successfully!');
+        toast.success(json.message || (isEdit ? 'Route updated successfully!' : 'Route created successfully!'));
         setModalOpen(false);
-        setForm({
-          name: '',
-          code: '',
-          assigned_vehicle: '',
-          assigned_escort_name: '',
-          assigned_escort_phone: '',
-          departure_morning: '06:45 AM',
-          departure_afternoon: '03:15 PM',
-          directions_summary: '',
-          stops: [
-            { stop_number: 1, name: '', landmark: '', eta_morning: '06:50 AM', eta_afternoon: '03:45 PM' },
-            { stop_number: 2, name: 'School Campus Front Gate', landmark: 'Main Gate Security', eta_morning: '07:35 AM', eta_afternoon: '03:15 PM' },
-          ],
-        });
         loadRoutes();
       } else {
-        toast.error(json.error || 'Failed to create route');
+        toast.error(json.error || 'Failed to save route');
       }
     } catch (err: any) {
       toast.error(err.message || 'Error processing route');
@@ -191,7 +231,7 @@ export default function SchoolTransportRoutesPage() {
           </button>
 
           <button
-            onClick={() => setModalOpen(true)}
+            onClick={openCreateModal}
             className="px-5 py-3 rounded-2xl bg-[#00A859] hover:bg-emerald-600 text-white font-extrabold text-xs transition-all shadow-lg shadow-emerald-600/30 flex items-center gap-2 cursor-pointer shrink-0"
           >
             <Plus size={16} />
@@ -273,6 +313,7 @@ export default function SchoolTransportRoutesPage() {
         {[
           { id: 'routes', label: 'Route Corridors Overview' },
           { id: 'map', label: 'Interactive Corridor & House Pins Map' },
+          { id: 'pins', label: 'Parent Pinned Pickup Locations' },
           { id: 'stops', label: 'Landmark Stops Matrix & ETAs' },
           { id: 'manifests', label: 'Student Passenger Manifests' },
           { id: 'directions', label: 'Turn-by-Turn Escort Directions' },
@@ -324,9 +365,22 @@ export default function SchoolTransportRoutesPage() {
                     <span className="px-2.5 py-1 rounded-lg bg-slate-900 text-white font-mono font-black text-xs">
                       {r.code}
                     </span>
-                    <span className="px-2.5 py-0.5 rounded-full bg-emerald-100 text-emerald-800 font-extrabold text-[10px] uppercase">
-                      {r.status}
-                    </span>
+                    <div className="flex items-center gap-1.5">
+                      <button
+                        type="button"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          openEditModal(r);
+                        }}
+                        className="px-2.5 py-1 rounded-lg bg-slate-100 hover:bg-emerald-100 hover:text-emerald-900 text-slate-700 font-extrabold text-[11px] transition-all flex items-center gap-1 cursor-pointer border border-slate-200 shadow-2xs"
+                      >
+                        <Pencil size={12} />
+                        <span>Edit Route</span>
+                      </button>
+                      <span className="px-2.5 py-0.5 rounded-full bg-emerald-100 text-emerald-800 font-extrabold text-[10px] uppercase">
+                        {r.status}
+                      </span>
+                    </div>
                   </div>
 
                   <div>
@@ -412,6 +466,93 @@ export default function SchoolTransportRoutesPage() {
               No routes currently available to display on map.
             </div>
           )}
+        </div>
+      )}
+
+      {/* TAB: PARENT PINNED PICKUP LOCATIONS */}
+      {activeTab === 'pins' && (
+        <div className="space-y-5">
+          <div className="bg-white p-5 rounded-3xl border border-slate-200 shadow-xs flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
+            <div>
+              <h3 className="font-black text-slate-900 text-base">Parent Pinned Pickup Locations (Synced Doorstep GPS)</h3>
+              <p className="text-xs text-slate-500">
+                Exact house coordinates pinned by parents for doorstep pickup, escort route planning, and gate security.
+              </p>
+            </div>
+            <span className="px-3 py-1.5 rounded-xl bg-teal-50 border border-teal-200 text-teal-800 font-extrabold text-xs">
+              📌 {metrics.total_pinned_houses || 0} Families Pinned
+            </span>
+          </div>
+
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+            {routes.flatMap((r) =>
+              (r.passenger_students || []).map((stu) => ({ ...stu, routeCode: r.code, routeName: r.name }))
+            ).map((stu, idx) => (
+              <div
+                key={idx}
+                className={`bg-white rounded-3xl p-5 border space-y-3 flex flex-col justify-between ${
+                  stu.is_house_pinned ? 'border-teal-300 ring-1 ring-teal-500/20 shadow-xs' : 'border-slate-200 opacity-80'
+                }`}
+              >
+                <div className="space-y-2">
+                  <div className="flex items-start justify-between gap-2">
+                    <div>
+                      <h4 className="font-black text-slate-900 text-sm">{stu.name}</h4>
+                      <span className="text-[11px] font-bold text-slate-500">{stu.class}</span>
+                    </div>
+                    <span className="px-2 py-0.5 rounded-md bg-slate-900 text-white font-mono font-bold text-[10px]">
+                      {stu.routeCode}
+                    </span>
+                  </div>
+
+                  {stu.is_house_pinned ? (
+                    <div className="p-3 rounded-2xl bg-teal-50/80 border border-teal-200 text-xs space-y-1.5">
+                      <div className="flex items-center gap-1.5 font-bold text-teal-900">
+                        <MapPin size={14} className="text-teal-700 shrink-0" />
+                        <span>Pinned House Address</span>
+                      </div>
+                      <p className="font-semibold text-slate-800 text-[11px]">{stu.house_address || 'Address registered'}</p>
+                      {stu.house_landmark && (
+                        <p className="text-[11px] text-slate-600">🏢 Landmark: {stu.house_landmark}</p>
+                      )}
+                      {stu.house_notes && (
+                        <p className="text-[11px] text-slate-600">📝 Notes: "{stu.house_notes}"</p>
+                      )}
+                      <div className="pt-1 flex items-center justify-between border-t border-teal-200/60 text-[10px] font-mono text-teal-800">
+                        <span>GPS: {stu.house_lat?.toFixed(5)}, {stu.house_lng?.toFixed(5)}</span>
+                        <span className="text-emerald-700 font-bold">✓ Synced</span>
+                      </div>
+                    </div>
+                  ) : (
+                    <div className="p-3 rounded-2xl bg-amber-50 border border-amber-200 text-xs space-y-1 text-amber-900">
+                      <span className="font-bold block">⚠️ Awaiting Parent Pin</span>
+                      <p className="text-[11px] text-amber-800">
+                        Parent has not dropped an interactive map pin yet. Defaulting to registered street address.
+                      </p>
+                    </div>
+                  )}
+                </div>
+
+                <div className="pt-2 border-t border-slate-100 flex items-center justify-between text-xs text-slate-500">
+                  <span className="font-medium">📞 Parent: {stu.parent_phone || 'Available'}</span>
+                  {stu.is_house_pinned && (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        const rMatch = routes.find((r) => r.code === stu.routeCode);
+                        if (rMatch) setSelectedRoute(rMatch);
+                        setActiveTab('map');
+                      }}
+                      className="font-bold text-teal-700 hover:text-teal-900 flex items-center gap-1 cursor-pointer"
+                    >
+                      <span>View Map Pin</span>
+                      <ChevronRight size={12} />
+                    </button>
+                  )}
+                </div>
+              </div>
+            ))}
+          </div>
         </div>
       )}
 
@@ -602,18 +743,24 @@ export default function SchoolTransportRoutesPage() {
         </div>
       )}
 
-      {/* CREATE ROUTE MODAL */}
+      {/* CREATE / EDIT ROUTE MODAL */}
       {modalOpen && (
         <div className="fixed inset-0 bg-slate-950/70 z-50 flex items-center justify-center p-4 backdrop-blur-xs">
-          <div className="bg-white rounded-3xl max-w-xl w-full p-6 shadow-2xl border border-slate-200 space-y-4 max-h-[90vh] overflow-y-auto">
+          <div className="bg-white rounded-3xl max-w-xl w-full p-6 shadow-2xl border border-slate-200 space-y-4 max-h-[90vh] overflow-y-auto font-sans">
             <div className="flex items-center justify-between border-b border-slate-100 pb-3">
               <div className="flex items-center gap-2.5">
                 <div className="w-10 h-10 rounded-2xl bg-emerald-100 text-emerald-800 flex items-center justify-center font-black">
                   <Compass size={18} />
                 </div>
                 <div>
-                  <h3 className="font-black text-slate-900 text-base">Design New Transport Route</h3>
-                  <p className="text-xs text-slate-500 font-medium">Configure route code, schedules, assigned vehicle & landmark stops.</p>
+                  <h3 className="font-black text-slate-900 text-base">
+                    {editingRoute ? `Edit Transport Route (${editingRoute.code})` : 'Design New Transport Route'}
+                  </h3>
+                  <p className="text-xs text-slate-500 font-medium">
+                    {editingRoute
+                      ? 'Update route corridor code, schedules, assigned escort, and stop sequence.'
+                      : 'Configure route code, schedules, assigned vehicle & landmark stops.'}
+                  </p>
                 </div>
               </div>
               <button onClick={() => setModalOpen(false)} className="text-slate-400 hover:text-slate-600 cursor-pointer">
@@ -621,7 +768,7 @@ export default function SchoolTransportRoutesPage() {
               </button>
             </div>
 
-            <form onSubmit={handleCreateRoute} className="space-y-3.5 text-xs">
+            <form onSubmit={handleSaveRoute} className="space-y-3.5 text-xs">
               <div>
                 <label className="font-bold text-slate-700 block mb-1">Route Name *</label>
                 <input
@@ -630,7 +777,7 @@ export default function SchoolTransportRoutesPage() {
                   placeholder="e.g. Route D: Surulere & Yaba Route"
                   value={form.name}
                   onChange={(e) => setForm({ ...form, name: e.target.value })}
-                  className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl font-bold"
+                  className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl font-bold text-slate-900 focus:outline-none focus:ring-2 focus:ring-emerald-500/20"
                 />
               </div>
 
@@ -643,31 +790,83 @@ export default function SchoolTransportRoutesPage() {
                     placeholder="SRL-04"
                     value={form.code}
                     onChange={(e) => setForm({ ...form, code: e.target.value })}
-                    className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl uppercase font-mono font-bold"
+                    className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl uppercase font-mono font-bold text-slate-900"
                   />
                 </div>
                 <div>
                   <label className="font-bold text-slate-700 block mb-1">Assigned Vehicle</label>
-                  <input
-                    type="text"
-                    placeholder="e.g. LAG-482-XA (HiAce)"
-                    value={form.assigned_vehicle}
-                    onChange={(e) => setForm({ ...form, assigned_vehicle: e.target.value })}
-                    className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl"
-                  />
+                  <select
+                    value={form.assigned_vehicle_id || form.assigned_vehicle || ''}
+                    onChange={(e) => {
+                      const selectedId = e.target.value;
+                      const selectedVeh = vehicles.find((v) => v.id === selectedId);
+                      if (selectedVeh) {
+                        setForm({
+                          ...form,
+                          assigned_vehicle_id: selectedVeh.id,
+                          assigned_vehicle: selectedVeh.name,
+                        });
+                      } else {
+                        setForm({
+                          ...form,
+                          assigned_vehicle_id: '',
+                          assigned_vehicle: e.target.value,
+                        });
+                      }
+                    }}
+                    className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl font-medium text-slate-900 focus:outline-none focus:ring-2 focus:ring-emerald-500/20"
+                  >
+                    <option value="">-- Select School Vehicle --</option>
+                    {vehicles.map((v) => (
+                      <option key={v.id} value={v.id}>
+                        {v.name}
+                      </option>
+                    ))}
+                    {form.assigned_vehicle && !vehicles.some((v) => v.id === form.assigned_vehicle_id) && (
+                      <option value={form.assigned_vehicle}>{form.assigned_vehicle}</option>
+                    )}
+                  </select>
                 </div>
               </div>
 
-              <div className="grid grid-cols-2 gap-3">
+              {/* Escort Dropdown Selection */}
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 <div>
-                  <label className="font-bold text-slate-700 block mb-1">Assigned Escort / Driver</label>
-                  <input
-                    type="text"
-                    placeholder="Full name"
-                    value={form.assigned_escort_name}
-                    onChange={(e) => setForm({ ...form, assigned_escort_name: e.target.value })}
-                    className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl"
-                  />
+                  <label className="font-bold text-slate-700 block mb-1">
+                    Assigned School Escort * (Dropdown Selection)
+                  </label>
+                  <select
+                    value={form.assigned_escort_id || ''}
+                    onChange={(e) => {
+                      const selectedId = e.target.value;
+                      const selectedEscort = escorts.find((esc) => esc.id === selectedId);
+                      if (selectedEscort) {
+                        setForm({
+                          ...form,
+                          assigned_escort_id: selectedEscort.id,
+                          assigned_escort_name: selectedEscort.name,
+                          assigned_escort_phone: selectedEscort.phone || form.assigned_escort_phone,
+                        });
+                      } else {
+                        setForm({
+                          ...form,
+                          assigned_escort_id: '',
+                          assigned_escort_name: e.target.value,
+                        });
+                      }
+                    }}
+                    className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl font-bold text-slate-900 focus:outline-none focus:ring-2 focus:ring-emerald-500/20"
+                  >
+                    <option value="">-- Select School Escort --</option>
+                    {escorts.map((esc) => (
+                      <option key={esc.id} value={esc.id}>
+                        {esc.name} ({esc.phone ? esc.phone : esc.type})
+                      </option>
+                    ))}
+                    {form.assigned_escort_name && !escorts.some((esc) => esc.id === form.assigned_escort_id) && (
+                      <option value={form.assigned_escort_name}>{form.assigned_escort_name}</option>
+                    )}
+                  </select>
                 </div>
                 <div>
                   <label className="font-bold text-slate-700 block mb-1">Escort Phone Number</label>
@@ -676,7 +875,7 @@ export default function SchoolTransportRoutesPage() {
                     placeholder="+234..."
                     value={form.assigned_escort_phone}
                     onChange={(e) => setForm({ ...form, assigned_escort_phone: e.target.value })}
-                    className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl font-mono"
+                    className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl font-mono text-slate-900"
                   />
                 </div>
               </div>
@@ -772,7 +971,13 @@ export default function SchoolTransportRoutesPage() {
                   disabled={submitting}
                   className="px-5 py-2 rounded-xl bg-[#00A859] hover:bg-emerald-600 text-white font-black shadow-md shadow-emerald-600/20 cursor-pointer"
                 >
-                  {submitting ? 'Creating...' : 'Save & Publish Route'}
+                  {submitting
+                    ? editingRoute
+                      ? 'Saving Changes...'
+                      : 'Creating...'
+                    : editingRoute
+                      ? 'Save Route Changes'
+                      : 'Save & Publish Route'}
                 </button>
               </div>
             </form>

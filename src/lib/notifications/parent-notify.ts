@@ -13,7 +13,7 @@ export async function notifyParentsOfAttendance(params: {
 
   const { data: student, error: studentErr } = await supabase
     .from('students')
-    .select('*, school:schools(name, logo_url, primary_color), class:school_classes(name)')
+    .select('*, school:schools(name, logo_url, primary_color, address, location_address, gps_lat, gps_lng), class:school_classes(name)')
     .eq('id', student_id)
     .single();
 
@@ -60,20 +60,25 @@ export async function notifyParentsOfAttendance(params: {
   const dateStr = formatDateLagos(record.timestamp);
 
   const notifType = record.status === 'late' && type === 'arrival' ? 'late' : type;
+  const isWalkHome = type === 'departure' && (record.verification_method || '').toLowerCase().includes('walk_home');
+  const isParentScan = type === 'departure' && (record.verification_method || '').toLowerCase().includes('parent_card');
 
-  const title =
-    notifType === 'late'
-      ? `${student.first_name} arrived late`
-      : type === 'arrival'
-        ? `${student.first_name} arrived at school`
-        : `${student.first_name} left school`;
+  let title = `${student.first_name} left school`;
+  let shortMessage = `${student.first_name} left ${schoolName} at ${timeStr}`;
 
-  const shortMessage =
-    notifType === 'late'
-      ? `${student.first_name} arrived late at ${schoolName} at ${timeStr}`
-      : type === 'arrival'
-        ? `${student.first_name} arrived at ${schoolName} at ${timeStr}`
-        : `${student.first_name} left ${schoolName} at ${timeStr}`;
+  if (notifType === 'late') {
+    title = `${student.first_name} arrived late`;
+    shortMessage = `${student.first_name} arrived late at ${schoolName} at ${timeStr}`;
+  } else if (type === 'arrival') {
+    title = `${student.first_name} arrived at school`;
+    shortMessage = `${student.first_name} arrived at ${schoolName} at ${timeStr}`;
+  } else if (isWalkHome) {
+    title = `🚶 ${student.first_name} is walking home`;
+    shortMessage = `${student.first_name} left ${schoolName} on foot (walk-home recorded at gate) at ${timeStr}.`;
+  } else if (isParentScan) {
+    title = `👨‍👧 ${student.first_name} picked up by parent`;
+    shortMessage = `${student.first_name} was safely released to parent at ${schoolName} gate at ${timeStr}.`;
+  }
 
   const emailHtml = `
     <div style="font-family: -apple-system, sans-serif; max-width: 480px; margin: 0 auto;">
@@ -85,8 +90,11 @@ export async function notifyParentsOfAttendance(params: {
         <p><strong>Student:</strong> ${student.first_name} ${student.last_name}</p>
         <p><strong>Class:</strong> ${className}</p>
         <p><strong>Time:</strong> ${timeStr} on ${dateStr}</p>
+        <p><strong>Gate Location:</strong> ${school?.location_address || school?.address || 'Main Campus Gate'}${school?.gps_lat != null && school?.gps_lng != null ? ` (${Number(school.gps_lat).toFixed(4)}, ${Number(school.gps_lng).toFixed(4)})` : ''} <span style="color:#059669;font-size:11px;font-weight:bold;">• Geofence Verified</span></p>
+        ${isWalkHome ? '<p style="color:#2563eb;"><strong>Mode:</strong> Walking Home (Gate Verified)</p>' : ''}
+        ${isParentScan ? '<p style="color:#059669;"><strong>Mode:</strong> Direct Parent Gate Pickup (Digital Card Verified)</p>' : ''}
         ${record.status === 'late' ? '<p style="color:#dc2626;"><strong>Status:</strong> Late</p>' : ''}
-        <p style="color:#9ca3af;font-size:12px;margin-top:16px;">MyEduRide — Parent notification</p>
+        <p style="color:#9ca3af;font-size:12px;margin-top:16px;">MyEduRide — Student Transit & Custody Safety</p>
       </div>
     </div>
   `;

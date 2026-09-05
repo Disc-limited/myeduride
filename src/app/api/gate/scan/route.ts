@@ -53,6 +53,21 @@ export async function POST(request: NextRequest) {
       );
     }
 
+    const { data: schoolRow } = await supabase
+      .from('schools')
+      .select('id, name, address, gps_lat, gps_lng, location_address, location_landmark')
+      .eq('id', school_id)
+      .maybeSingle();
+
+    const schoolLocation = {
+      name: schoolRow?.location_address || schoolRow?.address || 'Main Campus Gate',
+      gps_coords: schoolRow?.gps_lat != null && schoolRow?.gps_lng != null
+        ? `${Number(schoolRow.gps_lat).toFixed(4)}, ${Number(schoolRow.gps_lng).toFixed(4)}`
+        : null,
+      is_pinned: schoolRow?.gps_lat != null && schoolRow?.gps_lng != null,
+      geofence_radius: 200,
+    };
+
     const studentId = await resolveStudentId(supabase, school_id, scan);
     if (studentId) {
       const { data: student } = await supabase
@@ -105,6 +120,7 @@ export async function POST(request: NextRequest) {
         pickup_request: pickup_context.pickup_request,
         pickup_persons: pickup_context.pickup_persons,
         ready_for_pickup: !!readyReq,
+        school_location: schoolLocation,
         scan_hints: {
           can_check_in: checkIn.allowed,
           can_check_out: checkOut.allowed,
@@ -141,6 +157,7 @@ export async function POST(request: NextRequest) {
           has_clock_in: today.has_clock_in,
           has_clock_out: today.has_clock_out,
         },
+        school_location: schoolLocation,
         scan_hints: {
           can_check_in: checkIn.allowed,
           can_check_out: checkOut.allowed,
@@ -254,6 +271,7 @@ export async function POST(request: NextRequest) {
           phone: parentUser.phone,
           photo_url: parentUser.avatar_url,
         },
+        school_location: schoolLocation,
         linked_children: childrenList,
       });
     }

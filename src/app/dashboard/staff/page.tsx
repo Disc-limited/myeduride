@@ -196,6 +196,13 @@ export default function StaffDashboardPage() {
         setSchoolName(data.school_name || 'Fortune Springs Montessori');
         setJobTitle(data.job_title || 'Administrative Officer');
 
+        if (data.today_attendance) {
+          setTodayAttendance((prev) => ({
+            ...prev,
+            ...data.today_attendance,
+          }));
+        }
+
         if (data.school_id) {
           await loadMonthStats(data.school_id);
         }
@@ -958,23 +965,25 @@ export default function StaffDashboardPage() {
                       <div className="bg-slate-50/70 border border-slate-100 rounded-2xl p-4 grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-4 text-xs">
                         <div>
                           <span className="text-slate-400 font-medium block mb-0.5">Clock-In Location</span>
-                          <span className="font-bold text-slate-800 block">Main Gate</span>
-                          <span className="text-slate-500 text-[11px]">{schoolName}</span>
+                          <span className="font-bold text-slate-800 block truncate" title={todayAttendance.locationIn}>{todayAttendance.locationIn}</span>
+                          <span className="text-slate-500 text-[11px] truncate block">{schoolName}</span>
                         </div>
                         <div>
                           <span className="text-slate-400 font-medium block mb-0.5">Clock-Out Location</span>
-                          <span className="font-bold text-slate-800 block">Main Gate</span>
-                          <span className="text-slate-500 text-[11px]">{schoolName}</span>
+                          <span className="font-bold text-slate-800 block truncate" title={todayAttendance.locationOut}>{todayAttendance.locationOut}</span>
+                          <span className="text-slate-500 text-[11px] truncate block">{schoolName}</span>
                         </div>
                         <div>
                           <span className="text-slate-400 font-medium block mb-0.5">Scanned By</span>
-                          <span className="font-bold text-slate-800 block">Mr. Peter John</span>
+                          <span className="font-bold text-slate-800 block truncate">{todayAttendance.scannedBy}</span>
                           <span className="text-slate-500 text-[11px]">Gate Officer</span>
                         </div>
                         <div>
                           <span className="text-slate-400 font-medium block mb-0.5">Verification</span>
-                          <span className="font-bold text-emerald-700 block">Verified</span>
-                          <span className="text-slate-500 text-[11px]">Inside School Geofence</span>
+                          <span className="font-bold text-emerald-700 block truncate">
+                            {todayAttendance.is_inside_geofence ? 'Verified' : 'Recorded'}
+                          </span>
+                          <span className="text-slate-500 text-[11px] truncate block">{todayAttendance.verification}</span>
                         </div>
                       </div>
 
@@ -1518,8 +1527,8 @@ export default function StaffDashboardPage() {
                         </span>
                       </div>
                       <div className="bg-emerald-100/70 border border-emerald-200 text-emerald-800 font-bold p-3 rounded-xl flex items-center gap-2">
-                        <ShieldCheck size={18} className="text-emerald-600" />
-                        <span>Attendance Terminal Gate Scan Active & Verified</span>
+                        <ShieldCheck size={18} className="text-emerald-600 shrink-0" />
+                        <span>{todayAttendance.is_inside_geofence ? 'Inside School Geofence • Gate Terminal Scan Verified' : 'Attendance Terminal Gate Scan Active & Verified'}</span>
                       </div>
                     </div>
                   </div>

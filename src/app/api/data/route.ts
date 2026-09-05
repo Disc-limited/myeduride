@@ -6,7 +6,7 @@ import {
   canViewSchoolDashboard,
 } from '@/lib/auth/school-access';
 import { ATTENDANCE_UI_NOTE } from '@/lib/attendance/window';
-import { todayInLagos, lagosDayBounds } from '@/lib/timezone';
+import { todayInLagos, lagosDayBounds, formatTimeLagos } from '@/lib/timezone';
 import { getSessionFromRequest } from '@/lib/session';
 import { countSchoolParentsOnFile } from '@/lib/school/school-parents-list';
 import { buildStaffDailyReport } from '@/lib/attendance/staff-report';
@@ -511,8 +511,12 @@ export async function POST(request: NextRequest) {
           return NextResponse.json({ error: 'No staff school' }, { status: 403 });
         }
         
-        // FIXED: Safety fallback from .single() to .maybeSingle()
-        const { data: school } = await supabase.from('schools').select('name').eq('id', schoolId).maybeSingle();
+        // FIXED: Fetch school details including pinned GPS geofence location
+        const { data: school } = await supabase
+          .from('schools')
+          .select('id, name, address, gps_lat, gps_lng, location_address, location_landmark, location_pinned_at')
+          .eq('id', schoolId)
+          .maybeSingle();
 
         let jobTitle = 'Staff';
         const { data: profile } = await supabase
@@ -528,10 +532,66 @@ export async function POST(request: NextRequest) {
         else if (custom && typeof custom === 'object') customName = (custom as { name?: string }).name;
         if (customName) jobTitle = customName;
 
+        // Fetch today's real staff sign-in / sign-out attendance logs
+        const { startIso, endIso } = lagosDayBounds();
+        const { data: todayLogs } = await supabase
+          .from('staff_attendance')
+          .select('id, type, timestamp, verification_method, verified_by_user_id, record_source')
+          .eq('school_id', schoolId)
+          .eq('user_id', session.user_id)
+          .gte('timestamp', startIso)
+          .lte('timestamp', endIso)
+          .order('timestamp', { ascending: true });
+
+        const clockInLog = todayLogs?.find((l: any) => l.type === 'clock_in');
+        const clockOutLog = todayLogs?.slice().reverse().find((l: any) => l.type === 'clock_out');
+
+        let verifiedByName = 'Gate Officer';
+        const officerId = clockInLog?.verified_by_user_id || clockOutLog?.verified_by_user_id;
+        if (officerId) {
+          const { data: officer } = await supabase
+            .from('user_profiles')
+            .select('full_name')
+            .eq('id', officerId)
+            .maybeSingle();
+          if (officer?.full_name) verifiedByName = officer.full_name;
+        }
+
+        const isPinned = school?.gps_lat != null && school?.gps_lng != null;
+        const coordsStr = isPinned
+          ? `${Number(school.gps_lat).toFixed(4)}, ${Number(school.gps_lng).toFixed(4)}`
+          : '—';
+        const locationName = school?.location_address || school?.address || 'Main Campus Gate';
+
+        const todayAttendance = {
+          status: clockInLog ? (clockOutLog ? 'completed' : 'present') : 'not_marked',
+          clockIn: clockInLog ? formatTimeLagos(clockInLog.timestamp) : '—',
+          clockOut: clockOutLog ? formatTimeLagos(clockOutLog.timestamp) : '—',
+          dateStr: todayInLagos(),
+          locationIn: locationName,
+          locationOut: locationName,
+          scannedBy: verifiedByName,
+          verification: isPinned ? 'GPS Verified • Inside School Geofence' : 'Campus Gate Terminal',
+          gpsCoords: coordsStr,
+          address: locationName,
+          landmark: school?.location_landmark || null,
+          is_inside_geofence: isPinned,
+          geofence_radius: 200,
+        };
+
         return NextResponse.json({
           school_id: schoolId,
           school_name: school?.name || '',
           job_title: jobTitle,
+          school_location: {
+            gps_lat: school?.gps_lat != null ? Number(school.gps_lat) : null,
+            gps_lng: school?.gps_lng != null ? Number(school.gps_lng) : null,
+            address: locationName,
+            landmark: school?.location_landmark || '',
+            is_pinned: isPinned,
+            geofence_radius: 200,
+          },
+          today_attendance: todayAttendance,
         });
       }
 
@@ -548,7 +608,7 @@ export async function POST(request: NextRequest) {
         const ids = links.map((l: any) => l.student_id);
         const { data: students } = await supabase
           .from('students')
-          .select('*, class:school_classes(name, grade), school:schools(id, name, primary_color, logo_url)')
+          .select('*, class:school_classes(name, grade), school:schools(id, name, primary_color, logo_url, gps_lat, gps_lng, address, location_address, location_landmark, location_pinned_at)')
           .in('id', ids)
           .eq('is_active', true);
 

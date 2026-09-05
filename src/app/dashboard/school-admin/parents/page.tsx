@@ -2,10 +2,11 @@
 
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
-import { Search, UserCheck, KeyRound, RefreshCcw, Pencil, Users, Loader2 } from 'lucide-react';
+import { Search, UserCheck, KeyRound, RefreshCcw, Pencil, Users, Loader2, Car } from 'lucide-react';
 import { toast } from 'sonner';
 import type { SchoolParentRow } from '@/lib/school/school-parents-list';
 import EditParentModal from '@/components/school-admin/EditParentModal';
+import AssignParentPickupModal from '@/components/school-admin/AssignParentPickupModal';
 
 export default function ParentsListPage() {
   const [parents, setParents] = useState<SchoolParentRow[]>([]);
@@ -14,6 +15,7 @@ export default function ParentsListPage() {
   const [searchQuery, setSearchQuery] = useState('');
   const [schoolId, setSchoolId] = useState('');
   const [editingParent, setEditingParent] = useState<SchoolParentRow | null>(null);
+  const [assigningParent, setAssigningParent] = useState<SchoolParentRow | null>(null);
 
   const loadParents = useCallback(async () => {
     setLoading(true);
@@ -222,14 +224,25 @@ export default function ParentsListPage() {
                   </ul>
                 </td>
                 <td className="px-4 py-3 text-right">
-                  <button
-                    type="button"
-                    onClick={() => setEditingParent(parent)}
-                    className="p-2 rounded-xl hover:bg-slate-50 text-slate-400 hover:text-slate-600 inline-flex items-center justify-center transition-colors"
-                    aria-label="Edit parent"
-                  >
-                    <Pencil size={16} />
-                  </button>
+                  <div className="flex items-center justify-end gap-1.5">
+                    <button
+                      type="button"
+                      onClick={() => setAssigningParent(parent)}
+                      className="px-2.5 py-1.5 rounded-xl bg-emerald-50 hover:bg-emerald-100 text-emerald-700 hover:text-emerald-800 text-xs font-bold inline-flex items-center gap-1.5 transition-colors border border-emerald-200 shadow-2xs cursor-pointer"
+                      title="Assign this parent as student pickup or link child"
+                    >
+                      <Car size={14} />
+                      <span>Assign Pickup</span>
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setEditingParent(parent)}
+                      className="p-1.5 rounded-xl hover:bg-slate-100 text-slate-400 hover:text-slate-600 inline-flex items-center justify-center transition-colors cursor-pointer"
+                      aria-label="Edit parent"
+                    >
+                      <Pencil size={16} />
+                    </button>
+                  </div>
                 </td>
               </tr>
             ))}
@@ -253,6 +266,16 @@ export default function ParentsListPage() {
         parent={editingParent}
         schoolId={schoolId}
       />
+
+      {assigningParent && (
+        <AssignParentPickupModal
+          isOpen={!!assigningParent}
+          onClose={() => setAssigningParent(null)}
+          onSuccess={loadParents}
+          parent={assigningParent}
+          schoolId={schoolId}
+        />
+      )}
     </div>
   );
 }

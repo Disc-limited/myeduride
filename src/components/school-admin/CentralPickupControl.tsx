@@ -34,6 +34,9 @@ import {
 import { toast } from 'sonner';
 import StudentAvatar from '@/components/shared/StudentAvatar';
 import { photoSrc } from '@/lib/photo';
+import ParentSelectAutocomplete from '@/components/school-admin/ParentSelectAutocomplete';
+import { ParentUser } from '@/hooks/useParentSearch';
+import Link from 'next/link';
 
 export default function CentralPickupControl() {
   const [data, setData] = useState<any>(null);
@@ -50,6 +53,9 @@ export default function CentralPickupControl() {
   const [escortSubType, setEscortSubType] = useState<'school' | 'myeduride'>('school');
   const [selectedEscortId, setSelectedEscortId] = useState<string>('');
   const [selectedParentId, setSelectedParentId] = useState<string>('');
+  const [useDirectoryParent, setUseDirectoryParent] = useState(false);
+  const [directorySelectedParent, setDirectorySelectedParent] = useState<ParentUser | null>(null);
+  const [parentSearchQuery, setParentSearchQuery] = useState('');
   const [selectedSiblingId, setSelectedSiblingId] = useState<string>('');
   const [assignmentNotes, setAssignmentNotes] = useState('');
   const [submittingAction, setSubmittingAction] = useState(false);
@@ -131,11 +137,16 @@ export default function CentralPickupControl() {
     setSelectedStudent(student);
     setAssignmentMode(defaultMode);
     setAssignmentNotes('');
+    setUseDirectoryParent(false);
+    setDirectorySelectedParent(null);
+    setParentSearchQuery('');
     // Prefill selections
     if (student.authorized_options?.parents?.length > 0) {
       setSelectedParentId(student.authorized_options.parents[0].id);
     } else {
       setSelectedParentId('');
+      // If no linked parents, default to directory parent search
+      setUseDirectoryParent(true);
     }
     if (student.authorized_options?.siblings?.length > 0) {
       setSelectedSiblingId(student.authorized_options.siblings[0].student_id);
@@ -157,6 +168,9 @@ export default function CentralPickupControl() {
   const closeAssignmentModal = () => {
     setSelectedStudent(null);
     setAssignmentNotes('');
+    setUseDirectoryParent(false);
+    setDirectorySelectedParent(null);
+    setParentSearchQuery('');
   };
 
   // Handle Pickup Assignment
@@ -183,9 +197,30 @@ export default function CentralPickupControl() {
       pickerPhone = foundEscort.phone;
     } else if (assignmentMode === 'parent') {
       pickerType = 'parent';
-      const foundParent = selectedStudent.authorized_options?.parents?.find((p: any) => p.id === selectedParentId) || selectedStudent.authorized_options?.parents?.[0];
+      let foundParent: any = null;
+
+      if (useDirectoryParent && directorySelectedParent) {
+        foundParent = {
+          id: directorySelectedParent.id,
+          user_id: directorySelectedParent.id,
+          full_name: directorySelectedParent.full_name,
+          phone: directorySelectedParent.phone || '',
+        };
+      } else {
+        foundParent = selectedStudent.authorized_options?.parents?.find((p: any) => p.id === selectedParentId) || selectedStudent.authorized_options?.parents?.[0];
+      }
+
+      if (!foundParent && directorySelectedParent) {
+        foundParent = {
+          id: directorySelectedParent.id,
+          user_id: directorySelectedParent.id,
+          full_name: directorySelectedParent.full_name,
+          phone: directorySelectedParent.phone || '',
+        };
+      }
+
       if (!foundParent) {
-        toast.error('No parent profile found for this child');
+        toast.error('Please select or search a parent profile for this child');
         setSubmittingAction(false);
         return;
       }
@@ -326,6 +361,35 @@ export default function CentralPickupControl() {
           </button>
         </div>
       </div>
+
+      {/* Holiday / Closure Alert Banner */}
+      {data?.gate_day && !data.gate_day.gate_open && (
+        <div className="p-4 rounded-3xl bg-amber-500/10 border border-amber-500/40 text-amber-900 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 shadow-xs">
+          <div className="flex items-center gap-3">
+            <div className="w-10 h-10 rounded-2xl bg-amber-500/20 text-amber-800 flex items-center justify-center shrink-0">
+              <Lock size={20} />
+            </div>
+            <div>
+              <h4 className="text-sm font-black text-amber-950 flex items-center gap-2">
+                <span>School Closed Today ({data.gate_day.label || 'Public Holiday / Closure'})</span>
+                <span className="text-[10px] uppercase font-extrabold bg-amber-200 text-amber-900 px-2 py-0.5 rounded-md">
+                  Pickups Locked
+                </span>
+              </h4>
+              <p className="text-xs text-amber-800/90 font-medium">
+                Standard gate releases and pickup assignments are suspended today. If opening for a special session, activate a Gate Open Override.
+              </p>
+            </div>
+          </div>
+          <Link
+            href="/dashboard/school-admin/calendar"
+            className="px-3.5 py-2 bg-amber-600 hover:bg-amber-700 text-white font-bold text-xs rounded-xl shadow shrink-0 flex items-center gap-1.5 transition-all"
+          >
+            <Calendar size={14} />
+            <span>School Calendar & Overrides</span>
+          </Link>
+        </div>
+      )}
 
       {/* KPI Metrics Ribbon */}
       <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-7 gap-3">
@@ -1111,56 +1175,108 @@ export default function CentralPickupControl() {
 
               {/* Mode B: PARENT SELECTION SUB-PANEL */}
               {assignmentMode === 'parent' && (
-                <div className="p-4 rounded-2xl bg-slate-50 border border-slate-200 space-y-3">
-                  <h4 className="text-xs font-bold text-slate-700">Verified Parent / Guardian Profiles:</h4>
-                  {(!selectedStudent.authorized_options?.parents || selectedStudent.authorized_options.parents.length === 0) ? (
-                    <p className="text-xs text-slate-400 py-3 text-center bg-white rounded-xl border border-dashed border-slate-200">
-                      No linked parent account found. You can link parents in the Parents module.
-                    </p>
-                  ) : (
-                    <div className="space-y-2">
-                      {selectedStudent.authorized_options.parents.map((p: any) => (
-                        <div
-                          key={p.id}
-                          onClick={() => setSelectedParentId(p.id)}
-                          className={`p-3 rounded-xl border transition-all cursor-pointer flex items-center justify-between ${
-                            selectedParentId === p.id
-                              ? 'bg-white border-blue-500 shadow-xs ring-2 ring-blue-500/20'
-                              : 'bg-white border-slate-200 hover:border-slate-300'
-                          }`}
-                        >
-                          <div className="flex items-center gap-2.5">
-                            <div className="w-8 h-8 rounded-lg bg-blue-600 text-white flex items-center justify-center font-bold text-xs">
-                              {p.full_name.charAt(0)}
-                            </div>
-                            <div>
-                              <p className="text-xs font-black text-slate-900 flex items-center gap-1.5">
-                                <span>{p.full_name}</span>
-                                <span className="text-[9px] font-bold text-blue-700 bg-blue-50 px-1.5 py-0.5 rounded-md">
-                                  {p.relationship || 'Parent'}
-                                </span>
-                              </p>
-                              <p className="text-[11px] text-slate-500 font-mono">📞 {p.phone || 'No phone'}</p>
-                            </div>
-                          </div>
-
-                          <div className="flex items-center gap-2">
-                            {p.nin && (
-                              <span className="text-[9px] font-black bg-emerald-100 text-emerald-800 px-2 py-0.5 rounded-md">
-                                NIN Verified
-                              </span>
-                            )}
-                            <input
-                              type="radio"
-                              checked={selectedParentId === p.id}
-                              onChange={() => setSelectedParentId(p.id)}
-                              className="text-blue-600"
-                            />
-                          </div>
-                        </div>
-                      ))}
+                <div className="p-4 rounded-2xl bg-slate-50 border border-slate-200 space-y-4">
+                  {/* Linked Parents header and list */}
+                  <div>
+                    <div className="flex items-center justify-between mb-2">
+                      <h4 className="text-xs font-bold text-slate-700">Verified Parent / Guardian Profiles for Child:</h4>
+                      <Link
+                        href="/dashboard/school-admin/parents"
+                        target="_blank"
+                        className="text-[11px] text-blue-600 hover:text-blue-800 font-bold flex items-center gap-1"
+                      >
+                        <Users size={12} /> Manage Parents Directory
+                      </Link>
                     </div>
-                  )}
+
+                    {(!selectedStudent.authorized_options?.parents || selectedStudent.authorized_options.parents.length === 0) ? (
+                      <div className="p-3.5 text-center bg-white rounded-xl border border-dashed border-slate-200 space-y-1">
+                        <p className="text-xs font-bold text-slate-700">No linked parent account on file for this student.</p>
+                        <p className="text-[11px] text-slate-400">
+                          Search below to assign any registered parent from the school directory, or manage parent profiles in the Parents module.
+                        </p>
+                      </div>
+                    ) : (
+                      <div className="space-y-2">
+                        {selectedStudent.authorized_options.parents.map((p: any) => (
+                          <div
+                            key={p.id}
+                            onClick={() => {
+                              setSelectedParentId(p.id);
+                              setUseDirectoryParent(false);
+                            }}
+                            className={`p-3 rounded-xl border transition-all cursor-pointer flex items-center justify-between ${
+                              !useDirectoryParent && selectedParentId === p.id
+                                ? 'bg-white border-blue-500 shadow-xs ring-2 ring-blue-500/20'
+                                : 'bg-white border-slate-200 hover:border-slate-300'
+                            }`}
+                          >
+                            <div className="flex items-center gap-2.5">
+                              <div className="w-8 h-8 rounded-lg bg-blue-600 text-white flex items-center justify-center font-bold text-xs">
+                                {p.full_name?.charAt(0) || 'P'}
+                              </div>
+                              <div>
+                                <p className="text-xs font-black text-slate-900 flex items-center gap-1.5">
+                                  <span>{p.full_name}</span>
+                                  <span className="text-[9px] font-bold text-blue-700 bg-blue-50 px-1.5 py-0.5 rounded-md">
+                                    {p.relationship || 'Parent'}
+                                  </span>
+                                </p>
+                                <p className="text-[11px] text-slate-500 font-mono">📞 {p.phone || 'No phone'}</p>
+                              </div>
+                            </div>
+
+                            <div className="flex items-center gap-2">
+                              {p.nin && (
+                                <span className="text-[9px] font-black bg-emerald-100 text-emerald-800 px-2 py-0.5 rounded-md">
+                                  NIN Verified
+                                </span>
+                              )}
+                              <input
+                                type="radio"
+                                checked={!useDirectoryParent && selectedParentId === p.id}
+                                onChange={() => {
+                                  setSelectedParentId(p.id);
+                                  setUseDirectoryParent(false);
+                                }}
+                                className="text-blue-600"
+                              />
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Search Directory Parent Section */}
+                  <div className="pt-2 border-t border-slate-200/80">
+                    <div className="flex items-center justify-between mb-2">
+                      <label className="text-xs font-bold text-slate-700 flex items-center gap-1.5">
+                        <Search size={13} className="text-slate-400" />
+                        <span>Or Select Any Parent from School Directory:</span>
+                      </label>
+                      {useDirectoryParent && (
+                        <span className="text-[10px] font-black text-blue-700 bg-blue-100 px-2 py-0.5 rounded-full">
+                          Directory Parent Active
+                        </span>
+                      )}
+                    </div>
+
+                    <div onClick={() => setUseDirectoryParent(true)}>
+                      <ParentSelectAutocomplete
+                        schoolId={data?.school?.id || null}
+                        selectedParent={directorySelectedParent}
+                        onSelectParent={(parent) => {
+                          setDirectorySelectedParent(parent);
+                          if (parent) {
+                            setUseDirectoryParent(true);
+                          }
+                        }}
+                        onQueryChange={setParentSearchQuery}
+                        queryValue={parentSearchQuery}
+                      />
+                    </div>
+                  </div>
                 </div>
               )}
 

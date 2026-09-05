@@ -6,6 +6,7 @@ import { writeGateActivityLog } from '@/lib/gate/activity-log';
 import { notifyParentsOfAttendance } from '@/lib/notifications/parent-notify';
 import { nowUtcIso, todayInLagos } from '@/lib/timezone';
 import { getEscortApplications } from '@/lib/escort/escort-db';
+import { getGateDayStatus, assertGateDayOpen } from '@/lib/gate/school-day-gate';
 
 export const dynamic = 'force-dynamic';
 
@@ -355,6 +356,52 @@ export async function GET(request: NextRequest) {
         totalAssigned++;
       }
 
+      // Generate consolidated parents list for this student
+      const linkedParents = [...(studentParentsMap[s.id] || [])];
+      const seenParentNames = new Set(linkedParents.map((p) => (p.full_name || '').toLowerCase().trim()));
+
+      // Include authorized persons with parent relationship
+      const authPersons = authorizedPersonsMap[s.id] || [];
+      authPersons.forEach((ap) => {
+        const rel = (ap.relationship || '').toLowerCase();
+        if (rel.includes('parent') || rel.includes('father') || rel.includes('mother') || rel.includes('guardian') || rel.includes('mom') || rel.includes('dad')) {
+          const apNameLower = (ap.name || '').toLowerCase().trim();
+          if (!seenParentNames.has(apNameLower)) {
+            seenParentNames.add(apNameLower);
+            linkedParents.push({
+              id: ap.id,
+              user_id: ap.id,
+              full_name: ap.name,
+              email: '',
+              phone: ap.phone || '',
+              photo_url: ap.photo_url || null,
+              nin: null,
+              relationship: ap.relationship || 'Parent',
+              is_primary: false,
+            });
+          }
+        }
+      });
+
+      // Include parent details on-file in custom_fields
+      const cf = (s.custom_fields || {}) as Record<string, any>;
+      const cfParentName = (cf.parent_name || cf.guardian_name || '').trim();
+      const cfParentPhone = (cf.parent_phone || cf.guardian_phone || '').trim();
+      if (cfParentName && !seenParentNames.has(cfParentName.toLowerCase())) {
+        seenParentNames.add(cfParentName.toLowerCase());
+        linkedParents.push({
+          id: `onfile-${s.id}`,
+          user_id: null,
+          full_name: cfParentName,
+          email: cf.parent_email || '',
+          phone: cfParentPhone,
+          photo_url: null,
+          nin: null,
+          relationship: cf.relationship || 'Parent (On File)',
+          is_primary: true,
+        });
+      }
+
       return {
         id: s.id,
         first_name: s.first_name,
@@ -390,16 +437,19 @@ export async function GET(request: NextRequest) {
             }
           : null,
         authorized_options: {
-          parents: studentParentsMap[s.id] || [],
+          parents: linkedParents,
           siblings: studentSiblingsMap[s.id] || [],
           other_authorized_persons: authorizedPersonsMap[s.id] || [],
         },
       };
     });
 
+    const gateDay = await getGateDayStatus(supabase, primarySchoolId, today);
+
     return NextResponse.json({
       success: true,
       timestamp: nowUtcIso(),
+      gate_day: gateDay,
       school: {
         id: school?.id || primarySchoolId,
         name: school?.name || 'School',
@@ -481,6 +531,20 @@ export async function POST(request: NextRequest) {
 
     if (sErr || !student) {
       return NextResponse.json({ error: 'Student not found in this school' }, { status: 404 });
+    }
+
+    // Enforce Holiday / Non-school day blocking for pickup assignment and releases
+    if (action === 'assign_pickup' || action === 'execute_release') {
+      const gateCheck = await assertGateDayOpen(supabase, school_id, today);
+      if (!gateCheck.ok) {
+        return NextResponse.json(
+          {
+            error: `School is closed today for ${gateCheck.status.label || 'Holiday'}. Gate & pickup operations are locked unless a Gate Open Override is enabled in the School Calendar.`,
+            gate_day: gateCheck.status,
+          },
+          { status: 423 }
+        );
+      }
     }
 
     // -------------------------------------------------------------

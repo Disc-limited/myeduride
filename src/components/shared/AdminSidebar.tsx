@@ -33,6 +33,8 @@ import {
   ChevronRight,
   ChevronLeft,
   Sparkles,
+  KeyRound,
+  Calendar,
 } from 'lucide-react';
 import { logout } from '@/lib/api';
 
@@ -63,6 +65,7 @@ export function AdminSidebar({
   const pathname = usePathname();
   const [openSubmenus, setOpenSubmenus] = useState<Record<string, boolean>>({
     Students: false,
+    Parents: false,
     Staff: false,
     'Escort Records': false,
     Reports: false,
@@ -71,6 +74,8 @@ export function AdminSidebar({
   useEffect(() => {
     if (pathname.startsWith('/dashboard/school-admin/students')) {
       setOpenSubmenus((prev) => ({ ...prev, Students: true }));
+    } else if (pathname.startsWith('/dashboard/school-admin/parents') || pathname.startsWith('/dashboard/school-admin/passwords')) {
+      setOpenSubmenus((prev) => ({ ...prev, Parents: true }));
     } else if (pathname.startsWith('/dashboard/school-admin/staff')) {
       setOpenSubmenus((prev) => ({ ...prev, Staff: true }));
     } else if (pathname.startsWith('/dashboard/school-admin/escort')) {
@@ -97,6 +102,16 @@ export function AdminSidebar({
             { label: 'Add Student', href: '/dashboard/school-admin/students/new', icon: <Users size={16} /> },
           ],
         },
+        {
+          label: 'Parents',
+          href: '/dashboard/school-admin/parents',
+          icon: <UserCheck size={18} />,
+          children: [
+            { label: 'Parent Directory', href: '/dashboard/school-admin/parents', icon: <Users size={16} /> },
+            { label: 'Assign Pickups', href: '/dashboard/school-admin/pickup-persons', icon: <Car size={16} /> },
+            { label: 'Parent Passwords', href: '/dashboard/school-admin/passwords', icon: <KeyRound size={16} /> },
+          ],
+        },
         { label: 'Classes', href: '/dashboard/school-admin/classes', icon: <School size={18} /> },
         {
           label: 'Staff',
@@ -118,6 +133,7 @@ export function AdminSidebar({
             { label: 'Add School Escort', href: '/dashboard/school-admin/escort/add', icon: <UserPlus size={16} /> },
           ],
         },
+        { label: 'Calendar & Events', href: '/dashboard/school-admin/calendar', icon: <Calendar size={18} /> },
       ],
     },
     {

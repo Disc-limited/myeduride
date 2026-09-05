@@ -42,12 +42,16 @@ export async function GET(request: NextRequest) {
       success: true,
       school_id: primarySchoolId,
       location: {
-        gps_lat: school.gps_lat,
-        gps_lng: school.gps_lng,
+        gps_lat: school.gps_lat != null ? Number(school.gps_lat) : null,
+        gps_lng: school.gps_lng != null ? Number(school.gps_lng) : null,
         address: school.location_address || school.address || '',
         landmark: school.location_landmark || '',
         pinned_at: school.location_pinned_at,
         is_pinned: school.gps_lat != null && school.gps_lng != null,
+        geofence_radius: 200,
+        formatted_coords: school.gps_lat != null && school.gps_lng != null
+          ? `${Number(school.gps_lat).toFixed(4)}, ${Number(school.gps_lng).toFixed(4)}`
+          : null,
       },
     });
   } catch (err: any) {
@@ -142,12 +146,14 @@ export async function POST(request: NextRequest) {
       success: true,
       message: 'School campus gate location pinned successfully.',
       location: {
-        gps_lat: updatedSchool.gps_lat,
-        gps_lng: updatedSchool.gps_lng,
+        gps_lat: Number(updatedSchool.gps_lat),
+        gps_lng: Number(updatedSchool.gps_lng),
         address: updatedSchool.location_address || updatedSchool.address,
         landmark: updatedSchool.location_landmark,
         pinned_at: updatedSchool.location_pinned_at,
         is_pinned: true,
+        geofence_radius: 200,
+        formatted_coords: `${Number(updatedSchool.gps_lat).toFixed(4)}, ${Number(updatedSchool.gps_lng).toFixed(4)}`,
       },
     });
   } catch (err: any) {

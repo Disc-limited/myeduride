@@ -2,7 +2,7 @@
 'use client';
 
 import { useEffect, useRef, useState } from 'react';
-import { Camera, ScanLine } from 'lucide-react';
+import { Camera, ScanLine, MapPin } from 'lucide-react';
 import { toast } from 'sonner';
 import StudentAvatar from '@/components/shared/StudentAvatar';
 import TodayScanStatusBanner from '@/components/gate/TodayScanStatusBanner';
@@ -467,7 +467,7 @@ export default function StudentIdScanPanel({
                         }}
                         className="px-3 py-2 bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-black rounded-xl shadow-xs shrink-0"
                       >
-                        {saving ? 'Saving…' : 'Release Child'}
+                        {saving ? 'Recording Release…' : 'Release to Parent (Overrides Bus/Escort)'}
                       </button>
                     </div>
                   </div>
@@ -505,6 +505,16 @@ export default function StudentIdScanPanel({
               )}
             </div>
           </div>
+          {scanned.school_location && (
+            <div className="flex items-center gap-1.5 text-[11px] text-emerald-900 bg-emerald-50/90 border border-emerald-200/80 rounded-xl px-2.5 py-1.5 font-medium">
+              <MapPin size={13} className="text-emerald-700 shrink-0" />
+              <span className="truncate">
+                {scanned.school_location.name}
+                {scanned.school_location.gps_coords ? ` (${scanned.school_location.gps_coords})` : ''}
+              </span>
+              <span className="ml-auto text-[10px] font-bold text-emerald-700 uppercase shrink-0">Geofence Verified</span>
+            </div>
+          )}
           <TodayScanStatusBanner todayStatus={scanned.today_status} />
           {block.message && (
             <p className="text-sm font-semibold text-red-700 bg-red-50 border border-red-100 rounded-xl px-3 py-2 text-center">

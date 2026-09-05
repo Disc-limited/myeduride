@@ -199,6 +199,9 @@ export function CityManagerCommandControl({
               }))
             );
           }
+          if (Array.isArray(data.vehicles)) {
+            setVehicles(data.vehicles);
+          }
           if (Array.isArray(data.deputising_records)) {
             setDeputisingRecords(data.deputising_records);
           }
@@ -1827,12 +1830,12 @@ export function CityManagerCommandControl({
             <table className="w-full text-left text-xs">
               <thead className="bg-[#07172b] text-[10px] font-black text-slate-400 uppercase border-b border-slate-800">
                 <tr>
-                  <th className="p-3">Vehicle Details</th>
+                  <th className="p-3">Vehicle & Snaps</th>
                   <th className="p-3">Plate & Type</th>
-                  <th className="p-3">Assigned Escort</th>
+                  <th className="p-3">Allocated Escort</th>
+                  <th className="p-3">Assigned Route</th>
                   <th className="p-3">School Station</th>
                   <th className="p-3 text-center">Status</th>
-                  <th className="p-3 text-right">Speed / Telemetry</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-800/80 font-medium text-slate-200">
@@ -1845,35 +1848,61 @@ export function CityManagerCommandControl({
                     </td>
                   </tr>
                 ) : (
-                  vehicles.map((v) => (
-                    <tr key={v.id} className="hover:bg-slate-800/40 transition-colors">
-                      <td className="p-3">
-                        <strong className="text-white block">{v.model}</strong>
-                        <span className="text-[10px] text-slate-400 font-mono">{v.id}</span>
-                      </td>
-                      <td className="p-3">
-                        <span className="font-mono font-bold text-slate-200 block">{v.plateNumber}</span>
-                        <span className="text-[9px] px-1.5 py-0.2 rounded bg-slate-800 text-slate-400">{v.type}</span>
-                      </td>
-                      <td className="p-3">
-                        <span className="text-white font-semibold">{v.escortName}</span>
-                      </td>
-                      <td className="p-3">
-                        <span className="text-slate-300">{v.schoolName}</span>
-                      </td>
-                      <td className="p-3 text-center">
-                        <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold ${
-                          v.status === 'IN_TRANSIT' ? 'bg-emerald-500/20 text-emerald-400' : v.status === 'STANDBY' ? 'bg-blue-500/20 text-blue-300' : 'bg-red-500/20 text-red-400'
-                        }`}>
-                          {v.status}
-                        </span>
-                      </td>
-                      <td className="p-3 text-right font-mono">
-                        <span className="text-emerald-400 font-bold block">{v.speed}</span>
-                        <span className="text-[10px] text-slate-400">Fuel: {v.fuel}</span>
-                      </td>
-                    </tr>
-                  ))
+                  vehicles.map((v) => {
+                    const photos = typeof v.vehiclePhotos === 'object' && v.vehiclePhotos ? v.vehiclePhotos : {};
+                    const img = v.photoUrl || photos.front || null;
+
+                    return (
+                      <tr key={v.id} className="hover:bg-slate-800/40 transition-colors">
+                        <td className="p-3">
+                          <div className="flex items-center gap-2.5">
+                            {img ? (
+                              <img src={img} alt={v.plateNumber || v.regNumber} className="w-10 h-10 rounded-xl object-cover border border-slate-700 shrink-0" />
+                            ) : (
+                              <div className="w-10 h-10 rounded-xl bg-cyan-500/10 text-cyan-400 border border-cyan-500/20 flex items-center justify-center font-bold shrink-0">
+                                <Car size={18} />
+                              </div>
+                            )}
+                            <div>
+                              <strong className="text-white block font-bold">{v.model || v.make}</strong>
+                              <div className="flex items-center gap-1 mt-0.5">
+                                {(photos.front || v.photoUrl) && <span className="text-[9px] px-1 py-0.2 rounded bg-blue-500/20 text-blue-300 font-bold">Front</span>}
+                                {photos.side && <span className="text-[9px] px-1 py-0.2 rounded bg-emerald-500/20 text-emerald-300 font-bold">Side</span>}
+                                {photos.plate && <span className="text-[9px] px-1 py-0.2 rounded bg-amber-500/20 text-amber-300 font-bold">Plate</span>}
+                              </div>
+                            </div>
+                          </div>
+                        </td>
+                        <td className="p-3">
+                          <span className="font-mono font-bold text-slate-100 block">{v.plateNumber || v.regNumber}</span>
+                          <span className="text-[9px] px-1.5 py-0.2 rounded bg-slate-800 text-slate-300">{v.type || 'School Bus'} ({v.capacity || 18} seats)</span>
+                        </td>
+                        <td className="p-3">
+                          <span className="text-emerald-400 font-bold block flex items-center gap-1">
+                            <ShieldCheck size={13} />
+                            {v.escortName || 'Unassigned'}
+                          </span>
+                          {v.escortPhone && <span className="text-[10px] text-slate-400 font-mono">{v.escortPhone}</span>}
+                        </td>
+                        <td className="p-3">
+                          <span className="text-indigo-300 font-bold block flex items-center gap-1">
+                            <MapPin size={13} />
+                            {v.routeName || 'Unassigned Route'}
+                          </span>
+                        </td>
+                        <td className="p-3">
+                          <span className="text-slate-300 block">{v.schoolName || 'School Campus'}</span>
+                        </td>
+                        <td className="p-3 text-center">
+                          <span className={`px-2.5 py-0.5 rounded-full text-[10px] font-bold ${
+                            v.status === 'ACTIVE' || v.status === 'active' || v.status === 'IN_TRANSIT' ? 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/30' : 'bg-slate-700 text-slate-300'
+                          }`}>
+                            {v.status || 'ACTIVE'}
+                          </span>
+                        </td>
+                      </tr>
+                    );
+                  })
                 )}
               </tbody>
             </table>

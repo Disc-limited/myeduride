@@ -267,18 +267,103 @@ export async function POST(request: NextRequest) {
       });
     }
 
-    if (action === 'toggle_status') {
+    if (action === 'submit_correction') {
+      const { correction_data } = body;
+      const { loadFileStore, saveFileStore, updateEscortApplicationStatus } = await import('@/lib/escort/escort-db');
+
+      const fileStore = loadFileStore();
+      let escortApp = fileStore.find(
+        (a: any) =>
+          a.id === escort_id ||
+          a.user_id === escort_id ||
+          a.appId === escort_id ||
+          a.escort_code === escort_id ||
+          (correction_data?.email && a.emailOrUsername?.toLowerCase() === correction_data.email.toLowerCase())
+      );
+
+      if (escortApp) {
+        (escortApp as any).status = 'CORRECTION_PENDING';
+        (escortApp as any).proposed_correction = correction_data;
+        (escortApp as any).correction_submitted_at = nowUtcIso();
+        (escortApp as any).correction_submitted_by = session.user_id;
+        (escortApp as any).correction_school_id = primarySchoolId;
+        saveFileStore(fileStore);
+      } else {
+        // Escort record did not exist in file store yet -> create application entry
+        const newRecord: any = {
+          id: escort_id || `esc-app-${Math.floor(100000 + Math.random() * 900000)}`,
+          user_id: escort_id,
+          fullName: correction_data?.fullName || 'School Escort',
+          name: correction_data?.fullName || 'School Escort',
+          emailOrUsername: correction_data?.email || `escort.${escort_id}@myeduride.com`,
+          email: correction_data?.email || '',
+          phone: correction_data?.phone || '',
+          nin: correction_data?.nin || '',
+          driversLicence: correction_data?.driverLicense || '',
+          address: correction_data?.address || '',
+          operatingArea: correction_data?.operatingArea || 'Lagos',
+          status: 'CORRECTION_PENDING',
+          escortCategory: 'school_escort',
+          createdBySchoolId: primarySchoolId,
+          proposed_correction: correction_data,
+          correction_submitted_at: nowUtcIso(),
+          correction_submitted_by: session.user_id,
+          createdAt: nowUtcIso(),
+        };
+        fileStore.unshift(newRecord);
+        saveFileStore(fileStore);
+        escortApp = newRecord;
+      }
+
+      const escortTargetId = (escortApp as any)?.id || escort_id;
+
+      await updateEscortApplicationStatus(
+        escortTargetId,
+        'PENDING_CITY_MANAGER_REVIEW',
+        correction_data?.correctionNotes || 'School Admin Correction Submitted',
+        {
+          status: 'CORRECTION_PENDING',
+          proposed_correction: correction_data,
+          correction_submitted_at: nowUtcIso(),
+          correction_submitted_by: session.user_id,
+          correction_school_id: primarySchoolId,
+        }
+      );
+
+      // Also update/upsert Supabase table
+      try {
+        await supabase
+          .from('escort_applications')
+          .upsert({
+            id: escortTargetId,
+            user_id: escort_id,
+            full_name: correction_data?.fullName,
+            phone: correction_data?.phone,
+            email: correction_data?.email,
+            nin: correction_data?.nin,
+            operating_area: correction_data?.operatingArea,
+            status: 'CORRECTION_PENDING',
+            proposed_correction: correction_data,
+            correction_submitted_at: nowUtcIso(),
+            correction_submitted_by: session.user_id,
+            school_id: primarySchoolId,
+          });
+      } catch (e) {
+        console.warn('[escorts POST submit_correction] Supabase upsert notice:', e);
+      }
+
       await supabase.from('audit_logs').insert({
         school_id: primarySchoolId,
         user_id: session.user_id,
-        action: 'TOGGLE_ESCORT_STATUS',
+        action: 'SUBMIT_ESCORT_CORRECTION',
         resource: 'escort_records',
-        details: { escort_id, new_status },
+        details: { escort_id, correction_data },
       });
 
       return NextResponse.json({
         success: true,
-        message: `Escort status changed to ${new_status}.`,
+        message: 'Escort information correction submitted! Pending City Manager review and approval.',
+        status: 'CORRECTION_PENDING',
       });
     }
 

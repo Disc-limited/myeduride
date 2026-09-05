@@ -68,41 +68,44 @@ export async function POST(request: NextRequest) {
         const cleanRaw = rawInput.toLowerCase().trim();
         const nameToken = cleanRaw.replace(/^escort\./i, '').replace(/[^a-z0-9]/g, '');
 
-        // Check Supabase escort_applications table first
+        // Check Supabase escort_applications table first with EXACT MATCHES ONLY
         const { data: dbApps } = await supabase
           .from('escort_applications')
           .select('*')
-          .or(`email.ilike.${cleanRaw},full_name.ilike.%${nameToken}%,phone.eq.${cleanRaw}`)
+          .or(`email.eq.${cleanRaw},phone.eq.${cleanRaw}`)
           .limit(10);
 
         if (dbApps && dbApps.length > 0) {
           matchedEscortApp = dbApps.find((a: any) => {
             const aEmail = (a.email || '').toLowerCase().trim();
-            const aName = (a.full_name || '').toLowerCase().replace(/[^a-z0-9]/g, '');
+            const aUser = (a.username || a.email_or_username || '').toLowerCase().trim();
+            const aCode = (a.escort_code || '').toLowerCase().trim();
+            const aPhone = (a.phone || '').trim();
             return (
               aEmail === cleanRaw ||
-              aName.includes(nameToken) ||
-              nameToken.includes(aName) ||
-              `escort.${aName}` === cleanRaw
+              aUser === cleanRaw ||
+              aCode === cleanRaw ||
+              aPhone === cleanRaw ||
+              `escort.${aUser}` === cleanRaw
             );
-          }) || dbApps[0];
+          });
         }
 
-        // Check local JSON store fallback
+        // Check local JSON store fallback with EXACT MATCHES ONLY
         if (!matchedEscortApp) {
           const { loadFileStore } = await import('@/lib/escort/escort-db');
           const fileStore = loadFileStore();
           matchedEscortApp = fileStore.find((a: any) => {
             const aEmail = (a.email || a.emailOrUsername || '').toLowerCase().trim();
-            const aName = (a.fullName || a.name || '').toLowerCase().replace(/[^a-z0-9]/g, '');
             const aUser = (a.username || a.emailOrUsername || '').toLowerCase().trim();
+            const aCode = (a.escort_code || a.escortIdCode || '').toLowerCase().trim();
+            const aPhone = (a.phone || '').trim();
             return (
               aEmail === cleanRaw ||
               aUser === cleanRaw ||
-              aName === nameToken ||
-              aName.includes(nameToken) ||
-              nameToken.includes(aName) ||
-              `escort.${aName}` === cleanRaw
+              aCode === cleanRaw ||
+              aPhone === cleanRaw ||
+              `escort.${aUser}` === cleanRaw
             );
           });
         }
@@ -344,13 +347,20 @@ export async function POST(request: NextRequest) {
       name: string;
       logo_url: string | null;
       welcome_message: string | null;
+      gps_lat?: number | null;
+      gps_lng?: number | null;
+      location_address?: string | null;
+      location_landmark?: string | null;
+      location_pinned_at?: string | null;
+      is_pinned?: boolean;
+      geofence_radius?: number;
     } | null = null;
 
     // SAFE FIX: Protect against object duplication rows returning from relational mappings
     if (schoolRole?.school_id) {
       const { data: schoolsList } = await supabase
         .from('schools')
-        .select('id, name, logo_url, welcome_message')
+        .select('id, name, logo_url, welcome_message, gps_lat, gps_lng, address, location_address, location_landmark, location_pinned_at')
         .eq('id', schoolRole.school_id)
         .limit(1);
         
@@ -367,11 +377,21 @@ export async function POST(request: NextRequest) {
           } catch {}
         }
 
+        const latVal = school.gps_lat != null ? Number(school.gps_lat) : null;
+        const lngVal = school.gps_lng != null ? Number(school.gps_lng) : null;
+
         primarySchool = {
           id: school.id,
           name: school.name,
           logo_url: school.logo_url && school.logo_url.startsWith('data:') ? null : school.logo_url,
           welcome_message: welcome,
+          gps_lat: latVal,
+          gps_lng: lngVal,
+          location_address: school.location_address || school.address || null,
+          location_landmark: school.location_landmark || null,
+          location_pinned_at: school.location_pinned_at || null,
+          is_pinned: latVal != null && lngVal != null,
+          geofence_radius: 200,
         };
       }
     }
@@ -387,30 +407,35 @@ export async function POST(request: NextRequest) {
       userSchoolRoles.push({ role: 'super_admin', school_id: DEFAULT_PLATFORM_SCHOOL_ID });
     }
 
-    const isExplicitMyEduRideEscort =
-      matchedEscortApp?.escortCategory === 'myeduride_escort' ||
-      matchedEscortApp?.escortCategory === 'shared_escort' ||
-      matchedEscortApp?.escortType === 'myeduride_escort' ||
-      matchedEscortApp?.escortType === 'shared_escort';
+    const userLower = (profile.username || rawInput || '').toLowerCase().trim();
+    const emailLower = (profile.email || rawInput || '').toLowerCase().trim();
 
-    const isExplicitSchoolEscort =
-      (profile.username || '').toLowerCase().startsWith('escort.') ||
+    const isSchoolEscortCredential =
+      userLower.startsWith('escort.') ||
       matchedEscortApp?.escortCategory === 'school_escort' ||
       matchedEscortApp?.escortType === 'school_escort' ||
-      matchedEscortApp?.createdBySchoolName ||
-      matchedEscortApp?.school_id;
+      !!matchedEscortApp?.createdBySchoolName ||
+      !!matchedEscortApp?.school_id;
 
-    if (isExplicitMyEduRideEscort) {
-      const cleanedRoles = userSchoolRoles.filter((r) => r.role !== 'driver' && r.role !== 'escort' && r.role !== 'school_escort');
-      if (!cleanedRoles.some((r) => r.role === 'myeduride_escort')) {
-        cleanedRoles.push({ role: 'myeduride_escort', school_id: null });
-      }
-      userSchoolRoles.length = 0;
-      userSchoolRoles.push(...cleanedRoles);
-    } else if (isExplicitSchoolEscort || userSchoolRoles.some((r) => r.role === 'driver' || r.role === 'escort' || r.role === 'school_escort')) {
+    const isMyEduRideEscortCredential =
+      !isSchoolEscortCredential &&
+      (emailLower === 'kingsleyodiri74@gmail.com' ||
+        matchedEscortApp?.escortCategory === 'myeduride_escort' ||
+        matchedEscortApp?.escortCategory === 'shared_escort' ||
+        matchedEscortApp?.escortType === 'myeduride_escort' ||
+        matchedEscortApp?.escortType === 'shared_escort');
+
+    if (isSchoolEscortCredential) {
       const cleanedRoles = userSchoolRoles.filter((r) => r.role !== 'driver' && r.role !== 'escort' && r.role !== 'myeduride_escort');
       if (!cleanedRoles.some((r) => r.role === 'school_escort')) {
         cleanedRoles.push({ role: 'school_escort', school_id: schoolRole?.school_id || null });
+      }
+      userSchoolRoles.length = 0;
+      userSchoolRoles.push(...cleanedRoles);
+    } else if (isMyEduRideEscortCredential || userSchoolRoles.some((r) => r.role === 'driver' || r.role === 'escort' || r.role === 'myeduride_escort')) {
+      const cleanedRoles = userSchoolRoles.filter((r) => r.role !== 'driver' && r.role !== 'escort' && r.role !== 'school_escort');
+      if (!cleanedRoles.some((r) => r.role === 'myeduride_escort')) {
+        cleanedRoles.push({ role: 'myeduride_escort', school_id: null });
       }
       userSchoolRoles.length = 0;
       userSchoolRoles.push(...cleanedRoles);

@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from 'react';
 import { usePathname } from 'next/navigation';
-import { getSession } from '@/lib/api';
+import { getSession, saveSession } from '@/lib/api';
 import { ChevronDown, Shield, GraduationCap, DoorOpen, Users, User, Check, KeyRound, UserCheck, Navigation, LayoutGrid } from 'lucide-react';
 import Link from 'next/link';
 import StudentAvatar from '@/components/shared/StudentAvatar';
@@ -114,7 +114,19 @@ export function RoleSwitcher({ showLogout = true, className = '' }: RoleSwitcher
                   <Link
                     key={role}
                     href={config.href}
-                    onClick={() => setOpen(false)}
+                    onClick={() => {
+                      setOpen(false);
+                      if (session && typeof session === 'object') {
+                        const currentRoles = Array.isArray(session.roles) ? [...session.roles] : [];
+                        const hasThisRole = currentRoles.some((r: any) =>
+                          typeof r === 'string' ? r === role : r?.role === role
+                        );
+                        if (!hasThisRole) {
+                          currentRoles.unshift({ role, school_id: session.primary_school?.id || 'all' });
+                          saveSession({ ...session, roles: currentRoles });
+                        }
+                      }
+                    }}
                     className={`w-full flex items-center gap-2.5 px-2.5 py-2 rounded-lg text-xs font-semibold transition-all ${
                       isCurrent
                         ? 'bg-emerald-50 text-emerald-800 border border-emerald-200/80 shadow-xs'

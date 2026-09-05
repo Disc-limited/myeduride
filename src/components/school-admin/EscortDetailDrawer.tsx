@@ -15,8 +15,11 @@ import {
   FileText,
   MapPin,
   ExternalLink,
-  ChevronRight
+  ChevronRight,
+  Edit3,
+  Send,
 } from 'lucide-react';
+import { toast } from 'sonner';
 import { photoSrc } from '@/lib/photo';
 import StudentAvatar from '@/components/shared/StudentAvatar';
 
@@ -24,28 +27,83 @@ interface EscortDetailDrawerProps {
   escort: any;
   onClose: () => void;
   onUpdateStatus?: (escortId: string, newStatus: string) => void;
+  onRefresh?: () => void;
 }
 
-export default function EscortDetailDrawer({ escort, onClose, onUpdateStatus }: EscortDetailDrawerProps) {
+export default function EscortDetailDrawer({ escort, onClose, onUpdateStatus, onRefresh }: EscortDetailDrawerProps) {
+  const [showEditModal, setShowEditModal] = useState(false);
+  const [submitting, setSubmitting] = useState(false);
+
+  const [formData, setFormData] = useState({
+    fullName: escort?.full_name || escort?.fullName || '',
+    phone: escort?.phone || '',
+    email: escort?.email || '',
+    address: escort?.residentialAddress || escort?.address || '',
+    operatingArea: escort?.operating_area || escort?.operatingArea || '',
+    emergencyContactName: escort?.emergencyContactName || escort?.emergency_contact_name || '',
+    emergencyContactPhone: escort?.emergencyContactPhone || escort?.emergency_contact_phone || '',
+    nin: escort?.nin || '',
+    driverLicense: escort?.driver_license || escort?.driverLicense || '',
+    correctionNotes: '',
+  });
+
   if (!escort) return null;
+
+  const handleSubmitCorrection = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setSubmitting(true);
+    try {
+      const res = await fetch('/api/school-admin/escorts', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify({
+          action: 'submit_correction',
+          escort_id: escort.id,
+          correction_data: formData,
+        }),
+      });
+      const data = await res.json();
+      if (res.ok && data.success) {
+        toast.success(data.message || 'Correction submitted to City Manager!');
+        setShowEditModal(false);
+        if (onRefresh) onRefresh();
+      } else {
+        toast.error(data.error || 'Failed to submit correction');
+      }
+    } catch {
+      toast.error('Network error submitting correction');
+    } finally {
+      setSubmitting(false);
+    }
+  };
 
   return (
     <div className="fixed inset-0 bg-slate-950/70 z-50 flex justify-end backdrop-blur-xs animate-in fade-in duration-200 font-sans">
-      <div className="bg-white w-full max-w-xl h-full shadow-2xl overflow-y-auto flex flex-col justify-between border-l border-slate-200">
+      <div className="bg-white w-full max-w-xl h-full shadow-2xl overflow-y-auto flex flex-col justify-between border-l border-slate-200 relative">
         <div>
           {/* Top Header */}
           <div className="p-6 bg-gradient-to-r from-[#07132B] via-[#0B1E36] to-[#0A1633] text-white space-y-4">
             <div className="flex items-center justify-between">
               <span className="px-3 py-1 rounded-full bg-emerald-500/20 text-emerald-300 font-black text-[10px] border border-emerald-400/30 uppercase tracking-wider flex items-center gap-1.5">
-                <ShieldCheck size={12} /> {escort.approval?.status === 'CITY_MANAGER_APPROVED' ? 'City Manager Approved' : 'Verified Escort'}
+                <ShieldCheck size={12} /> {escort.status === 'CORRECTION_PENDING' ? 'Correction Pending (City Manager Review)' : (escort.approval?.status === 'CITY_MANAGER_APPROVED' ? 'City Manager Approved' : 'Verified Escort')}
               </span>
-              <button
-                type="button"
-                onClick={onClose}
-                className="text-slate-400 hover:text-white p-1 rounded-full bg-slate-800/80 cursor-pointer"
-              >
-                <X size={18} />
-              </button>
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={() => setShowEditModal(true)}
+                  className="px-3 py-1 rounded-full bg-blue-600 hover:bg-blue-700 text-white font-extrabold text-[11px] flex items-center gap-1.5 cursor-pointer shadow-xs transition-all"
+                >
+                  <Edit3 size={13} /> Edit Escort Info
+                </button>
+                <button
+                  type="button"
+                  onClick={onClose}
+                  className="text-slate-400 hover:text-white p-1 rounded-full bg-slate-800/80 cursor-pointer"
+                >
+                  <X size={18} />
+                </button>
+              </div>
             </div>
 
             <div className="flex items-center gap-4">
@@ -69,10 +127,23 @@ export default function EscortDetailDrawer({ escort, onClose, onUpdateStatus }: 
           </div>
 
           <div className="p-6 space-y-5 text-xs text-slate-800">
+            {/* Pending Correction Notice Banner */}
+            {escort.status === 'CORRECTION_PENDING' && (
+              <div className="p-4 rounded-2xl bg-amber-50 border border-amber-200 text-amber-900 space-y-1">
+                <div className="flex items-center gap-2 font-black text-xs">
+                  <AlertCircle size={15} className="text-amber-600" />
+                  <span>Pending City Manager Correction Approval</span>
+                </div>
+                <p className="text-[11px] text-amber-800">
+                  School Admin submitted an information update for this escort. Proposed changes are awaiting review and approval by the City Manager.
+                </p>
+              </div>
+            )}
+
             {/* 1. School Affiliation */}
             <div className="p-3.5 rounded-2xl bg-slate-50 border border-slate-100 space-y-1">
               <span className="text-[10px] font-black uppercase text-slate-400 tracking-wider block">School Domain</span>
-              <p className="font-black text-slate-900 text-sm">{escort.school_name || 'Gracefield International School'}</p>
+              <p className="font-black text-slate-900 text-sm">{escort.school_name || 'Myeduride Academy School'}</p>
             </div>
 
             {/* 2. Assigned Vehicle */}
@@ -98,40 +169,25 @@ export default function EscortDetailDrawer({ escort, onClose, onUpdateStatus }: 
                 </div>
                 <div>
                   <span className="text-slate-400 block">Roadworthiness</span>
-                  <span className="font-mono font-bold text-emerald-700">{escort.vehicle?.roadworthiness_expiry}</span>
+                  <span className="text-emerald-600 font-bold">Vetted</span>
                 </div>
               </div>
             </div>
 
-            {/* 3. Designated Transport Route */}
-            <div className="p-4 rounded-2xl bg-slate-50 border border-slate-200/80 space-y-2.5">
-              <div className="flex items-center justify-between">
-                <span className="text-[10px] font-black uppercase text-slate-400 tracking-wider flex items-center gap-1">
-                  <Compass size={13} className="text-slate-600" /> Designated Transport Corridor
-                </span>
-                <span className="px-2 py-0.5 rounded-md bg-slate-900 text-white font-mono font-bold text-[10px]">
-                  {escort.route?.code}
-                </span>
-              </div>
-              <p className="font-black text-slate-900 text-xs">{escort.route?.name}</p>
-              <p className="text-[11px] text-slate-500 font-medium">📍 Corridor: {escort.route?.corridor}</p>
-              <div className="flex items-center justify-between text-[11px] pt-1 border-t border-slate-200/60 font-medium">
+            {/* 3. Transport Route */}
+            <div className="p-4 rounded-2xl bg-slate-50 border border-slate-200/80 space-y-2">
+              <span className="text-[10px] font-black uppercase text-slate-400 tracking-wider flex items-center gap-1">
+                <Compass size={13} className="text-slate-600" /> Designated Route
+              </span>
+              <p className="font-bold text-slate-900">{escort.route?.code}: {escort.route?.name}</p>
+              <div className="flex items-center gap-4 text-[11px] text-slate-600">
                 <span>Morning: <strong>{escort.route?.departure_morning}</strong></span>
                 <span>Afternoon: <strong>{escort.route?.departure_afternoon}</strong></span>
                 <span>Stops: <strong>{escort.route?.total_stops} Points</strong></span>
               </div>
             </div>
 
-            {/* 4. Duty Assignment */}
-            <div className="p-4 rounded-2xl bg-slate-50 border border-slate-200/80 space-y-1.5">
-              <span className="text-[10px] font-black uppercase text-slate-400 tracking-wider flex items-center gap-1">
-                <Clock size={13} className="text-slate-600" /> Duty &amp; Shift Assignment
-              </span>
-              <p className="font-black text-slate-900">{escort.assignment?.duty_type}</p>
-              <p className="text-slate-500 text-[11px]">Shift Window: <strong>{escort.assignment?.shift_window}</strong></p>
-            </div>
-
-            {/* 5. Connected Students Passenger Manifest */}
+            {/* 4. Connected Students Passenger Manifest */}
             <div className="space-y-2.5">
               <div className="flex items-center justify-between">
                 <span className="text-[10px] font-black uppercase text-slate-400 tracking-wider flex items-center gap-1">
@@ -159,24 +215,6 @@ export default function EscortDetailDrawer({ escort, onClose, onUpdateStatus }: 
                     </div>
                   </div>
                 ))}
-                {(!escort.connected_students || escort.connected_students.length === 0) && (
-                  <div className="p-4 text-center text-slate-400 text-xs">
-                    No students currently assigned to this escort's transit roster.
-                  </div>
-                )}
-              </div>
-            </div>
-
-            {/* 6. City Manager Approval & Regulatory Clearances */}
-            <div className="p-4 rounded-2xl bg-emerald-50/70 border border-emerald-200 text-xs space-y-2">
-              <span className="text-[10px] font-black uppercase text-emerald-800 tracking-wider flex items-center gap-1">
-                <ShieldCheck size={13} className="text-emerald-700" /> Regulatory Clearance &amp; Verification
-              </span>
-              <div className="space-y-1 text-[11px] text-emerald-950">
-                <p>Status: <strong>{escort.approval?.status}</strong></p>
-                <p>Vetted by: <strong>{escort.approval?.verified_by}</strong></p>
-                <p>Criminal Background Check: <strong>{escort.approval?.background_check}</strong></p>
-                <p>Medical Clearance: <strong>{escort.approval?.medical_clearance}</strong></p>
               </div>
             </div>
           </div>
@@ -203,12 +241,166 @@ export default function EscortDetailDrawer({ escort, onClose, onUpdateStatus }: 
 
           <button
             type="button"
-            onClick={onClose}
-            className="px-4 py-2 rounded-xl bg-slate-200 hover:bg-slate-300 text-slate-800 font-bold text-xs cursor-pointer"
+            onClick={() => setShowEditModal(true)}
+            className="px-4 py-2 rounded-xl bg-blue-600 hover:bg-blue-700 text-white font-extrabold text-xs cursor-pointer flex items-center gap-1.5"
           >
-            Close
+            <Edit3 size={14} /> Edit Info
           </button>
         </div>
+
+        {/* EDIT ESCORT INFORMATION MODAL */}
+        {showEditModal && (
+          <div className="fixed inset-0 bg-slate-950/80 z-60 flex items-center justify-center p-4">
+            <div className="bg-white rounded-3xl w-full max-w-lg shadow-2xl p-6 space-y-4 max-h-[90vh] overflow-y-auto animate-in zoom-in-95 duration-200">
+              <div className="flex items-center justify-between border-b border-slate-100 pb-3">
+                <div>
+                  <h3 className="text-base font-black text-slate-900">Edit School Escort Information</h3>
+                  <p className="text-xs text-slate-500">
+                    Changes will be submitted to the City Manager for review and approval.
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setShowEditModal(false)}
+                  className="p-1 rounded-lg text-slate-400 hover:text-slate-700"
+                >
+                  <X size={18} />
+                </button>
+              </div>
+
+              <form onSubmit={handleSubmitCorrection} className="space-y-3.5 text-xs">
+                <div>
+                  <label className="font-bold text-slate-700 block mb-1">Full Name</label>
+                  <input
+                    type="text"
+                    required
+                    value={formData.fullName}
+                    onChange={(e) => setFormData({ ...formData, fullName: e.target.value })}
+                    className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 font-medium"
+                  />
+                </div>
+
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <label className="font-bold text-slate-700 block mb-1">Phone Number</label>
+                    <input
+                      type="text"
+                      required
+                      value={formData.phone}
+                      onChange={(e) => setFormData({ ...formData, phone: e.target.value })}
+                      className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 font-medium"
+                    />
+                  </div>
+                  <div>
+                    <label className="font-bold text-slate-700 block mb-1">Email Address</label>
+                    <input
+                      type="email"
+                      required
+                      value={formData.email}
+                      onChange={(e) => setFormData({ ...formData, email: e.target.value })}
+                      className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 font-medium"
+                    />
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <label className="font-bold text-slate-700 block mb-1">NIN Number</label>
+                    <input
+                      type="text"
+                      value={formData.nin}
+                      onChange={(e) => setFormData({ ...formData, nin: e.target.value })}
+                      className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 font-mono font-medium"
+                    />
+                  </div>
+                  <div>
+                    <label className="font-bold text-slate-700 block mb-1">Driver License No.</label>
+                    <input
+                      type="text"
+                      value={formData.driverLicense}
+                      onChange={(e) => setFormData({ ...formData, driverLicense: e.target.value })}
+                      className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 font-mono font-medium"
+                    />
+                  </div>
+                </div>
+
+                <div>
+                  <label className="font-bold text-slate-700 block mb-1">Residential Address</label>
+                  <input
+                    type="text"
+                    value={formData.address}
+                    onChange={(e) => setFormData({ ...formData, address: e.target.value })}
+                    className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 font-medium"
+                  />
+                </div>
+
+                <div>
+                  <label className="font-bold text-slate-700 block mb-1">Operating Area</label>
+                  <input
+                    type="text"
+                    value={formData.operatingArea}
+                    onChange={(e) => setFormData({ ...formData, operatingArea: e.target.value })}
+                    className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 font-medium"
+                  />
+                </div>
+
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <label className="font-bold text-slate-700 block mb-1">Emergency Contact Name</label>
+                    <input
+                      type="text"
+                      value={formData.emergencyContactName}
+                      onChange={(e) => setFormData({ ...formData, emergencyContactName: e.target.value })}
+                      className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 font-medium"
+                    />
+                  </div>
+                  <div>
+                    <label className="font-bold text-slate-700 block mb-1">Emergency Contact Phone</label>
+                    <input
+                      type="text"
+                      value={formData.emergencyContactPhone}
+                      onChange={(e) => setFormData({ ...formData, emergencyContactPhone: e.target.value })}
+                      className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 font-medium"
+                    />
+                  </div>
+                </div>
+
+                <div>
+                  <label className="font-bold text-slate-700 block mb-1">Correction Notes for City Manager</label>
+                  <textarea
+                    rows={2}
+                    value={formData.correctionNotes}
+                    onChange={(e) => setFormData({ ...formData, correctionNotes: e.target.value })}
+                    placeholder="Reason for updating escort information..."
+                    className="w-full bg-slate-50 border border-slate-200 rounded-xl p-2.5 font-medium placeholder:text-slate-400"
+                  />
+                </div>
+
+                <div className="p-3 bg-blue-50 border border-blue-200 rounded-xl text-blue-900 text-[11px] flex items-center gap-2 font-medium">
+                  <ShieldCheck size={16} className="text-blue-600 shrink-0" />
+                  <span>Submitting will notify the City Manager to review and approve these corrections.</span>
+                </div>
+
+                <div className="flex items-center justify-end gap-2 pt-2">
+                  <button
+                    type="button"
+                    onClick={() => setShowEditModal(false)}
+                    className="px-4 py-2 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    type="submit"
+                    disabled={submitting}
+                    className="px-5 py-2 rounded-xl bg-blue-600 hover:bg-blue-700 text-white font-extrabold flex items-center gap-1.5 cursor-pointer shadow-sm"
+                  >
+                    <Send size={13} /> {submitting ? 'Submitting...' : 'Submit to City Manager'}
+                  </button>
+                </div>
+              </form>
+            </div>
+          </div>
+        )}
       </div>
     </div>
   );

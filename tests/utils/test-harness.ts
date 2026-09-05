@@ -116,6 +116,11 @@ export const expect = (actual: any) => ({
       throw new Error(`Expected falsy value, but received: ${JSON.stringify(actual)}`);
     }
   },
+  toBeNull: () => {
+    if (actual !== null) {
+      throw new Error(`Expected null, but received: ${JSON.stringify(actual)}`);
+    }
+  },
   toContain: (item: any) => {
     if (Array.isArray(actual)) {
       if (!actual.includes(item)) {

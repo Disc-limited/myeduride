@@ -116,6 +116,65 @@ export async function GET(request: NextRequest) {
       }
     }
 
+    // 4. Fetch School Escorts
+    const { data: roleEscorts } = await supabase
+      .from('user_school_roles')
+      .select('user_id, user:user_profiles(id, full_name, phone, email)')
+      .eq('school_id', primarySchoolId)
+      .in('role', ['escort', 'driver'])
+      .eq('is_active', true);
+
+    const { loadFileStore } = await import('@/lib/escort/escort-db');
+    const fileApps = loadFileStore();
+    const schoolApps = fileApps.filter(
+      (a: any) => a.createdBySchoolId === primarySchoolId || a.schoolId === primarySchoolId
+    );
+
+    const escorts: any[] = [];
+    const seenEscortIds = new Set<string>();
+
+    if (roleEscorts) {
+      for (const r of roleEscorts) {
+        const u = Array.isArray(r.user) ? r.user[0] : r.user;
+        if (u && !seenEscortIds.has(u.id)) {
+          seenEscortIds.add(u.id);
+          escorts.push({
+            id: u.id,
+            name: u.full_name,
+            phone: u.phone || '',
+            email: u.email || '',
+            type: 'School Escort',
+          });
+        }
+      }
+    }
+
+    for (const app of schoolApps) {
+      const appId = app.id || app.user_id;
+      if (appId && !seenEscortIds.has(appId)) {
+        seenEscortIds.add(appId);
+        escorts.push({
+          id: appId,
+          name: app.fullName || app.name || 'School Escort',
+          phone: app.phone || '',
+          email: app.email || app.emailOrUsername || '',
+          type: app.escortCategory === 'school_escort' ? 'School Escort' : 'Escort',
+        });
+      }
+    }
+
+    // 5. Fetch School Vehicles
+    const { data: dbVehicles } = await supabase
+      .from('school_vehicles')
+      .select('id, reg_number, make, model, capacity')
+      .eq('school_id', primarySchoolId);
+
+    const vehicles = (dbVehicles || []).map((v) => ({
+      id: v.id,
+      reg_number: v.reg_number,
+      name: `${v.reg_number} (${v.make || ''} ${v.model || ''})`.trim(),
+    }));
+
     const routes = rawRoutes.map((r) => {
       const vehicleObj = Array.isArray(r.vehicle) ? r.vehicle[0] : r.vehicle;
       const stops = stopsByRoute[r.id] || [];
@@ -127,9 +186,11 @@ export async function GET(request: NextRequest) {
         school_id: r.school_id,
         name: r.name,
         code: r.code,
-        assigned_vehicle: vehicleObj ? `${vehicleObj.reg_number} (${vehicleObj.make} ${vehicleObj.model})` : 'Unassigned',
-        assigned_escort_name: 'School Assigned Escort',
-        assigned_escort_phone: '',
+        assigned_vehicle_id: r.assigned_vehicle_id || vehicleObj?.id || null,
+        assigned_vehicle: r.assigned_vehicle || (vehicleObj ? `${vehicleObj.reg_number} (${vehicleObj.make || ''} ${vehicleObj.model || ''})`.trim() : 'Unassigned'),
+        assigned_escort_id: r.assigned_escort_id || null,
+        assigned_escort_name: r.assigned_escort_name || (r.assigned_escort_id ? 'School Assigned Escort' : 'Unassigned Escort'),
+        assigned_escort_phone: r.assigned_escort_phone || '',
         departure_morning: r.departure_morning || '06:45 AM',
         departure_afternoon: r.departure_afternoon || '03:15 PM',
         status: r.status || 'active',
@@ -169,6 +230,8 @@ export async function GET(request: NextRequest) {
         active_routes: routes.filter((r) => r.status === 'active').length,
       },
       routes,
+      escorts,
+      vehicles,
     });
   } catch (err: any) {
     console.error('[routes GET] Error:', err);
@@ -210,8 +273,13 @@ export async function POST(request: NextRequest) {
         school_id: primarySchoolId,
         name: route_data.name,
         code: route_data.code.toUpperCase().trim(),
-        departure_morning: route_data.departure_morning || '06:45',
-        departure_afternoon: route_data.departure_afternoon || '15:15',
+        assigned_vehicle: route_data.assigned_vehicle || null,
+        assigned_vehicle_id: route_data.assigned_vehicle_id || null,
+        assigned_escort_id: route_data.assigned_escort_id || null,
+        assigned_escort_name: route_data.assigned_escort_name || null,
+        assigned_escort_phone: route_data.assigned_escort_phone || null,
+        departure_morning: route_data.departure_morning || '06:45 AM',
+        departure_afternoon: route_data.departure_afternoon || '03:15 PM',
         directions_summary: route_data.directions_summary || 'Standard direct corridor to school front gate.',
         status: 'active',
       };
@@ -266,6 +334,11 @@ export async function POST(request: NextRequest) {
         .update({
           name: route_data.name,
           code: route_data.code,
+          assigned_vehicle: route_data.assigned_vehicle || null,
+          assigned_vehicle_id: route_data.assigned_vehicle_id || null,
+          assigned_escort_id: route_data.assigned_escort_id || null,
+          assigned_escort_name: route_data.assigned_escort_name || null,
+          assigned_escort_phone: route_data.assigned_escort_phone || null,
           departure_morning: route_data.departure_morning,
           departure_afternoon: route_data.departure_afternoon,
           directions_summary: route_data.directions_summary,
@@ -278,6 +351,31 @@ export async function POST(request: NextRequest) {
         .single();
 
       if (updateError) throw updateError;
+
+      // Update stops if provided
+      if (route_data.stops && Array.isArray(route_data.stops)) {
+        await supabase.from('transport_route_stops').delete().eq('route_id', route_id);
+        const stopsPayload = route_data.stops.map((s: any, idx: number) => ({
+          route_id: route_id,
+          school_id: primarySchoolId,
+          stop_number: s.stop_number || idx + 1,
+          name: s.name || `Stop ${idx + 1}`,
+          landmark: s.landmark || null,
+          eta_morning: s.eta_morning || null,
+          eta_afternoon: s.eta_afternoon || null,
+          gps_lat: s.gps_lat || null,
+          gps_lng: s.gps_lng || null,
+        }));
+        await supabase.from('transport_route_stops').insert(stopsPayload);
+      }
+
+      await supabase.from('audit_logs').insert({
+        school_id: primarySchoolId,
+        user_id: session.user_id,
+        action: 'UPDATE_TRANSPORT_ROUTE',
+        resource: 'transport_routes',
+        details: { route_id, code: route_data.code, name: route_data.name },
+      });
 
       return NextResponse.json({
         success: true,

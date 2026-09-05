@@ -47,9 +47,9 @@
     "createdRole": "school_admin",
     "escortCategory": "school_escort",
     "categoryLabel": "School Escort",
-    "status": "ACTIVATED",
+    "status": "CITY_MANAGER_APPROVED",
     "createdAt": "2026-09-01T21:18:25.192Z",
     "registrationDate": "2026-09-01",
-    "notes": "Registration payment completed via card"
+    "notes": "School Admin Correction Submitted"
   }
 ]

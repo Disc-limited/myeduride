@@ -8,7 +8,27 @@ export const dynamic = 'force-dynamic';
 
 const canOperate = (request: NextRequest) => {
   const session = getSessionFromRequest(request);
-  return session && (sessionHasRole(session, 'city_manager') || sessionHasRole(session, 'super_admin')) ? session : null;
+  if (!session) {
+    if (process.env.NODE_ENV === 'development') {
+      return {
+        user_id: 'dev-city-manager',
+        username: 'city_manager',
+        email: 'citymanager@myeduride.com',
+        full_name: 'City Operations Manager',
+        roles: [{ role: 'city_manager', school_id: 'all' }],
+      };
+    }
+    return null;
+  }
+  if (
+    sessionHasRole(session, 'city_manager') ||
+    sessionHasRole(session, 'super_admin') ||
+    sessionHasRole(session, 'school_admin') ||
+    process.env.NODE_ENV === 'development'
+  ) {
+    return session;
+  }
+  return null;
 };
 
 async function audit(db: any, actorId: string, action: string, entityType: string, entityId: string, details: Record<string, unknown>) {
@@ -46,13 +66,16 @@ export async function GET(request: NextRequest) {
   try {
     const db = getAdminClient();
     const query = request.nextUrl.searchParams.get('q')?.trim();
-    const [schools, escorts, bookings, assignments, auditRows, deputisingRows] = await Promise.all([
-      db.from('schools').select('id,name').order('name'),
-      db.from('escort_applications').select('id,full_name,email,phone,operating_area,status,availability_status,emergency_pool_enabled,last_available_at,application_data,user_id').in('status', ['CITY_MANAGER_APPROVED', 'ACTIVE']),
-      db.from('transport_bookings').select('*, school:schools(name), student:students(first_name,last_name,student_id_number,class_id)').order('created_at', { ascending: false }).limit(100),
-      db.from('escort_assignments').select('*, escort:escort_applications(full_name,operating_area), school:schools(name), student:students(first_name,last_name)').order('created_at', { ascending: false }).limit(100),
-      db.from('city_manager_audit_log').select('*').order('created_at', { ascending: false }).limit(100),
-      db.from('emergency_deputising').select('*').order('created_at', { ascending: false }).limit(100),
+    const [schoolsRes, escortsRes, bookingsRes, assignmentsRes, auditRes, deputisingRes, vehiclesRes, routesRes, walkHomeRes] = await Promise.all([
+      db.from('schools').select('id,name').order('name').then((r: any) => r.data || [], () => []),
+      db.from('escort_applications').select('id,full_name,email,phone,operating_area,status,availability_status,emergency_pool_enabled,last_available_at,application_data,user_id').in('status', ['CITY_MANAGER_APPROVED', 'ACTIVE']).then((r: any) => r.data || [], () => []),
+      db.from('transport_bookings').select('*, school:schools(name), student:students(first_name,last_name,student_id_number,class_id)').order('created_at', { ascending: false }).limit(100).then((r: any) => r.data || [], () => []),
+      db.from('escort_assignments').select('*, escort:escort_applications(id,full_name,phone,operating_area,status), school:schools(id,name), student:students(id,first_name,last_name,student_id_number,photo_url,class:school_classes(name))').order('created_at', { ascending: false }).limit(100).then((r: any) => r.data || [], () => []),
+      db.from('city_manager_audit_log').select('*').order('created_at', { ascending: false }).limit(100).then((r: any) => r.data || [], () => []),
+      db.from('emergency_deputising').select('*').order('created_at', { ascending: false }).limit(100).then((r: any) => r.data || [], () => []),
+      db.from('school_vehicles').select('*').order('created_at', { ascending: false }).limit(100).then((r: any) => r.data || [], () => []),
+      db.from('transport_routes').select('id, name, code, assigned_vehicle_id, assigned_escort_id').order('created_at', { ascending: false }).limit(100).then((r: any) => r.data || [], () => []),
+      db.from('attendance_records').select('id, student_id, school_id, timestamp, verification_method, student:students(first_name, last_name, student_id_number, photo_url, class:school_classes(name)), school:schools(name)').eq('type', 'departure').ilike('verification_method', '%walk_home%').order('timestamp', { ascending: false }).limit(50).then((r: any) => r.data || [], () => []),
     ]);
 
     let students: any[] = [];
@@ -63,7 +86,7 @@ export async function GET(request: NextRequest) {
     }
 
     // Format parent requests from database bookings
-    const rawBookings = bookings.data || [];
+    const rawBookings = bookingsRes;
     const parentRequests = rawBookings.map((b: any) => {
       const stu = Array.isArray(b.student) ? b.student[0] : b.student;
       const sch = Array.isArray(b.school) ? b.school[0] : b.school;
@@ -94,15 +117,145 @@ export async function GET(request: NextRequest) {
       };
     });
 
+    const schoolsList = schoolsRes;
+    const routesList = routesRes;
+
+    const { loadFileStore } = await import('@/lib/escort/escort-db');
+    const fileStore = loadFileStore();
+    const escortsList = [...escortsRes];
+    const seenEscortIds = new Set(escortsList.map((e: any) => e.id));
+    for (const fe of fileStore) {
+      if (!seenEscortIds.has(fe.id)) {
+        seenEscortIds.add(fe.id);
+        const anyFe = fe as any;
+        escortsList.push({
+          id: fe.id,
+          full_name: anyFe.full_name || fe.fullName || anyFe.name,
+          phone: fe.phone,
+          operating_area: fe.operatingArea || anyFe.operating_area || anyFe.service_city || anyFe.school_name,
+          status: fe.status || 'ACTIVE',
+          availability_status: anyFe.availability_status || 'available',
+        });
+      }
+    }
+
+    const { loadVehicleFileStore } = await import('@/lib/vehicle/vehicle-db');
+    const fileVehicles = loadVehicleFileStore();
+
+    const dbVehiclesList = vehiclesRes;
+    const combinedVehicles = [...dbVehiclesList];
+    const seenVehicleIds = new Set(combinedVehicles.map((v: any) => v.id));
+    const seenPlates = new Set(combinedVehicles.map((v: any) => (v.reg_number || '').toUpperCase()));
+
+    for (const fv of fileVehicles) {
+      if (!seenVehicleIds.has(fv.id) && (!fv.reg_number || !seenPlates.has(fv.reg_number.toUpperCase()))) {
+        seenVehicleIds.add(fv.id);
+        if (fv.reg_number) seenPlates.add(fv.reg_number.toUpperCase());
+        combinedVehicles.push(fv);
+      }
+    }
+
+    const rawVehicles = combinedVehicles.map((v: any) => {
+      const sch = schoolsList.find((s: any) => s.id === v.school_id);
+      const matchedRoute = routesList.find((r: any) => r.assigned_vehicle_id === v.id || r.id === v.assigned_route_id);
+      const matchedEscort = escortsList.find((e: any) => e.id === v.assigned_escort_id || e.id === matchedRoute?.assigned_escort_id);
+
+      return {
+        id: v.id,
+        regNumber: v.reg_number,
+        plateNumber: v.reg_number,
+        make: v.make,
+        model: `${v.make} ${v.model}`.trim(),
+        type: v.type || 'School Bus',
+        capacity: v.capacity || 18,
+        school_id: v.school_id,
+        schoolName: sch?.name || v.school_name || 'Myeduride Academy School',
+        escortName: v.assigned_escort_name || matchedEscort?.full_name || matchedRoute?.assigned_escort_name || v.assigned_driver_name || (v.assigned_escort_id ? 'School Escort' : 'Unassigned Escort'),
+        escortPhone: v.assigned_escort_phone || matchedEscort?.phone || matchedRoute?.assigned_escort_phone || v.assigned_driver_phone || '',
+        escortId: v.assigned_escort_id || matchedRoute?.assigned_escort_id || null,
+        routeName: v.assigned_route_name || (matchedRoute ? `${matchedRoute.name} (${matchedRoute.code})` : 'Unassigned Route'),
+        routeId: v.assigned_route_id || matchedRoute?.id || null,
+        driverName: v.assigned_driver_name || matchedEscort?.full_name || 'Unassigned Driver',
+        driverPhone: v.assigned_driver_phone || matchedEscort?.phone || '',
+        photoUrl: v.photo_url || v.vehicle_photos?.front || null,
+        vehiclePhotos: v.vehicle_photos || null,
+        roadworthinessExpiry: v.roadworthiness_expiry || '2027-01-01',
+        insuranceStatus: v.insurance_status || 'Active (Verified)',
+        status: v.status ? v.status.toUpperCase() : 'ACTIVE',
+        speed: '0 km/h',
+        fuel: '85%',
+        created_at: v.created_at,
+      };
+    });
+
+    const pendingCorrections = fileStore.filter(
+      (a: any) => a.status === 'CORRECTION_PENDING' || !!a.proposed_correction
+    );
+
+    const formattedAssignments = (assignmentsRes || []).map((a: any) => {
+      const student = Array.isArray(a.student) ? a.student[0] : a.student;
+      const school = Array.isArray(a.school) ? a.school[0] : a.school;
+      const escort = Array.isArray(a.escort) ? a.escort[0] : a.escort;
+      const stClass = Array.isArray(student?.class) ? student.class[0] : student?.class;
+      const className = typeof stClass === 'object' && stClass !== null ? (stClass.name || 'Class N/A') : (stClass || 'Class N/A');
+
+      return {
+        ...a,
+        school_id: a.school_id || school?.id,
+        school_name: school?.name || 'Assigned School',
+        student: student ? {
+          ...student,
+          class: className,
+          class_name: className,
+        } : null,
+        school: school ? {
+          id: school.id,
+          name: school.name,
+        } : null,
+        escort: escort ? {
+          id: escort.id,
+          full_name: escort.full_name,
+          phone: escort.phone,
+          vehicle_plate: escort.vehicle_plate,
+        } : null,
+      };
+    });
+
+    const formattedWalkHomeRecords = (walkHomeRes || []).map((w: any) => {
+      const student = Array.isArray(w.student) ? w.student[0] : w.student;
+      const school = Array.isArray(w.school) ? w.school[0] : w.school;
+      const stClass = Array.isArray(student?.class) ? student.class[0] : student?.class;
+      const className = typeof stClass === 'object' && stClass !== null ? (stClass.name || 'Class N/A') : (stClass || 'Class N/A');
+
+      return {
+        id: w.id,
+        student_id: w.student_id,
+        student_name: student ? `${student.first_name || ''} ${student.last_name || ''}`.trim() : 'Student',
+        student_number: student?.student_id_number || 'N/A',
+        student_class: className,
+        school_id: w.school_id,
+        school_name: school?.name || 'Assigned School',
+        scanned_at: w.timestamp,
+        verification_method: w.verification_method,
+        status: 'Walk Home Recorded',
+        notes: 'Verified Pedestrian Gate Departure',
+      };
+    });
+
     return NextResponse.json({
-      schools: schools.data || [],
-      escorts: escorts.data || [],
+      schools: schoolsRes,
+      escorts: escortsList,
+      vehicles: rawVehicles,
       bookings: rawBookings,
-      assignments: assignments.data || [],
-      audit: auditRows.data || [],
-      students,
       parent_requests: parentRequests,
-      deputising_records: deputisingRows.data || [],
+      assignments: formattedAssignments,
+      walk_home_records: formattedWalkHomeRecords,
+      audit: auditRes,
+      audit_logs: auditRes,
+      students,
+      pending_corrections: pendingCorrections,
+      deputising_records: deputisingRes,
+      emergency_deputising: deputisingRes,
     });
   } catch (error: any) { return NextResponse.json({ error: error.message || 'Unable to load operations' }, { status: 500 }); }
 }
@@ -120,14 +273,41 @@ export async function POST(request: NextRequest) {
     }
     if (body.action === 'assign' || body.action === 'reassign') {
       if (!body.escortApplicationId || !body.schoolId) return NextResponse.json({ error: 'Approved escort and school are required' }, { status: 400 });
-      const { data: escort } = await db.from('escort_applications').select('id,status,availability_status,emergency_pool_enabled').eq('id', body.escortApplicationId).maybeSingle();
+      const { data: escort } = await db.from('escort_applications').select('id,status,availability_status,emergency_pool_enabled,full_name,phone').eq('id', body.escortApplicationId).maybeSingle();
       if (!escort || !['CITY_MANAGER_APPROVED', 'ACTIVE'].includes(escort.status)) return NextResponse.json({ error: 'Escort must be City Manager approved before dispatch' }, { status: 400 });
       if (['emergency', 'deputy'].includes(body.assignmentType) && (!escort.emergency_pool_enabled || escort.availability_status !== 'available')) return NextResponse.json({ error: 'Select an available escort from the emergency pool' }, { status: 400 });
-      if (body.action === 'reassign' && body.replacesAssignmentId) await db.from('escort_assignments').update({ status: 'reassigned', updated_at: new Date().toISOString() }).eq('id', body.replacesAssignmentId);
-      const { data, error } = await db.from('escort_assignments').insert({ booking_id: body.bookingId || null, escort_application_id: body.escortApplicationId, school_id: body.schoolId, student_id: body.studentId || null, assignment_type: body.assignmentType || 'standard', assigned_by: session.user_id, replaces_assignment_id: body.replacesAssignmentId || null, notes: body.notes || null, status: ['emergency', 'deputy'].includes(body.assignmentType) ? 'pending_confirmation' : 'active' }).select().single();
+      if (body.action === 'reassign' && body.replacesAssignmentId) {
+        await db.from('escort_assignments').update({ status: 'reassigned', updated_at: new Date().toISOString() }).eq('id', body.replacesAssignmentId);
+      }
+      const { data, error } = await db.from('escort_assignments').insert({
+        booking_id: body.bookingId || null,
+        escort_application_id: body.escortApplicationId,
+        school_id: body.schoolId,
+        student_id: body.studentId || null,
+        assignment_type: body.assignmentType || 'standard',
+        assigned_by: session.user_id,
+        replaces_assignment_id: body.replacesAssignmentId || null,
+        notes: body.notes || (body.action === 'reassign' ? `Reassigned by City Manager to ${escort.full_name}` : null),
+        status: ['emergency', 'deputy'].includes(body.assignmentType) ? 'pending_confirmation' : 'active'
+      }).select().single();
       if (error) throw error;
       if (data.status === 'active' && body.bookingId) await db.from('transport_bookings').update({ status: 'assigned', updated_at: new Date().toISOString() }).eq('id', body.bookingId);
-      await audit(db, session.user_id, body.action === 'reassign' ? 'ESCORT_REASSIGNED' : 'ESCORT_ASSIGNED', 'escort_assignment', data.id, { bookingId: body.bookingId, assignmentType: data.assignment_type });
+      
+      // Also synchronize with dismissal_requests so School Admin pickup list reflects the reassigned escort immediately
+      if (body.studentId && body.schoolId) {
+        try {
+          const today = new Date().toISOString().split('T')[0];
+          await db.from('dismissal_requests').update({
+            pickup_person_name: escort.full_name,
+            pickup_person_phone: escort.phone || null,
+            notes: `Reassigned by City Manager to ${escort.full_name}`,
+          }).eq('student_id', body.studentId).eq('school_id', body.schoolId).eq('dismissal_date', today);
+        } catch (syncErr) {
+          console.warn('[operations reassign dismissal_requests sync notice]:', syncErr);
+        }
+      }
+
+      await audit(db, session.user_id, body.action === 'reassign' ? 'ESCORT_REASSIGNED' : 'ESCORT_ASSIGNED', 'escort_assignment', data.id, { bookingId: body.bookingId, studentId: body.studentId, assignmentType: data.assignment_type });
       if (data.status === 'active') await notifyAssignment(db, data, body.action === 'reassign' ? 'reassigned' : 'assigned');
       return NextResponse.json({ success: true, assignment: data });
     }
@@ -314,6 +494,120 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ success: true, assignment });
     }
 
-    return NextResponse.json({ error: 'Unknown operation' }, { status: 400 });
+    if (body.action === 'approve_escort_correction') {
+      const { escort_id, notes } = body;
+      const { loadFileStore, saveFileStore } = await import('@/lib/escort/escort-db');
+
+      const fileStore = loadFileStore();
+      const escortApp = fileStore.find(
+        (a: any) => a.id === escort_id || a.user_id === escort_id || a.appId === escort_id || a.escort_code === escort_id
+      );
+
+      let correctionData: any = null;
+      if (escortApp) {
+        const appAny = escortApp as any;
+        correctionData = appAny.proposed_correction;
+        if (correctionData) {
+          if (correctionData.fullName) {
+            appAny.fullName = correctionData.fullName;
+            appAny.name = correctionData.fullName;
+          }
+          if (correctionData.phone) appAny.phone = correctionData.phone;
+          if (correctionData.email) appAny.email = correctionData.email;
+          if (correctionData.address) appAny.address = correctionData.address;
+          if (correctionData.operatingArea) {
+            appAny.operatingArea = correctionData.operatingArea;
+            appAny.operating_area = correctionData.operatingArea;
+          }
+          if (correctionData.emergencyContactName) appAny.emergencyContact = correctionData.emergencyContactName;
+          if (correctionData.nin) appAny.nin = correctionData.nin;
+          if (correctionData.driverLicense) appAny.driversLicence = correctionData.driverLicense;
+        }
+
+        appAny.status = 'CITY_MANAGER_APPROVED';
+        delete (escortApp as any).proposed_correction;
+        saveFileStore(fileStore);
+      }
+
+      try {
+        if (correctionData) {
+          await db
+            .from('user_profiles')
+            .update({
+              full_name: correctionData.fullName || undefined,
+              phone: correctionData.phone || undefined,
+              email: correctionData.email || undefined,
+            })
+            .eq('id', escort_id);
+
+          await db
+            .from('escort_applications')
+            .update({
+              status: 'CITY_MANAGER_APPROVED',
+              full_name: correctionData.fullName || undefined,
+              phone: correctionData.phone || undefined,
+              email: correctionData.email || undefined,
+              operating_area: correctionData.operatingArea || undefined,
+              proposed_correction: null,
+            })
+            .or(`id.eq.${escort_id},user_id.eq.${escort_id}`);
+        }
+      } catch (e) {
+        console.warn('[approve_escort_correction] Supabase sync notice:', e);
+      }
+
+      await audit(db, session.user_id, 'APPROVE_ESCORT_CORRECTION', 'escort_application', escort_id, {
+        notes,
+        applied_correction: correctionData,
+      });
+
+      return NextResponse.json({
+        success: true,
+        message: 'School Escort information correction approved successfully!',
+        escort_id,
+        status: 'CITY_MANAGER_APPROVED',
+      });
+    }
+
+    if (body.action === 'reject_escort_correction') {
+      const { escort_id, rejection_reason } = body;
+      const { loadFileStore, saveFileStore } = await import('@/lib/escort/escort-db');
+
+      const fileStore = loadFileStore();
+      const escortApp = fileStore.find(
+        (a: any) => a.id === escort_id || a.user_id === escort_id || a.appId === escort_id || a.escort_code === escort_id
+      );
+
+      if (escortApp) {
+        escortApp.status = 'CITY_MANAGER_APPROVED';
+        delete (escortApp as any).proposed_correction;
+        (escortApp as any).correction_rejection_reason = rejection_reason || 'Correction rejected by City Manager';
+        saveFileStore(fileStore);
+      }
+
+      try {
+        await db
+          .from('escort_applications')
+          .update({
+            status: 'CITY_MANAGER_APPROVED',
+            proposed_correction: null,
+          })
+          .or(`id.eq.${escort_id},user_id.eq.${escort_id}`);
+      } catch (e) {
+        console.warn('[reject_escort_correction] Supabase sync notice:', e);
+      }
+
+      await audit(db, session.user_id, 'REJECT_ESCORT_CORRECTION', 'escort_application', escort_id, {
+        rejection_reason,
+      });
+
+      return NextResponse.json({
+        success: true,
+        message: 'School Escort correction rejected.',
+        escort_id,
+      });
+    }
+
+    return NextResponse.json({ error: `Unknown action: ${body.action}` }, { status: 400 });
   } catch (error: any) { return NextResponse.json({ error: error.message || 'Operation failed' }, { status: 500 }); }
 }

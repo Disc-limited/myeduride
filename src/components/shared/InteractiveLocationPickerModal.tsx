@@ -201,15 +201,39 @@ export default function InteractiveLocationPickerModal({
     }
   };
 
-  // Search Address Geocoding
+  const [mapLayer, setMapLayer] = useState<'street' | 'satellite'>('street');
+  const [gpsAccuracy, setGpsAccuracy] = useState<number | null>(null);
+  const tileLayerRef = useRef<any>(null);
+  const accuracyCircleRef = useRef<any>(null);
+
+  // Search Address or Raw Coordinates Geocoding
   const handleAddressSearch = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!address.trim()) return;
 
+    // 1. Check if user entered direct coordinates (e.g. "6.4521, 3.4211")
+    const coordMatch = address.trim().match(/^(-?\d+(\.\d+)?)[,\s]+(-?\d+(\.\d+)?)$/);
+    if (coordMatch) {
+      const parsedLat = parseFloat(coordMatch[1]);
+      const parsedLng = parseFloat(coordMatch[3]);
+      if (!isNaN(parsedLat) && !isNaN(parsedLng)) {
+        setCoords({ lat: parsedLat, lng: parsedLng });
+        if (mapInstanceRef.current && markerInstanceRef.current) {
+          mapInstanceRef.current.setView([parsedLat, parsedLng], 18);
+          markerInstanceRef.current.setLatLng([parsedLat, parsedLng]);
+        }
+        reverseGeocode(parsedLat, parsedLng);
+        toast.success(`Jumped to coordinates (${parsedLat.toFixed(5)}, ${parsedLng.toFixed(5)})`);
+        return;
+      }
+    }
+
+    // 2. Query Geocoding Service
     try {
       setGeocoding(true);
-      const query = encodeURIComponent(`${address}, Lagos, Nigeria`);
-      const res = await fetch(`https://nominatim.openstreetmap.org/search?format=json&q=${query}&limit=1`);
+      const cleanAddress = address.trim().replace(/,\s*(nigeria|lagos)$/i, '');
+      const query = encodeURIComponent(`${cleanAddress}, Nigeria`);
+      const res = await fetch(`https://nominatim.openstreetmap.org/search?format=json&q=${query}&limit=3`);
       if (res.ok) {
         const results = await res.json();
         if (results && results.length > 0) {
@@ -220,12 +244,13 @@ export default function InteractiveLocationPickerModal({
           setCoords({ lat: newLat, lng: newLng });
 
           if (mapInstanceRef.current && markerInstanceRef.current) {
-            mapInstanceRef.current.setView([newLat, newLng], 16);
+            mapInstanceRef.current.setView([newLat, newLng], 17);
             markerInstanceRef.current.setLatLng([newLat, newLng]);
           }
+          reverseGeocode(newLat, newLng);
           toast.success('Map updated to search location');
         } else {
-          toast.error('Location not found. Try dragging the pin marker on the map.');
+          toast.error('Location not found by name. Try dragging the pin directly on the map.');
         }
       }
     } catch (err) {
@@ -235,7 +260,34 @@ export default function InteractiveLocationPickerModal({
     }
   };
 
-  // Use Browser Geolocation
+  // Toggle Map Layer (Street vs HD Satellite)
+  const toggleMapLayer = () => {
+    if (!mapInstanceRef.current) return;
+    const newLayer = mapLayer === 'street' ? 'satellite' : 'street';
+    setMapLayer(newLayer);
+
+    const L = (window as any).L;
+    if (!L) return;
+
+    if (tileLayerRef.current) {
+      mapInstanceRef.current.removeLayer(tileLayerRef.current);
+    }
+
+    const tileUrl = newLayer === 'satellite'
+      ? 'https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}'
+      : 'https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png';
+
+    const attribution = newLayer === 'satellite'
+      ? 'Tiles &copy; Esri &mdash; Source: Esri, i-cubed, USDA, USGS, AEX, GeoEye, Getmapping, Aerogrid, IGN, IGP, UPR-EGP, and the GIS User Community'
+      : '&copy; OpenStreetMap contributors';
+
+    const newTileLayer = L.tileLayer(tileUrl, { attribution, maxZoom: 19 }).addTo(mapInstanceRef.current);
+    tileLayerRef.current = newTileLayer;
+
+    toast.info(newLayer === 'satellite' ? 'Switched to HD Satellite View (Building & Gate Aerials)' : 'Switched to Standard Street Map');
+  };
+
+  // Use Browser High-Precision Geolocation
   const handleDetectLocation = () => {
     if (!navigator.geolocation) {
       toast.error('Geolocation is not supported by your browser');
@@ -247,21 +299,39 @@ export default function InteractiveLocationPickerModal({
       (pos) => {
         const lat = pos.coords.latitude;
         const lng = pos.coords.longitude;
+        const accuracy = pos.coords.accuracy;
+
         setCoords({ lat, lng });
+        setGpsAccuracy(accuracy);
 
         if (mapInstanceRef.current && markerInstanceRef.current) {
-          mapInstanceRef.current.setView([lat, lng], 17);
+          mapInstanceRef.current.setView([lat, lng], 18);
           markerInstanceRef.current.setLatLng([lat, lng]);
+
+          const L = (window as any).L;
+          if (L) {
+            if (accuracyCircleRef.current) {
+              mapInstanceRef.current.removeLayer(accuracyCircleRef.current);
+            }
+            const circle = L.circle([lat, lng], {
+              radius: accuracy,
+              color: '#0284c7',
+              fillColor: '#0284c7',
+              fillOpacity: 0.15,
+              weight: 1.5,
+            }).addTo(mapInstanceRef.current);
+            accuracyCircleRef.current = circle;
+          }
         }
         reverseGeocode(lat, lng);
         setLocating(false);
-        toast.success('Pin placed at your current GPS location!');
+        toast.success(`Pin placed at current location! (Accuracy: ±${Math.round(accuracy)}m)`);
       },
       (err) => {
         setLocating(false);
-        toast.error('Could not obtain current location. Please ensure location permissions are enabled.');
+        toast.error('Could not obtain location. Ensure location permissions are granted.');
       },
-      { enableHighAccuracy: true, timeout: 10000 }
+      { enableHighAccuracy: true, timeout: 15000, maximumAge: 0 }
     );
   };
 
@@ -455,15 +525,72 @@ export default function InteractiveLocationPickerModal({
           <div className="relative rounded-2xl overflow-hidden border border-slate-200 shadow-inner bg-slate-100 h-64 sm:h-72">
             <div ref={mapContainerRef} className="w-full h-full z-0" />
 
-            {/* Coordinate Overlay Banner */}
-            <div className="absolute bottom-2.5 left-2.5 right-2.5 z-10 pointer-events-none flex items-center justify-between bg-slate-900/80 backdrop-blur-xs text-white px-3 py-1.5 rounded-xl text-[11px] font-mono">
-              <span className="flex items-center gap-1 text-emerald-400">
-                <MapPin size={12} />
-                <span>Drag pin or click anywhere on map</span>
+            {/* Satellite / Street Map Switcher */}
+            <div className="absolute top-2.5 right-2.5 z-10 flex items-center gap-1.5">
+              <button
+                type="button"
+                onClick={toggleMapLayer}
+                className={`px-3 py-1.5 rounded-xl font-extrabold text-[11px] backdrop-blur-md shadow-md transition-all flex items-center gap-1.5 cursor-pointer ${
+                  mapLayer === 'satellite'
+                    ? 'bg-amber-400 text-slate-950 border border-amber-300'
+                    : 'bg-slate-900/90 text-white border border-slate-700 hover:bg-slate-800'
+                }`}
+              >
+                <Compass size={13} />
+                <span>{mapLayer === 'satellite' ? '🗺️ Street Map' : '🛰️ Satellite Aerial View'}</span>
+              </button>
+            </div>
+
+            {/* GPS Accuracy Badge */}
+            {gpsAccuracy !== null && (
+              <div className="absolute top-2.5 left-2.5 z-10 px-2.5 py-1 rounded-xl bg-emerald-500 text-slate-950 font-black text-[10px] backdrop-blur-md shadow-md flex items-center gap-1">
+                🎯 GPS Precision: ±{Math.round(gpsAccuracy)}m
+              </div>
+            )}
+
+            {/* Coordinate Overlay & Target Guide */}
+            <div className="absolute bottom-2.5 left-2.5 right-2.5 z-10 pointer-events-auto flex flex-wrap items-center justify-between gap-2 bg-slate-900/90 backdrop-blur-md text-white px-3 py-2 rounded-xl text-[11px] font-mono border border-slate-700">
+              <span className="flex items-center gap-1 text-emerald-400 font-bold">
+                <MapPin size={13} />
+                <span className="hidden sm:inline">Drag pin or click map to adjust</span>
               </span>
-              <span>
-                Lat: {coords.lat.toFixed(5)}, Lng: {coords.lng.toFixed(5)}
-              </span>
+
+              <div className="flex items-center gap-2 text-[10px]">
+                <label className="text-slate-400 font-bold">Lat:</label>
+                <input
+                  type="number"
+                  step="0.00001"
+                  value={coords.lat}
+                  onChange={(e) => {
+                    const val = parseFloat(e.target.value);
+                    if (!isNaN(val)) {
+                      setCoords((prev) => ({ ...prev, lat: val }));
+                      if (mapInstanceRef.current && markerInstanceRef.current) {
+                        mapInstanceRef.current.setView([val, coords.lng]);
+                        markerInstanceRef.current.setLatLng([val, coords.lng]);
+                      }
+                    }
+                  }}
+                  className="w-20 bg-slate-800 border border-slate-700 rounded px-1.5 py-0.5 text-emerald-300 font-bold"
+                />
+                <label className="text-slate-400 font-bold">Lng:</label>
+                <input
+                  type="number"
+                  step="0.00001"
+                  value={coords.lng}
+                  onChange={(e) => {
+                    const val = parseFloat(e.target.value);
+                    if (!isNaN(val)) {
+                      setCoords((prev) => ({ ...prev, lng: val }));
+                      if (mapInstanceRef.current && markerInstanceRef.current) {
+                        mapInstanceRef.current.setView([coords.lat, val]);
+                        markerInstanceRef.current.setLatLng([coords.lat, val]);
+                      }
+                    }
+                  }}
+                  className="w-20 bg-slate-800 border border-slate-700 rounded px-1.5 py-0.5 text-emerald-300 font-bold"
+                />
+              </div>
             </div>
           </div>
 

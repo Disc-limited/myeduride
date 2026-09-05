@@ -2,14 +2,16 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import { ClipboardList, RefreshCw, Search, UserPlus, Sparkles, CheckCircle2, ShieldCheck, Clock, MapPin, Phone, Car } from 'lucide-react';
+import { ClipboardList, RefreshCw, Search, UserPlus, Sparkles, CheckCircle2, ShieldCheck, Clock, MapPin, Phone, Car, Users, ArrowRightLeft, Footprints } from 'lucide-react';
 import { toast } from 'sonner';
+import StudentAvatar from '@/components/shared/StudentAvatar';
 
 type Operations = {
   schools: any[];
   escorts: any[];
   bookings: any[];
   assignments: any[];
+  walk_home_records?: any[];
   audit: any[];
   students: any[];
   parent_requests?: any[];
@@ -21,6 +23,7 @@ const empty: Operations = {
   escorts: [],
   bookings: [],
   assignments: [],
+  walk_home_records: [],
   audit: [],
   students: [],
   parent_requests: [],
@@ -38,6 +41,17 @@ export function CityManagerOperationsPanel() {
   // Selected Escort Assignment Map for Parent Requests
   const [selectedEscortsForParentBookings, setSelectedEscortsForParentBookings] = useState<Record<string, string>>({});
   const [processingBookingId, setProcessingBookingId] = useState<string | null>(null);
+
+  // Escort Rosters Filters & In-Place Reassignment Modal State
+  const [rosterSchoolFilter, setRosterSchoolFilter] = useState('all');
+  const [rosterEscortFilter, setRosterEscortFilter] = useState('all');
+  const [reassignModal, setReassignModal] = useState<{ open: boolean; assignment: any; targetEscortId: string; notes: string }>({
+    open: false,
+    assignment: null,
+    targetEscortId: '',
+    notes: '',
+  });
+  const [submittingReassign, setSubmittingReassign] = useState(false);
 
   // Emergency Deputising State
   const [showDeputiseModal, setShowDeputiseModal] = useState(false);
@@ -137,8 +151,45 @@ export function CityManagerOperationsPanel() {
   const active = data.assignments.filter((a) => a.status === 'active');
   const emergencyPool = data.escorts.filter((e) => e.emergency_pool_enabled && e.availability_status === 'available');
   const dispatchEscorts = ['emergency', 'deputy'].includes(dispatch.assignmentType) ? emergencyPool : data.escorts;
-  const pendingConfirmation = data.assignments.filter((a) => a.status === 'pending_confirmation');
   const parentRequests = data.parent_requests || [];
+
+  const handleExecuteReassign = async () => {
+    if (!reassignModal.assignment || !reassignModal.targetEscortId) {
+      return toast.error('Please select an escort to reassign.');
+    }
+    setSubmittingReassign(true);
+    try {
+      const r = await fetch('/api/city-manager/operations', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          action: 'reassign',
+          escortApplicationId: reassignModal.targetEscortId,
+          schoolId: reassignModal.assignment.school_id || reassignModal.assignment.school?.id,
+          studentId: reassignModal.assignment.student_id || reassignModal.assignment.student?.id,
+          replacesAssignmentId: reassignModal.assignment.id,
+          notes: reassignModal.notes || 'Reassigned by City Manager',
+        }),
+      });
+      const res = await r.json();
+      if (!r.ok) throw new Error(res.error || 'Reassignment failed');
+      toast.success('Escort reassigned successfully! Synced to School Admin and Escort.');
+      setReassignModal({ open: false, assignment: null, targetEscortId: '', notes: '' });
+      await load();
+    } catch (err: any) {
+      toast.error(err.message || 'Failed to reassign escort');
+    } finally {
+      setSubmittingReassign(false);
+    }
+  };
+
+  const filteredAssignments = (data.assignments || []).filter((a: any) => {
+    const schoolId = a.school_id || a.school?.id;
+    const escortId = a.escort_application_id || a.escort?.id;
+    const matchSchool = rosterSchoolFilter === 'all' || schoolId === rosterSchoolFilter;
+    const matchEscort = rosterEscortFilter === 'all' || escortId === rosterEscortFilter;
+    return matchSchool && matchEscort;
+  });
 
   const confirmDispatch = async (assignmentId: string) => {
     const r = await fetch('/api/city-manager/operations', {
@@ -262,7 +313,7 @@ export function CityManagerOperationsPanel() {
           </button>
         </div>
 
-        <div className="mt-5 grid gap-3 grid-cols-2 md:grid-cols-4">
+        <div className="mt-5 grid gap-3 grid-cols-2 sm:grid-cols-3 lg:grid-cols-5">
           <div className="rounded-2xl bg-slate-900/90 border border-slate-800 p-3.5 text-xs text-slate-400">
             Approved Escorts
             <strong className="mt-1 block text-2xl text-emerald-400 font-black">{data.escorts.length}</strong>
@@ -279,8 +330,152 @@ export function CityManagerOperationsPanel() {
             Emergency Pool
             <strong className="mt-1 block text-2xl text-purple-400 font-black">{emergencyPool.length}</strong>
           </div>
+          <div className="rounded-2xl bg-slate-900/90 border border-slate-800 p-3.5 text-xs text-slate-400">
+            Walk-Home Today
+            <strong className="mt-1 block text-2xl text-blue-400 font-black">{(data.walk_home_records || []).length}</strong>
+          </div>
         </div>
       </div>
+
+      {/* ========================================================================= */}
+      {/* ASSIGNED STUDENTS TO ESCORT ROSTER & REAL-TIME REASSIGNMENT               */}
+      {/* ========================================================================= */}
+      <section className="rounded-3xl border border-cyan-500/30 bg-[#0b1c30] p-6 shadow-md space-y-4">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-3 border-b border-slate-800">
+          <div className="flex items-center gap-2">
+            <Users size={20} className="text-cyan-400" />
+            <div>
+              <h4 className="text-base font-black text-white">
+                Assigned Students & Escort Rosters ({filteredAssignments.length})
+              </h4>
+              <p className="text-xs text-slate-400">
+                Live oversight of all student-to-escort assignments across schools with instant City Manager reassignments.
+              </p>
+            </div>
+          </div>
+
+          <div className="flex flex-wrap items-center gap-2">
+            <div>
+              <label className="block text-[10px] uppercase font-bold text-slate-400 mb-0.5">Filter School</label>
+              <select
+                value={rosterSchoolFilter}
+                onChange={(e) => setRosterSchoolFilter(e.target.value)}
+                className="rounded-xl bg-slate-900 border border-slate-700 px-3 py-1.5 text-xs text-white"
+              >
+                <option value="all">All Schools ({data.schools.length})</option>
+                {data.schools.map((sc) => (
+                  <option key={sc.id} value={sc.id}>{sc.name}</option>
+                ))}
+              </select>
+            </div>
+
+            <div>
+              <label className="block text-[10px] uppercase font-bold text-slate-400 mb-0.5">Filter Escort</label>
+              <select
+                value={rosterEscortFilter}
+                onChange={(e) => setRosterEscortFilter(e.target.value)}
+                className="rounded-xl bg-slate-900 border border-slate-700 px-3 py-1.5 text-xs text-white"
+              >
+                <option value="all">All Escorts ({data.escorts.length})</option>
+                {data.escorts.map((esc) => (
+                  <option key={esc.id} value={esc.id}>{esc.full_name}</option>
+                ))}
+              </select>
+            </div>
+          </div>
+        </div>
+
+        {filteredAssignments.length === 0 ? (
+          <div className="p-8 text-center rounded-2xl bg-slate-900/60 border border-slate-800 text-slate-400 text-xs">
+            No student escort assignments found matching the selected filters.
+          </div>
+        ) : (
+          <div className="overflow-x-auto">
+            <table className="w-full text-xs text-left">
+              <thead>
+                <tr className="border-b border-slate-800 text-slate-400 uppercase text-[10px] font-bold">
+                  <th className="py-2.5 px-3">Student</th>
+                  <th className="py-2.5 px-3">School</th>
+                  <th className="py-2.5 px-3">Assigned Escort</th>
+                  <th className="py-2.5 px-3">Vehicle & Phone</th>
+                  <th className="py-2.5 px-3">Date / Status</th>
+                  <th className="py-2.5 px-3 text-right">Action</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-slate-800/60">
+                {filteredAssignments.map((a: any) => (
+                  <tr key={a.id} className="hover:bg-slate-800/30 transition-colors">
+                    <td className="py-3 px-3">
+                      <div className="flex items-center gap-2.5">
+                        <StudentAvatar
+                          name={a.student ? `${a.student.first_name} ${a.student.last_name}` : 'Student'}
+                          photoUrl={a.student?.photo_url}
+                          size="sm"
+                        />
+                        <div>
+                          <p className="font-black text-white">
+                            {a.student ? `${a.student.first_name} ${a.student.last_name}` : 'Unknown Student'}
+                          </p>
+                          <p className="text-[10px] text-slate-400 font-mono">
+                            {a.student?.student_id_number || a.student_id?.slice(0, 8)} · {typeof a.student?.class === 'object' ? (a.student?.class?.name || 'Class N/A') : (a.student?.class || a.student?.class_name || 'Class N/A')}
+                          </p>
+                        </div>
+                      </div>
+                    </td>
+                    <td className="py-3 px-3">
+                      <span className="font-semibold text-slate-200">
+                        {typeof a.school === 'object' ? (a.school?.name || 'Assigned School') : (a.school || a.school_name || 'Assigned School')}
+                      </span>
+                    </td>
+                    <td className="py-3 px-3">
+                      {a.escort ? (
+                        <div>
+                          <p className="font-bold text-cyan-300">{a.escort.full_name}</p>
+                          <p className="text-[10px] text-slate-400">Escort ID: {a.escort.id.slice(0, 8)}</p>
+                        </div>
+                      ) : (
+                        <span className="text-slate-500 italic">Unassigned</span>
+                      )}
+                    </td>
+                    <td className="py-3 px-3">
+                      <div className="space-y-0.5">
+                        <p className="font-mono text-amber-300 text-[11px]">{a.escort?.vehicle_plate || 'Plate Pending'}</p>
+                        <p className="text-[10px] text-slate-400">{a.escort?.phone || 'No phone'}</p>
+                      </div>
+                    </td>
+                    <td className="py-3 px-3">
+                      <div className="space-y-0.5">
+                        <span className={`inline-block px-2 py-0.5 rounded-full text-[10px] font-black uppercase ${
+                          a.status === 'active' ? 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/40' : 'bg-slate-800 text-slate-400'
+                        }`}>
+                          {a.status || 'Active'}
+                        </span>
+                        <p className="text-[10px] text-slate-500">
+                          {a.service_date ? new Date(a.service_date).toLocaleDateString() : 'Today'}
+                        </p>
+                      </div>
+                    </td>
+                    <td className="py-3 px-3 text-right">
+                      <button
+                        onClick={() => setReassignModal({
+                          open: true,
+                          assignment: a,
+                          targetEscortId: a.escort?.id || (data.escorts[0]?.id || ''),
+                          notes: '',
+                        })}
+                        className="px-3 py-1.5 rounded-xl bg-cyan-600/30 hover:bg-cyan-600/50 border border-cyan-500/50 text-cyan-200 font-bold text-xs inline-flex items-center gap-1.5 transition-all cursor-pointer shadow-xs"
+                      >
+                        <ArrowRightLeft size={13} />
+                        Reassign Escort
+                      </button>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </section>
 
       {/* ========================================================================= */}
       {/* PARENT RIDE REQUESTS REVIEW QUEUE (SCHOOL ESCORT UNAVAILABLE)             */}
@@ -669,6 +864,84 @@ export function CityManagerOperationsPanel() {
       </section>
 
       {/* ========================================================================= */}
+      {/* WALK-HOME STUDENTS LIVE OPERATIONS LEDGER                                 */}
+      {/* ========================================================================= */}
+      <section className="rounded-3xl border border-blue-500/30 bg-[#0b1c30] p-6 shadow-md space-y-4">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 pb-3 border-b border-slate-800">
+          <div className="flex items-center gap-2">
+            <Footprints size={20} className="text-blue-400" />
+            <div>
+              <h4 className="text-base font-black text-white">
+                Walk-Home Students Live Operations Ledger ({(data.walk_home_records || []).length})
+              </h4>
+              <p className="text-xs text-slate-400">
+                Verified pedestrian departures scanned at the school gate today. Parents receive real-time notifications immediately upon release.
+              </p>
+            </div>
+          </div>
+          <span className="px-3 py-1 rounded-full bg-blue-500/20 text-blue-300 font-black text-[10px] uppercase border border-blue-400/30">
+            Pedestrian Gate Tracking Active
+          </span>
+        </div>
+
+        {(data.walk_home_records || []).length === 0 ? (
+          <div className="p-8 text-center rounded-2xl bg-slate-900/60 border border-slate-800 text-slate-400 text-xs">
+            No walk-home student departures recorded today yet.
+          </div>
+        ) : (
+          <div className="overflow-x-auto">
+            <table className="w-full text-xs text-left">
+              <thead>
+                <tr className="border-b border-slate-800 text-slate-400 uppercase text-[10px] font-bold">
+                  <th className="py-2.5 px-3">Student</th>
+                  <th className="py-2.5 px-3">School</th>
+                  <th className="py-2.5 px-3">Gate Verification Method</th>
+                  <th className="py-2.5 px-3">Departure Timestamp</th>
+                  <th className="py-2.5 px-3">Status / Notes</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-slate-800/60">
+                {(data.walk_home_records || []).map((w: any) => (
+                  <tr key={w.id} className="hover:bg-slate-800/30 transition-colors">
+                    <td className="py-3 px-3">
+                      <div>
+                        <p className="font-black text-white">
+                          {typeof w.student_name === 'string' ? w.student_name : (w.student ? `${w.student.first_name || ''} ${w.student.last_name || ''}`.trim() : 'Unknown Student')}
+                        </p>
+                        <p className="text-[10px] text-slate-400 font-mono">
+                          {w.student_number || w.student?.student_id_number || 'N/A'} · {typeof w.student_class === 'object' ? (w.student_class?.name || 'Class N/A') : (w.student_class || w.student?.class?.name || 'Class N/A')}
+                        </p>
+                      </div>
+                    </td>
+                    <td className="py-3 px-3">
+                      <span className="font-semibold text-slate-200">
+                        {typeof w.school_name === 'object' ? (w.school_name?.name || 'Assigned School') : (w.school_name || w.school?.name || 'Assigned School')}
+                      </span>
+                    </td>
+                    <td className="py-3 px-3">
+                      <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-md bg-blue-500/10 text-blue-300 border border-blue-500/30 font-mono text-[11px]">
+                        <Footprints size={12} />
+                        {w.verification_method || 'walk_home_gate_scan'}
+                      </span>
+                    </td>
+                    <td className="py-3 px-3 text-slate-300">
+                      {w.scanned_at ? new Date(w.scanned_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' }) : 'Today'}
+                    </td>
+                    <td className="py-3 px-3">
+                      <span className="px-2 py-0.5 rounded-full bg-emerald-500/20 text-emerald-300 text-[10px] font-black border border-emerald-500/40">
+                        {w.status || 'Walk Home Recorded'}
+                      </span>
+                      {w.notes && <p className="text-[10px] text-slate-400 mt-0.5">{w.notes}</p>}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </section>
+
+      {/* ========================================================================= */}
       {/* MODAL: DISPATCH EMERGENCY DEPUTY                                          */}
       {/* ========================================================================= */}
       {showDeputiseModal && (
@@ -808,6 +1081,99 @@ export function CityManagerOperationsPanel() {
               >
                 <ShieldCheck size={14} />
                 {submittingDeputy ? 'Dispatching & Recording...' : 'Confirm & Dispatch Deputy'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ========================================================================= */}
+      {/* MODAL: REASSIGN ESCORT                                                    */}
+      {/* ========================================================================= */}
+      {reassignModal.open && (
+        <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-xs flex items-center justify-center p-4">
+          <div className="bg-[#0b1c30] border border-cyan-700/60 rounded-3xl max-w-lg w-full p-6 shadow-2xl space-y-4">
+            <div className="flex items-center justify-between pb-3 border-b border-slate-800">
+              <div className="flex items-center gap-2">
+                <ArrowRightLeft className="w-5 h-5 text-cyan-400" />
+                <h3 className="text-base font-extrabold text-white">Reassign Escort for Student</h3>
+              </div>
+              <button
+                onClick={() => setReassignModal({ open: false, assignment: null, targetEscortId: '', notes: '' })}
+                className="p-1 text-slate-400 hover:text-white cursor-pointer"
+              >
+                ✕
+              </button>
+            </div>
+
+            <div className="p-3.5 rounded-2xl bg-slate-900 border border-slate-800 space-y-2 text-xs">
+              <div className="flex justify-between items-center">
+                <span className="text-slate-400">Student:</span>
+                <span className="font-bold text-white">
+                  {reassignModal.assignment?.student
+                    ? `${reassignModal.assignment.student.first_name} ${reassignModal.assignment.student.last_name}`
+                    : 'Unknown Student'}
+                </span>
+              </div>
+              <div className="flex justify-between items-center">
+                <span className="text-slate-400">School:</span>
+                <span className="font-bold text-white">{reassignModal.assignment?.school?.name || 'Assigned School'}</span>
+              </div>
+              <div className="flex justify-between items-center">
+                <span className="text-slate-400">Current Escort:</span>
+                <span className="font-bold text-amber-300">{reassignModal.assignment?.escort?.full_name || 'None'}</span>
+              </div>
+            </div>
+
+            <div className="space-y-3 text-xs">
+              <div>
+                <label className="block text-[10px] font-bold uppercase text-slate-400 mb-1">
+                  Select Replacement Escort
+                </label>
+                <select
+                  value={reassignModal.targetEscortId}
+                  onChange={(e) => setReassignModal({ ...reassignModal, targetEscortId: e.target.value })}
+                  className="w-full rounded-xl bg-slate-900 border border-slate-700 p-2.5 text-white"
+                >
+                  <option value="">Select Escort</option>
+                  {data.escorts.map((esc) => (
+                    <option key={esc.id} value={esc.id}>
+                      {esc.full_name} ({esc.vehicle_plate || 'No Plate'}) — {esc.operating_area || 'Standard Zone'}
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              <div>
+                <label className="block text-[10px] font-bold uppercase text-slate-400 mb-1">
+                  Reason / Reassignment Notes
+                </label>
+                <textarea
+                  value={reassignModal.notes}
+                  onChange={(e) => setReassignModal({ ...reassignModal, notes: e.target.value })}
+                  placeholder="e.g. Escort unavailable, parent request, emergency substitution..."
+                  rows={2}
+                  className="w-full rounded-xl bg-slate-900 border border-slate-700 p-2.5 text-white"
+                />
+              </div>
+            </div>
+
+            <div className="flex items-center justify-end gap-2 pt-3 border-t border-slate-800">
+              <button
+                type="button"
+                onClick={() => setReassignModal({ open: false, assignment: null, targetEscortId: '', notes: '' })}
+                className="px-4 py-2 rounded-xl bg-slate-800 text-slate-300 font-bold text-xs cursor-pointer"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={handleExecuteReassign}
+                disabled={submittingReassign}
+                className="px-5 py-2.5 rounded-xl bg-cyan-600 hover:bg-cyan-500 text-white font-extrabold text-xs flex items-center gap-1.5 shadow-lg cursor-pointer"
+              >
+                <ArrowRightLeft size={14} />
+                {submittingReassign ? 'Reassigning...' : 'Confirm Reassignment'}
               </button>
             </div>
           </div>

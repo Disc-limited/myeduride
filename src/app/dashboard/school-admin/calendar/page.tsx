@@ -3,14 +3,32 @@
 
 import { useCallback, useEffect, useState } from 'react';
 import { fetchData } from '@/lib/api';
-import { Calendar, Trash2 } from 'lucide-react';
+import {
+  Calendar,
+  Trash2,
+  Sparkles,
+  AlertTriangle,
+  Users,
+  Megaphone,
+  CheckCircle2,
+  Lock,
+  Unlock,
+} from 'lucide-react';
 import { toast } from 'sonner';
 import { todayInLagos } from '@/lib/timezone';
 
 const DAY_TYPES = [
-  { value: 'public_holiday', label: 'Public holiday' },
-  { value: 'school_event', label: 'School event' },
-  { value: 'closure', label: 'Closure' },
+  { value: 'public_holiday', label: 'Public Holiday (Gate/Pickup Locked)', desc: 'Blocks gate check-in & student pickups. Broadcasts to all roles.' },
+  { value: 'school_event', label: 'School Event (Gate & Transit Active)', desc: 'Gate and pickup stay active. Broadcasts event schedule.' },
+  { value: 'closure', label: 'School Closure (Gate/Pickup Locked)', desc: 'Total closure. Blocks gate and pickup operations.' },
+];
+
+const AUDIENCE_OPTIONS = [
+  { id: 'parents', label: 'Parents' },
+  { id: 'escorts', label: 'Escorts' },
+  { id: 'city_managers', label: 'City Managers' },
+  { id: 'teachers', label: 'Teachers' },
+  { id: 'gate_officers', label: 'Gate Officers' },
 ];
 
 function formatRange(start, end) {
@@ -32,7 +50,7 @@ export default function SchoolCalendarPage() {
     day_type: 'public_holiday',
     title: '',
     description: '',
-    notify_parents: false,
+    target_audiences: ['parents', 'escorts', 'city_managers', 'teachers', 'gate_officers'],
   });
 
   const loadEvents = useCallback(async (sid) => {
@@ -135,7 +153,8 @@ export default function SchoolCalendarPage() {
           day_type: form.day_type,
           title: form.title,
           description: form.description,
-          notify_parents: form.notify_parents,
+          target_audiences: form.target_audiences,
+          notify_parents: true,
         }),
       });
       const json = await res.json();
@@ -143,8 +162,8 @@ export default function SchoolCalendarPage() {
       const n = json.days_created || 1;
       toast.success(
         n === 1
-          ? 'Day saved — excluded from reports'
-          : `${n} days highlighted (${json.start_date} to ${json.end_date})`
+          ? 'Event/Holiday saved and broadcasted across portals'
+          : `${n} days saved and broadcasted across portals (${json.start_date} to ${json.end_date})`
       );
       setForm((f) => ({ ...f, title: '', description: '' }));
       await loadEvents(schoolId);
@@ -238,6 +257,9 @@ export default function SchoolCalendarPage() {
               <option key={t.value} value={t.value}>{t.label}</option>
             ))}
           </select>
+          <p className="text-[11px] text-slate-400 mt-1">
+            {DAY_TYPES.find((t) => t.value === form.day_type)?.desc}
+          </p>
         </div>
         <div>
           <label className="text-xs text-slate-500 block mb-1">Title</label>
@@ -245,25 +267,67 @@ export default function SchoolCalendarPage() {
             className="input"
             value={form.title}
             onChange={(e) => setForm({ ...form, title: e.target.value })}
-            placeholder="e.g. Easter break"
+            placeholder="e.g. Easter break / Inter-House Sports Day"
             required
           />
         </div>
         <div>
-          <label className="text-xs text-slate-500 block mb-1">Notes (optional)</label>
+          <label className="text-xs text-slate-500 block mb-1">Notes / Operational Instructions (optional)</label>
           <textarea
             className="input min-h-[72px]"
             value={form.description}
             onChange={(e) => setForm({ ...form, description: e.target.value })}
+            placeholder="e.g. Normal bus routes will not run today. Campus reopens on Monday."
           />
         </div>
-        <button type="submit" className="btn-primary w-full">Save date range</button>
+
+        <div>
+          <label className="text-xs text-slate-600 font-bold block mb-1.5 flex items-center gap-1.5">
+            <Megaphone size={13} className="text-emerald-600" />
+            <span>Broadcast Announcement To (Portal Banners):</span>
+          </label>
+          <div className="flex flex-wrap gap-2">
+            {AUDIENCE_OPTIONS.map((aud) => {
+              const checked = form.target_audiences.includes(aud.id);
+              return (
+                <button
+                  type="button"
+                  key={aud.id}
+                  onClick={() => {
+                    setForm((f) => ({
+                      ...f,
+                      target_audiences: checked
+                        ? f.target_audiences.filter((x) => x !== aud.id)
+                        : [...f.target_audiences, aud.id],
+                    }));
+                  }}
+                  className={`text-xs px-2.5 py-1 rounded-lg border font-semibold transition-all cursor-pointer ${
+                    checked
+                      ? 'bg-emerald-50 border-emerald-300 text-emerald-800'
+                      : 'bg-white border-slate-200 text-slate-400 hover:text-slate-600'
+                  }`}
+                >
+                  {checked ? '✓ ' : '+ '}
+                  {aud.label}
+                </button>
+              );
+            })}
+          </div>
+          <p className="text-[11px] text-slate-400 mt-1">
+            Selected roles (Parents, Escorts, City Managers) will receive real-time notices on their portal dashboards.
+          </p>
+        </div>
+
+        <button type="submit" className="btn-primary w-full">Save and Broadcast</button>
       </form>
 
-      <form onSubmit={addGateOverride} className="card-elevated p-5 space-y-3 mb-6 border border-amber-100 bg-amber-50/40">
-        <h2 className="font-semibold text-sm">Gate open override (HR / admin)</h2>
-        <p className="text-xs text-slate-500">
-          Opens the gate on a weekend or holiday for a special event. All overrides are audit-logged.
+      <form onSubmit={addGateOverride} className="card-elevated p-5 space-y-3 mb-6 border border-amber-200 bg-amber-50/50">
+        <div className="flex items-center gap-2">
+          <Unlock size={18} className="text-amber-700" />
+          <h2 className="font-bold text-sm text-amber-950">School Open Override (HR / Admin)</h2>
+        </div>
+        <p className="text-xs text-slate-600 leading-relaxed">
+          Allows the gate scanner and student pickup control to operate on a weekend or public holiday if the school decides to open for a special occasion. All overrides are audit-logged.
         </p>
         <div className="grid grid-cols-2 gap-3">
           <div>
@@ -282,22 +346,22 @@ export default function SchoolCalendarPage() {
               className="input"
               value={overrideForm.reason}
               onChange={(e) => setOverrideForm((f) => ({ ...f, reason: e.target.value }))}
-              placeholder="e.g. Saturday exam"
+              placeholder="e.g. Saturday Entrance Exam"
               required
             />
           </div>
         </div>
-        <button type="submit" disabled={overrideSaving} className="btn-primary w-full">
-          {overrideSaving ? 'Saving…' : 'Allow gate on this date'}
+        <button type="submit" disabled={overrideSaving} className="btn-primary w-full bg-amber-600 hover:bg-amber-700 border-amber-600">
+          {overrideSaving ? 'Saving…' : 'Authorize School Open on This Date'}
         </button>
         {gateOverrides.length > 0 && (
-          <ul className="divide-y border border-slate-200 rounded-lg bg-white mt-2">
+          <ul className="divide-y border border-amber-200 rounded-xl bg-white mt-2">
             {gateOverrides.map((ov) => (
               <li key={ov.id} className="flex items-center justify-between gap-2 p-3 text-sm">
                 <span>
-                  <strong>{ov.override_date}</strong> — {ov.reason}
+                  <strong className="text-emerald-800">✓ {ov.override_date}</strong> — {ov.reason}
                 </span>
-                <button type="button" onClick={() => removeOverride(ov)} className="text-red-600 text-xs font-semibold">
+                <button type="button" onClick={() => removeOverride(ov)} className="text-red-600 hover:text-red-700 text-xs font-semibold">
                   Remove
                 </button>
               </li>
@@ -307,30 +371,59 @@ export default function SchoolCalendarPage() {
       </form>
 
       <div className="card-elevated divide-y">
+        <div className="p-4 bg-slate-50/70 border-b border-slate-100 flex items-center justify-between">
+          <h3 className="text-xs font-black text-slate-700 uppercase tracking-wider">Scheduled Events & Calendar Roster</h3>
+          <span className="text-xs font-bold text-slate-400">{events.length} Active Records</span>
+        </div>
         {events.map((ev) => (
-          <div key={ev.batch_id || ev.id} className="p-4 flex items-start justify-between gap-3">
-            <div>
-              <p className="font-semibold">{ev.title}</p>
-              <p className="text-xs text-slate-500">
-                {formatRange(ev.start_date, ev.end_date)}
+          <div key={ev.batch_id || ev.id} className="p-4 flex items-start justify-between gap-3 hover:bg-slate-50/40 transition-colors">
+            <div className="space-y-1">
+              <div className="flex flex-wrap items-center gap-2">
+                <p className="font-black text-slate-900 text-sm">{ev.title}</p>
+                <span className={`text-[10px] font-extrabold px-2 py-0.5 rounded-md flex items-center gap-1 ${
+                  ev.day_type === 'public_holiday'
+                    ? 'bg-amber-100 text-amber-800 border border-amber-300'
+                    : ev.day_type === 'closure'
+                    ? 'bg-rose-100 text-rose-800 border border-rose-300'
+                    : 'bg-emerald-100 text-emerald-800 border border-emerald-300'
+                }`}>
+                  {ev.day_type === 'public_holiday' ? (
+                    <>
+                      <Lock size={10} /> Public Holiday (Gate/Pickup Locked)
+                    </>
+                  ) : ev.day_type === 'closure' ? (
+                    <>
+                      <AlertTriangle size={10} /> School Closure (Locked)
+                    </>
+                  ) : (
+                    <>
+                      <Sparkles size={10} /> School Event (Active)
+                    </>
+                  )}
+                </span>
+              </div>
+              <p className="text-xs text-slate-500 font-medium">
+                📅 {formatRange(ev.start_date, ev.end_date)}
                 {ev.day_count > 1 && ` · ${ev.day_count} days`}
-                {' · '}
-                {String(ev.day_type).replace('_', ' ')}
               </p>
-              {ev.description && <p className="text-sm text-slate-600 mt-1">{ev.description}</p>}
+              {ev.description && <p className="text-xs text-slate-600 mt-1 font-normal">{ev.description}</p>}
+              <p className="text-[10px] font-semibold text-emerald-700 pt-0.5">
+                ✓ Visible to Parents, Escorts, and City Managers
+              </p>
             </div>
             <button
               type="button"
               onClick={() => removeEvent(ev)}
-              className="p-2 text-red-500 hover:bg-red-50 rounded-lg shrink-0"
+              className="p-2 text-slate-400 hover:text-red-500 hover:bg-red-50 rounded-lg shrink-0 transition-colors cursor-pointer"
               aria-label="Delete"
+              title="Delete Event"
             >
               <Trash2 size={16} />
             </button>
           </div>
         ))}
         {events.length === 0 && (
-          <p className="py-10 text-center text-slate-400 text-sm">No holidays or events yet</p>
+          <p className="py-10 text-center text-slate-400 text-sm">No holidays or events registered yet</p>
         )}
       </div>
     </div>
