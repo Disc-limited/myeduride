@@ -340,12 +340,6 @@ export default function SchoolAdminDashboard() {
     });
   }, [dbNotifications]);
 
-  const upcomingEvents = [
-    { title: 'PTA Meeting', date: 'Tue, 16 Jul 2026 • 10:00 AM', color: 'bg-purple-500' },
-    { title: 'Mid-Term Break', date: 'Jul 28 - Aug 3, 2026', color: 'bg-emerald-500' },
-    { title: 'End of Term', date: 'Aug 30, 2026', color: 'bg-rose-500' },
-  ];
-
   const attendanceStats = useMemo(() => {
     const sStats = stats.student_stats || { present: 0, absent: 0, late: 0, total: 0 };
     const total = stats.total_students || sStats.total || 0;
