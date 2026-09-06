@@ -92,11 +92,11 @@ export default function Footer() {
               </li>
               <li className="flex items-center gap-2">
                 <Mail className="w-4 h-4 text-brand-green flex-shrink-0" />
-                <span>hello@myeduride.com</span>
+                <span>support@myeduride.com</span>
               </li>
               <li className="flex items-start gap-2">
                 <MapPin className="w-4 h-4 text-brand-green flex-shrink-0 mt-0.5" />
-                <span>123 Education Way, Lekki, Lagos, Nigeria.</span>
+                <span>3, Saibu Adeolu Street, Church Bus-Stop, Idimu, Lagos, Nigeria.</span>
               </li>
             </ul>
 
