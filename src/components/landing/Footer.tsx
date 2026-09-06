@@ -100,10 +100,12 @@ export default function Footer() {
               </li>
             </ul>
 
+             {/* 
             <div className="pt-2">
               <span className="block text-[10px] font-bold uppercase text-slate-400 mb-2.5">Download Our App</span>
               <AppStoreBadges size="sm" />
             </div>
+            */}
           </div>
 
         </div>
