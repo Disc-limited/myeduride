@@ -2,7 +2,7 @@
 'use client';
 
 import { useEffect, useRef, useState } from 'react';
-import { Camera, ScanLine, MapPin } from 'lucide-react';
+import { Camera, ScanLine, MapPin, KeyRound } from 'lucide-react';
 import { toast } from 'sonner';
 import StudentAvatar from '@/components/shared/StudentAvatar';
 import TodayScanStatusBanner from '@/components/gate/TodayScanStatusBanner';
@@ -31,6 +31,15 @@ export default function StudentIdScanPanel({
   onSuccess = () => {},
   initialStudent = null,
   fromReadyQueue = false,
+  onForgotId,
+}: {
+  schoolId?: string;
+  mode?: string;
+  onModeChange?: (mode: string) => void;
+  onSuccess?: () => void;
+  initialStudent?: any;
+  fromReadyQueue?: boolean;
+  onForgotId?: (() => void) | null;
 }) {
   const [manualCode, setManualCode] = useState('');
   const [scanned, setScanned] = useState(null);
@@ -646,6 +655,22 @@ export default function StudentIdScanPanel({
             >
               {scanning ? 'Looking up…' : 'Look up student'}
             </button>
+
+            {onForgotId && (
+              <div className="pt-2 border-t border-slate-100">
+                <button
+                  type="button"
+                  onClick={() => {
+                    stopCamera();
+                    onForgotId();
+                  }}
+                  className="w-full py-2.5 px-3 rounded-xl border border-amber-200 bg-amber-50 hover:bg-amber-100 text-amber-900 font-bold text-xs flex items-center justify-center gap-2 transition-all cursor-pointer shadow-2xs"
+                >
+                  <KeyRound size={15} className="text-amber-600 shrink-0" />
+                  <span>Student forgot ID card? Search &amp; Check-in Manually</span>
+                </button>
+              </div>
+            )}
           </div>
         </div>
       )}

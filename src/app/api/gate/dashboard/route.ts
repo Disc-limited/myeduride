@@ -266,6 +266,26 @@ export async function GET(request: NextRequest) {
       .gte('timestamp', startIso)
       .lte('timestamp', endIso);
 
+    const { count: officerOverrideArrivals } = await supabase
+      .from('attendance_records')
+      .select('*', { count: 'exact', head: true })
+      .eq('school_id', schoolId)
+      .eq('verified_by_user_id', currentUserId)
+      .eq('type', 'arrival')
+      .ilike('verification_method', '%override%')
+      .gte('timestamp', startIso)
+      .lte('timestamp', endIso);
+
+    const { count: officerOverrideDepartures } = await supabase
+      .from('attendance_records')
+      .select('*', { count: 'exact', head: true })
+      .eq('school_id', schoolId)
+      .eq('verified_by_user_id', currentUserId)
+      .eq('type', 'departure')
+      .ilike('verification_method', '%override%')
+      .gte('timestamp', startIso)
+      .lte('timestamp', endIso);
+
     const { count: officerStaffClockIns } = await supabase
       .from('staff_attendance')
       .select('*', { count: 'exact', head: true })
@@ -274,12 +294,58 @@ export async function GET(request: NextRequest) {
       .gte('timestamp', startIso)
       .lte('timestamp', endIso);
 
+    // 6g. Today's student attendance map (quick status lookup for student directory)
+    const { data: todayAttendanceRows } = await supabase
+      .from('attendance_records')
+      .select('student_id, type, timestamp, status, verification_method')
+      .eq('school_id', schoolId)
+      .gte('timestamp', startIso)
+      .lte('timestamp', endIso)
+      .order('timestamp', { ascending: true });
+
+    const today_attendance: Record<
+      string,
+      {
+        has_arrival: boolean;
+        has_departure: boolean;
+        arrival_time?: string;
+        departure_time?: string;
+        arrival_status?: string;
+        arrival_method?: string;
+      }
+    > = {};
+
+    for (const rec of todayAttendanceRows || []) {
+      if (!rec.student_id) continue;
+      if (!today_attendance[rec.student_id]) {
+        today_attendance[rec.student_id] = {
+          has_arrival: false,
+          has_departure: false,
+        };
+      }
+      const entry = today_attendance[rec.student_id];
+      const timeStr = rec.timestamp
+        ? new Date(rec.timestamp).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: true })
+        : undefined;
+
+      if (rec.type === 'arrival') {
+        entry.has_arrival = true;
+        entry.arrival_time = timeStr;
+        entry.arrival_status = rec.status;
+        entry.arrival_method = rec.verification_method;
+      } else if (rec.type === 'departure') {
+        entry.has_departure = true;
+        entry.departure_time = timeStr;
+      }
+    }
+
     const officer_activity = {
       students_scanned_in: officerStudentArrivals || 0,
       staff_scanned_in: officerStaffClockIns || 0,
       visitors_registered: visitorsTodayCount,
       students_released: officerStudentDepartures || 0,
-      override_releases: 0,
+      override_checkins: officerOverrideArrivals || 0,
+      override_releases: officerOverrideDepartures || 0,
       incidents_reported: incidentCount,
       avg_process_time: '12 sec',
       attendance_captured: (officerStudentArrivals || 0) + (officerStudentDepartures || 0) + (officerStaffClockIns || 0),
@@ -293,6 +359,7 @@ export async function GET(request: NextRequest) {
       pickup_requests: pickupRequests,
       pickup_requests_by_student: pickupRequestsByStudent,
       pickup_persons_by_student: pickupPersonsByStudent,
+      today_attendance,
       day: dateStr,
       gate_day,
       metrics: {

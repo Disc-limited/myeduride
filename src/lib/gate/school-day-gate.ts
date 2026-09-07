@@ -51,13 +51,16 @@ export async function getGateDayStatus(
 
   const holiday = ctx.nonSchoolDays.get(dateStr);
   if (holiday) {
-    return {
-      date: dateStr,
-      gate_open: false,
-      reason: 'holiday',
-      label: holiday.title || 'Non-school day',
-      has_override: false,
-    };
+    const isExplicitSchoolOpen = /school\s*open|resumption/i.test(holiday.title || '');
+    if (holiday.day_type !== 'school_event' && !isExplicitSchoolOpen) {
+      return {
+        date: dateStr,
+        gate_open: false,
+        reason: 'holiday',
+        label: holiday.title || 'Non-school day',
+        has_override: false,
+      };
+    }
   }
 
   if (!isCountableSchoolDayWithContext(dateStr, ctx)) {

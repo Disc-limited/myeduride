@@ -44,6 +44,7 @@ export async function POST(request: NextRequest) {
       pickup_person_name: bodyPickupName,
       pickup_person_phone: bodyPickupPhone,
       from_ready_queue,
+      reason: bodyReason,
     } = body;
 
     const supabase = getAdminClient();
@@ -332,14 +333,28 @@ export async function POST(request: NextRequest) {
       }
     }
 
+    const isOverrideArrival =
+      type === 'arrival' &&
+      (verification_method === 'id_forgotten_override' ||
+        String(verification_method || '').toLowerCase().includes('override'));
+
     await writeAuditLog(supabase, {
       school_id: schoolId,
       actor_user_id: session.user_id,
       student_id,
-      action: type === 'departure' ? 'gate_student_release' : 'gate_student_check_in',
+      action:
+        type === 'departure'
+          ? 'gate_student_release'
+          : isOverrideArrival
+            ? 'gate_student_check_in_override'
+            : 'gate_student_check_in',
       entity_type: 'attendance_records',
       entity_id: data.id,
-      details: { status: data.status, verification_method },
+      details: {
+        status: data.status,
+        verification_method,
+        reason: bodyReason || (isOverrideArrival ? 'ID card forgotten at home' : undefined),
+      },
     });
 
     let pickupName = bodyPickupName?.trim() || null;
@@ -364,7 +379,9 @@ export async function POST(request: NextRequest) {
         ? usedAdminBypass
           ? 'manual_override'
           : 'release'
-        : 'check_in';
+        : isOverrideArrival
+          ? 'manual_override'
+          : 'check_in';
 
     await writeGateActivityLog(supabase, {
       school_id: schoolId,
@@ -378,6 +395,8 @@ export async function POST(request: NextRequest) {
         status: data.status,
         verification_method,
         from_ready_queue: !!from_ready_queue,
+        reason: bodyReason || (isOverrideArrival ? 'ID card forgotten at home' : undefined),
+        override_type: isOverrideArrival ? 'arrival' : undefined,
       },
     });
 

@@ -40,6 +40,7 @@ import {
   RefreshCw,
   Camera,
   Menu,
+  KeyRound,
 } from 'lucide-react';
 import NotificationsInbox from '@/components/notifications/NotificationsInbox';
 import SchoolNoticeBanner from '@/components/shared/SchoolNoticeBanner';
@@ -100,6 +101,7 @@ export default function GateOfficerDashboard() {
     staff_scanned_in: 0,
     visitors_registered: 0,
     students_released: 0,
+    override_checkins: 0,
     override_releases: 0,
     incidents_reported: 0,
     avg_process_time: '12 sec',
@@ -117,17 +119,36 @@ export default function GateOfficerDashboard() {
   const [isReleasing, setIsReleasing] = useState(false);
   const [isRegisteringVisitor, setIsRegisteringVisitor] = useState(false);
   const [isReportingIncident, setIsReportingIncident] = useState(false);
+  const [isCheckingInOverride, setIsCheckingInOverride] = useState(false);
 
   // Selection & Filters
   const [selectedClass, setSelectedClass] = useState('all');
   const [selectedQueueIds, setSelectedQueueIds] = useState<string[]>([]);
   const [chatTab, setChatTab] = useState<'chats' | 'groups' | 'broadcast'>('chats');
 
-  // Modals
+  // Modals & Override Check-in
   const [releaseStudent, setReleaseStudent] = useState<any | null>(null);
   const [showScanModal, setShowScanModal] = useState(false);
   const [scanType, setScanType] = useState<'student' | 'staff'>('student');
+  const [scanMode, setScanMode] = useState<'arrival' | 'departure'>('arrival');
   const [showSearchModal, setShowSearchModal] = useState(false);
+  const [searchModalMode, setSearchModalMode] = useState<'all' | 'checkin' | 'release'>('all');
+  const [checkInOverrideStudent, setCheckInOverrideStudent] = useState<any | null>(null);
+  const [checkInOverrideReason, setCheckInOverrideReason] = useState('ID card forgotten at home');
+  const [customOverrideReason, setCustomOverrideReason] = useState('');
+  const [todayAttendanceMap, setTodayAttendanceMap] = useState<
+    Record<
+      string,
+      {
+        has_arrival: boolean;
+        has_departure: boolean;
+        arrival_time?: string;
+        departure_time?: string;
+        arrival_status?: string;
+        arrival_method?: string;
+      }
+    >
+  >({});
   const [showVisitorModal, setShowVisitorModal] = useState(false);
   const [showIncidentModal, setShowIncidentModal] = useState(false);
   const [showNotifications, setShowNotifications] = useState(false);
@@ -161,6 +182,7 @@ export default function GateOfficerDashboard() {
         if (data.recent_releases) setRecentReleases(data.recent_releases);
         if (data.officer_activity) setOfficerActivity(data.officer_activity);
         if (data.incident_summary) setIncidentSummary(data.incident_summary);
+        if (data.today_attendance) setTodayAttendanceMap(data.today_attendance);
         if (data.school) {
           setSchoolInfo((prev) => ({
             ...prev,
@@ -458,11 +480,43 @@ export default function GateOfficerDashboard() {
                   ← Back to Dashboard
                 </button>
               </div>
+
+              {/* Mode Switcher: Check In vs Sign Out */}
+              <div className="flex gap-2 p-1 bg-slate-100 rounded-2xl max-w-md">
+                <button
+                  type="button"
+                  onClick={() => setScanMode('arrival')}
+                  className={`flex-1 py-2 px-3 rounded-xl text-xs font-extrabold transition-all cursor-pointer flex items-center justify-center gap-1.5 ${
+                    scanMode === 'arrival'
+                      ? 'bg-emerald-600 text-white shadow-xs'
+                      : 'text-slate-600 hover:text-slate-900'
+                  }`}
+                >
+                  <CheckCircle2 size={15} /> Student Check In (Arrival)
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setScanMode('departure')}
+                  className={`flex-1 py-2 px-3 rounded-xl text-xs font-extrabold transition-all cursor-pointer flex items-center justify-center gap-1.5 ${
+                    scanMode === 'departure'
+                      ? 'bg-orange-600 text-white shadow-xs'
+                      : 'text-slate-600 hover:text-slate-900'
+                  }`}
+                >
+                  <RotateCcw size={15} /> Student Sign Out (Release)
+                </button>
+              </div>
+
               <StudentIdScanPanel
+                key={`student-station-${scanMode}`}
                 schoolId={schoolId}
-                mode="arrival"
-                onModeChange={() => { }}
+                mode={scanMode}
+                onModeChange={setScanMode}
                 onSuccess={() => loadGateData()}
+                onForgotId={() => {
+                  setSearchModalMode(scanMode === 'arrival' ? 'checkin' : 'release');
+                  setShowSearchModal(true);
+                }}
               />
             </div>
           ) : activeNav === 'staff-scan' ? (
@@ -485,10 +539,38 @@ export default function GateOfficerDashboard() {
                   ← Back to Dashboard
                 </button>
               </div>
+
+              {/* Mode Switcher: Sign In vs Sign Out */}
+              <div className="flex gap-2 p-1 bg-slate-100 rounded-2xl max-w-md">
+                <button
+                  type="button"
+                  onClick={() => setScanMode('arrival')}
+                  className={`flex-1 py-2 px-3 rounded-xl text-xs font-extrabold transition-all cursor-pointer flex items-center justify-center gap-1.5 ${
+                    scanMode === 'arrival'
+                      ? 'bg-blue-600 text-white shadow-xs'
+                      : 'text-slate-600 hover:text-slate-900'
+                  }`}
+                >
+                  <UserCheck size={15} /> Staff Sign In (Clock In)
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setScanMode('departure')}
+                  className={`flex-1 py-2 px-3 rounded-xl text-xs font-extrabold transition-all cursor-pointer flex items-center justify-center gap-1.5 ${
+                    scanMode === 'departure'
+                      ? 'bg-violet-700 text-white shadow-xs'
+                      : 'text-slate-600 hover:text-slate-900'
+                  }`}
+                >
+                  <LogOut size={15} /> Staff Sign Out (Clock Out)
+                </button>
+              </div>
+
               <StaffIdScanPanel
+                key={`staff-station-${scanMode}`}
                 schoolId={schoolId}
-                mode="arrival"
-                onModeChange={() => { }}
+                mode={scanMode}
+                onModeChange={setScanMode}
                 onSuccess={() => loadGateData()}
               />
             </div>
@@ -592,32 +674,58 @@ export default function GateOfficerDashboard() {
                   </p>
                 </div>
 
-                <div className="flex items-center flex-wrap gap-2.5 w-full md:w-auto">
-                  <button
-                    type="button"
-                    onClick={() => setActiveNav('student-scan')}
-                    className="flex-1 md:flex-initial px-4 py-2.5 rounded-2xl bg-emerald-600 hover:bg-emerald-700 text-white font-black text-xs flex items-center justify-center gap-2 shadow-lg shadow-emerald-600/30 transition-all cursor-pointer"
-                  >
-                    <QrCode size={16} />
-                    <span>Student Scan</span>
-                  </button>
+                <div className="flex items-center flex-wrap gap-2 w-full md:w-auto">
+                  {/* Student Stations */}
+                  <div className="flex items-center rounded-2xl bg-slate-800/90 p-1 border border-slate-700/60 shadow-lg">
+                    <button
+                      type="button"
+                      onClick={() => { setScanMode('arrival'); setActiveNav('student-scan'); }}
+                      className="px-3 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white font-black text-xs flex items-center gap-1.5 transition-all cursor-pointer shadow-xs"
+                      title="Open Student Check-in (Arrival) Station"
+                    >
+                      <QrCode size={14} />
+                      <span>Student In</span>
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => { setScanMode('departure'); setActiveNav('student-scan'); }}
+                      className="px-3 py-2 rounded-xl bg-orange-600 hover:bg-orange-500 text-white font-black text-xs flex items-center gap-1.5 transition-all cursor-pointer shadow-xs ml-1"
+                      title="Open Student Sign-out (Departure/Release) Station"
+                    >
+                      <RotateCcw size={14} />
+                      <span>Student Out</span>
+                    </button>
+                  </div>
 
-                  <button
-                    type="button"
-                    onClick={() => setActiveNav('staff-scan')}
-                    className="flex-1 md:flex-initial px-4 py-2.5 rounded-2xl bg-blue-600 hover:bg-blue-700 text-white font-black text-xs flex items-center justify-center gap-2 shadow-lg shadow-blue-600/30 transition-all cursor-pointer"
-                  >
-                    <UserCheck size={16} />
-                    <span>Staff Scan</span>
-                  </button>
+                  {/* Staff Stations */}
+                  <div className="flex items-center rounded-2xl bg-slate-800/90 p-1 border border-slate-700/60 shadow-lg">
+                    <button
+                      type="button"
+                      onClick={() => { setScanMode('arrival'); setActiveNav('staff-scan'); }}
+                      className="px-3 py-2 rounded-xl bg-blue-600 hover:bg-blue-500 text-white font-black text-xs flex items-center gap-1.5 transition-all cursor-pointer shadow-xs"
+                      title="Open Staff Sign-in (Clock-in) Station"
+                    >
+                      <UserCheck size={14} />
+                      <span>Staff In</span>
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => { setScanMode('departure'); setActiveNav('staff-scan'); }}
+                      className="px-3 py-2 rounded-xl bg-violet-700 hover:bg-violet-600 text-white font-black text-xs flex items-center gap-1.5 transition-all cursor-pointer shadow-xs ml-1"
+                      title="Open Staff Sign-out (Clock-out) Station"
+                    >
+                      <LogOut size={14} />
+                      <span>Staff Out</span>
+                    </button>
+                  </div>
 
                   <button
                     type="button"
                     onClick={() => setActiveNav('visitor-scan')}
-                    className="flex-1 md:flex-initial px-4 py-2.5 rounded-2xl bg-purple-600 hover:bg-purple-700 text-white font-black text-xs flex items-center justify-center gap-2 shadow-lg shadow-purple-600/30 transition-all cursor-pointer"
+                    className="px-3.5 py-2.5 rounded-2xl bg-purple-600 hover:bg-purple-700 text-white font-black text-xs flex items-center justify-center gap-1.5 shadow-lg shadow-purple-600/30 transition-all cursor-pointer"
                   >
-                    <Users size={16} />
-                    <span>Visitor Scan</span>
+                    <Users size={14} />
+                    <span>Visitor Pass</span>
                   </button>
                 </div>
               </div>
@@ -641,7 +749,7 @@ export default function GateOfficerDashboard() {
                   </div>
                   <button
                     type="button"
-                    onClick={() => setActiveNav('student-scan')}
+                    onClick={() => { setScanMode('arrival'); setActiveNav('student-scan'); }}
                     className="text-[10px] font-bold text-emerald-700 hover:underline text-left mt-2 cursor-pointer"
                   >
                     Scan / Check In →
@@ -662,10 +770,10 @@ export default function GateOfficerDashboard() {
                   </div>
                   <button
                     type="button"
-                    onClick={() => setActiveNav('staff-scan')}
+                    onClick={() => { setScanMode('arrival'); setActiveNav('staff-scan'); }}
                     className="text-[10px] font-bold text-blue-700 hover:underline text-left mt-2 cursor-pointer"
                   >
-                    Staff Scan →
+                    Staff Sign In →
                   </button>
                 </div>
 
@@ -683,10 +791,10 @@ export default function GateOfficerDashboard() {
                   </div>
                   <button
                     type="button"
-                    onClick={() => setActiveNav('my-reports')}
+                    onClick={() => { setScanMode('departure'); setActiveNav('student-scan'); }}
                     className="text-[10px] font-bold text-teal-700 hover:underline text-left mt-2 cursor-pointer"
                   >
-                    View Activity Log →
+                    Student Sign Out →
                   </button>
                 </div>
 
@@ -924,94 +1032,173 @@ export default function GateOfficerDashboard() {
                     <h2 className="font-extrabold text-sm text-slate-900 mb-4">Quick Actions</h2>
 
                     <div className="grid grid-cols-3 gap-2.5">
-                      {/* Action 1 */}
+                      {/* Action 1: Student Check-in */}
                       <button
                         type="button"
-                        onClick={() => { setScanType('student'); setShowScanModal(true); }}
-                        className="p-3 bg-slate-50 hover:bg-emerald-50 border border-slate-200 hover:border-emerald-200 rounded-xl flex flex-col items-center justify-center text-center transition-all group shadow-2xs"
+                        onClick={() => {
+                          setScanType('student');
+                          setScanMode('arrival');
+                          setShowScanModal(true);
+                        }}
+                        className="p-3 bg-slate-50 hover:bg-emerald-50 border border-slate-200 hover:border-emerald-300 rounded-xl flex flex-col items-center justify-center text-center transition-all group shadow-2xs cursor-pointer"
+                        title="Scan student ID card for arrival check-in"
                       >
                         <QrCode size={22} className="text-emerald-600 mb-1 group-hover:scale-110 transition-transform" />
-                        <span className="text-[11px] font-extrabold text-slate-800 leading-tight">Scan Student</span>
+                        <span className="text-[11px] font-extrabold text-slate-800 leading-tight">Student Check-in</span>
+                        <span className="text-[9px] text-emerald-600 font-bold leading-none mt-0.5">Arrival</span>
                       </button>
 
-                      {/* Action 2 */}
+                      {/* Action 2: Student Sign Out */}
                       <button
                         type="button"
-                        onClick={() => { setScanType('staff'); setShowScanModal(true); }}
-                        className="p-3 bg-slate-50 hover:bg-blue-50 border border-slate-200 hover:border-blue-200 rounded-xl flex flex-col items-center justify-center text-center transition-all group shadow-2xs"
+                        onClick={() => {
+                          setScanType('student');
+                          setScanMode('departure');
+                          setShowScanModal(true);
+                        }}
+                        className="p-3 bg-slate-50 hover:bg-orange-50 border border-slate-200 hover:border-orange-300 rounded-xl flex flex-col items-center justify-center text-center transition-all group shadow-2xs cursor-pointer"
+                        title="Scan student ID card for departure / release sign-out"
+                      >
+                        <RotateCcw size={22} className="text-orange-600 mb-1 group-hover:scale-110 transition-transform" />
+                        <span className="text-[11px] font-extrabold text-slate-800 leading-tight">Student Sign Out</span>
+                        <span className="text-[9px] text-orange-600 font-bold leading-none mt-0.5">Release</span>
+                      </button>
+
+                      {/* Action 3: Search Student Directory */}
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setSearchModalMode('all');
+                          setShowSearchModal(true);
+                        }}
+                        className="p-3 bg-slate-50 hover:bg-teal-50 border border-slate-200 hover:border-teal-200 rounded-xl flex flex-col items-center justify-center text-center transition-all group shadow-2xs cursor-pointer"
+                        title="Search all students in directory"
+                      >
+                        <Search size={22} className="text-teal-600 mb-1 group-hover:scale-110 transition-transform" />
+                        <span className="text-[11px] font-extrabold text-slate-800 leading-tight">Search Student</span>
+                        <span className="text-[9px] text-slate-400 font-medium leading-none mt-0.5">Directory</span>
+                      </button>
+
+                      {/* Action 4: Staff Sign In */}
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setScanType('staff');
+                          setScanMode('arrival');
+                          setShowScanModal(true);
+                        }}
+                        className="p-3 bg-slate-50 hover:bg-blue-50 border border-slate-200 hover:border-blue-300 rounded-xl flex flex-col items-center justify-center text-center transition-all group shadow-2xs cursor-pointer"
+                        title="Scan staff ID badge for morning sign-in / clock-in"
                       >
                         <CreditCard size={22} className="text-blue-600 mb-1 group-hover:scale-110 transition-transform" />
-                        <span className="text-[11px] font-extrabold text-slate-800 leading-tight">Scan Staff</span>
+                        <span className="text-[11px] font-extrabold text-slate-800 leading-tight">Staff Sign In</span>
+                        <span className="text-[9px] text-blue-600 font-bold leading-none mt-0.5">Clock In</span>
                       </button>
 
-                      {/* Action 3 */}
+                      {/* Action 5: Staff Sign Out */}
                       <button
                         type="button"
-                        onClick={() => setShowSearchModal(true)}
-                        className="p-3 bg-slate-50 hover:bg-emerald-50 border border-slate-200 hover:border-emerald-200 rounded-xl flex flex-col items-center justify-center text-center transition-all group shadow-2xs"
+                        onClick={() => {
+                          setScanType('staff');
+                          setScanMode('departure');
+                          setShowScanModal(true);
+                        }}
+                        className="p-3 bg-slate-50 hover:bg-violet-50 border border-slate-200 hover:border-violet-300 rounded-xl flex flex-col items-center justify-center text-center transition-all group shadow-2xs cursor-pointer"
+                        title="Scan staff ID badge for evening sign-out / clock-out"
                       >
-                        <Search size={22} className="text-emerald-600 mb-1 group-hover:scale-110 transition-transform" />
-                        <span className="text-[11px] font-extrabold text-slate-800 leading-tight">Search Student</span>
+                        <LogOut size={22} className="text-violet-600 mb-1 group-hover:scale-110 transition-transform" />
+                        <span className="text-[11px] font-extrabold text-slate-800 leading-tight">Staff Sign Out</span>
+                        <span className="text-[9px] text-violet-600 font-bold leading-none mt-0.5">Clock Out</span>
                       </button>
 
-                      {/* Action 4 */}
+                      {/* Action 6: Ready Queue */}
                       <button
                         type="button"
                         onClick={() => setActiveNav('ready-queue')}
-                        className="p-3 bg-slate-50 hover:bg-amber-50 border border-slate-200 hover:border-amber-200 rounded-xl flex flex-col items-center justify-center text-center transition-all group shadow-2xs"
+                        className="p-3 bg-slate-50 hover:bg-amber-50 border border-slate-200 hover:border-amber-200 rounded-xl flex flex-col items-center justify-center text-center transition-all group shadow-2xs cursor-pointer"
+                        title="View ready-for-pickup queue"
                       >
                         <Users size={22} className="text-amber-600 mb-1 group-hover:scale-110 transition-transform" />
                         <span className="text-[11px] font-extrabold text-slate-800 leading-tight">Ready Queue</span>
+                        <span className="text-[9px] text-slate-400 font-medium leading-none mt-0.5">Pickup ({pickupQueue.length})</span>
                       </button>
 
-                      {/* Action 5 */}
+                      {/* Action 7: Override Check-in (Forgot ID) */}
                       <button
                         type="button"
-                        onClick={() => setShowVisitorModal(true)}
-                        className="p-3 bg-slate-50 hover:bg-purple-50 border border-slate-200 hover:border-purple-200 rounded-xl flex flex-col items-center justify-center text-center transition-all group shadow-2xs"
+                        onClick={() => {
+                          setSearchModalMode('checkin');
+                          setShowSearchModal(true);
+                        }}
+                        className="p-3 bg-slate-50 hover:bg-emerald-50 border border-slate-200 hover:border-emerald-300 rounded-xl flex flex-col items-center justify-center text-center transition-all group shadow-2xs cursor-pointer"
+                        title="Manual check-in override for students who forgot their physical ID card"
                       >
-                        <UserPlus size={22} className="text-purple-600 mb-1 group-hover:scale-110 transition-transform" />
-                        <span className="text-[11px] font-extrabold text-slate-800 leading-tight">Register Visitor</span>
+                        <UserCheck size={22} className="text-emerald-600 mb-1 group-hover:scale-110 transition-transform" />
+                        <span className="text-[11px] font-extrabold text-slate-800 leading-tight">Override Check-in</span>
+                        <span className="text-[9px] text-emerald-600 font-bold leading-none mt-0.5">Forgot ID</span>
                       </button>
 
-                      {/* Action 6 */}
+                      {/* Action 8: Override Release */}
                       <button
                         type="button"
-                        onClick={() => { setScanType('student'); setShowScanModal(true); }}
-                        className="p-3 bg-slate-50 hover:bg-blue-50 border border-slate-200 hover:border-blue-200 rounded-xl flex flex-col items-center justify-center text-center transition-all group shadow-2xs cursor-pointer"
-                      >
-                        <ShieldCheck size={22} className="text-blue-600 mb-1 group-hover:scale-110 transition-transform" />
-                        <span className="text-[11px] font-extrabold text-slate-800 leading-tight">Quick Verify</span>
-                      </button>
-
-                      {/* Action 7 */}
-                      <button
-                        type="button"
-                        onClick={() => setShowSearchModal(true)}
-                        className="p-3 bg-slate-50 hover:bg-amber-50 border border-slate-200 hover:border-amber-200 rounded-xl flex flex-col items-center justify-center text-center transition-all group shadow-2xs cursor-pointer"
+                        onClick={() => {
+                          setSearchModalMode('release');
+                          setShowSearchModal(true);
+                        }}
+                        className="p-3 bg-slate-50 hover:bg-amber-50 border border-slate-200 hover:border-amber-300 rounded-xl flex flex-col items-center justify-center text-center transition-all group shadow-2xs cursor-pointer"
+                        title="Manual release override for student departure"
                       >
                         <Lock size={22} className="text-amber-600 mb-1 group-hover:scale-110 transition-transform" />
                         <span className="text-[11px] font-extrabold text-slate-800 leading-tight">Override Release</span>
+                        <span className="text-[9px] text-amber-600 font-bold leading-none mt-0.5">Departure</span>
                       </button>
 
-                      {/* Action 8 */}
+                      {/* Action 9: Register Visitor */}
+                      <button
+                        type="button"
+                        onClick={() => setShowVisitorModal(true)}
+                        className="p-3 bg-slate-50 hover:bg-purple-50 border border-slate-200 hover:border-purple-200 rounded-xl flex flex-col items-center justify-center text-center transition-all group shadow-2xs cursor-pointer"
+                        title="Register new visitor entry pass"
+                      >
+                        <UserPlus size={22} className="text-purple-600 mb-1 group-hover:scale-110 transition-transform" />
+                        <span className="text-[11px] font-extrabold text-slate-800 leading-tight">Register Visitor</span>
+                        <span className="text-[9px] text-purple-600 font-bold leading-none mt-0.5">Pass</span>
+                      </button>
+
+                      {/* Action 10: Gate Activity Log */}
+                      <button
+                        type="button"
+                        onClick={() => setActiveNav('my-reports')}
+                        className="p-3 bg-slate-50 hover:bg-indigo-50 border border-slate-200 hover:border-indigo-200 rounded-xl flex flex-col items-center justify-center text-center transition-all group shadow-2xs cursor-pointer"
+                        title="View live gate activity and attendance logs"
+                      >
+                        <BarChart3 size={22} className="text-indigo-600 mb-1 group-hover:scale-110 transition-transform" />
+                        <span className="text-[11px] font-extrabold text-slate-800 leading-tight">Gate Activity Log</span>
+                        <span className="text-[9px] text-indigo-600 font-bold leading-none mt-0.5">Live Reports</span>
+                      </button>
+
+                      {/* Action 11: Incident Report */}
                       <button
                         type="button"
                         onClick={() => setShowIncidentModal(true)}
-                        className="p-3 bg-slate-50 hover:bg-red-50 border border-slate-200 hover:border-red-200 rounded-xl flex flex-col items-center justify-center text-center transition-all group shadow-2xs"
+                        className="p-3 bg-slate-50 hover:bg-red-50 border border-slate-200 hover:border-red-200 rounded-xl flex flex-col items-center justify-center text-center transition-all group shadow-2xs cursor-pointer"
+                        title="Log a security or campus incident"
                       >
                         <AlertTriangle size={22} className="text-red-600 mb-1 group-hover:scale-110 transition-transform" />
                         <span className="text-[11px] font-extrabold text-slate-800 leading-tight">Incident Report</span>
+                        <span className="text-[9px] text-red-600 font-bold leading-none mt-0.5">Security</span>
                       </button>
 
-                      {/* Action 9 */}
+                      {/* Action 12: Escalate / Call */}
                       <button
                         type="button"
                         onClick={() => toast.info('Connecting to City Manager...')}
-                        className="p-3 bg-slate-50 hover:bg-emerald-50 border border-slate-200 hover:border-emerald-200 rounded-xl flex flex-col items-center justify-center text-center transition-all group shadow-2xs"
+                        className="p-3 bg-slate-50 hover:bg-emerald-50 border border-slate-200 hover:border-emerald-200 rounded-xl flex flex-col items-center justify-center text-center transition-all group shadow-2xs cursor-pointer"
+                        title="Call City Manager or Support Helpline"
                       >
                         <Phone size={22} className="text-emerald-600 mb-1 group-hover:scale-110 transition-transform" />
                         <span className="text-[11px] font-extrabold text-slate-800 leading-tight">Escalate / Call</span>
+                        <span className="text-[9px] text-slate-400 font-medium leading-none mt-0.5">Helpline</span>
                       </button>
                     </div>
                   </div>
@@ -1197,19 +1384,11 @@ export default function GateOfficerDashboard() {
                       </div>
 
                       <div className="p-2.5 bg-slate-50 rounded-xl border border-slate-100">
-                        <div className="w-7 h-7 rounded-lg bg-blue-50 text-blue-600 mx-auto flex items-center justify-center mb-1">
+                        <div className="w-7 h-7 rounded-lg bg-emerald-100 text-emerald-700 mx-auto flex items-center justify-center mb-1">
                           <UserCheck size={16} />
                         </div>
-                        <p className="text-[9px] font-bold text-slate-400">Staff Scanned In</p>
-                        <p className="text-base font-black text-slate-900 mt-0.5">{officerActivity.staff_scanned_in}</p>
-                      </div>
-
-                      <div className="p-2.5 bg-slate-50 rounded-xl border border-slate-100">
-                        <div className="w-7 h-7 rounded-lg bg-purple-50 text-purple-600 mx-auto flex items-center justify-center mb-1">
-                          <UserPlus size={16} />
-                        </div>
-                        <p className="text-[9px] font-bold text-slate-400">Visitors Registered</p>
-                        <p className="text-base font-black text-slate-900 mt-0.5">{officerActivity.visitors_registered}</p>
+                        <p className="text-[9px] font-bold text-slate-400">Override Check-ins</p>
+                        <p className="text-base font-black text-slate-900 mt-0.5">{officerActivity.override_checkins || 0}</p>
                       </div>
 
                       <div className="p-2.5 bg-slate-50 rounded-xl border border-slate-100">
@@ -1229,19 +1408,27 @@ export default function GateOfficerDashboard() {
                       </div>
 
                       <div className="p-2.5 bg-slate-50 rounded-xl border border-slate-100">
+                        <div className="w-7 h-7 rounded-lg bg-blue-50 text-blue-600 mx-auto flex items-center justify-center mb-1">
+                          <CreditCard size={16} />
+                        </div>
+                        <p className="text-[9px] font-bold text-slate-400">Staff Scanned In</p>
+                        <p className="text-base font-black text-slate-900 mt-0.5">{officerActivity.staff_scanned_in}</p>
+                      </div>
+
+                      <div className="p-2.5 bg-slate-50 rounded-xl border border-slate-100">
+                        <div className="w-7 h-7 rounded-lg bg-purple-50 text-purple-600 mx-auto flex items-center justify-center mb-1">
+                          <UserPlus size={16} />
+                        </div>
+                        <p className="text-[9px] font-bold text-slate-400">Visitors Registered</p>
+                        <p className="text-base font-black text-slate-900 mt-0.5">{officerActivity.visitors_registered}</p>
+                      </div>
+
+                      <div className="p-2.5 bg-slate-50 rounded-xl border border-slate-100">
                         <div className="w-7 h-7 rounded-lg bg-red-50 text-red-600 mx-auto flex items-center justify-center mb-1">
                           <AlertTriangle size={16} />
                         </div>
                         <p className="text-[9px] font-bold text-slate-400">Incidents Reported</p>
                         <p className="text-base font-black text-slate-900 mt-0.5">{officerActivity.incidents_reported}</p>
-                      </div>
-
-                      <div className="p-2.5 bg-slate-50 rounded-xl border border-slate-100">
-                        <div className="w-7 h-7 rounded-lg bg-blue-50 text-blue-600 mx-auto flex items-center justify-center mb-1">
-                          <Clock size={16} />
-                        </div>
-                        <p className="text-[9px] font-bold text-slate-400">Avg. Process Time</p>
-                        <p className="text-base font-black text-slate-900 mt-0.5">{officerActivity.avg_process_time}</p>
                       </div>
 
                       <div className="p-2.5 bg-slate-50 rounded-xl border border-slate-100">
@@ -1516,21 +1703,70 @@ export default function GateOfficerDashboard() {
       {showScanModal && (
         <div className="fixed inset-0 z-50 bg-slate-950/70 flex items-center justify-center p-4 backdrop-blur-xs">
           <div className="bg-white rounded-2xl w-full max-w-lg p-6 max-h-[90vh] overflow-y-auto border border-slate-200 shadow-2xl">
-            <div className="flex items-center justify-between pb-3 border-b border-slate-100 mb-4">
-              <h3 className="font-extrabold text-base text-slate-900 flex items-center gap-2">
-                <QrCode size={22} className="text-emerald-600" />
-                Scan {scanType === 'student' ? 'Student' : 'Staff'} ID Card
-              </h3>
-              <button onClick={() => setShowScanModal(false)} className="text-slate-400 hover:text-slate-600 cursor-pointer">
+            <div className="flex items-center justify-between pb-3 border-b border-slate-100 mb-3">
+              <div>
+                <h3 className="font-extrabold text-base text-slate-900 flex items-center gap-2">
+                  <QrCode size={22} className="text-emerald-600" />
+                  Scan {scanType === 'student' ? 'Student' : 'Staff'} ID Card
+                </h3>
+                <p className="text-[11px] text-slate-500 font-medium">
+                  {scanType === 'student'
+                    ? scanMode === 'arrival'
+                      ? 'Scan student ID card to record arrival check-in'
+                      : 'Scan student ID card to verify & release for departure'
+                    : scanMode === 'arrival'
+                    ? 'Scan staff badge to record sign-in (clock in)'
+                    : 'Scan staff badge to record sign-out (clock out)'}
+                </p>
+              </div>
+              <button onClick={() => setShowScanModal(false)} className="text-slate-400 hover:text-slate-600 cursor-pointer p-1 rounded-lg hover:bg-slate-100">
                 <X size={20} />
+              </button>
+            </div>
+
+            {/* Mode Switcher Tabs inside Modal */}
+            <div className="flex gap-2 p-1 bg-slate-100 rounded-xl mb-4 text-xs font-bold">
+              <button
+                type="button"
+                onClick={() => setScanMode('arrival')}
+                className={`flex-1 py-2 px-2 rounded-lg text-center transition-all cursor-pointer flex items-center justify-center gap-1.5 ${
+                  scanMode === 'arrival'
+                    ? scanType === 'student'
+                      ? 'bg-emerald-600 text-white shadow-2xs font-extrabold'
+                      : 'bg-blue-600 text-white shadow-2xs font-extrabold'
+                    : 'text-slate-600 hover:text-slate-900'
+                }`}
+              >
+                {scanType === 'student' ? <CheckCircle2 size={14} /> : <UserCheck size={14} />}
+                {scanType === 'student' ? 'Check In (Arrival)' : 'Sign In (Clock In)'}
+              </button>
+              <button
+                type="button"
+                onClick={() => setScanMode('departure')}
+                className={`flex-1 py-2 px-2 rounded-lg text-center transition-all cursor-pointer flex items-center justify-center gap-1.5 ${
+                  scanMode === 'departure'
+                    ? scanType === 'student'
+                      ? 'bg-orange-600 text-white shadow-2xs font-extrabold'
+                      : 'bg-violet-700 text-white shadow-2xs font-extrabold'
+                    : 'text-slate-600 hover:text-slate-900'
+                }`}
+              >
+                {scanType === 'student' ? <RotateCcw size={14} /> : <LogOut size={14} />}
+                {scanType === 'student' ? 'Sign Out (Release)' : 'Sign Out (Clock Out)'}
               </button>
             </div>
 
             {scanType === 'student' ? (
               <StudentIdScanPanel
+                key={`modal-student-${scanMode}`}
                 schoolId={schoolId}
-                mode="arrival"
-                onModeChange={() => { }}
+                mode={scanMode}
+                onModeChange={setScanMode}
+                onForgotId={() => {
+                  setShowScanModal(false);
+                  setSearchModalMode(scanMode === 'arrival' ? 'checkin' : 'release');
+                  setShowSearchModal(true);
+                }}
                 onSuccess={() => {
                   loadGateData();
                   setShowScanModal(false);
@@ -1538,9 +1774,10 @@ export default function GateOfficerDashboard() {
               />
             ) : (
               <StaffIdScanPanel
+                key={`modal-staff-${scanMode}`}
                 schoolId={schoolId}
-                mode="arrival"
-                onModeChange={() => { }}
+                mode={scanMode}
+                onModeChange={setScanMode}
                 onSuccess={() => {
                   loadGateData();
                   setShowScanModal(false);
@@ -1566,31 +1803,99 @@ export default function GateOfficerDashboard() {
         </div>
       )}
 
-      {/* MODAL: SEARCH STUDENT */}
+      {/* MODAL: SEARCH STUDENT & OVERRIDES */}
       {showSearchModal && (
         <div className="fixed inset-0 z-50 bg-slate-950/70 flex items-center justify-center p-4 backdrop-blur-xs">
           <div className="bg-white rounded-2xl w-full max-w-lg p-6 max-h-[90vh] overflow-y-auto border border-slate-200 shadow-2xl">
-            <div className="flex items-center justify-between pb-3 border-b border-slate-100 mb-4">
-              <h3 className="font-extrabold text-base text-slate-900 flex items-center gap-2">
-                <Search size={22} className="text-emerald-600" /> Search Student Directory
-              </h3>
-              <button onClick={() => setShowSearchModal(false)} className="text-slate-400 hover:text-slate-600 cursor-pointer">
+            <div className="flex items-center justify-between pb-3 border-b border-slate-100 mb-3">
+              <div>
+                <h3 className="font-extrabold text-base text-slate-900 flex items-center gap-2">
+                  {searchModalMode === 'checkin' && <UserCheck size={22} className="text-emerald-600" />}
+                  {searchModalMode === 'release' && <Lock size={22} className="text-amber-600" />}
+                  {searchModalMode === 'all' && <Search size={22} className="text-teal-600" />}
+                  {searchModalMode === 'checkin'
+                    ? 'Student Check-in Override'
+                    : searchModalMode === 'release'
+                    ? 'Student Release Override'
+                    : 'Search Student Directory'}
+                </h3>
+                <p className="text-[11px] text-slate-500 font-medium">
+                  {searchModalMode === 'checkin'
+                    ? 'Manual arrival check-in for students without physical ID cards'
+                    : searchModalMode === 'release'
+                    ? 'Manual departure release override for dismissal'
+                    : 'Find any active student, check attendance status or perform gate overrides'}
+                </p>
+              </div>
+              <button
+                onClick={() => setShowSearchModal(false)}
+                className="text-slate-400 hover:text-slate-600 cursor-pointer p-1 rounded-lg hover:bg-slate-100"
+              >
                 <X size={20} />
               </button>
             </div>
 
-            <div className="relative mb-4">
+            {/* Mode Switcher Tabs */}
+            <div className="flex gap-1.5 bg-slate-100 p-1 rounded-xl mb-3 text-xs font-bold">
+              <button
+                type="button"
+                onClick={() => setSearchModalMode('all')}
+                className={`flex-1 py-1.5 rounded-lg text-center transition-all cursor-pointer ${
+                  searchModalMode === 'all'
+                    ? 'bg-white text-slate-900 shadow-2xs font-extrabold'
+                    : 'text-slate-500 hover:text-slate-900'
+                }`}
+              >
+                All Directory
+              </button>
+              <button
+                type="button"
+                onClick={() => setSearchModalMode('checkin')}
+                className={`flex-1 py-1.5 rounded-lg text-center transition-all flex items-center justify-center gap-1 cursor-pointer ${
+                  searchModalMode === 'checkin'
+                    ? 'bg-emerald-600 text-white shadow-2xs font-extrabold'
+                    : 'text-slate-500 hover:text-emerald-700'
+                }`}
+              >
+                <UserCheck size={14} /> Check-in (Forgot ID)
+              </button>
+              <button
+                type="button"
+                onClick={() => setSearchModalMode('release')}
+                className={`flex-1 py-1.5 rounded-lg text-center transition-all flex items-center justify-center gap-1 cursor-pointer ${
+                  searchModalMode === 'release'
+                    ? 'bg-amber-600 text-white shadow-2xs font-extrabold'
+                    : 'text-slate-500 hover:text-amber-700'
+                }`}
+              >
+                <Lock size={14} /> Release Override
+              </button>
+            </div>
+
+            {/* Search Input */}
+            <div className="relative mb-3">
               <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400" size={16} />
               <input
                 type="search"
                 value={studentSearchQuery}
                 onChange={(e) => setStudentSearchQuery(e.target.value)}
                 placeholder="Search by student name, ID number, or class..."
-                className="w-full bg-slate-50 border border-slate-200 rounded-xl pl-10 pr-4 py-2.5 text-xs font-semibold text-slate-800 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500"
+                className="w-full bg-slate-50 border border-slate-200 rounded-xl pl-10 pr-10 py-2.5 text-xs font-semibold text-slate-800 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500"
+                autoFocus
               />
+              {studentSearchQuery && (
+                <button
+                  type="button"
+                  onClick={() => setStudentSearchQuery('')}
+                  className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 text-xs"
+                >
+                  <X size={14} />
+                </button>
+              )}
             </div>
 
-            <div className="space-y-2 max-h-72 overflow-y-auto">
+            {/* Student List */}
+            <div className="space-y-2 max-h-80 overflow-y-auto pr-1">
               {allStudents
                 .filter((s) => {
                   if (!studentSearchQuery.trim()) return true;
@@ -1599,28 +1904,260 @@ export default function GateOfficerDashboard() {
                     .toLowerCase()
                     .includes(q);
                 })
-                .slice(0, 10)
-                .map((s) => (
-                  <div key={s.id} className="p-3 bg-slate-50 hover:bg-slate-100 rounded-xl border border-slate-100 flex items-center justify-between">
-                    <div className="flex items-center gap-3">
-                      <StudentAvatar photoUrl={s.photo_url} firstName={s.first_name} lastName={s.last_name} size="sm" />
-                      <div>
-                        <p className="font-bold text-xs text-slate-900">{s.first_name} {s.last_name}</p>
-                        <p className="text-[10px] text-slate-500 font-mono">S/ID: {s.student_id_number} · {s.class?.name || 'No Class'}</p>
+                .slice(0, 15)
+                .map((s) => {
+                  const att = todayAttendanceMap[s.id];
+                  const hasArrival = !!att?.has_arrival;
+                  const hasDeparture = !!att?.has_departure;
+
+                  return (
+                    <div
+                      key={s.id}
+                      className="p-3 bg-slate-50 hover:bg-slate-100/80 rounded-xl border border-slate-100 flex items-center justify-between gap-3 transition-colors"
+                    >
+                      <div className="flex items-center gap-3 min-w-0">
+                        <StudentAvatar photoUrl={s.photo_url} firstName={s.first_name} lastName={s.last_name} size="sm" />
+                        <div className="min-w-0">
+                          <p className="font-bold text-xs text-slate-900 truncate">
+                            {s.first_name} {s.last_name}
+                          </p>
+                          <p className="text-[10px] text-slate-500 font-mono truncate">
+                            S/ID: {s.student_id_number} · {s.class?.name || 'No Class'}
+                          </p>
+
+                          {/* Today's Attendance Status Badge */}
+                          <div className="mt-1 flex items-center gap-1">
+                            {hasDeparture ? (
+                              <span className="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded text-[9px] font-bold bg-blue-100 text-blue-800">
+                                Released {att.departure_time ? `(${att.departure_time})` : ''}
+                              </span>
+                            ) : hasArrival ? (
+                              <span
+                                className={`inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded text-[9px] font-bold ${
+                                  att.arrival_status === 'late'
+                                    ? 'bg-amber-100 text-amber-800'
+                                    : 'bg-emerald-100 text-emerald-800'
+                                }`}
+                              >
+                                {att.arrival_status === 'late' ? 'Late Arrival' : 'In School'}{' '}
+                                {att.arrival_time ? `(${att.arrival_time})` : ''}
+                              </span>
+                            ) : (
+                              <span className="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded text-[9px] font-medium bg-slate-200/70 text-slate-600">
+                                Not Checked In
+                              </span>
+                            )}
+                          </div>
+                        </div>
+                      </div>
+
+                      {/* Action Buttons */}
+                      <div className="flex items-center gap-1.5 shrink-0">
+                        {(searchModalMode === 'checkin' || searchModalMode === 'all') && (
+                          hasArrival ? (
+                            <span className="px-2.5 py-1.5 rounded-lg bg-slate-200/70 text-slate-500 font-bold text-[11px]">
+                              ✓ Checked In
+                            </span>
+                          ) : (
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setCheckInOverrideStudent(s);
+                                setCheckInOverrideReason('ID card forgotten at home');
+                                setCustomOverrideReason('');
+                              }}
+                              className="px-2.5 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs flex items-center gap-1 shadow-2xs cursor-pointer transition-all active:scale-95"
+                              title="Override check-in for student who forgot ID card"
+                            >
+                              <UserCheck size={13} /> Check In
+                            </button>
+                          )
+                        )}
+
+                        {(searchModalMode === 'release' || searchModalMode === 'all') && (
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setShowSearchModal(false);
+                              handleReleaseClick(s);
+                            }}
+                            className="px-2.5 py-1.5 rounded-lg bg-amber-600 hover:bg-amber-700 text-white font-bold text-xs flex items-center gap-1 shadow-2xs cursor-pointer transition-all active:scale-95"
+                            title="Override release for departure"
+                          >
+                            <Lock size={13} /> Release
+                          </button>
+                        )}
                       </div>
                     </div>
-                    <button
-                      type="button"
-                      onClick={() => {
-                        setShowSearchModal(false);
-                        handleReleaseClick(s);
-                      }}
-                      className="px-3 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs cursor-pointer"
-                    >
-                      Select / Release
-                    </button>
-                  </div>
-                ))}
+                  );
+                })}
+
+              {allStudents.filter((s) => {
+                if (!studentSearchQuery.trim()) return true;
+                const q = studentSearchQuery.toLowerCase();
+                return `${s.first_name} ${s.last_name} ${s.student_id_number} ${s.class?.name || ''}`
+                  .toLowerCase()
+                  .includes(q);
+              }).length === 0 && (
+                <div className="text-center py-8 text-slate-400">
+                  <p className="text-xs font-semibold">No students found matching your search</p>
+                  <p className="text-[10px] text-slate-400 mt-1">Try searching by first name, last name, or admission number</p>
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* MODAL: CONFIRM CHECK-IN OVERRIDE (FORGOT ID CARD) */}
+      {checkInOverrideStudent && (
+        <div className="fixed inset-0 z-55 bg-slate-950/75 flex items-center justify-center p-4 backdrop-blur-xs">
+          <div className="bg-white rounded-2xl w-full max-w-md p-6 border border-slate-200 shadow-2xl animate-in fade-in zoom-in duration-150">
+            <div className="flex items-center justify-between pb-3 border-b border-slate-100 mb-4">
+              <div className="flex items-center gap-2">
+                <div className="w-9 h-9 rounded-xl bg-emerald-100 text-emerald-700 flex items-center justify-center">
+                  <KeyRound size={20} />
+                </div>
+                <div>
+                  <h3 className="font-extrabold text-base text-slate-900">Check-in Override</h3>
+                  <p className="text-[10px] text-slate-500 font-medium">Student forgot physical ID card</p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setCheckInOverrideStudent(null)}
+                disabled={isCheckingInOverride}
+                className="text-slate-400 hover:text-slate-600 cursor-pointer p-1"
+              >
+                <X size={20} />
+              </button>
+            </div>
+
+            {/* Student Preview Box */}
+            <div className="p-3.5 bg-slate-50 rounded-xl border border-slate-200 mb-4 flex items-center gap-3">
+              <StudentAvatar
+                photoUrl={checkInOverrideStudent.photo_url}
+                firstName={checkInOverrideStudent.first_name}
+                lastName={checkInOverrideStudent.last_name}
+                size="md"
+              />
+              <div className="min-w-0">
+                <h4 className="font-extrabold text-sm text-slate-900 truncate">
+                  {checkInOverrideStudent.first_name} {checkInOverrideStudent.last_name}
+                </h4>
+                <p className="text-xs text-slate-600 font-medium">
+                  Class: <span className="font-bold text-slate-800">{checkInOverrideStudent.class?.name || 'No Class Assigned'}</span>
+                </p>
+                <p className="text-[11px] text-slate-500 font-mono">
+                  S/ID: {checkInOverrideStudent.student_id_number || 'N/A'}
+                </p>
+              </div>
+            </div>
+
+            {/* Reason Selection */}
+            <div className="space-y-3 mb-4">
+              <label className="block text-xs font-bold text-slate-800">
+                Reason for Manual Override <span className="text-red-500">*</span>
+              </label>
+              <select
+                value={checkInOverrideReason}
+                onChange={(e) => setCheckInOverrideReason(e.target.value)}
+                className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2.5 text-xs font-semibold text-slate-800 focus:outline-none focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500"
+              >
+                <option value="ID card forgotten at home">ID card forgotten at home</option>
+                <option value="Physical ID card misplaced or lost">Physical ID card misplaced or lost</option>
+                <option value="ID card damaged or barcode unreadable">ID card damaged or barcode unreadable</option>
+                <option value="New student — card issuance in progress">New student — card issuance in progress</option>
+                <option value="Other">Other reason (specify below)</option>
+              </select>
+
+              {checkInOverrideReason === 'Other' && (
+                <input
+                  type="text"
+                  value={customOverrideReason}
+                  onChange={(e) => setCustomOverrideReason(e.target.value)}
+                  placeholder="Enter specific reason for override..."
+                  className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-xs font-semibold text-slate-800 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500"
+                  autoFocus
+                />
+              )}
+            </div>
+
+            {/* Notification Alert Info */}
+            <div className="p-3 bg-emerald-50/70 border border-emerald-100 rounded-xl mb-5 flex items-start gap-2.5 text-emerald-950">
+              <ShieldCheck size={18} className="text-emerald-600 shrink-0 mt-0.5" />
+              <div className="text-[11px] leading-relaxed">
+                <p className="font-bold text-emerald-900">Immediate Custody Logging &amp; Alert</p>
+                <p className="text-emerald-800/90 mt-0.5">
+                  Arrival will be logged with a timestamp under your officer account, evaluated against school tardiness policy, and an alert will be sent to the student&apos;s registered parents.
+                </p>
+              </div>
+            </div>
+
+            {/* Action Buttons */}
+            <div className="flex gap-3">
+              <button
+                type="button"
+                onClick={() => setCheckInOverrideStudent(null)}
+                disabled={isCheckingInOverride}
+                className="flex-1 py-2.5 border border-slate-300 rounded-xl font-bold text-xs text-slate-700 hover:bg-slate-50 cursor-pointer disabled:opacity-50"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                disabled={isCheckingInOverride || (checkInOverrideReason === 'Other' && !customOverrideReason.trim())}
+                onClick={async () => {
+                  if (!checkInOverrideStudent?.id || !schoolId) return;
+                  setIsCheckingInOverride(true);
+                  try {
+                    const finalReason =
+                      checkInOverrideReason === 'Other'
+                        ? customOverrideReason.trim() || 'Other manual override'
+                        : checkInOverrideReason;
+
+                    const res = await fetch('/api/gate/accept', {
+                      method: 'POST',
+                      headers: { 'Content-Type': 'application/json' },
+                      credentials: 'include',
+                      body: JSON.stringify({
+                        school_id: schoolId,
+                        student_id: checkInOverrideStudent.id,
+                        type: 'arrival',
+                        verification_method: 'id_forgotten_override',
+                        reason: finalReason,
+                      }),
+                    });
+
+                    const data = await res.json();
+                    if (!res.ok) {
+                      throw new Error(data.error || 'Failed to check in student');
+                    }
+
+                    toast.success(
+                      `${checkInOverrideStudent.first_name} checked in successfully (ID Forgotten Override)!`
+                    );
+                    setCheckInOverrideStudent(null);
+                    setShowSearchModal(false);
+                    loadGateData();
+                  } catch (err: any) {
+                    toast.error(err.message || 'Check-in failed');
+                  } finally {
+                    setIsCheckingInOverride(false);
+                  }
+                }}
+                className="flex-1 py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs shadow-md cursor-pointer disabled:opacity-50 flex items-center justify-center gap-1.5"
+              >
+                {isCheckingInOverride ? (
+                  <>
+                    <RefreshCw size={14} className="animate-spin" /> Checking In...
+                  </>
+                ) : (
+                  <>
+                    <UserCheck size={15} /> Confirm Check-in
+                  </>
+                )}
+              </button>
             </div>
           </div>
         </div>

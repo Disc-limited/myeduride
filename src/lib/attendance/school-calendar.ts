@@ -20,7 +20,11 @@ export function isCountableSchoolDayWithContext(
 ): boolean {
   if (ctx.gateOverrides.has(dateStr)) return true;
   if (isWeekendDay(dateStr, ctx.weekendDays)) return false;
-  if (ctx.nonSchoolDays.has(dateStr)) return false;
+  const nonSchool = ctx.nonSchoolDays.get(dateStr);
+  if (nonSchool) {
+    const isExplicitSchoolOpen = /school\s*open|resumption/i.test(nonSchool.title || '');
+    if (nonSchool.day_type !== 'school_event' && !isExplicitSchoolOpen) return false;
+  }
   return true;
 }
 

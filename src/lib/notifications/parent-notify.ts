@@ -62,16 +62,20 @@ export async function notifyParentsOfAttendance(params: {
   const notifType = record.status === 'late' && type === 'arrival' ? 'late' : type;
   const isWalkHome = type === 'departure' && (record.verification_method || '').toLowerCase().includes('walk_home');
   const isParentScan = type === 'departure' && (record.verification_method || '').toLowerCase().includes('parent_card');
+  const isIdForgottenOverride =
+    type === 'arrival' &&
+    ((record.verification_method || '').toLowerCase().includes('forgotten') ||
+      (record.verification_method || '').toLowerCase().includes('override'));
 
   let title = `${student.first_name} left school`;
   let shortMessage = `${student.first_name} left ${schoolName} at ${timeStr}`;
 
   if (notifType === 'late') {
-    title = `${student.first_name} arrived late`;
-    shortMessage = `${student.first_name} arrived late at ${schoolName} at ${timeStr}`;
+    title = `${student.first_name} arrived late${isIdForgottenOverride ? ' (ID Override)' : ''}`;
+    shortMessage = `${student.first_name} arrived late at ${schoolName} at ${timeStr}${isIdForgottenOverride ? ' (Gate Officer override — ID card forgotten)' : ''}`;
   } else if (type === 'arrival') {
-    title = `${student.first_name} arrived at school`;
-    shortMessage = `${student.first_name} arrived at ${schoolName} at ${timeStr}`;
+    title = `${student.first_name} arrived at school${isIdForgottenOverride ? ' (ID Override)' : ''}`;
+    shortMessage = `${student.first_name} arrived at ${schoolName} at ${timeStr}${isIdForgottenOverride ? ' (Gate Officer override — ID card forgotten)' : ''}`;
   } else if (isWalkHome) {
     title = `🚶 ${student.first_name} is walking home`;
     shortMessage = `${student.first_name} left ${schoolName} on foot (walk-home recorded at gate) at ${timeStr}.`;
@@ -93,6 +97,7 @@ export async function notifyParentsOfAttendance(params: {
         <p><strong>Gate Location:</strong> ${school?.location_address || school?.address || 'Main Campus Gate'}${school?.gps_lat != null && school?.gps_lng != null ? ` (${Number(school.gps_lat).toFixed(4)}, ${Number(school.gps_lng).toFixed(4)})` : ''} <span style="color:#059669;font-size:11px;font-weight:bold;">• Geofence Verified</span></p>
         ${isWalkHome ? '<p style="color:#2563eb;"><strong>Mode:</strong> Walking Home (Gate Verified)</p>' : ''}
         ${isParentScan ? '<p style="color:#059669;"><strong>Mode:</strong> Direct Parent Gate Pickup (Digital Card Verified)</p>' : ''}
+        ${isIdForgottenOverride ? '<p style="color:#b45309; background:#fffbeb; padding:8px 12px; border-radius:6px; font-size:12px; border:1px solid #fef3c7;"><strong>⚠️ Gate Override Note:</strong> Student arrived without physical ID card and was manually verified and checked in by the Gate Officer.</p>' : ''}
         ${record.status === 'late' ? '<p style="color:#dc2626;"><strong>Status:</strong> Late</p>' : ''}
         <p style="color:#9ca3af;font-size:12px;margin-top:16px;">MyEduRide — Student Transit & Custody Safety</p>
       </div>
