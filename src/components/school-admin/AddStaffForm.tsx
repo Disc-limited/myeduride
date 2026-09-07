@@ -53,7 +53,68 @@ export default function AddStaffForm({ schoolId, customRoles, onSuccess, onCance
     }));
   }, [existingUser, taken]);
 
-  const selectedCustom = customRoles.find((r) => r.id === form.custom_role_id);
+  const [rolesList, setRolesList] = useState(customRoles || []);
+  const [showAddRole, setShowAddRole] = useState(false);
+  const [newRoleName, setNewRoleName] = useState('');
+  const [addingRole, setAddingRole] = useState(false);
+
+  useEffect(() => {
+    if (customRoles && customRoles.length > 0) {
+      setRolesList(customRoles);
+    }
+  }, [customRoles]);
+
+  useEffect(() => {
+    if (schoolId && rolesList.length === 0) {
+      fetch(`/api/schools/custom-roles?school_id=${schoolId}`, {
+        credentials: 'include',
+        cache: 'no-store',
+      })
+        .then((r) => r.json())
+        .then((d) => {
+          if (d.roles && Array.isArray(d.roles) && d.roles.length > 0) {
+            setRolesList(d.roles);
+          }
+        })
+        .catch(() => {});
+    }
+  }, [schoolId, rolesList.length]);
+
+  const handleQuickAddRole = async () => {
+    if (!newRoleName.trim()) {
+      toast.error('Enter a job role title');
+      return;
+    }
+    setAddingRole(true);
+    try {
+      const res = await fetch('/api/schools/custom-roles', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify({
+          school_id: schoolId,
+          name: newRoleName.trim(),
+          can_assign_class: true,
+        }),
+      });
+      const data = await res.json();
+      if (res.ok && data.role) {
+        toast.success(`Job role "${data.role.name}" created!`);
+        setRolesList((prev) => [...prev, data.role]);
+        setForm((f) => ({ ...f, custom_role_id: data.role.id }));
+        setNewRoleName('');
+        setShowAddRole(false);
+      } else {
+        toast.error(data.error || 'Failed to create job role');
+      }
+    } catch {
+      toast.error('Network error creating job role');
+    } finally {
+      setAddingRole(false);
+    }
+  };
+
+  const selectedCustom = rolesList.find((r) => r.id === form.custom_role_id);
   const mayAssignClass =
     form.access_role === 'staff' &&
     (form.teacher_responsibility === 'class_teacher' || form.teacher_responsibility === 'both');
@@ -65,10 +126,10 @@ export default function AddStaffForm({ schoolId, customRoles, onSuccess, onCance
   }, [schoolId]);
 
   useEffect(() => {
-    if (form.access_role === 'staff' && customRoles.length === 1) {
-      setForm((f) => ({ ...f, custom_role_id: customRoles[0].id }));
+    if (form.access_role === 'staff' && rolesList.length === 1 && !form.custom_role_id) {
+      setForm((f) => ({ ...f, custom_role_id: rolesList[0].id }));
     }
-  }, [customRoles, form.access_role]);
+  }, [rolesList, form.access_role, form.custom_role_id]);
 
   const handleSubmit = async () => {
     if (!form.full_name || !form.username) {
@@ -228,23 +289,54 @@ export default function AddStaffForm({ schoolId, customRoles, onSuccess, onCance
 
         {form.access_role === 'staff' && (
           <div>
-            <label className="block text-xs font-medium text-gray-600 mb-1">Job title *</label>
+            <div className="flex items-center justify-between mb-1">
+              <label className="block text-xs font-medium text-gray-600">Job title *</label>
+              <button
+                type="button"
+                onClick={() => setShowAddRole(!showAddRole)}
+                className="text-xs text-primary-600 hover:text-primary-800 font-semibold cursor-pointer"
+              >
+                {showAddRole ? 'Cancel' : '+ New role'}
+              </button>
+            </div>
+
+            {showAddRole && (
+              <div className="flex items-center gap-2 mb-2 p-2 bg-slate-50 border border-slate-200 rounded-lg">
+                <input
+                  type="text"
+                  value={newRoleName}
+                  onChange={(e) => setNewRoleName(e.target.value)}
+                  placeholder="e.g. Science Teacher, Assistant..."
+                  className="input text-xs py-1.5 flex-1"
+                  autoFocus
+                />
+                <button
+                  type="button"
+                  onClick={handleQuickAddRole}
+                  disabled={addingRole}
+                  className="px-3 py-1.5 bg-primary-600 hover:bg-primary-700 text-white text-xs font-bold rounded-lg cursor-pointer shrink-0 disabled:opacity-50"
+                >
+                  {addingRole ? 'Adding...' : 'Add'}
+                </button>
+              </div>
+            )}
+
             <select
               value={form.custom_role_id}
               onChange={(e) => setForm({ ...form, custom_role_id: e.target.value, class_id: '' })}
               className="input"
             >
               <option value="">Select role...</option>
-              {customRoles.map((r) => (
+              {rolesList.map((r) => (
                 <option key={r.id} value={r.id}>
                   {r.name}
                   {r.can_assign_class ? ' (may have class)' : ''}
                 </option>
               ))}
             </select>
-            {customRoles.length === 0 && (
+            {rolesList.length === 0 && !showAddRole && (
               <p className="text-xs text-amber-700 mt-1">
-                Add job roles on the Staff list page first.
+                No job roles found. Click &ldquo;+ New role&rdquo; above to add one.
               </p>
             )}
           </div>

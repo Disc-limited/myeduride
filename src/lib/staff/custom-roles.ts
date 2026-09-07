@@ -43,6 +43,31 @@ export async function fetchCustomRoles(
     console.warn('[custom-roles] fetch:', error.message);
     return [];
   }
+
+  // If no custom roles exist yet for this school, auto-seed default standard roles
+  if (!data || data.length === 0) {
+    const defaultJobRoles = [
+      { name: 'Class Teacher', slug: 'class_teacher', can_assign_class: true, sort_order: 0 },
+      { name: 'Subject Teacher', slug: 'subject_teacher', can_assign_class: true, sort_order: 1 },
+      { name: 'Accountant', slug: 'accountant', can_assign_class: false, sort_order: 2 },
+      { name: 'Driver', slug: 'driver', can_assign_class: false, sort_order: 3 },
+      { name: 'Cleaner', slug: 'cleaner', can_assign_class: false, sort_order: 4 },
+      { name: 'Security Officer', slug: 'security_officer', can_assign_class: false, sort_order: 5 },
+    ];
+    try {
+      const { data: seeded, error: seedErr } = await supabase
+        .from('school_custom_roles')
+        .insert(defaultJobRoles.map((r) => ({ ...r, school_id: schoolId, is_active: true })))
+        .select('id, school_id, name, slug, can_assign_class, sort_order, is_active')
+        .order('sort_order');
+      if (!seedErr && seeded && seeded.length > 0) {
+        return seeded as SchoolCustomRole[];
+      }
+    } catch (seedErr) {
+      console.warn('[custom-roles] auto-seed notice:', seedErr);
+    }
+  }
+
   return (data || []) as SchoolCustomRole[];
 }
 

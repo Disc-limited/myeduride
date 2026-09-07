@@ -23,7 +23,10 @@ export default function AddStaffPage() {
           return;
         }
         setSchoolId(schoolData.school_id);
-        const roleRes = await fetch(`/api/school-admin/staff-roles?school_id=${schoolData.school_id}`);
+        const roleRes = await fetch(`/api/schools/custom-roles?school_id=${schoolData.school_id}`, {
+          credentials: 'include',
+          cache: 'no-store',
+        });
         if (roleRes.ok) {
           const roleData = await roleRes.json();
           setCustomRoles(roleData.roles || []);
