@@ -65,6 +65,13 @@ export function saveSession(session: Record<string, unknown>) {
  * Logout - clear session cookie
  */
 export function logout() {
-  document.cookie = 'myeduride_session=; path=/; max-age=0';
+  document.cookie = 'myeduride_session=; path=/; expires=Thu, 01 Jan 1970 00:00:00 GMT; max-age=0; SameSite=Lax';
+  document.cookie = 'myeduride_session=; expires=Thu, 01 Jan 1970 00:00:00 GMT; max-age=0';
+  try {
+    if (typeof window !== 'undefined') {
+      localStorage.clear();
+      sessionStorage.clear();
+    }
+  } catch {}
   window.location.href = '/auth/login';
 }

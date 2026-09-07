@@ -255,14 +255,16 @@ export async function POST(request: NextRequest) {
 
     let usedAdminBypass = false;
     if (type === 'departure') {
-      const isAdminBypass =
+      const isAuthorizedGateStaff =
         sessionHasRole(session, 'super_admin') ||
         session.roles.some(
-          (r) => r.school_id === schoolId && r.role === 'school_admin'
+          (r) =>
+            r.school_id === schoolId &&
+            ['school_admin', 'gate_officer', 'gate_manager', 'security_officer'].includes(r.role)
         );
-      usedAdminBypass = isAdminBypass && !from_ready_queue;
+      usedAdminBypass = isAuthorizedGateStaff && !from_ready_queue;
 
-      if (!isAdminBypass) {
+      if (!isAuthorizedGateStaff && !from_ready_queue && verification_method !== 'id_card_scan' && !is_override) {
         const today = todayInLagos();
         const { data: readyReq } = await supabase
           .from('dismissal_requests')

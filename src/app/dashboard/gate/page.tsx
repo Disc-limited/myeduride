@@ -392,8 +392,10 @@ export default function GateOfficerDashboard() {
             <nav className="space-y-1 text-xs font-medium pt-1">
               {[
                 { id: 'dashboard', label: 'Gate Dashboard', icon: LayoutDashboardIcon, action: () => setActiveNav('dashboard') },
-                { id: 'student-scan', label: 'Student Scan', icon: QrCode, action: () => setActiveNav('student-scan') },
-                { id: 'staff-scan', label: 'Staff Scan', icon: UserCheck, action: () => setActiveNav('staff-scan') },
+                { id: 'student-scan', label: 'Student Check In', icon: QrCode, action: () => { setScanMode('arrival'); setActiveNav('student-scan'); } },
+                { id: 'student-signout', label: 'Student Sign Out', icon: RotateCcw, action: () => { setScanMode('departure'); setActiveNav('student-signout'); } },
+                { id: 'staff-scan', label: 'Staff Sign In', icon: UserCheck, action: () => { setScanMode('arrival'); setActiveNav('staff-scan'); } },
+                { id: 'staff-signout', label: 'Staff Sign Out', icon: LogOut, action: () => { setScanMode('departure'); setActiveNav('staff-signout'); } },
                 { id: 'visitor-scan', label: 'Visitor Scan', icon: Users, action: () => setActiveNav('visitor-scan') },
                 { id: 'ready-queue', label: 'Ready for Pickup', icon: Car, action: () => setActiveNav('ready-queue') },
                 { id: 'my-reports', label: 'Gate Activity Log', icon: BarChart3, action: () => setActiveNav('my-reports') },
@@ -405,6 +407,11 @@ export default function GateOfficerDashboard() {
               ].map((item) => {
                 const Icon = item.icon;
                 const isActive = activeNav === item.id;
+                const activeColor = item.id === 'student-signout'
+                  ? 'bg-orange-600 text-white font-bold shadow-xs'
+                  : item.id === 'staff-signout'
+                  ? 'bg-violet-700 text-white font-bold shadow-xs'
+                  : 'bg-[#1b804d] text-white font-bold shadow-xs';
                 return (
                   <button
                     key={item.id}
@@ -415,7 +422,7 @@ export default function GateOfficerDashboard() {
                       if (item.action) item.action();
                     }}
                     className={`w-full flex items-center justify-between px-3 py-2.5 rounded-xl transition-all ${isActive
-                        ? 'bg-[#1b804d] text-white font-bold shadow-xs'
+                        ? activeColor
                         : 'text-slate-300 hover:bg-slate-800/80 hover:text-white'
                       }`}
                   >
@@ -450,26 +457,35 @@ export default function GateOfficerDashboard() {
             <button
               type="button"
               onClick={() => logout()}
-              className="w-full flex items-center justify-center gap-2 py-2 px-3 rounded-xl bg-red-500/10 hover:bg-red-500/20 text-red-400 border border-red-500/20 font-bold text-xs transition-colors"
+              className="w-full flex items-center justify-center gap-2 py-2 px-3 rounded-xl bg-red-500/10 hover:bg-red-500/20 text-red-400 border border-red-500/20 font-bold text-xs transition-colors cursor-pointer"
+              title="Log out of Gate Officer Account"
             >
               <LogOut size={15} />
-              <span>Sign Out</span>
+              <span>Sign Out (Logout)</span>
             </button>
           </div>
         </aside>
 
         {/* MAIN DASHBOARD CONTENT AREA */}
         <main className="flex-1 overflow-y-auto p-4 sm:p-6 space-y-5 max-w-[1700px]">
-          {activeNav === 'student-scan' ? (
+          {activeNav === 'student-scan' || activeNav === 'student-signout' ? (
             <div className="bg-white rounded-3xl p-6 border border-slate-200 shadow-xs space-y-4">
               <div className="flex items-center justify-between border-b border-slate-100 pb-3">
                 <div className="flex items-center gap-3">
-                  <div className="w-10 h-10 rounded-2xl bg-emerald-100 text-emerald-800 flex items-center justify-center font-black">
-                    <QrCode size={20} />
+                  <div className={`w-10 h-10 rounded-2xl flex items-center justify-center font-black ${
+                    scanMode === 'departure' ? 'bg-orange-100 text-orange-800' : 'bg-emerald-100 text-emerald-800'
+                  }`}>
+                    {scanMode === 'departure' ? <RotateCcw size={20} /> : <QrCode size={20} />}
                   </div>
                   <div>
-                    <h2 className="text-base font-extrabold text-slate-900">Student Scan Station</h2>
-                    <p className="text-xs text-slate-500">Scan student ID card for arrival check-in or gate departure release.</p>
+                    <h2 className="text-base font-extrabold text-slate-900">
+                      {scanMode === 'departure' ? 'Student Sign Out Station' : 'Student Check In Station'}
+                    </h2>
+                    <p className="text-xs text-slate-500">
+                      {scanMode === 'departure'
+                        ? 'Scan student ID card to verify departure & release from school campus.'
+                        : 'Scan student ID card for morning arrival check-in.'}
+                    </p>
                   </div>
                 </div>
                 <button
@@ -481,37 +497,13 @@ export default function GateOfficerDashboard() {
                 </button>
               </div>
 
-              {/* Mode Switcher: Check In vs Sign Out */}
-              <div className="flex gap-2 p-1 bg-slate-100 rounded-2xl max-w-md">
-                <button
-                  type="button"
-                  onClick={() => setScanMode('arrival')}
-                  className={`flex-1 py-2 px-3 rounded-xl text-xs font-extrabold transition-all cursor-pointer flex items-center justify-center gap-1.5 ${
-                    scanMode === 'arrival'
-                      ? 'bg-emerald-600 text-white shadow-xs'
-                      : 'text-slate-600 hover:text-slate-900'
-                  }`}
-                >
-                  <CheckCircle2 size={15} /> Student Check In (Arrival)
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setScanMode('departure')}
-                  className={`flex-1 py-2 px-3 rounded-xl text-xs font-extrabold transition-all cursor-pointer flex items-center justify-center gap-1.5 ${
-                    scanMode === 'departure'
-                      ? 'bg-orange-600 text-white shadow-xs'
-                      : 'text-slate-600 hover:text-slate-900'
-                  }`}
-                >
-                  <RotateCcw size={15} /> Student Sign Out (Release)
-                </button>
-              </div>
-
               <StudentIdScanPanel
-                key={`student-station-${scanMode}`}
                 schoolId={schoolId}
                 mode={scanMode}
-                onModeChange={setScanMode}
+                onModeChange={(m) => {
+                  setScanMode(m);
+                  setActiveNav(m === 'departure' ? 'student-signout' : 'student-scan');
+                }}
                 onSuccess={() => loadGateData()}
                 onForgotId={() => {
                   setSearchModalMode(scanMode === 'arrival' ? 'checkin' : 'release');
@@ -519,16 +511,24 @@ export default function GateOfficerDashboard() {
                 }}
               />
             </div>
-          ) : activeNav === 'staff-scan' ? (
+          ) : activeNav === 'staff-scan' || activeNav === 'staff-signout' ? (
             <div className="bg-white rounded-3xl p-6 border border-slate-200 shadow-xs space-y-4">
               <div className="flex items-center justify-between border-b border-slate-100 pb-3">
                 <div className="flex items-center gap-3">
-                  <div className="w-10 h-10 rounded-2xl bg-blue-100 text-blue-800 flex items-center justify-center font-black">
-                    <UserCheck size={20} />
+                  <div className={`w-10 h-10 rounded-2xl flex items-center justify-center font-black ${
+                    scanMode === 'departure' ? 'bg-violet-100 text-violet-800' : 'bg-blue-100 text-blue-800'
+                  }`}>
+                    {scanMode === 'departure' ? <LogOut size={20} /> : <UserCheck size={20} />}
                   </div>
                   <div>
-                    <h2 className="text-base font-extrabold text-slate-900">Staff Scan Station</h2>
-                    <p className="text-xs text-slate-500">Scan teacher and administrative staff badges for gate attendance.</p>
+                    <h2 className="text-base font-extrabold text-slate-900">
+                      {scanMode === 'departure' ? 'Staff Sign Out Station' : 'Staff Sign In Station'}
+                    </h2>
+                    <p className="text-xs text-slate-500">
+                      {scanMode === 'departure'
+                        ? 'Scan teacher and administrative staff badges to clock out and record departure.'
+                        : 'Scan teacher and administrative staff badges for morning attendance (clock in).'}
+                    </p>
                   </div>
                 </div>
                 <button
@@ -540,37 +540,13 @@ export default function GateOfficerDashboard() {
                 </button>
               </div>
 
-              {/* Mode Switcher: Sign In vs Sign Out */}
-              <div className="flex gap-2 p-1 bg-slate-100 rounded-2xl max-w-md">
-                <button
-                  type="button"
-                  onClick={() => setScanMode('arrival')}
-                  className={`flex-1 py-2 px-3 rounded-xl text-xs font-extrabold transition-all cursor-pointer flex items-center justify-center gap-1.5 ${
-                    scanMode === 'arrival'
-                      ? 'bg-blue-600 text-white shadow-xs'
-                      : 'text-slate-600 hover:text-slate-900'
-                  }`}
-                >
-                  <UserCheck size={15} /> Staff Sign In (Clock In)
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setScanMode('departure')}
-                  className={`flex-1 py-2 px-3 rounded-xl text-xs font-extrabold transition-all cursor-pointer flex items-center justify-center gap-1.5 ${
-                    scanMode === 'departure'
-                      ? 'bg-violet-700 text-white shadow-xs'
-                      : 'text-slate-600 hover:text-slate-900'
-                  }`}
-                >
-                  <LogOut size={15} /> Staff Sign Out (Clock Out)
-                </button>
-              </div>
-
               <StaffIdScanPanel
-                key={`staff-station-${scanMode}`}
                 schoolId={schoolId}
                 mode={scanMode}
-                onModeChange={setScanMode}
+                onModeChange={(m) => {
+                  setScanMode(m);
+                  setActiveNav(m === 'departure' ? 'staff-signout' : 'staff-scan');
+                }}
                 onSuccess={() => loadGateData()}
               />
             </div>
@@ -684,16 +660,16 @@ export default function GateOfficerDashboard() {
                       title="Open Student Check-in (Arrival) Station"
                     >
                       <QrCode size={14} />
-                      <span>Student In</span>
+                      <span>Student Check In</span>
                     </button>
                     <button
                       type="button"
-                      onClick={() => { setScanMode('departure'); setActiveNav('student-scan'); }}
+                      onClick={() => { setScanMode('departure'); setActiveNav('student-signout'); }}
                       className="px-3 py-2 rounded-xl bg-orange-600 hover:bg-orange-500 text-white font-black text-xs flex items-center gap-1.5 transition-all cursor-pointer shadow-xs ml-1"
                       title="Open Student Sign-out (Departure/Release) Station"
                     >
                       <RotateCcw size={14} />
-                      <span>Student Out</span>
+                      <span>Student Sign Out</span>
                     </button>
                   </div>
 
@@ -706,16 +682,16 @@ export default function GateOfficerDashboard() {
                       title="Open Staff Sign-in (Clock-in) Station"
                     >
                       <UserCheck size={14} />
-                      <span>Staff In</span>
+                      <span>Staff Sign In</span>
                     </button>
                     <button
                       type="button"
-                      onClick={() => { setScanMode('departure'); setActiveNav('staff-scan'); }}
+                      onClick={() => { setScanMode('departure'); setActiveNav('staff-signout'); }}
                       className="px-3 py-2 rounded-xl bg-violet-700 hover:bg-violet-600 text-white font-black text-xs flex items-center gap-1.5 transition-all cursor-pointer shadow-xs ml-1"
                       title="Open Staff Sign-out (Clock-out) Station"
                     >
                       <LogOut size={14} />
-                      <span>Staff Out</span>
+                      <span>Staff Sign Out</span>
                     </button>
                   </div>
 
@@ -768,13 +744,23 @@ export default function GateOfficerDashboard() {
                     <p className="text-xl font-black text-slate-900 leading-none mt-1">{metrics.staff_checked_in}</p>
                     <p className="text-[9px] text-blue-600 font-bold mt-1">Signed in today</p>
                   </div>
-                  <button
-                    type="button"
-                    onClick={() => { setScanMode('arrival'); setActiveNav('staff-scan'); }}
-                    className="text-[10px] font-bold text-blue-700 hover:underline text-left mt-2 cursor-pointer"
-                  >
-                    Staff Sign In →
-                  </button>
+                  <div className="flex items-center gap-2 mt-2 flex-wrap">
+                    <button
+                      type="button"
+                      onClick={() => { setScanMode('arrival'); setActiveNav('staff-scan'); }}
+                      className="text-[10px] font-bold text-blue-700 hover:underline text-left cursor-pointer"
+                    >
+                      Sign In →
+                    </button>
+                    <span className="text-slate-300 text-[10px]">|</span>
+                    <button
+                      type="button"
+                      onClick={() => { setScanMode('departure'); setActiveNav('staff-signout'); }}
+                      className="text-[10px] font-bold text-violet-700 hover:underline text-left cursor-pointer"
+                    >
+                      Staff Sign Out →
+                    </button>
+                  </div>
                 </div>
 
                 {/* 3. Students Released */}
@@ -791,7 +777,7 @@ export default function GateOfficerDashboard() {
                   </div>
                   <button
                     type="button"
-                    onClick={() => { setScanMode('departure'); setActiveNav('student-scan'); }}
+                    onClick={() => { setScanMode('departure'); setActiveNav('student-signout'); }}
                     className="text-[10px] font-bold text-teal-700 hover:underline text-left mt-2 cursor-pointer"
                   >
                     Student Sign Out →
@@ -1721,38 +1707,6 @@ export default function GateOfficerDashboard() {
               </div>
               <button onClick={() => setShowScanModal(false)} className="text-slate-400 hover:text-slate-600 cursor-pointer p-1 rounded-lg hover:bg-slate-100">
                 <X size={20} />
-              </button>
-            </div>
-
-            {/* Mode Switcher Tabs inside Modal */}
-            <div className="flex gap-2 p-1 bg-slate-100 rounded-xl mb-4 text-xs font-bold">
-              <button
-                type="button"
-                onClick={() => setScanMode('arrival')}
-                className={`flex-1 py-2 px-2 rounded-lg text-center transition-all cursor-pointer flex items-center justify-center gap-1.5 ${
-                  scanMode === 'arrival'
-                    ? scanType === 'student'
-                      ? 'bg-emerald-600 text-white shadow-2xs font-extrabold'
-                      : 'bg-blue-600 text-white shadow-2xs font-extrabold'
-                    : 'text-slate-600 hover:text-slate-900'
-                }`}
-              >
-                {scanType === 'student' ? <CheckCircle2 size={14} /> : <UserCheck size={14} />}
-                {scanType === 'student' ? 'Check In (Arrival)' : 'Sign In (Clock In)'}
-              </button>
-              <button
-                type="button"
-                onClick={() => setScanMode('departure')}
-                className={`flex-1 py-2 px-2 rounded-lg text-center transition-all cursor-pointer flex items-center justify-center gap-1.5 ${
-                  scanMode === 'departure'
-                    ? scanType === 'student'
-                      ? 'bg-orange-600 text-white shadow-2xs font-extrabold'
-                      : 'bg-violet-700 text-white shadow-2xs font-extrabold'
-                    : 'text-slate-600 hover:text-slate-900'
-                }`}
-              >
-                {scanType === 'student' ? <RotateCcw size={14} /> : <LogOut size={14} />}
-                {scanType === 'student' ? 'Sign Out (Release)' : 'Sign Out (Clock Out)'}
               </button>
             </div>
 

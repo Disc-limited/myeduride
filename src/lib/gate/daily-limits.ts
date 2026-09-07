@@ -105,14 +105,6 @@ export function validateStudentGateAction(
     return { allowed: true };
   }
 
-  if (!status.has_arrival) {
-    return {
-      allowed: false,
-      code: 'must_check_in_first',
-      error: 'Not checked in yet — check in first',
-      suggested_mode: 'arrival',
-    };
-  }
   if (status.has_departure) {
     return {
       allowed: false,
@@ -141,14 +133,6 @@ export function validateStaffGateAction(
     return { allowed: true };
   }
 
-  if (!status.has_clock_in) {
-    return {
-      allowed: false,
-      code: 'must_check_in_first',
-      error: 'Not signed in yet — sign in first',
-      suggested_mode: 'arrival',
-    };
-  }
   if (status.has_clock_out) {
     return {
       allowed: false,

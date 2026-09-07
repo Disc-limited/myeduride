@@ -2,7 +2,7 @@
 'use client';
 
 import { useEffect, useRef, useState } from 'react';
-import { Camera, ScanLine, MapPin, KeyRound } from 'lucide-react';
+import { Camera, ScanLine, MapPin, KeyRound, CheckCircle2, RotateCcw } from 'lucide-react';
 import { toast } from 'sonner';
 import StudentAvatar from '@/components/shared/StudentAvatar';
 import TodayScanStatusBanner from '@/components/gate/TodayScanStatusBanner';
@@ -32,6 +32,7 @@ export default function StudentIdScanPanel({
   initialStudent = null,
   fromReadyQueue = false,
   onForgotId,
+  hideModeSwitcher = false,
 }: {
   schoolId?: string;
   mode?: string;
@@ -40,6 +41,7 @@ export default function StudentIdScanPanel({
   initialStudent?: any;
   fromReadyQueue?: boolean;
   onForgotId?: (() => void) | null;
+  hideModeSwitcher?: boolean;
 }) {
   const [manualCode, setManualCode] = useState('');
   const [scanned, setScanned] = useState(null);
@@ -397,6 +399,34 @@ export default function StudentIdScanPanel({
 
   return (
     <div className="space-y-4">
+      {/* Mode Switcher Tabs */}
+      {!hideModeSwitcher && (
+        <div className="flex gap-2 p-1.5 bg-slate-100 rounded-2xl border border-slate-200 shadow-xs">
+          <button
+            type="button"
+            onClick={() => onModeChange?.('arrival')}
+            className={`flex-1 py-2.5 px-3 rounded-xl text-xs font-black transition-all cursor-pointer flex items-center justify-center gap-1.5 ${
+              mode === 'arrival'
+                ? 'bg-emerald-600 text-white shadow-md ring-2 ring-emerald-500/50'
+                : 'text-slate-600 hover:text-slate-900 hover:bg-slate-200/60'
+            }`}
+          >
+            <CheckCircle2 size={16} /> Student Check In (Arrival)
+          </button>
+          <button
+            type="button"
+            onClick={() => onModeChange?.('departure')}
+            className={`flex-1 py-2.5 px-3 rounded-xl text-xs font-black transition-all cursor-pointer flex items-center justify-center gap-1.5 ${
+              mode === 'departure'
+                ? 'bg-orange-600 text-white shadow-md ring-2 ring-orange-500/50'
+                : 'text-slate-600 hover:text-slate-900 hover:bg-slate-200/60'
+            }`}
+          >
+            <RotateCcw size={16} /> Student Sign Out (Release)
+          </button>
+        </div>
+      )}
+
       {/* Authorised Parent Card Gate Scan Result */}
       {scanned?.type === 'parent' && (
         <div className="card-elevated p-4 space-y-4 animate-in fade-in">
@@ -539,11 +569,13 @@ export default function StudentIdScanPanel({
             />
           )}
           <p
-            className={`text-center text-sm font-bold py-2 rounded-xl ${
-              mode === 'arrival' ? 'bg-emerald-50 text-emerald-800' : 'bg-orange-50 text-orange-800'
+            className={`text-center text-xs font-black py-2 rounded-xl border ${
+              mode === 'arrival'
+                ? 'bg-emerald-50 text-emerald-800 border-emerald-200'
+                : 'bg-orange-50 text-orange-800 border-orange-200'
             }`}
           >
-            {mode === 'arrival' ? 'STUDENT CHECK IN' : 'STUDENT CHECK OUT / RELEASE'}
+            {mode === 'arrival' ? 'STUDENT CHECK IN (ARRIVAL)' : 'STUDENT SIGN OUT (DEPARTURE / RELEASE)'}
           </p>
           <div className="flex gap-2">
             <button
@@ -561,11 +593,15 @@ export default function StudentIdScanPanel({
             {!fullyComplete ? (
               <button
                 type="button"
-                className="btn-primary flex-1"
-                disabled={saving || block.blocked}
+                className={`flex-1 py-3 px-4 rounded-xl font-black text-xs text-white transition-all cursor-pointer shadow-md ${
+                  mode === 'departure'
+                    ? 'bg-orange-600 hover:bg-orange-500 shadow-orange-600/30 ring-2 ring-orange-400/50'
+                    : 'bg-emerald-600 hover:bg-emerald-500 shadow-emerald-600/30 ring-2 ring-emerald-400/50'
+                }`}
+                disabled={saving}
                 onClick={confirmScan}
               >
-                {saving ? 'Saving…' : mode === 'departure' ? 'Confirm release' : 'Confirm scan'}
+                {saving ? 'Processing…' : mode === 'departure' ? 'Confirm Student Sign Out (Release)' : 'Confirm Student Check-in'}
               </button>
             ) : (
               <button
@@ -586,7 +622,35 @@ export default function StudentIdScanPanel({
       )}
 
       {(!scanned || autoConfirm) && (
-        <div className="card-elevated overflow-hidden">
+        <div className="card-elevated overflow-hidden border-2 border-slate-200 shadow-lg">
+          {/* Active Station Mode Indicator Banner */}
+          <div className={`px-4 py-3 border-b flex items-center justify-between ${
+            mode === 'departure'
+              ? 'bg-gradient-to-r from-orange-600 via-amber-600 to-orange-700 text-white border-orange-500'
+              : 'bg-gradient-to-r from-emerald-700 via-teal-700 to-emerald-800 text-white border-emerald-600'
+          }`}>
+            <div className="flex items-center gap-3">
+              <div className="w-9 h-9 rounded-xl bg-white/20 backdrop-blur-xs flex items-center justify-center font-black shadow-inner">
+                {mode === 'departure' ? <RotateCcw size={18} /> : <CheckCircle2 size={18} />}
+              </div>
+              <div>
+                <div className="flex items-center gap-2">
+                  <span className="font-black text-xs uppercase tracking-wider">
+                    {mode === 'departure' ? 'Student Sign Out Station Active' : 'Student Check In Station Active'}
+                  </span>
+                  <span className="px-2 py-0.5 rounded-full text-[9px] font-black bg-white/25 uppercase tracking-wide border border-white/30">
+                    {mode === 'departure' ? 'Campus Release' : 'Arrival Check In'}
+                  </span>
+                </div>
+                <p className="text-[11px] text-white/90 font-medium mt-0.5">
+                  {mode === 'departure'
+                    ? 'Scan barcode / QR code on student ID card to record departure & release student from campus.'
+                    : 'Scan barcode / QR code on student ID card to record morning arrival check-in.'}
+                </p>
+              </div>
+            </div>
+          </div>
+
           <div className="relative aspect-[4/3] bg-slate-900">
             <video ref={videoRef} className="w-full h-full object-cover" playsInline muted autoPlay />
             {cameraError && (
@@ -638,22 +702,39 @@ export default function StudentIdScanPanel({
               </button>
             </div>
 
-            <p className="text-xs text-slate-500 flex items-center gap-1">
-              <ScanLine size={14} /> Scan student ID — one check-in and check-out per day
+            <p className="text-xs text-slate-600 flex items-center gap-1.5 font-medium">
+              <ScanLine size={15} className={mode === 'departure' ? 'text-orange-600' : 'text-emerald-600'} />
+              {mode === 'departure'
+                ? 'Scan barcode or enter student ID number to record student sign out (departure)'
+                : 'Scan barcode or enter student ID number to record student check in (arrival)'}
             </p>
             <input
               className="input font-mono"
-              placeholder="Student ID or QR"
+              placeholder={mode === 'departure' ? "Enter Student ID number to Sign Out..." : "Enter Student ID number to Check In..."}
               value={manualCode}
               onChange={(e) => setManualCode(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter') {
+                  e.preventDefault();
+                  lookupScan(manualCode);
+                }
+              }}
             />
             <button
               type="button"
-              className="btn-primary w-full"
+              className={`w-full py-3 px-4 rounded-xl font-black text-xs text-white transition-all cursor-pointer shadow-md ${
+                mode === 'departure'
+                  ? 'bg-orange-600 hover:bg-orange-500 shadow-orange-600/30 ring-2 ring-orange-400/40'
+                  : 'bg-emerald-600 hover:bg-emerald-500 shadow-emerald-600/30 ring-2 ring-emerald-400/40'
+              }`}
               disabled={scanning || saving}
               onClick={() => lookupScan(manualCode)}
             >
-              {scanning ? 'Looking up…' : 'Look up student'}
+              {scanning
+                ? 'Looking up…'
+                : mode === 'departure'
+                ? 'Scan / Look Up for Student Sign Out'
+                : 'Scan / Look Up for Student Check In'}
             </button>
 
             {onForgotId && (
@@ -667,7 +748,11 @@ export default function StudentIdScanPanel({
                   className="w-full py-2.5 px-3 rounded-xl border border-amber-200 bg-amber-50 hover:bg-amber-100 text-amber-900 font-bold text-xs flex items-center justify-center gap-2 transition-all cursor-pointer shadow-2xs"
                 >
                   <KeyRound size={15} className="text-amber-600 shrink-0" />
-                  <span>Student forgot ID card? Search &amp; Check-in Manually</span>
+                  <span>
+                    {mode === 'departure'
+                      ? 'Student forgot ID card? Search & Sign Out Manually'
+                      : 'Student forgot ID card? Search & Check In Manually'}
+                  </span>
                 </button>
               </div>
             )}

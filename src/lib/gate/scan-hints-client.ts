@@ -45,11 +45,14 @@ export function isActionBlocked(
     };
   }
   if (mode === 'departure') {
-    if (!signedIn) {
-      return { blocked: true, message: isStaff ? 'Must sign in first' : 'Must check in first' };
-    }
     if (signedOut) {
       return { blocked: true, message: isStaff ? 'Already signed out today' : 'Already checked out today' };
+    }
+    if (!signedIn) {
+      return {
+        blocked: false,
+        message: isStaff ? 'Notice: No morning clock-in recorded today' : 'Notice: No morning check-in recorded today',
+      };
     }
   }
   return { blocked: false, message: null };

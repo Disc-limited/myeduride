@@ -2,7 +2,7 @@
 'use client';
 
 import { useEffect, useRef, useState } from 'react';
-import { Camera, ScanLine } from 'lucide-react';
+import { Camera, ScanLine, UserCheck, LogOut } from 'lucide-react';
 import { toast } from 'sonner';
 import StudentAvatar from '@/components/shared/StudentAvatar';
 import TodayScanStatusBanner from '@/components/gate/TodayScanStatusBanner';
@@ -21,6 +21,13 @@ export default function StaffIdScanPanel({
   mode = 'arrival',
   onModeChange = () => {},
   onSuccess = () => {},
+  hideModeSwitcher = false,
+}: {
+  schoolId?: string;
+  mode?: string;
+  onModeChange?: (mode: string) => void;
+  onSuccess?: () => void;
+  hideModeSwitcher?: boolean;
 }) {
   const [manualCode, setManualCode] = useState('');
   const [scanned, setScanned] = useState(null);
@@ -318,6 +325,34 @@ export default function StaffIdScanPanel({
 
   return (
     <div className="space-y-4">
+      {/* Mode Switcher Tabs */}
+      {!hideModeSwitcher && (
+        <div className="flex gap-2 p-1.5 bg-slate-100 rounded-2xl border border-slate-200 shadow-xs">
+          <button
+            type="button"
+            onClick={() => onModeChange?.('arrival')}
+            className={`flex-1 py-2.5 px-3 rounded-xl text-xs font-black transition-all cursor-pointer flex items-center justify-center gap-1.5 ${
+              mode === 'arrival'
+                ? 'bg-blue-600 text-white shadow-md ring-2 ring-blue-500/50'
+                : 'text-slate-600 hover:text-slate-900 hover:bg-slate-200/60'
+            }`}
+          >
+            <UserCheck size={16} /> Staff Sign In (Clock In)
+          </button>
+          <button
+            type="button"
+            onClick={() => onModeChange?.('departure')}
+            className={`flex-1 py-2.5 px-3 rounded-xl text-xs font-black transition-all cursor-pointer flex items-center justify-center gap-1.5 ${
+              mode === 'departure'
+                ? 'bg-violet-700 text-white shadow-md ring-2 ring-violet-500/50'
+                : 'text-slate-600 hover:text-slate-900 hover:bg-slate-200/60'
+            }`}
+          >
+            <LogOut size={16} /> Staff Sign Out (Clock Out)
+          </button>
+        </div>
+      )}
+
       {scanned?.person && !autoConfirm && (
         <div className="card-elevated p-4 space-y-4">
           <div className="flex items-center gap-3">
@@ -339,8 +374,14 @@ export default function StaffIdScanPanel({
               {block.message}
             </p>
           )}
-          <p className="text-center text-sm font-bold py-2 rounded-xl bg-violet-50 text-violet-800">
-            {mode === 'arrival' ? 'STAFF SIGN IN (ID card)' : 'STAFF SIGN OUT (ID card)'}
+          <p
+            className={`text-center text-xs font-black py-2 rounded-xl border ${
+              mode === 'arrival'
+                ? 'bg-blue-50 text-blue-800 border-blue-200'
+                : 'bg-violet-50 text-violet-800 border-violet-200'
+            }`}
+          >
+            {mode === 'arrival' ? 'STAFF SIGN IN (CLOCK IN)' : 'STAFF SIGN OUT (CLOCK OUT)'}
           </p>
           <div className="flex gap-2">
             <button
@@ -356,18 +397,50 @@ export default function StaffIdScanPanel({
             </button>
             <button
               type="button"
-              className="btn-primary flex-1"
-              disabled={saving || block.blocked || fullyComplete}
+              className={`flex-1 py-3 px-4 rounded-xl font-black text-xs text-white transition-all cursor-pointer shadow-md ${
+                mode === 'departure'
+                  ? 'bg-violet-700 hover:bg-violet-600 shadow-violet-700/30 ring-2 ring-violet-500/50'
+                  : 'bg-blue-600 hover:bg-blue-500 shadow-blue-600/30 ring-2 ring-blue-500/50'
+              }`}
+              disabled={saving || (block.blocked && fullyComplete)}
               onClick={confirmScan}
             >
-              {saving ? 'Saving…' : fullyComplete ? 'Done for today' : 'Confirm scan'}
+              {saving ? 'Processing…' : fullyComplete ? 'Done for today' : mode === 'departure' ? 'Confirm Staff Sign Out' : 'Confirm Staff Sign In'}
             </button>
           </div>
         </div>
       )}
 
       {(!scanned || autoConfirm) && (
-        <div className="card-elevated overflow-hidden">
+        <div className="card-elevated overflow-hidden border-2 border-slate-200 shadow-lg">
+          {/* Active Station Mode Indicator Banner */}
+          <div className={`px-4 py-3 border-b flex items-center justify-between ${
+            mode === 'departure'
+              ? 'bg-gradient-to-r from-violet-700 via-purple-700 to-violet-800 text-white border-violet-600'
+              : 'bg-gradient-to-r from-blue-700 via-indigo-700 to-blue-800 text-white border-blue-600'
+          }`}>
+            <div className="flex items-center gap-3">
+              <div className="w-9 h-9 rounded-xl bg-white/20 backdrop-blur-xs flex items-center justify-center font-black shadow-inner">
+                {mode === 'departure' ? <LogOut size={18} /> : <UserCheck size={18} />}
+              </div>
+              <div>
+                <div className="flex items-center gap-2">
+                  <span className="font-black text-xs uppercase tracking-wider">
+                    {mode === 'departure' ? 'Staff Sign Out Station Active' : 'Staff Sign In Station Active'}
+                  </span>
+                  <span className="px-2 py-0.5 rounded-full text-[9px] font-black bg-white/25 uppercase tracking-wide border border-white/30">
+                    {mode === 'departure' ? 'Clock Out / Departure' : 'Clock In / Morning Sign In'}
+                  </span>
+                </div>
+                <p className="text-[11px] text-white/90 font-medium mt-0.5">
+                  {mode === 'departure'
+                    ? 'Scan staff ID badge or enter staff ID to sign out (clock out) and record departure.'
+                    : 'Scan staff ID badge or enter staff ID to sign in (clock in) and record morning attendance.'}
+                </p>
+              </div>
+            </div>
+          </div>
+
           <div className="relative aspect-[4/3] bg-slate-900">
             <video ref={videoRef} className="w-full h-full object-cover" playsInline muted autoPlay />
             {cameraError && (
@@ -419,22 +492,39 @@ export default function StaffIdScanPanel({
               </button>
             </div>
 
-            <p className="text-xs text-slate-500 flex items-center gap-1">
-              <ScanLine size={14} /> Scan staff ID QR — one sign-in and one sign-out per day
+            <p className="text-xs text-slate-600 flex items-center gap-1.5 font-medium">
+              <ScanLine size={15} className={mode === 'departure' ? 'text-violet-600' : 'text-blue-600'} />
+              {mode === 'departure'
+                ? 'Scan barcode or enter staff ID number to record staff sign out (clock out)'
+                : 'Scan barcode or enter staff ID number to record staff sign in (clock in)'}
             </p>
             <input
               className="input font-mono"
-              placeholder="Or type staff ID number"
+              placeholder={mode === 'departure' ? "Enter Staff ID number to Sign Out..." : "Enter Staff ID number to Sign In..."}
               value={manualCode}
               onChange={(e) => setManualCode(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter') {
+                  e.preventDefault();
+                  lookupScan(manualCode);
+                }
+              }}
             />
             <button
               type="button"
-              className="btn-primary w-full"
+              className={`w-full py-3 px-4 rounded-xl font-black text-xs text-white transition-all cursor-pointer shadow-md ${
+                mode === 'departure'
+                  ? 'bg-violet-700 hover:bg-violet-600 shadow-violet-700/30 ring-2 ring-violet-500/40'
+                  : 'bg-blue-600 hover:bg-blue-500 shadow-blue-600/30 ring-2 ring-blue-400/40'
+              }`}
               disabled={scanning || saving}
               onClick={() => lookupScan(manualCode)}
             >
-              {scanning ? 'Looking up…' : 'Look up staff ID'}
+              {scanning
+                ? 'Looking up…'
+                : mode === 'departure'
+                ? 'Scan / Look Up for Staff Sign Out'
+                : 'Scan / Look Up for Staff Sign In'}
             </button>
           </div>
         </div>
