@@ -5,12 +5,13 @@ const config: CapacitorConfig = {
   appName: 'MyEduRide',
   webDir: 'public',
   server: {
-    // Over USB cable with adb reverse, http://localhost:3000 connects directly to your computer dev server
-    url: process.env.CAPACITOR_SERVER_URL || 'https://myeduride.com',
+    // Live Cloud Server URL (updates automatically on git push)
+    url: process.env.CAPACITOR_SERVER_URL || 'https://www.myeduride.com',
     cleartext: true,
     allowNavigation: [
       'myeduride.com',
       '*.myeduride.com',
+      'www.myeduride.com',
       'localhost',
       'localhost:*',
       '127.0.0.1:*',

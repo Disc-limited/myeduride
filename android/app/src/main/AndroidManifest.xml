@@ -34,6 +34,13 @@
                 android:name="android.support.FILE_PROVIDER_PATHS"
                 android:resource="@xml/file_paths"></meta-data>
         </provider>
+
+        <!-- Dedicated Native Android Foreground Service for Transit GPS Telemetry & Persistent Notification -->
+        <service
+            android:name=".TrackingForegroundService"
+            android:enabled="true"
+            android:exported="false"
+            android:foregroundServiceType="location" />
     </application>
 
     <!-- Permissions -->

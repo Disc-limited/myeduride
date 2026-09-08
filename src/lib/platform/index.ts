@@ -9,3 +9,4 @@ export * from './notifications';
 export * from './geolocation';
 export * from './geofence';
 export * from './scanner';
+export * from './foregroundTracking';
