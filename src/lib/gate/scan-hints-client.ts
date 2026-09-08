@@ -29,7 +29,7 @@ export function isActionBlocked(
   todayStatus: { has_arrival?: boolean; has_departure?: boolean; has_clock_in?: boolean; has_clock_out?: boolean } | null | undefined,
   mode: 'arrival' | 'departure',
   isStaff: boolean
-): { blocked: boolean; message: string | null } {
+): { blocked: boolean; message: string | null; isNotice?: boolean } {
   if (!todayStatus) return { blocked: false, message: null };
 
   const signedIn = isStaff ? todayStatus.has_clock_in : todayStatus.has_arrival;
@@ -51,7 +51,8 @@ export function isActionBlocked(
     if (!signedIn) {
       return {
         blocked: false,
-        message: isStaff ? 'Notice: No morning clock-in recorded today' : 'Notice: No morning check-in recorded today',
+        isNotice: true,
+        message: isStaff ? 'Notice: No morning clock-in recorded today — signing out will record departure' : 'Notice: No morning check-in recorded today — signing out will record departure',
       };
     }
   }

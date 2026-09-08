@@ -125,7 +125,7 @@ export async function POST(request: NextRequest) {
           can_check_in: checkIn.allowed,
           can_check_out: checkOut.allowed,
           already_complete: today.has_arrival && today.has_departure,
-          suggested_mode: checkIn.allowed ? 'arrival' : checkOut.allowed ? 'departure' : null,
+          suggested_mode: today.has_arrival && !today.has_departure ? 'departure' : null,
           message: today.has_arrival && today.has_departure
             ? 'Already checked in and out today'
             : today.has_arrival
@@ -162,7 +162,7 @@ export async function POST(request: NextRequest) {
           can_check_in: checkIn.allowed,
           can_check_out: checkOut.allowed,
           already_complete: today.has_clock_in && today.has_clock_out,
-          suggested_mode: checkIn.allowed ? 'arrival' : checkOut.allowed ? 'departure' : null,
+          suggested_mode: today.has_clock_in && !today.has_clock_out ? 'departure' : null,
           message: today.has_clock_in && today.has_clock_out
             ? 'Already signed in and out today'
             : today.has_clock_in

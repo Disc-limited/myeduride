@@ -1715,7 +1715,7 @@ export default function GateOfficerDashboard() {
 
             {scanType === 'student' ? (
               <StudentIdScanPanel
-                key={`modal-student-${scanMode}`}
+                key="modal-student"
                 schoolId={schoolId}
                 mode={scanMode}
                 onModeChange={(m) => setScanMode(m as 'arrival' | 'departure')}
@@ -1731,7 +1731,7 @@ export default function GateOfficerDashboard() {
               />
             ) : (
               <StaffIdScanPanel
-                key={`modal-staff-${scanMode}`}
+                key="modal-staff"
                 schoolId={schoolId}
                 mode={scanMode}
                 onModeChange={(m) => setScanMode(m as 'arrival' | 'departure')}

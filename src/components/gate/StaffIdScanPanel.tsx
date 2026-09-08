@@ -34,7 +34,7 @@ export default function StaffIdScanPanel({
   const [saving, setSaving] = useState(false);
   const [scanning, setScanning] = useState(false);
   const [facingMode, setFacingMode] = useState('environment');
-  const [autoConfirm, setAutoConfirm] = useState(false);
+  const [autoConfirm, setAutoConfirm] = useState(true);
   const videoRef = useRef(null);
   const streamRef = useRef(null);
   const scanIntervalRef = useRef(null);
@@ -265,7 +265,10 @@ export default function StaffIdScanPanel({
       toast.success(
         `${scannedData.person.name} — ${mode === 'arrival' ? 'signed in' : 'signed out'} (Auto-Confirm)`
       );
+      setScanned(null);
+      setManualCode('');
       onSuccess?.();
+      startCamera();
     } catch (e) {
       toast.error(e.message || 'Auto-confirm failed');
     } finally {
@@ -274,7 +277,15 @@ export default function StaffIdScanPanel({
   };
 
   const confirmScan = async () => {
-    if (!scanned?.person || saving || block.blocked || fullyComplete) return;
+    if (!scanned?.person || saving) return;
+    if (fullyComplete) {
+      toast.info(`${scanned.person.name} has already signed in and out today.`);
+      return;
+    }
+    if (block.blocked) {
+      toast.error(block.message || 'This action is blocked for today.');
+      return;
+    }
 
     setSaving(true);
     try {
@@ -370,7 +381,11 @@ export default function StaffIdScanPanel({
           </div>
           <TodayScanStatusBanner todayStatus={scanned.today_status} isStaff />
           {block.message && (
-            <p className="text-sm font-semibold text-red-700 bg-red-50 border border-red-100 rounded-xl px-3 py-2 text-center">
+            <p className={`text-sm font-semibold rounded-xl px-3 py-2 text-center border ${
+              block.isNotice
+                ? 'text-amber-800 bg-amber-50 border-amber-200'
+                : 'text-red-700 bg-red-50 border-red-100'
+            }`}>
               {block.message}
             </p>
           )}

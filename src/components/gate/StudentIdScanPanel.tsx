@@ -50,7 +50,7 @@ export default function StudentIdScanPanel({
   const [scanning, setScanning] = useState(false);
   const [facingMode, setFacingMode] = useState('environment');
   const [releaseFromQueue, setReleaseFromQueue] = useState(fromReadyQueue);
-  const [autoConfirm, setAutoConfirm] = useState(false);
+  const [autoConfirm, setAutoConfirm] = useState(true);
   const [cameraError, setCameraError] = useState(false);
   const videoRef = useRef(null);
   const streamRef = useRef(null);
@@ -325,7 +325,11 @@ export default function StudentIdScanPanel({
       toast.success(
         `${scannedData.person.name} — ${mode === 'arrival' ? 'checked in' : 'released'} (Auto-Confirm)`
       );
+      setScanned(null);
+      setManualCode('');
+      setReleaseFromQueue(false);
       onSuccess?.();
+      startCamera();
     } catch (e) {
       toast.error(e.message || 'Auto-confirm failed');
     } finally {
@@ -334,7 +338,15 @@ export default function StudentIdScanPanel({
   };
 
   const confirmScan = async () => {
-    if (!scanned?.person || saving || block.blocked || fullyComplete) return;
+    if (!scanned?.person || saving) return;
+    if (fullyComplete) {
+      toast.info(`${scanned.person.name} has already checked in and out today.`);
+      return;
+    }
+    if (block.blocked) {
+      toast.error(block.message || 'This action is blocked for today.');
+      return;
+    }
 
     setSaving(true);
     try {
@@ -560,7 +572,11 @@ export default function StudentIdScanPanel({
           )}
           <TodayScanStatusBanner todayStatus={scanned.today_status} />
           {block.message && (
-            <p className="text-sm font-semibold text-red-700 bg-red-50 border border-red-100 rounded-xl px-3 py-2 text-center">
+            <p className={`text-sm font-semibold rounded-xl px-3 py-2 text-center border ${
+              block.isNotice
+                ? 'text-amber-800 bg-amber-50 border-amber-200'
+                : 'text-red-700 bg-red-50 border-red-100'
+            }`}>
               {block.message}
             </p>
           )}

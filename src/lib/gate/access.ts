@@ -1,7 +1,7 @@
 import type { AppSession } from '@/lib/session';
 import { sessionHasRole } from '@/lib/session';
 
-const GATE_ROLES = ['gate_officer', 'school_admin'] as const;
+const GATE_ROLES = ['gate_officer', 'gate_manager', 'security_officer', 'school_admin'] as const;
 
 /** Gate scan, accept, and dashboard access for a school. */
 export function canAccessGateOperations(session: AppSession, schoolId: string): boolean {

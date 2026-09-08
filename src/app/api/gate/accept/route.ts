@@ -69,12 +69,28 @@ export async function POST(request: NextRequest) {
     );
 
     // Staff clock-in/out
-    if (person_type === 'staff' && staff_profile_id && user_id) {
-      const { data: profile } = await supabase
-        .from('teacher_profiles')
-        .select('school_id, user_id')
-        .eq('id', staff_profile_id)
-        .single();
+    if (person_type === 'staff' && (staff_profile_id || user_id)) {
+      let profile: { id: string; school_id: string; user_id: string } | null = null;
+
+      if (staff_profile_id) {
+        const { data: p } = await supabase
+          .from('teacher_profiles')
+          .select('id, school_id, user_id')
+          .eq('id', staff_profile_id)
+          .maybeSingle();
+        profile = p;
+      }
+
+      if (!profile && user_id) {
+        const targetSid = bodySchoolId || (session as any).school_id;
+        let query = supabase
+          .from('teacher_profiles')
+          .select('id, school_id, user_id')
+          .eq('user_id', user_id);
+        if (targetSid) query = query.eq('school_id', targetSid);
+        const { data: p } = await query.limit(1).maybeSingle();
+        profile = p;
+      }
 
       const schoolId = bodySchoolId || profile?.school_id;
       if (!schoolId) {
@@ -99,12 +115,13 @@ export async function POST(request: NextRequest) {
         }
       }
 
-      if (!profile || profile.user_id !== user_id || profile.school_id !== schoolId) {
-        return NextResponse.json({ error: 'Invalid staff profile for this school' }, { status: 403 });
+      const effectiveUserId = user_id || profile?.user_id;
+      if (!effectiveUserId) {
+        return NextResponse.json({ error: 'Staff user_id required' }, { status: 400 });
       }
 
       const staffType = type === 'departure' ? 'clock_out' : 'clock_in';
-      const staffToday = await getStaffTodayStatus(supabase, schoolId, user_id);
+      const staffToday = await getStaffTodayStatus(supabase, schoolId, effectiveUserId);
       const gateAction = type === 'departure' ? 'departure' : 'arrival';
       const validation = validateStaffGateAction(staffToday, gateAction);
       if (!validation.allowed) {
@@ -119,12 +136,20 @@ export async function POST(request: NextRequest) {
       const staffMinutesLate =
         staffType === 'clock_in' ? minutesLateAtTimestamp(nowIso, lateThreshold) : null;
 
+      // Safe DB enum mapping for staff_attendance (CHECK verification_method IN ('face_recognition', 'id_card_scan', 'manual'))
+      const ALLOWED_STAFF_METHODS = ['face_recognition', 'id_card_scan', 'manual'];
+      const dbStaffMethod = ALLOWED_STAFF_METHODS.includes(verification_method)
+        ? verification_method
+        : String(verification_method || '').toLowerCase().includes('card') || String(verification_method || '').toLowerCase().includes('scan')
+        ? 'id_card_scan'
+        : 'manual';
+
       const staffPayload: Record<string, unknown> = {
-        user_id,
+        user_id: effectiveUserId,
         school_id: schoolId,
         gate_session_id: gate_session_id || null,
         type: staffType,
-        verification_method: verification_method || 'id_card_scan',
+        verification_method: dbStaffMethod,
         verified_by_user_id: verifiedBy,
         timestamp: nowIso,
         record_source: isAdminScan ? 'admin' : 'gate',
@@ -140,11 +165,11 @@ export async function POST(request: NextRequest) {
         const legacy = await supabase
           .from('staff_attendance')
           .insert({
-            user_id,
+            user_id: effectiveUserId,
             school_id: schoolId,
             gate_session_id: gate_session_id || null,
             type: staffType,
-            verification_method: verification_method || 'id_card_scan',
+            verification_method: dbStaffMethod,
             verified_by_user_id: verifiedBy,
             timestamp: nowIso,
           })
@@ -162,7 +187,7 @@ export async function POST(request: NextRequest) {
       await writeAuditLog(supabase, {
         school_id: schoolId,
         actor_user_id: session.user_id,
-        target_user_id: user_id,
+        target_user_id: effectiveUserId,
         action: `gate_staff_${staffType}`,
         entity_type: 'staff_attendance',
         entity_id: data?.id,
@@ -291,6 +316,14 @@ export async function POST(request: NextRequest) {
       }
     }
 
+    // Safe DB enum mapping for attendance_records (CHECK verification_method IN ('face_recognition', 'id_card_scan', 'manual', 'teacher_manual'))
+    const ALLOWED_STUDENT_METHODS = ['face_recognition', 'id_card_scan', 'manual', 'teacher_manual'];
+    const dbStudentMethod = ALLOWED_STUDENT_METHODS.includes(verification_method)
+      ? verification_method
+      : String(verification_method || '').toLowerCase().includes('card') || String(verification_method || '').toLowerCase().includes('scan')
+      ? 'id_card_scan'
+      : 'manual';
+
     const { data, error } = await supabase
       .from('attendance_records')
       .insert({
@@ -298,7 +331,7 @@ export async function POST(request: NextRequest) {
         school_id: schoolId,
         gate_session_id: gate_session_id || null,
         type,
-        verification_method: verification_method || 'id_card_scan',
+        verification_method: dbStudentMethod,
         verified_by_user_id: verifiedBy,
         status: type === 'arrival' ? (isLate ? 'late' : 'on_time') : 'on_time',
         source: 'gate',
