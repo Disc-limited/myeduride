@@ -6,7 +6,7 @@ const config: CapacitorConfig = {
   webDir: 'public',
   server: {
     // Over USB cable with adb reverse, http://localhost:3000 connects directly to your computer dev server
-    url: process.env.CAPACITOR_SERVER_URL || 'http://localhost:3000',
+    url: process.env.CAPACITOR_SERVER_URL || 'https://myeduride.com',
     cleartext: true,
     allowNavigation: [
       'myeduride.com',
