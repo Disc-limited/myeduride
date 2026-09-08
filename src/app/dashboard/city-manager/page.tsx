@@ -45,6 +45,7 @@ import {
   ArrowRight,
   Archive,
   Trash2,
+  ClipboardList,
 } from 'lucide-react';
 import { toast } from 'sonner';
 import StudentAvatar from '@/components/shared/StudentAvatar';
@@ -331,12 +332,12 @@ function CityManagerDashboardContent() {
 
       {/* Top Tab Bar: Navigation between Command Overview & Tasks & Approvals */}
       <div className="flex flex-wrap items-center justify-between gap-3 bg-[#081729] p-2.5 rounded-2xl border border-slate-800 shadow-md">
-        <div className="flex items-center gap-2">
+        <div className="flex flex-wrap items-center gap-2">
           <button
             type="button"
             onClick={() => setActiveSection('dashboard')}
             className={`px-4 py-2 rounded-xl text-xs font-extrabold flex items-center gap-2 transition-all ${
-              activeSection !== 'tasks-approvals'
+              activeSection === 'dashboard' || (!['tasks-approvals', 'assignments'].includes(activeSection))
                 ? 'bg-brand-green text-white shadow-lg shadow-emerald-600/30'
                 : 'bg-slate-900 text-slate-400 hover:bg-slate-800 hover:text-white border border-slate-800'
             }`}
@@ -355,10 +356,23 @@ function CityManagerDashboardContent() {
             }`}
           >
             <CheckSquare className="w-4 h-4" />
-            <span>Tasks & Approvals (Escort Applications)</span>
+            <span>Tasks &amp; Approvals (Escort Applications)</span>
             <span className="px-2 py-0.5 rounded-full bg-amber-400 text-slate-950 font-black text-[10px]">
               {pendingCount}
             </span>
+          </button>
+
+          <button
+            type="button"
+            onClick={() => setActiveSection('assignments')}
+            className={`px-4 py-2 rounded-xl text-xs font-extrabold flex items-center gap-2 transition-all ${
+              activeSection === 'assignments'
+                ? 'bg-brand-green text-white shadow-lg shadow-emerald-600/30'
+                : 'bg-slate-900 text-slate-400 hover:bg-slate-800 hover:text-white border border-slate-800'
+            }`}
+          >
+            <ClipboardList className="w-4 h-4" />
+            <span>Operations &amp; Escort Assignments</span>
           </button>
         </div>
 

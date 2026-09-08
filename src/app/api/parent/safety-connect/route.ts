@@ -104,28 +104,90 @@ export async function GET(request: NextRequest) {
 
     // 3. Pillar 3: Query real active transport bookings
     let activeChildBookings: any[] = [];
-    if (session.user_id) {
-      const { data: bookings } = await supabase
-        .from('transport_bookings')
-        .select('*')
-        .eq('parent_user_id', session.user_id)
-        .order('created_at', { ascending: false });
-
-      if (bookings) {
-        activeChildBookings = bookings.map((b) => ({
-          booking_id: b.id,
-          child_id: b.student_id,
-          child_name: 'Student',
-          parent_user_id: b.parent_user_id,
-          pickup_date: b.requested_pickup_at ? b.requested_pickup_at.split('T')[0] : 'Today',
-          pickup_time: b.requested_pickup_at ? b.requested_pickup_at.split('T')[1]?.slice(0, 5) : '07:00',
-          pickup_location: b.pickup_address || 'Designated Pickup',
-          reason: b.notes || 'School Escort Request',
-          status: b.status,
-          stage: b.status === 'completed' ? 5 : b.status === 'in_progress' ? 4 : b.status === 'assigned' ? 3 : 2,
-          stage_label: b.status === 'assigned' ? 'Escort Assigned & Dispatched' : 'Under City Manager Review',
-        }));
+    try {
+      let bookingQuery = supabase.from('transport_bookings').select('*');
+      if (childId && session.user_id) {
+        bookingQuery = bookingQuery.or(`student_id.eq.${childId},parent_user_id.eq.${session.user_id}`);
+      } else if (childId) {
+        bookingQuery = bookingQuery.eq('student_id', childId);
+      } else if (session.user_id) {
+        bookingQuery = bookingQuery.eq('parent_user_id', session.user_id);
       }
+      const { data: bookings } = await bookingQuery.order('created_at', { ascending: false }).limit(20);
+
+      if (bookings && bookings.length > 0) {
+        const bookingIds = bookings.map((b) => b.id);
+        const { data: assignments } = await supabase
+          .from('escort_assignments')
+          .select('*, escort:escort_applications(id, full_name, phone, photo, operating_area, application_data)')
+          .in('booking_id', bookingIds);
+
+        activeChildBookings = bookings.map((b) => {
+          let meta: any = {};
+          try {
+            if (b.notes && b.notes.startsWith('{')) {
+              meta = JSON.parse(b.notes);
+            }
+          } catch {
+            meta = {};
+          }
+
+          const matchedAssignment = assignments?.find((a) => a.booking_id === b.id);
+          const rawEscort = matchedAssignment?.escort;
+          const escort = Array.isArray(rawEscort) ? rawEscort[0] : rawEscort;
+
+          // Extract PIN from booking notes or assignment
+          let securityPin = null;
+          if (b.notes && typeof b.notes === 'string') {
+            const pinMatch = b.notes.match(/PIN:\s*(\d{4})/i);
+            if (pinMatch) securityPin = pinMatch[1];
+          }
+          if (!securityPin && meta.security_pin) {
+            securityPin = meta.security_pin;
+          }
+
+          const distanceKm = meta.distance_km || 4.5;
+          const morningFare = meta.morning_fare || (meta.trip_type === 'afternoon' ? 0 : 1500);
+          const afternoonFare = meta.afternoon_fare || (meta.trip_type === 'morning' ? 0 : 1500);
+          const dailyFare = meta.daily_fare || (morningFare + afternoonFare);
+          const tripType = meta.trip_type || 'both';
+
+          const isConfirmed = b.status === 'assigned' || matchedAssignment?.status === 'active';
+
+          return {
+            booking_id: b.id,
+            child_id: b.student_id,
+            child_name: childRecord ? `${childRecord.first_name} ${childRecord.last_name}` : 'Student',
+            parent_user_id: b.parent_user_id,
+            source: b.source || 'school',
+            school_name: childRecord?.school?.name || 'School Campus',
+            pickup_date: b.requested_pickup_at ? b.requested_pickup_at.split('T')[0] : 'Today',
+            pickup_time: meta.pickup_time || (b.requested_pickup_at ? b.requested_pickup_at.split('T')[1]?.slice(0, 5) : '07:00'),
+            dropoff_time: meta.dropoff_time || '15:30',
+            pickup_location: b.pickup_address || 'Designated Home Doorstep',
+            destination: childRecord?.school?.name || 'School Campus',
+            distance_km: distanceKm,
+            morning_fare: morningFare,
+            afternoon_fare: afternoonFare,
+            daily_fare: dailyFare,
+            trip_type: tripType,
+            escort_id: escort?.id || null,
+            escort_name: escort?.full_name || 'MyEduRide Certified Escort',
+            escort_phone: escort?.phone || '+234 800 000 0000',
+            escort_photo: escort?.photo || null,
+            vehicle_plate: escort?.application_data?.assignedVehicle || 'Certified Escort Fleet Vehicle',
+            operating_area: escort?.operating_area || 'Metropolitan Safe Corridor',
+            security_pin: securityPin,
+            status: isConfirmed ? 'CONFIRMED' : 'PENDING_CM_REVIEW',
+            stage: isConfirmed ? 5 : 2,
+            stage_label: isConfirmed ? 'Escort Cleared & Dispatched' : 'Awaiting City Manager Clearance',
+            reason: meta.notes || b.notes || 'School Escort Assignment',
+            created_at: b.created_at,
+          };
+        });
+      }
+    } catch (bookingErr) {
+      console.warn('[safety-connect GET] booking mapping notice:', bookingErr);
     }
 
     // 4. Live E-Drive State from database `vehicle_active_sessions`

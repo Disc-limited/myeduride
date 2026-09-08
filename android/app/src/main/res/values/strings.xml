@@ -1,0 +1,7 @@
+<?xml version='1.0' encoding='utf-8'?>
+<resources>
+    <string name="app_name">MyEduRide</string>
+    <string name="title_activity_main">MyEduRide</string>
+    <string name="package_name">com.myeduride.app</string>
+    <string name="custom_url_scheme">com.myeduride.app</string>
+</resources>

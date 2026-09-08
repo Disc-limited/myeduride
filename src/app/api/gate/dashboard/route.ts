@@ -312,6 +312,7 @@ export async function GET(request: NextRequest) {
         departure_time?: string;
         arrival_status?: string;
         arrival_method?: string;
+        departure_method?: string;
       }
     > = {};
 
@@ -336,6 +337,7 @@ export async function GET(request: NextRequest) {
       } else if (rec.type === 'departure') {
         entry.has_departure = true;
         entry.departure_time = timeStr;
+        entry.departure_method = rec.verification_method;
       }
     }
 

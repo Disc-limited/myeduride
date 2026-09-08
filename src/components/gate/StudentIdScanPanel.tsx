@@ -8,6 +8,7 @@ import StudentAvatar from '@/components/shared/StudentAvatar';
 import TodayScanStatusBanner from '@/components/gate/TodayScanStatusBanner';
 import StudentPickupVerify from '@/components/pickup/StudentPickupVerify';
 import { applyScanHints, isActionBlocked } from '@/lib/gate/scan-hints-client';
+import { triggerHapticNotification } from '@/lib/platform/haptics';
 
 function splitName(fullName) {
   const parts = (fullName || '').trim().split(/\s+/).filter(Boolean);
@@ -240,6 +241,7 @@ export default function StudentIdScanPanel({
       if (data.type === 'parent') {
         stopCamera();
         setScanned(data);
+        triggerHapticNotification('SUCCESS').catch(() => {});
         toast.success(`Parent Card Verified: ${data.parent?.full_name || 'Parent'}`);
         return;
       }
@@ -248,6 +250,7 @@ export default function StudentIdScanPanel({
         throw new Error(data.error || 'Student ID not found');
       }
 
+      triggerHapticNotification('SUCCESS').catch(() => {});
       if (autoConfirm) {
         await executeAutoConfirm(data);
       } else {
@@ -256,6 +259,7 @@ export default function StudentIdScanPanel({
         setScanned(data);
       }
     } catch (e) {
+      triggerHapticNotification('ERROR').catch(() => {});
       toast.error(e.message || 'Scan failed');
       if (!scanned || autoConfirm) {
         startCamera();

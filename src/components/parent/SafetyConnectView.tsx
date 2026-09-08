@@ -295,48 +295,106 @@ export default function SafetyConnectView({
 
             {/* Active / Pending Booking Status Card */}
             {activeBooking && (
-              <div className={`bg-white p-5 rounded-3xl border shadow-2xs space-y-3 ${
+              <div className={`bg-white p-5 rounded-3xl border shadow-2xs space-y-3.5 ${
                 activeBooking.status === 'CONFIRMED' ? 'border-emerald-300' : 'border-amber-300'
               }`}>
-                <div className="flex items-center justify-between">
-                  <span className={`px-2.5 py-0.5 rounded-full font-black text-[10px] uppercase tracking-wider flex items-center gap-1 ${
-                    activeBooking.status === 'CONFIRMED' ? 'bg-emerald-100 text-emerald-900' : 'bg-amber-100 text-amber-900 animate-pulse'
-                  }`}>
-                    <CheckCircle2 size={12} /> {activeBooking.stage_label || activeBooking.status}
-                  </span>
-                  <span className="text-xs text-slate-400 font-mono">{activeBooking.booking_id}</span>
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  <div className="flex items-center gap-2">
+                    <span className={`px-2.5 py-0.5 rounded-full font-black text-[10px] uppercase tracking-wider flex items-center gap-1 ${
+                      activeBooking.status === 'CONFIRMED' ? 'bg-emerald-100 text-emerald-900 border border-emerald-300' : 'bg-amber-100 text-amber-900 border border-amber-300 animate-pulse'
+                    }`}>
+                      <CheckCircle2 size={12} /> {activeBooking.stage_label || activeBooking.status}
+                    </span>
+                    <span className="px-2 py-0.5 rounded-full bg-slate-100 text-slate-700 font-bold text-[10px] border border-slate-200">
+                      {activeBooking.source === 'school' ? `🏫 Assigned by ${activeBooking.school_name || 'School'}` : '👤 Parent Request'}
+                    </span>
+                  </div>
+                  <span className="text-xs text-slate-400 font-mono font-bold">{activeBooking.booking_id}</span>
                 </div>
 
-                <div className={`p-4 rounded-2xl border space-y-3 text-xs ${
-                  activeBooking.status === 'CONFIRMED' ? 'bg-emerald-50/60 border-emerald-100' : 'bg-amber-50/60 border-amber-100'
+                <div className={`p-4 rounded-2xl border space-y-3.5 text-xs ${
+                  activeBooking.status === 'CONFIRMED' ? 'bg-emerald-50/50 border-emerald-200' : 'bg-amber-50/50 border-amber-200'
                 }`}>
                   <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-                    <div>
-                      <h4 className="font-black text-slate-900 text-sm">{activeBooking.escort_name}</h4>
-                      {activeBooking.escort_phone && (
-                        <p className="text-slate-600 text-[11px] font-mono">{activeBooking.escort_phone} · {activeBooking.vehicle_plate}</p>
-                      )}
-                      <p className="text-[11px] text-slate-500 mt-0.5">Operating Area: <strong>{activeBooking.operating_area}</strong></p>
+                    <div className="flex items-start gap-3">
+                      <StudentAvatar
+                        photoUrl={activeBooking.escort_photo}
+                        fullName={activeBooking.escort_name}
+                        size="md"
+                        className="w-12 h-12 rounded-2xl shrink-0"
+                      />
+                      <div>
+                        <div className="flex items-center gap-2">
+                          <h4 className="font-black text-slate-900 text-sm">{activeBooking.escort_name}</h4>
+                          <span className="text-[10px] font-black text-emerald-700 bg-emerald-100 px-1.5 py-0.5 rounded">
+                            Verified Escort
+                          </span>
+                        </div>
+                        {activeBooking.escort_phone && (
+                          <p className="text-slate-600 text-[11px] font-mono mt-0.5">
+                            📞 {activeBooking.escort_phone} · 🚗 {activeBooking.vehicle_plate}
+                          </p>
+                        )}
+                        <p className="text-[11px] text-slate-500 mt-0.5">
+                          Corridor Zone: <strong>{activeBooking.operating_area}</strong>
+                        </p>
+                      </div>
                     </div>
 
                     {/* Handover Security PIN Box */}
                     {activeBooking.security_pin ? (
-                      <div className="p-3 rounded-2xl bg-slate-900 text-white text-center min-w-[140px] shadow-sm">
-                        <span className="text-[9px] font-bold uppercase text-amber-400 tracking-wider block">Handover PIN</span>
-                        <span className="text-xl font-black font-mono tracking-widest text-white">{activeBooking.security_pin}</span>
-                        <span className="text-[8px] text-slate-400 block mt-0.5">Verify with escort</span>
+                      <div className="p-3 rounded-2xl bg-slate-900 text-white text-center min-w-[150px] shadow-sm border border-slate-800">
+                        <span className="text-[9px] font-bold uppercase text-amber-400 tracking-wider block">Security Handover PIN</span>
+                        <span className="text-2xl font-black font-mono tracking-widest text-white">{activeBooking.security_pin}</span>
+                        <span className="text-[8px] text-slate-400 block mt-0.5">Verify with escort at pickup</span>
                       </div>
                     ) : (
-                      <div className="p-2.5 rounded-xl bg-amber-200/60 text-amber-900 text-center min-w-[140px] text-[10px] font-bold">
-                        PIN generated upon City Manager approval
+                      <div className="p-2.5 rounded-xl bg-amber-100 border border-amber-200 text-amber-900 text-center min-w-[150px] text-[10px] font-bold">
+                        <Clock size={14} className="mx-auto mb-1 text-amber-700" />
+                        Awaiting City Manager Approval &amp; PIN
                       </div>
                     )}
                   </div>
 
-                  <div className="grid grid-cols-2 gap-2 pt-2 border-t border-slate-200/60 text-[11px] text-slate-700">
-                    <p>Date: <strong>{activeBooking.pickup_date}</strong> at <strong>{activeBooking.pickup_time}</strong></p>
-                    <p>Pickup Stop: <strong>{activeBooking.pickup_location}</strong></p>
-                    <p className="col-span-2 text-slate-500">Reason: {activeBooking.reason}</p>
+                  {/* AUTOMATIC DISTANCE & TRIP-BY-TRIP FARE ENGINE DISPLAY */}
+                  <div className="p-3.5 rounded-2xl bg-white border border-slate-200/80 space-y-2.5">
+                    <div className="flex items-center justify-between">
+                      <span className="text-[10px] font-black uppercase text-slate-400 tracking-wider flex items-center gap-1.5">
+                        <Sparkles size={12} className="text-emerald-600" />
+                        Calculated Distance &amp; Daily Fare Breakdown
+                      </span>
+                      <span className="font-mono font-black text-xs text-emerald-800 bg-emerald-50 px-2 py-0.5 rounded-md border border-emerald-200">
+                        📏 {activeBooking.distance_km || 4.2} km
+                      </span>
+                    </div>
+
+                    <div className="grid grid-cols-3 gap-2 text-center">
+                      <div className="p-2 rounded-xl bg-slate-50 border border-slate-100">
+                        <span className="text-[10px] text-slate-500 font-bold block">Morning Trip</span>
+                        <span className="font-black text-slate-900 text-xs sm:text-sm">
+                          ₦{Number(activeBooking.morning_fare || 1000).toLocaleString()}
+                        </span>
+                      </div>
+                      <div className="p-2 rounded-xl bg-slate-50 border border-slate-100">
+                        <span className="text-[10px] text-slate-500 font-bold block">Afternoon Trip</span>
+                        <span className="font-black text-slate-900 text-xs sm:text-sm">
+                          ₦{Number(activeBooking.afternoon_fare || 1000).toLocaleString()}
+                        </span>
+                      </div>
+                      <div className="p-2 rounded-xl bg-emerald-600 text-white shadow-2xs">
+                        <span className="text-[10px] text-emerald-100 font-bold block">Daily Total</span>
+                        <span className="font-black text-white text-xs sm:text-sm">
+                          ₦{Number(activeBooking.daily_fare || 2000).toLocaleString()}
+                        </span>
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 pt-2 border-t border-slate-200/60 text-[11px] text-slate-700">
+                    <p>📍 <strong>Pickup Doorstep:</strong> {activeBooking.pickup_location}</p>
+                    <p>🏁 <strong>School Campus:</strong> {activeBooking.destination || activeBooking.school_name}</p>
+                    <p>⏰ <strong>Morning Pickup:</strong> {activeBooking.pickup_time}</p>
+                    <p>⏰ <strong>Afternoon Return:</strong> {activeBooking.dropoff_time || '03:30 PM'}</p>
                   </div>
                 </div>
               </div>

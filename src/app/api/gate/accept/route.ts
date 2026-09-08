@@ -45,6 +45,7 @@ export async function POST(request: NextRequest) {
       pickup_person_phone: bodyPickupPhone,
       from_ready_queue,
       reason: bodyReason,
+      is_override,
     } = body;
 
     const supabase = getAdminClient();
@@ -264,7 +265,13 @@ export async function POST(request: NextRequest) {
         );
       usedAdminBypass = isAuthorizedGateStaff && !from_ready_queue;
 
-      if (!isAuthorizedGateStaff && !from_ready_queue && verification_method !== 'id_card_scan' && !is_override) {
+      if (
+        !isAuthorizedGateStaff &&
+        !from_ready_queue &&
+        verification_method !== 'id_card_scan' &&
+        !is_override &&
+        verification_method !== 'id_forgotten_override'
+      ) {
         const today = todayInLagos();
         const { data: readyReq } = await supabase
           .from('dismissal_requests')
@@ -338,6 +345,13 @@ export async function POST(request: NextRequest) {
     const isOverrideArrival =
       type === 'arrival' &&
       (verification_method === 'id_forgotten_override' ||
+        Boolean(is_override) ||
+        String(verification_method || '').toLowerCase().includes('override'));
+
+    const isOverrideDeparture =
+      type === 'departure' &&
+      (verification_method === 'id_forgotten_override' ||
+        Boolean(is_override) ||
         String(verification_method || '').toLowerCase().includes('override'));
 
     await writeAuditLog(supabase, {
@@ -346,7 +360,9 @@ export async function POST(request: NextRequest) {
       student_id,
       action:
         type === 'departure'
-          ? 'gate_student_release'
+          ? isOverrideDeparture
+            ? 'gate_student_departure_override'
+            : 'gate_student_release'
           : isOverrideArrival
             ? 'gate_student_check_in_override'
             : 'gate_student_check_in',
@@ -355,7 +371,13 @@ export async function POST(request: NextRequest) {
       details: {
         status: data.status,
         verification_method,
-        reason: bodyReason || (isOverrideArrival ? 'ID card forgotten at home' : undefined),
+        reason:
+          bodyReason ||
+          (isOverrideArrival
+            ? 'ID card forgotten at home'
+            : isOverrideDeparture
+              ? 'Physical ID card misplaced or lost'
+              : undefined),
       },
     });
 
@@ -378,7 +400,7 @@ export async function POST(request: NextRequest) {
 
     const studentAction =
       type === 'departure'
-        ? usedAdminBypass
+        ? isOverrideDeparture || usedAdminBypass
           ? 'manual_override'
           : 'release'
         : isOverrideArrival
@@ -397,8 +419,14 @@ export async function POST(request: NextRequest) {
         status: data.status,
         verification_method,
         from_ready_queue: !!from_ready_queue,
-        reason: bodyReason || (isOverrideArrival ? 'ID card forgotten at home' : undefined),
-        override_type: isOverrideArrival ? 'arrival' : undefined,
+        reason:
+          bodyReason ||
+          (isOverrideArrival
+            ? 'ID card forgotten at home'
+            : isOverrideDeparture
+              ? 'Physical ID card misplaced or lost'
+              : undefined),
+        override_type: isOverrideArrival ? 'arrival' : isOverrideDeparture ? 'departure' : undefined,
       },
     });
 

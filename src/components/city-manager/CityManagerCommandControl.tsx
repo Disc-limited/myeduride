@@ -534,16 +534,18 @@ export function CityManagerCommandControl({
         {/* Stat 5: Students En Route */}
         <div
           onClick={() => switchTab('assignments')}
-          className="bg-[#0b1c30] rounded-2xl border border-slate-800 p-3 flex flex-col justify-between cursor-pointer hover:border-slate-700"
+          className={`cursor-pointer rounded-2xl border p-3 flex flex-col justify-between transition-all ${
+            currentTab === 'assignments' ? 'bg-[#0e2747] border-indigo-500 ring-1 ring-indigo-500' : 'bg-[#0b1c30] border-slate-800 hover:border-slate-700'
+          }`}
         >
           <div className="flex items-center justify-between">
-            <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Parent Bookings</span>
+            <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Bookings &amp; Escorts</span>
             <Users size={15} className="text-indigo-400" />
           </div>
           <div className="mt-2">
             <span className="text-xl font-black text-white">{parentRequests.length}</span>
             <span className="inline-block mt-1 px-1.5 py-0.2 rounded text-[9px] font-extrabold bg-indigo-500/20 text-indigo-300">
-              Requests
+              {parentRequests.length > 0 ? `${parentRequests.length} Active` : 'All Cleared'}
             </span>
           </div>
         </div>

@@ -2,7 +2,7 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import { ClipboardList, RefreshCw, Search, UserPlus, Sparkles, CheckCircle2, ShieldCheck, Clock, MapPin, Phone, Car, Users, ArrowRightLeft, Footprints } from 'lucide-react';
+import { ClipboardList, RefreshCw, Search, UserPlus, Sparkles, CheckCircle2, ShieldCheck, Clock, MapPin, Phone, Car, Users, ArrowRightLeft, Footprints, AlertTriangle } from 'lucide-react';
 import { toast } from 'sonner';
 import StudentAvatar from '@/components/shared/StudentAvatar';
 
@@ -119,8 +119,8 @@ export function CityManagerOperationsPanel() {
     await load();
   };
 
-  const handleApproveParentBooking = async (bookingId: string) => {
-    const escortId = selectedEscortsForParentBookings[bookingId] || (data.escorts.length > 0 ? data.escorts[0].id : null);
+  const handleApproveParentBooking = async (bookingId: string, customEscortId?: string) => {
+    const escortId = customEscortId || selectedEscortsForParentBookings[bookingId] || (data.escorts.length > 0 ? data.escorts[0].id : null);
     if (!escortId) {
       toast.error('No approved escort available to assign. Please ensure an approved escort exists in the database.');
       return;
@@ -134,12 +134,12 @@ export function CityManagerOperationsPanel() {
           action: 'approve_parent_booking',
           booking_id: bookingId,
           escort_id: escortId,
-          notes: 'Approved and assigned by City Manager for verified area escort pickup.',
+          notes: 'Approved and cleared by City Manager for verified route corridor transit.',
         }),
       });
       const d = await r.json();
       if (!r.ok) throw new Error(d.error || 'Approval failed');
-      toast.success(d.message || 'Parent booking approved and assigned!');
+      toast.success(d.message || 'Escort assignment cleared! Parents, school, and escort notified.');
       await load();
     } catch (err: any) {
       toast.error(err.message || 'Approval failed');
@@ -478,23 +478,25 @@ export function CityManagerOperationsPanel() {
       </section>
 
       {/* ========================================================================= */}
-      {/* PARENT RIDE REQUESTS REVIEW QUEUE (SCHOOL ESCORT UNAVAILABLE)             */}
+      {/* STUDENT ESCORT REQUESTS & CORRIDOR BOOKINGS REVIEW QUEUE                  */}
       {/* ========================================================================= */}
       <section className="rounded-3xl border border-amber-500/30 bg-[#0b1c30] p-6 shadow-md space-y-4">
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 pb-3 border-b border-slate-800">
-          <div className="flex items-center gap-2">
-            <Sparkles size={18} className="text-amber-400" />
+          <div className="flex items-center gap-2.5">
+            <div className="w-10 h-10 rounded-2xl bg-amber-500/20 border border-amber-400/30 flex items-center justify-center text-amber-300">
+              <Sparkles size={20} />
+            </div>
             <div>
               <h4 className="text-base font-black text-white">
-                Parent Ride Requests Queue ({parentRequests.length})
+                Student Escort Requests &amp; Corridor Bookings Queue ({parentRequests.length})
               </h4>
               <p className="text-xs text-slate-400">
-                Process: <strong>Parent Booking → City Manager Review → Escort Assignment → Approval → Parent Notification</strong>
+                School Assigned Students &amp; Parent Requests · Automatic Doorstep Distance &amp; Trip Fare Engine
               </p>
             </div>
           </div>
           <span className="px-3 py-1 rounded-full bg-amber-500/20 text-amber-300 font-black text-[10px] uppercase border border-amber-400/30">
-            Area Escort Matching Active
+            City Manager Approval Active
           </span>
         </div>
 
@@ -502,81 +504,149 @@ export function CityManagerOperationsPanel() {
           {parentRequests.map((req) => (
             <div
               key={req.booking_id}
-              className="p-4 rounded-2xl bg-slate-900/90 border border-slate-800 flex flex-col lg:flex-row lg:items-center justify-between gap-4 text-xs text-slate-300"
+              className="p-5 rounded-2xl bg-slate-900/90 border border-slate-800 flex flex-col xl:flex-row xl:items-center justify-between gap-4 text-xs text-slate-300 shadow-sm"
             >
-              <div className="space-y-1.5 min-w-[280px]">
-                <div className="flex items-center gap-2">
+              {/* STUDENT & ORIGIN INFO */}
+              <div className="space-y-1.5 min-w-[260px]">
+                <div className="flex flex-wrap items-center gap-2">
                   <span className="px-2 py-0.5 rounded-md bg-amber-400/20 text-amber-300 font-bold text-[10px] font-mono">
                     {req.booking_id}
                   </span>
-                  <p className="text-sm font-black text-white">{req.child_name}</p>
+                  <span
+                    className={`px-2 py-0.5 rounded-md text-[10px] font-bold border ${
+                      req.source === 'school'
+                        ? 'bg-emerald-500/20 text-emerald-300 border-emerald-500/30'
+                        : 'bg-blue-500/20 text-blue-300 border-blue-500/30'
+                    }`}
+                  >
+                    {req.source === 'school' ? '🏫 School Assigned' : '👤 Parent Request'}
+                  </span>
                 </div>
+                <p className="text-sm font-black text-white">{req.child_name}</p>
                 <p className="text-[11px] text-slate-400">
-                  School: <strong className="text-slate-200">{req.school_name || 'Designated School'}</strong>
+                  School: <strong className="text-slate-200">{req.school_name || 'Designated Campus'}</strong>
                 </p>
-                <p className="text-[11px] text-slate-400">
-                  📍 Area / Pickup Stop: <strong className="text-slate-200">{req.pickup_location}</strong>
+                <p className="text-[11px] text-slate-400 truncate max-w-sm">
+                  📍 Doorstep Stop: <strong className="text-slate-200">{req.pickup_location}</strong>
                 </p>
-                <p className="text-[10px] text-amber-300">
-                  Reason: <strong>{req.reason}</strong>
+                <p className="text-[10px] text-slate-400">
+                  Time: <strong>{req.pickup_date}</strong> at <strong>{req.pickup_time}</strong>
                 </p>
               </div>
 
-              <div className="min-w-[220px] space-y-1 text-[11px]">
-                <p className="text-slate-400">
-                  Parent: <strong className="text-white">{req.parent_name || 'Parent'}</strong> ({req.parent_phone})
-                </p>
-                <p className="text-slate-400">
-                  Requested Date: <strong className="text-white">{req.pickup_date}</strong> at <strong className="text-white">{req.pickup_time}</strong>
-                </p>
-                <p className="text-emerald-400 font-bold">
-                  Operating Zone: {req.operating_area}
-                </p>
+              {/* DISTANCE & FARE BREAKDOWN DECK */}
+              <div className="p-3 rounded-xl bg-slate-950/80 border border-slate-800 space-y-2 min-w-[240px]">
+                <div className="flex items-center justify-between text-[11px]">
+                  <span className="text-slate-400 font-bold">Doorstep Distance:</span>
+                  <span className="font-mono font-black text-emerald-400">
+                    📏 {req.distance_km || 4.2} km
+                  </span>
+                </div>
+                <div className="grid grid-cols-2 gap-1.5 text-[10px]">
+                  <div className="bg-slate-900 p-1.5 rounded-lg text-center">
+                    <span className="text-slate-500 block">Morning Trip</span>
+                    <span className="font-bold text-slate-200">₦{Number(req.morning_fare || 1000).toLocaleString()}</span>
+                  </div>
+                  <div className="bg-slate-900 p-1.5 rounded-lg text-center">
+                    <span className="text-slate-500 block">Afternoon Trip</span>
+                    <span className="font-bold text-slate-200">₦{Number(req.afternoon_fare || 1000).toLocaleString()}</span>
+                  </div>
+                </div>
+                <div className="flex items-center justify-between text-[11px] pt-1 border-t border-slate-800">
+                  <span className="text-emerald-300 font-bold">Daily Total:</span>
+                  <span className="font-black text-emerald-400 text-xs">
+                    ₦{Number(req.daily_fare || 2000).toLocaleString()}
+                  </span>
+                </div>
               </div>
 
-              {/* Escort Selector & Approval Actions */}
+              {/* ESCORT ASSIGNMENT & ACTION BUTTONS */}
               <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2.5 min-w-[320px]">
                 {req.status === 'CONFIRMED' ? (
-                  <div className="p-3 rounded-xl bg-emerald-500/10 border border-emerald-500/30 text-emerald-300 text-xs space-y-1 w-full">
+                  <div className="p-3 rounded-xl bg-emerald-500/10 border border-emerald-500/30 text-emerald-300 text-xs space-y-2 w-full">
                     <div className="flex items-center justify-between font-bold">
-                      <span>✓ Assigned: {req.escort_name}</span>
-                      <span className="font-mono bg-slate-900 px-2 py-0.5 rounded text-white">PIN: {req.security_pin}</span>
+                      <span>✓ Cleared: {req.escort_name}</span>
+                      <span className="font-mono bg-slate-900 px-2 py-0.5 rounded text-amber-300 border border-amber-400/30">
+                        PIN: {req.security_pin || 'VERIFIED'}
+                      </span>
                     </div>
-                    <p className="text-[10px] text-slate-400 font-mono">{req.escort_phone} · {req.vehicle_plate}</p>
-                  </div>
-                ) : (
-                  <>
-                    <select
-                      value={selectedEscortsForParentBookings[req.booking_id] || (data.escorts[0]?.id || '')}
-                      onChange={(e) =>
-                        setSelectedEscortsForParentBookings((prev) => ({
-                          ...prev,
-                          [req.booking_id]: e.target.value,
-                        }))
-                      }
-                      className="px-3 py-2 bg-slate-950 border border-slate-700 rounded-xl text-xs font-bold text-white focus:outline-none"
-                    >
-                      {data.escorts.length === 0 ? (
-                        <option value="">No Approved Escorts in Database</option>
-                      ) : (
-                        data.escorts.map((esc: any) => (
-                          <option key={esc.id} value={esc.id}>
-                            {esc.full_name} ({esc.operating_area || 'Standard Zone'})
-                          </option>
-                        ))
-                      )}
-                    </select>
-
+                    {req.escort_phone && (
+                      <p className="text-[10px] text-slate-400 font-mono">
+                        📞 {req.escort_phone} · 🚗 {req.vehicle_plate || 'Fleet Verified'}
+                      </p>
+                    )}
                     <button
                       type="button"
-                      disabled={processingBookingId === req.booking_id}
-                      onClick={() => handleApproveParentBooking(req.booking_id)}
-                      className="px-4 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-xs cursor-pointer transition-all shadow-xs shrink-0 flex items-center justify-center gap-1.5"
+                      onClick={() => {
+                        setReassignModal({
+                          open: true,
+                          assignment: {
+                            id: req.assignment_id || req.booking_id,
+                            booking_id: req.booking_id,
+                            school_id: req.school_id,
+                            student_id: req.child_id,
+                            student: { first_name: req.child_name, last_name: '' },
+                            escort: { full_name: req.escort_name },
+                          },
+                          targetEscortId: '',
+                          notes: 'Emergency operational reassignment by City Manager',
+                        });
+                      }}
+                      className="w-full mt-1 py-1.5 rounded-lg bg-amber-500/20 hover:bg-amber-500/30 text-amber-300 font-black text-[11px] border border-amber-400/30 cursor-pointer transition-all flex items-center justify-center gap-1.5"
                     >
-                      <CheckCircle2 size={14} />
-                      {processingBookingId === req.booking_id ? 'Assigning...' : 'Assign & Approve'}
+                      <AlertTriangle size={12} />
+                      <span>Emergency Reassign Escort</span>
                     </button>
-                  </>
+                  </div>
+                ) : (
+                  <div className="flex flex-col gap-2 w-full">
+                    {req.escort_name && req.escort_name !== 'Awaiting City Manager Assignment' && (
+                      <p className="text-[10px] text-emerald-400 font-bold">
+                        School Nominated: {req.escort_name}
+                      </p>
+                    )}
+                    <div className="flex items-center gap-2">
+                      <select
+                        value={
+                          selectedEscortsForParentBookings[req.booking_id] ||
+                          req.escort_id ||
+                          (data.escorts[0]?.id || '')
+                        }
+                        onChange={(e) =>
+                          setSelectedEscortsForParentBookings((prev) => ({
+                            ...prev,
+                            [req.booking_id]: e.target.value,
+                          }))
+                        }
+                        className="px-3 py-2 bg-slate-950 border border-slate-700 rounded-xl text-xs font-bold text-white focus:outline-none flex-1"
+                      >
+                        {data.escorts.length === 0 ? (
+                          <option value="">No Approved Escorts in Database</option>
+                        ) : (
+                          data.escorts.map((esc: any) => (
+                            <option key={esc.id} value={esc.id}>
+                              {esc.full_name} ({esc.operating_area || 'Standard Zone'})
+                            </option>
+                          ))
+                        )}
+                      </select>
+
+                      <button
+                        type="button"
+                        disabled={processingBookingId === req.booking_id}
+                        onClick={() =>
+                          handleApproveParentBooking(
+                            req.booking_id,
+                            selectedEscortsForParentBookings[req.booking_id] || req.escort_id
+                          )
+                        }
+                        className="px-4 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white font-black text-xs cursor-pointer transition-all shadow-xs shrink-0 flex items-center justify-center gap-1.5"
+                      >
+                        <CheckCircle2 size={14} />
+                        <span>{processingBookingId === req.booking_id ? 'Clearing...' : 'Approve & Clear'}</span>
+                      </button>
+                    </div>
+                  </div>
                 )}
               </div>
             </div>
@@ -584,7 +654,7 @@ export function CityManagerOperationsPanel() {
 
           {parentRequests.length === 0 && (
             <div className="p-8 text-center text-slate-400 text-xs">
-              No pending parent ride requests at this time. All requests have been reviewed and assigned.
+              No pending student escort requests at this time. All requests have been reviewed, cleared, and synchronized.
             </div>
           )}
         </div>

@@ -119,23 +119,25 @@ export default function GateOfficerDashboard() {
   const [isReleasing, setIsReleasing] = useState(false);
   const [isRegisteringVisitor, setIsRegisteringVisitor] = useState(false);
   const [isReportingIncident, setIsReportingIncident] = useState(false);
-  const [isCheckingInOverride, setIsCheckingInOverride] = useState(false);
+  const [isSubmittingOverride, setIsSubmittingOverride] = useState(false);
 
   // Selection & Filters
   const [selectedClass, setSelectedClass] = useState('all');
   const [selectedQueueIds, setSelectedQueueIds] = useState<string[]>([]);
   const [chatTab, setChatTab] = useState<'chats' | 'groups' | 'broadcast'>('chats');
 
-  // Modals & Override Check-in
+  // Modals & Override (Students Only)
   const [releaseStudent, setReleaseStudent] = useState<any | null>(null);
   const [showScanModal, setShowScanModal] = useState(false);
   const [scanType, setScanType] = useState<'student' | 'staff'>('student');
   const [scanMode, setScanMode] = useState<'arrival' | 'departure'>('arrival');
   const [showSearchModal, setShowSearchModal] = useState(false);
   const [searchModalMode, setSearchModalMode] = useState<'all' | 'checkin' | 'release'>('all');
-  const [checkInOverrideStudent, setCheckInOverrideStudent] = useState<any | null>(null);
-  const [checkInOverrideReason, setCheckInOverrideReason] = useState('ID card forgotten at home');
+  const [studentOverride, setStudentOverride] = useState<{ student: any; mode: 'arrival' | 'departure' } | null>(null);
+  const [overrideReason, setOverrideReason] = useState('ID card forgotten at home');
   const [customOverrideReason, setCustomOverrideReason] = useState('');
+  const [overrideCollectorName, setOverrideCollectorName] = useState('');
+  const [overrideCollectorPhone, setOverrideCollectorPhone] = useState('');
   const [todayAttendanceMap, setTodayAttendanceMap] = useState<
     Record<
       string,
@@ -146,6 +148,7 @@ export default function GateOfficerDashboard() {
         departure_time?: string;
         arrival_status?: string;
         arrival_method?: string;
+        departure_method?: string;
       }
     >
   >({});
@@ -501,7 +504,7 @@ export default function GateOfficerDashboard() {
                 schoolId={schoolId}
                 mode={scanMode}
                 onModeChange={(m) => {
-                  setScanMode(m);
+                  setScanMode(m as 'arrival' | 'departure');
                   setActiveNav(m === 'departure' ? 'student-signout' : 'student-scan');
                 }}
                 onSuccess={() => loadGateData()}
@@ -544,7 +547,7 @@ export default function GateOfficerDashboard() {
                 schoolId={schoolId}
                 mode={scanMode}
                 onModeChange={(m) => {
-                  setScanMode(m);
+                  setScanMode(m as 'arrival' | 'departure');
                   setActiveNav(m === 'departure' ? 'staff-signout' : 'staff-scan');
                 }}
                 onSuccess={() => loadGateData()}
@@ -1124,19 +1127,19 @@ export default function GateOfficerDashboard() {
                         <span className="text-[9px] text-emerald-600 font-bold leading-none mt-0.5">Forgot ID</span>
                       </button>
 
-                      {/* Action 8: Override Release */}
+                      {/* Action 8: Override Sign-Out (Forgot ID) */}
                       <button
                         type="button"
                         onClick={() => {
                           setSearchModalMode('release');
                           setShowSearchModal(true);
                         }}
-                        className="p-3 bg-slate-50 hover:bg-amber-50 border border-slate-200 hover:border-amber-300 rounded-xl flex flex-col items-center justify-center text-center transition-all group shadow-2xs cursor-pointer"
-                        title="Manual release override for student departure"
+                        className="p-3 bg-slate-50 hover:bg-orange-50 border border-slate-200 hover:border-orange-300 rounded-xl flex flex-col items-center justify-center text-center transition-all group shadow-2xs cursor-pointer"
+                        title="Manual sign-out override for students who forgot their physical ID card"
                       >
-                        <Lock size={22} className="text-amber-600 mb-1 group-hover:scale-110 transition-transform" />
-                        <span className="text-[11px] font-extrabold text-slate-800 leading-tight">Override Release</span>
-                        <span className="text-[9px] text-amber-600 font-bold leading-none mt-0.5">Departure</span>
+                        <RotateCcw size={22} className="text-orange-600 mb-1 group-hover:scale-110 transition-transform" />
+                        <span className="text-[11px] font-extrabold text-slate-800 leading-tight">Override Sign-Out</span>
+                        <span className="text-[9px] text-orange-600 font-bold leading-none mt-0.5">Forgot ID</span>
                       </button>
 
                       {/* Action 9: Register Visitor */}
@@ -1715,7 +1718,7 @@ export default function GateOfficerDashboard() {
                 key={`modal-student-${scanMode}`}
                 schoolId={schoolId}
                 mode={scanMode}
-                onModeChange={setScanMode}
+                onModeChange={(m) => setScanMode(m as 'arrival' | 'departure')}
                 onForgotId={() => {
                   setShowScanModal(false);
                   setSearchModalMode(scanMode === 'arrival' ? 'checkin' : 'release');
@@ -1731,7 +1734,7 @@ export default function GateOfficerDashboard() {
                 key={`modal-staff-${scanMode}`}
                 schoolId={schoolId}
                 mode={scanMode}
-                onModeChange={setScanMode}
+                onModeChange={(m) => setScanMode(m as 'arrival' | 'departure')}
                 onSuccess={() => {
                   loadGateData();
                   setShowScanModal(false);
@@ -1765,20 +1768,20 @@ export default function GateOfficerDashboard() {
               <div>
                 <h3 className="font-extrabold text-base text-slate-900 flex items-center gap-2">
                   {searchModalMode === 'checkin' && <UserCheck size={22} className="text-emerald-600" />}
-                  {searchModalMode === 'release' && <Lock size={22} className="text-amber-600" />}
+                  {searchModalMode === 'release' && <RotateCcw size={22} className="text-orange-600" />}
                   {searchModalMode === 'all' && <Search size={22} className="text-teal-600" />}
                   {searchModalMode === 'checkin'
                     ? 'Student Check-in Override'
                     : searchModalMode === 'release'
-                    ? 'Student Release Override'
+                    ? 'Student Sign-Out Override'
                     : 'Search Student Directory'}
                 </h3>
                 <p className="text-[11px] text-slate-500 font-medium">
                   {searchModalMode === 'checkin'
-                    ? 'Manual arrival check-in for students without physical ID cards'
+                    ? 'Manual arrival check-in for students who forgot or misplaced physical ID cards'
                     : searchModalMode === 'release'
-                    ? 'Manual departure release override for dismissal'
-                    : 'Find any active student, check attendance status or perform gate overrides'}
+                    ? 'Manual departure sign-out override for students who forgot or misplaced physical ID cards'
+                    : 'Find any active student, check attendance status or perform student gate overrides'}
                 </p>
               </div>
               <button
@@ -1818,11 +1821,11 @@ export default function GateOfficerDashboard() {
                 onClick={() => setSearchModalMode('release')}
                 className={`flex-1 py-1.5 rounded-lg text-center transition-all flex items-center justify-center gap-1 cursor-pointer ${
                   searchModalMode === 'release'
-                    ? 'bg-amber-600 text-white shadow-2xs font-extrabold'
-                    : 'text-slate-500 hover:text-amber-700'
+                    ? 'bg-orange-600 text-white shadow-2xs font-extrabold'
+                    : 'text-slate-500 hover:text-orange-700'
                 }`}
               >
-                <Lock size={14} /> Release Override
+                <RotateCcw size={14} /> Sign-Out (Forgot ID)
               </button>
             </div>
 
@@ -1880,7 +1883,7 @@ export default function GateOfficerDashboard() {
                           </p>
 
                           {/* Today's Attendance Status Badge */}
-                          <div className="mt-1 flex items-center gap-1">
+                          <div className="mt-1 flex items-center gap-1 flex-wrap">
                             {hasDeparture ? (
                               <span className="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded text-[9px] font-bold bg-blue-100 text-blue-800">
                                 Released {att.departure_time ? `(${att.departure_time})` : ''}
@@ -1909,15 +1912,15 @@ export default function GateOfficerDashboard() {
                       <div className="flex items-center gap-1.5 shrink-0">
                         {(searchModalMode === 'checkin' || searchModalMode === 'all') && (
                           hasArrival ? (
-                            <span className="px-2.5 py-1.5 rounded-lg bg-slate-200/70 text-slate-500 font-bold text-[11px]">
-                              ✓ Checked In
+                            <span className="px-2 py-1.5 rounded-lg bg-slate-200/70 text-slate-500 font-bold text-[11px]">
+                              ✓ In School
                             </span>
                           ) : (
                             <button
                               type="button"
                               onClick={() => {
-                                setCheckInOverrideStudent(s);
-                                setCheckInOverrideReason('ID card forgotten at home');
+                                setStudentOverride({ student: s, mode: 'arrival' });
+                                setOverrideReason('ID card forgotten at home');
                                 setCustomOverrideReason('');
                               }}
                               className="px-2.5 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs flex items-center gap-1 shadow-2xs cursor-pointer transition-all active:scale-95"
@@ -1929,17 +1932,26 @@ export default function GateOfficerDashboard() {
                         )}
 
                         {(searchModalMode === 'release' || searchModalMode === 'all') && (
-                          <button
-                            type="button"
-                            onClick={() => {
-                              setShowSearchModal(false);
-                              handleReleaseClick(s);
-                            }}
-                            className="px-2.5 py-1.5 rounded-lg bg-amber-600 hover:bg-amber-700 text-white font-bold text-xs flex items-center gap-1 shadow-2xs cursor-pointer transition-all active:scale-95"
-                            title="Override release for departure"
-                          >
-                            <Lock size={13} /> Release
-                          </button>
+                          hasDeparture ? (
+                            <span className="px-2 py-1.5 rounded-lg bg-slate-200/70 text-slate-500 font-bold text-[11px]">
+                              ✓ Signed Out
+                            </span>
+                          ) : (
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setStudentOverride({ student: s, mode: 'departure' });
+                                setOverrideReason('ID card forgotten at home');
+                                setCustomOverrideReason('');
+                                setOverrideCollectorName('');
+                                setOverrideCollectorPhone('');
+                              }}
+                              className="px-2.5 py-1.5 rounded-lg bg-orange-600 hover:bg-orange-700 text-white font-bold text-xs flex items-center gap-1 shadow-2xs cursor-pointer transition-all active:scale-95"
+                              title="Override sign-out for student who forgot ID card"
+                            >
+                              <RotateCcw size={13} /> Sign Out
+                            </button>
+                          )
                         )}
                       </div>
                     </div>
@@ -1963,24 +1975,36 @@ export default function GateOfficerDashboard() {
         </div>
       )}
 
-      {/* MODAL: CONFIRM CHECK-IN OVERRIDE (FORGOT ID CARD) */}
-      {checkInOverrideStudent && (
+      {/* MODAL: CONFIRM STUDENT OVERRIDE (FORGOT / MISPLACED ID CARD - STUDENTS ONLY) */}
+      {studentOverride && (
         <div className="fixed inset-0 z-55 bg-slate-950/75 flex items-center justify-center p-4 backdrop-blur-xs">
           <div className="bg-white rounded-2xl w-full max-w-md p-6 border border-slate-200 shadow-2xl animate-in fade-in zoom-in duration-150">
             <div className="flex items-center justify-between pb-3 border-b border-slate-100 mb-4">
               <div className="flex items-center gap-2">
-                <div className="w-9 h-9 rounded-xl bg-emerald-100 text-emerald-700 flex items-center justify-center">
+                <div
+                  className={`w-9 h-9 rounded-xl flex items-center justify-center ${
+                    studentOverride.mode === 'arrival'
+                      ? 'bg-emerald-100 text-emerald-700'
+                      : 'bg-orange-100 text-orange-700'
+                  }`}
+                >
                   <KeyRound size={20} />
                 </div>
                 <div>
-                  <h3 className="font-extrabold text-base text-slate-900">Check-in Override</h3>
-                  <p className="text-[10px] text-slate-500 font-medium">Student forgot physical ID card</p>
+                  <h3 className="font-extrabold text-base text-slate-900">
+                    {studentOverride.mode === 'arrival' ? 'Student Check-in Override' : 'Student Sign-Out Override'}
+                  </h3>
+                  <p className="text-[10px] text-slate-500 font-medium">
+                    {studentOverride.mode === 'arrival'
+                      ? 'Student forgot or misplaced physical ID card'
+                      : 'Student forgot or misplaced physical ID card for departure'}
+                  </p>
                 </div>
               </div>
               <button
                 type="button"
-                onClick={() => setCheckInOverrideStudent(null)}
-                disabled={isCheckingInOverride}
+                onClick={() => setStudentOverride(null)}
+                disabled={isSubmittingOverride}
                 className="text-slate-400 hover:text-slate-600 cursor-pointer p-1"
               >
                 <X size={20} />
@@ -1990,21 +2014,38 @@ export default function GateOfficerDashboard() {
             {/* Student Preview Box */}
             <div className="p-3.5 bg-slate-50 rounded-xl border border-slate-200 mb-4 flex items-center gap-3">
               <StudentAvatar
-                photoUrl={checkInOverrideStudent.photo_url}
-                firstName={checkInOverrideStudent.first_name}
-                lastName={checkInOverrideStudent.last_name}
+                photoUrl={studentOverride.student.photo_url}
+                firstName={studentOverride.student.first_name}
+                lastName={studentOverride.student.last_name}
                 size="md"
               />
               <div className="min-w-0">
                 <h4 className="font-extrabold text-sm text-slate-900 truncate">
-                  {checkInOverrideStudent.first_name} {checkInOverrideStudent.last_name}
+                  {studentOverride.student.first_name} {studentOverride.student.last_name}
                 </h4>
                 <p className="text-xs text-slate-600 font-medium">
-                  Class: <span className="font-bold text-slate-800">{checkInOverrideStudent.class?.name || 'No Class Assigned'}</span>
+                  Class: <span className="font-bold text-slate-800">{studentOverride.student.class?.name || 'No Class Assigned'}</span>
                 </p>
                 <p className="text-[11px] text-slate-500 font-mono">
-                  S/ID: {checkInOverrideStudent.student_id_number || 'N/A'}
+                  S/ID: {studentOverride.student.student_id_number || 'N/A'}
                 </p>
+                <div className="mt-1">
+                  {studentOverride.mode === 'departure' ? (
+                    todayAttendanceMap[studentOverride.student.id]?.has_arrival ? (
+                      <span className="inline-flex items-center text-[10px] font-bold text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded-md border border-emerald-200">
+                        In School {todayAttendanceMap[studentOverride.student.id]?.arrival_time ? `(Arrived ${todayAttendanceMap[studentOverride.student.id]?.arrival_time})` : ''}
+                      </span>
+                    ) : (
+                      <span className="inline-flex items-center text-[10px] font-bold text-amber-700 bg-amber-50 px-2 py-0.5 rounded-md border border-amber-200">
+                        No Arrival Record Today
+                      </span>
+                    )
+                  ) : (
+                    <span className="inline-flex items-center text-[10px] font-bold text-slate-600 bg-slate-100 px-2 py-0.5 rounded-md">
+                      Morning Arrival Check-In
+                    </span>
+                  )}
+                </div>
               </div>
             </div>
 
@@ -2014,18 +2055,25 @@ export default function GateOfficerDashboard() {
                 Reason for Manual Override <span className="text-red-500">*</span>
               </label>
               <select
-                value={checkInOverrideReason}
-                onChange={(e) => setCheckInOverrideReason(e.target.value)}
+                value={overrideReason}
+                onChange={(e) => setOverrideReason(e.target.value)}
                 className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2.5 text-xs font-semibold text-slate-800 focus:outline-none focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500"
               >
                 <option value="ID card forgotten at home">ID card forgotten at home</option>
                 <option value="Physical ID card misplaced or lost">Physical ID card misplaced or lost</option>
                 <option value="ID card damaged or barcode unreadable">ID card damaged or barcode unreadable</option>
-                <option value="New student — card issuance in progress">New student — card issuance in progress</option>
+                {studentOverride.mode === 'arrival' ? (
+                  <option value="New student — card issuance in progress">New student — card issuance in progress</option>
+                ) : (
+                  <>
+                    <option value="Student self-departure / walking home without ID card">Student self-departure / walking home without ID card</option>
+                    <option value="Parent or escort direct gate pickup without ID card">Parent or escort direct gate pickup without ID card</option>
+                  </>
+                )}
                 <option value="Other">Other reason (specify below)</option>
               </select>
 
-              {checkInOverrideReason === 'Other' && (
+              {overrideReason === 'Other' && (
                 <input
                   type="text"
                   value={customOverrideReason}
@@ -2037,13 +2085,59 @@ export default function GateOfficerDashboard() {
               )}
             </div>
 
+            {/* If Departure: Optional Collector / Accompanying Person */}
+            {studentOverride.mode === 'departure' && (
+              <div className="space-y-2 mb-4 p-3 bg-slate-50 border border-slate-200 rounded-xl">
+                <label className="block text-[11px] font-bold text-slate-700">
+                  Released To / Accompanied By (Optional)
+                </label>
+                <input
+                  type="text"
+                  value={overrideCollectorName}
+                  onChange={(e) => setOverrideCollectorName(e.target.value)}
+                  placeholder="Student (Self Departure / Walk Home) or Collector Name"
+                  className="w-full bg-white border border-slate-200 rounded-lg px-2.5 py-1.5 text-xs font-medium text-slate-800 placeholder-slate-400 focus:outline-none focus:border-orange-500"
+                />
+                <input
+                  type="tel"
+                  value={overrideCollectorPhone}
+                  onChange={(e) => setOverrideCollectorPhone(e.target.value)}
+                  placeholder="Collector Contact Phone (Optional)"
+                  className="w-full bg-white border border-slate-200 rounded-lg px-2.5 py-1.5 text-xs font-medium text-slate-800 placeholder-slate-400 focus:outline-none focus:border-orange-500"
+                />
+              </div>
+            )}
+
             {/* Notification Alert Info */}
-            <div className="p-3 bg-emerald-50/70 border border-emerald-100 rounded-xl mb-5 flex items-start gap-2.5 text-emerald-950">
-              <ShieldCheck size={18} className="text-emerald-600 shrink-0 mt-0.5" />
+            <div
+              className={`p-3 border rounded-xl mb-5 flex items-start gap-2.5 ${
+                studentOverride.mode === 'arrival'
+                  ? 'bg-emerald-50/70 border-emerald-100 text-emerald-950'
+                  : 'bg-orange-50/70 border-orange-100 text-orange-950'
+              }`}
+            >
+              <ShieldCheck
+                size={18}
+                className={`shrink-0 mt-0.5 ${
+                  studentOverride.mode === 'arrival' ? 'text-emerald-600' : 'text-orange-600'
+                }`}
+              />
               <div className="text-[11px] leading-relaxed">
-                <p className="font-bold text-emerald-900">Immediate Custody Logging &amp; Alert</p>
-                <p className="text-emerald-800/90 mt-0.5">
-                  Arrival will be logged with a timestamp under your officer account, evaluated against school tardiness policy, and an alert will be sent to the student&apos;s registered parents.
+                <p
+                  className={`font-bold ${
+                    studentOverride.mode === 'arrival' ? 'text-emerald-900' : 'text-orange-900'
+                  }`}
+                >
+                  Immediate Custody Logging &amp; Parent Alert
+                </p>
+                <p
+                  className={`mt-0.5 ${
+                    studentOverride.mode === 'arrival' ? 'text-emerald-800/90' : 'text-orange-800/90'
+                  }`}
+                >
+                  {studentOverride.mode === 'arrival'
+                    ? 'Arrival will be logged with a timestamp under your officer account, evaluated against school tardiness policy, and an alert will be sent to the student\'s registered parents.'
+                    : 'Departure will be logged with a timestamp under your officer account, any active dismissal request marked completed, and an alert will be sent to the student\'s registered parents.'}
                 </p>
               </div>
             </div>
@@ -2052,63 +2146,84 @@ export default function GateOfficerDashboard() {
             <div className="flex gap-3">
               <button
                 type="button"
-                onClick={() => setCheckInOverrideStudent(null)}
-                disabled={isCheckingInOverride}
+                onClick={() => setStudentOverride(null)}
+                disabled={isSubmittingOverride}
                 className="flex-1 py-2.5 border border-slate-300 rounded-xl font-bold text-xs text-slate-700 hover:bg-slate-50 cursor-pointer disabled:opacity-50"
               >
                 Cancel
               </button>
               <button
                 type="button"
-                disabled={isCheckingInOverride || (checkInOverrideReason === 'Other' && !customOverrideReason.trim())}
+                disabled={isSubmittingOverride || (overrideReason === 'Other' && !customOverrideReason.trim())}
                 onClick={async () => {
-                  if (!checkInOverrideStudent?.id || !schoolId) return;
-                  setIsCheckingInOverride(true);
+                  if (!studentOverride?.student?.id || !schoolId) return;
+                  setIsSubmittingOverride(true);
                   try {
                     const finalReason =
-                      checkInOverrideReason === 'Other'
+                      overrideReason === 'Other'
                         ? customOverrideReason.trim() || 'Other manual override'
-                        : checkInOverrideReason;
+                        : overrideReason;
+
+                    const body: Record<string, unknown> = {
+                      school_id: schoolId,
+                      student_id: studentOverride.student.id,
+                      type: studentOverride.mode,
+                      verification_method: 'id_forgotten_override',
+                      reason: finalReason,
+                      is_override: true,
+                      person_type: 'student',
+                    };
+
+                    if (studentOverride.mode === 'departure') {
+                      body.pickup_person_name = overrideCollectorName.trim() || 'Student (Self Departure)';
+                      if (overrideCollectorPhone.trim()) {
+                        body.pickup_person_phone = overrideCollectorPhone.trim();
+                      }
+                    }
 
                     const res = await fetch('/api/gate/accept', {
                       method: 'POST',
                       headers: { 'Content-Type': 'application/json' },
                       credentials: 'include',
-                      body: JSON.stringify({
-                        school_id: schoolId,
-                        student_id: checkInOverrideStudent.id,
-                        type: 'arrival',
-                        verification_method: 'id_forgotten_override',
-                        reason: finalReason,
-                      }),
+                      body: JSON.stringify(body),
                     });
 
                     const data = await res.json();
                     if (!res.ok) {
-                      throw new Error(data.error || 'Failed to check in student');
+                      throw new Error(data.error || 'Failed to process override');
                     }
 
                     toast.success(
-                      `${checkInOverrideStudent.first_name} checked in successfully (ID Forgotten Override)!`
+                      studentOverride.mode === 'arrival'
+                        ? `${studentOverride.student.first_name} checked in successfully (ID Forgotten Override)!`
+                        : `${studentOverride.student.first_name} signed out successfully (ID Forgotten Override)!`
                     );
-                    setCheckInOverrideStudent(null);
+                    setStudentOverride(null);
                     setShowSearchModal(false);
                     loadGateData();
                   } catch (err: any) {
-                    toast.error(err.message || 'Check-in failed');
+                    toast.error(err.message || 'Override failed');
                   } finally {
-                    setIsCheckingInOverride(false);
+                    setIsSubmittingOverride(false);
                   }
                 }}
-                className="flex-1 py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs shadow-md cursor-pointer disabled:opacity-50 flex items-center justify-center gap-1.5"
+                className={`flex-1 py-2.5 rounded-xl text-white font-bold text-xs shadow-md cursor-pointer disabled:opacity-50 flex items-center justify-center gap-1.5 ${
+                  studentOverride.mode === 'arrival'
+                    ? 'bg-emerald-600 hover:bg-emerald-700'
+                    : 'bg-orange-600 hover:bg-orange-700'
+                }`}
               >
-                {isCheckingInOverride ? (
+                {isSubmittingOverride ? (
                   <>
-                    <RefreshCw size={14} className="animate-spin" /> Checking In...
+                    <RefreshCw size={14} className="animate-spin" /> Processing...
+                  </>
+                ) : studentOverride.mode === 'arrival' ? (
+                  <>
+                    <UserCheck size={15} /> Confirm Check-in
                   </>
                 ) : (
                   <>
-                    <UserCheck size={15} /> Confirm Check-in
+                    <RotateCcw size={15} /> Confirm Sign-Out
                   </>
                 )}
               </button>

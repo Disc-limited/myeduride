@@ -43,3 +43,17 @@ myeduride_enterprise_features_implementation_plan.md
 scratch*
 docs/didit-nin-verification-plan.md
 Makefile
+
+# IDEs & Editors
+.idea/
+*.iml
+.vscode/
+
+# Android Keystores & Keys (Security)
+*.jks
+*.keystore
+local.properties
+android/local.properties
+android/.idea/
+android/.gradle/
+android/app/build/

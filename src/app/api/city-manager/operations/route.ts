@@ -3,6 +3,10 @@ import { getAdminClient } from '@/lib/supabase/admin';
 import { getSessionFromRequest, sessionHasRole } from '@/lib/session';
 import { sendEmail } from '@/lib/notifications/email-service';
 import { nowUtcIso } from '@/lib/utils/time';
+import {
+  notifyEscortAssignmentApproved,
+  notifyEscortEmergencyReassigned,
+} from '@/lib/notifications/escort-workflow-notify';
 
 export const dynamic = 'force-dynamic';
 
@@ -90,8 +94,40 @@ export async function GET(request: NextRequest) {
     const parentRequests = rawBookings.map((b: any) => {
       const stu = Array.isArray(b.student) ? b.student[0] : b.student;
       const sch = Array.isArray(b.school) ? b.school[0] : b.school;
+
+      let meta: any = {};
+      try {
+        if (b.notes && b.notes.startsWith('{')) {
+          meta = JSON.parse(b.notes);
+        }
+      } catch {
+        meta = {};
+      }
+
+      const matchedAssignment = (assignmentsRes || []).find((a: any) => a.booking_id === b.id);
+      const rawEscort = matchedAssignment?.escort;
+      const escort = Array.isArray(rawEscort) ? rawEscort[0] : rawEscort;
+
+      let securityPin = null;
+      if (b.notes && typeof b.notes === 'string') {
+        const pinMatch = b.notes.match(/PIN:\s*(\d{4})/i);
+        if (pinMatch) securityPin = pinMatch[1];
+      }
+      if (!securityPin && meta.security_pin) {
+        securityPin = meta.security_pin;
+      }
+
+      const distanceKm = meta.distance_km || 4.2;
+      const morningFare = meta.morning_fare || (meta.trip_type === 'afternoon' ? 0 : 1000);
+      const afternoonFare = meta.afternoon_fare || (meta.trip_type === 'morning' ? 0 : 1000);
+      const dailyFare = meta.daily_fare || (morningFare + afternoonFare);
+      const tripType = meta.trip_type || 'both';
+
+      const isConfirmed = b.status === 'assigned' || matchedAssignment?.status === 'active';
+
       return {
         booking_id: b.id,
+        assignment_id: matchedAssignment?.id || null,
         child_id: b.student_id,
         child_name: stu ? `${stu.first_name} ${stu.last_name}` : 'Student',
         parent_user_id: b.parent_user_id,
@@ -99,20 +135,27 @@ export async function GET(request: NextRequest) {
         parent_phone: '+234 800 000 0000',
         school_id: b.school_id,
         school_name: sch?.name || 'School Campus',
-        preferred_escort_id: null,
-        escort_id: null,
-        escort_name: b.status === 'assigned' ? 'Assigned Escort' : 'Awaiting City Manager Assignment',
-        escort_phone: null,
-        vehicle_plate: null,
-        operating_area: 'Lagos Metropolis',
+        source: b.source || 'school',
+        distance_km: distanceKm,
+        morning_fare: morningFare,
+        afternoon_fare: afternoonFare,
+        daily_fare: dailyFare,
+        trip_type: tripType,
+        preferred_escort_id: meta.escort_id || null,
+        escort_id: escort?.id || meta.escort_id || null,
+        escort_name: escort?.full_name || (isConfirmed ? 'Assigned Escort' : 'Awaiting City Manager Assignment'),
+        escort_phone: escort?.phone || null,
+        vehicle_plate: escort?.vehicle_plate || escort?.application_data?.assignedVehicle || null,
+        operating_area: escort?.operating_area || 'Lagos Metropolis',
         pickup_date: b.requested_pickup_at ? b.requested_pickup_at.split('T')[0] : 'Today',
-        pickup_time: b.requested_pickup_at ? b.requested_pickup_at.split('T')[1]?.slice(0, 5) : '07:00',
+        pickup_time: meta.pickup_time || (b.requested_pickup_at ? b.requested_pickup_at.split('T')[1]?.slice(0, 5) : '07:00'),
+        dropoff_time: meta.dropoff_time || '15:30',
         pickup_location: b.pickup_address || 'Designated Stop',
-        reason: b.notes || 'School Escort Unavailable',
-        security_pin: null,
-        stage: b.status === 'completed' ? 5 : b.status === 'in_progress' ? 4 : b.status === 'assigned' ? 3 : 2,
-        stage_label: b.status === 'assigned' ? 'Escort Assigned & Dispatched' : 'Under City Manager Review',
-        status: b.status === 'pending' ? 'PENDING_CM_REVIEW' : b.status.toUpperCase(),
+        reason: meta.notes || b.notes || 'School Escort Assignment',
+        security_pin: securityPin,
+        stage: isConfirmed ? 5 : 2,
+        stage_label: isConfirmed ? 'Escort Assigned & Dispatched' : 'Under City Manager Review',
+        status: isConfirmed ? 'CONFIRMED' : 'PENDING_CM_REVIEW',
         created_at: b.created_at,
       };
     });
@@ -309,6 +352,45 @@ export async function POST(request: NextRequest) {
 
       await audit(db, session.user_id, body.action === 'reassign' ? 'ESCORT_REASSIGNED' : 'ESCORT_ASSIGNED', 'escort_assignment', data.id, { bookingId: body.bookingId, studentId: body.studentId, assignmentType: data.assignment_type });
       if (data.status === 'active') await notifyAssignment(db, data, body.action === 'reassign' ? 'reassigned' : 'assigned');
+
+      if (body.action === 'reassign') {
+        try {
+          let oldEscortName = 'Previous Escort';
+          let studentName = 'Student';
+          let schoolName = 'School Campus';
+
+          let oldAss: any = null;
+          if (body.replacesAssignmentId) {
+            const { data: dbOldAss } = await db
+              .from('escort_assignments')
+              .select('*, escort:escort_applications(id, full_name), student:students(first_name, last_name), school:schools(name)')
+              .eq('id', body.replacesAssignmentId)
+              .maybeSingle();
+            oldAss = dbOldAss;
+            if (oldAss) {
+              const oEsc = Array.isArray(oldAss.escort) ? oldAss.escort[0] : oldAss.escort;
+              const oStu = Array.isArray(oldAss.student) ? oldAss.student[0] : oldAss.student;
+              const oSch = Array.isArray(oldAss.school) ? oldAss.school[0] : oldAss.school;
+              if (oEsc?.full_name) oldEscortName = oEsc.full_name;
+              if (oStu) studentName = `${oStu.first_name} ${oStu.last_name}`;
+              if (oSch?.name) schoolName = oSch.name;
+            }
+          }
+
+          const newPin = Math.floor(1000 + Math.random() * 9000).toString();
+
+          await notifyEscortEmergencyReassigned({
+            bookingId: body.bookingId || data.booking_id || data.id,
+            oldEscortId: oldAss?.escort_application_id || undefined,
+            newEscortId: body.escortApplicationId,
+            reason: body.notes || 'Emergency operational reassignment by City Manager',
+            securityPin: newPin,
+          });
+        } catch (reassignNotifyErr) {
+          console.warn('[city-manager operations] notifyEscortEmergencyReassigned warning:', reassignNotifyErr);
+        }
+      }
+
       return NextResponse.json({ success: true, assignment: data });
     }
     if (body.action === 'approve_parent_booking') {
@@ -339,23 +421,46 @@ export async function POST(request: NextRequest) {
 
       if (updateErr) throw updateErr;
 
-      // Insert active record into escort_assignments table for live Escort Dashboard tracking
-      const { data: newAssignment } = await db
+      // Check if existing assignment exists for booking_id
+      const { data: existingAssignment } = await db
         .from('escort_assignments')
-        .insert({
-          booking_id: booking_id,
-          escort_application_id: escort_id,
-          school_id: updatedBooking?.school_id || null,
-          student_id: updatedBooking?.student_id || null,
-          assignment_type: 'standard',
-          assigned_by: session.user_id,
-          notes: notes || 'Assigned & Approved by City Manager',
-          status: 'active',
-          created_at: nowUtcIso(),
-          updated_at: nowUtcIso(),
-        })
-        .select()
+        .select('id')
+        .eq('booking_id', booking_id)
         .maybeSingle();
+
+      let newAssignment: any = null;
+      if (existingAssignment) {
+        const { data: updatedA } = await db
+          .from('escort_assignments')
+          .update({
+            escort_application_id: escort_id,
+            status: 'active',
+            notes: notes || 'Assigned & Approved by City Manager',
+            updated_at: nowUtcIso(),
+          })
+          .eq('id', existingAssignment.id)
+          .select()
+          .single();
+        newAssignment = updatedA;
+      } else {
+        const { data: createdA } = await db
+          .from('escort_assignments')
+          .insert({
+            booking_id: booking_id,
+            escort_application_id: escort_id,
+            school_id: updatedBooking?.school_id || null,
+            student_id: updatedBooking?.student_id || null,
+            assignment_type: 'standard',
+            assigned_by: session.user_id,
+            notes: notes || 'Assigned & Approved by City Manager',
+            status: 'active',
+            created_at: nowUtcIso(),
+            updated_at: nowUtcIso(),
+          })
+          .select()
+          .maybeSingle();
+        newAssignment = createdA;
+      }
 
       if (newAssignment) {
         try {
@@ -363,6 +468,35 @@ export async function POST(request: NextRequest) {
         } catch (e) {
           console.warn('[city-manager operations] notifyAssignment warning:', e);
         }
+      }
+
+      // Fetch student, school, parent details for immediate multi-party notification
+      try {
+        let studentName = 'Student';
+        let schoolName = 'School Campus';
+
+        if (updatedBooking?.student_id) {
+          const { data: student } = await db
+            .from('students')
+            .select('first_name, last_name, school_id, school:schools(name)')
+            .eq('id', updatedBooking.student_id)
+            .maybeSingle();
+          if (student) {
+            studentName = `${student.first_name} ${student.last_name}`;
+            const schObj: any = Array.isArray(student.school) ? student.school[0] : student.school;
+            if (schObj?.name) schoolName = schObj.name;
+          }
+        }
+
+        await notifyEscortAssignmentApproved({
+          bookingId: booking_id,
+          escortId: escort_id,
+          securityPin,
+          schoolId: updatedBooking?.school_id || undefined,
+          studentId: updatedBooking?.student_id || undefined,
+        });
+      } catch (notifyErr) {
+        console.warn('[city-manager operations] notifyEscortAssignmentApproved warning:', notifyErr);
       }
 
       await audit(db, session.user_id, 'PARENT_BOOKING_APPROVED', 'transport_booking', booking_id, {
