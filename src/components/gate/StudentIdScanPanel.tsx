@@ -269,19 +269,38 @@ export default function StudentIdScanPanel({
     }
   };
 
-  const gateAction = mode === 'arrival' ? 'arrival' : 'departure';
-  const block = isActionBlocked(scanned?.today_status, gateAction, false);
-  const fullyComplete = scanned?.scan_hints?.already_complete;
+  const isScannedAlreadyIn = Boolean(scanned?.today_status?.has_arrival);
+  const isScannedAlreadyOut = Boolean(scanned?.today_status?.has_departure);
+  const effectiveGateAction = (isScannedAlreadyIn && !isScannedAlreadyOut)
+    ? 'departure'
+    : (mode === 'arrival' ? 'arrival' : 'departure');
+
+  const block = isActionBlocked(scanned?.today_status, effectiveGateAction, false);
+  const fullyComplete = scanned?.scan_hints?.already_complete || (isScannedAlreadyIn && isScannedAlreadyOut);
   const pickup = scanned ? pickupFromScan(scanned) : null;
 
   const executeAutoConfirm = async (scannedData) => {
-    const check = isActionBlocked(scannedData.today_status, gateAction, false);
-    if (check.blocked) {
-      toast.error(check.message || 'Action blocked');
+    const isAlreadyIn = Boolean(scannedData.today_status?.has_arrival);
+    const isAlreadyOut = Boolean(scannedData.today_status?.has_departure);
+
+    // Smart direction detection: if already checked in and not yet departed, auto-route to departure
+    let effectiveMode = mode;
+    if (isAlreadyIn && !isAlreadyOut) {
+      effectiveMode = 'departure';
+      onModeChange?.('departure');
+    } else if (scannedData.scan_hints?.suggested_mode === 'departure' && mode === 'arrival') {
+      effectiveMode = 'departure';
+      onModeChange?.('departure');
+    }
+
+    if (scannedData.scan_hints?.already_complete || (isAlreadyIn && isAlreadyOut)) {
+      toast.info(`${scannedData.person.name} is already checked in and out today`);
       return;
     }
-    if (scannedData.scan_hints?.already_complete) {
-      toast.info(`${scannedData.person.name} is already checked in/out`);
+
+    const check = isActionBlocked(scannedData.today_status, effectiveMode, false);
+    if (check.blocked) {
+      toast.error(check.message || 'Action blocked');
       return;
     }
 
@@ -290,12 +309,12 @@ export default function StudentIdScanPanel({
       const body = {
         school_id: schoolId,
         student_id: scannedData.person.id,
-        type: mode === 'arrival' ? 'arrival' : 'departure',
+        type: effectiveMode === 'arrival' ? 'arrival' : 'departure',
         verification_method: 'id_card_scan',
         person_type: 'student',
       };
 
-      if (mode === 'departure') {
+      if (effectiveMode === 'departure') {
         const autoPickup = pickupFromScan(scannedData);
         body.from_ready_queue = releaseFromQueue || autoPickup?.readyForPickup;
         const notice = autoPickup?.pickupNotice;
@@ -323,7 +342,7 @@ export default function StudentIdScanPanel({
         throw new Error(data.error || 'Could not save');
       }
       toast.success(
-        `${scannedData.person.name} — ${mode === 'arrival' ? 'checked in' : 'released'} (Auto-Confirm)`
+        `${scannedData.person.name} — ${effectiveMode === 'arrival' ? 'checked in' : 'signed out / released'} (Auto-Confirm)`
       );
       setScanned(null);
       setManualCode('');
@@ -339,12 +358,23 @@ export default function StudentIdScanPanel({
 
   const confirmScan = async () => {
     if (!scanned?.person || saving) return;
-    if (fullyComplete) {
+    
+    const isAlreadyIn = Boolean(scanned.today_status?.has_arrival);
+    const isAlreadyOut = Boolean(scanned.today_status?.has_departure);
+
+    let effectiveMode = mode;
+    if (isAlreadyIn && !isAlreadyOut) {
+      effectiveMode = 'departure';
+    }
+
+    if (fullyComplete || (isAlreadyIn && isAlreadyOut)) {
       toast.info(`${scanned.person.name} has already checked in and out today.`);
       return;
     }
-    if (block.blocked) {
-      toast.error(block.message || 'This action is blocked for today.');
+
+    const currentBlock = isActionBlocked(scanned.today_status, effectiveMode, false);
+    if (currentBlock.blocked) {
+      toast.error(currentBlock.message || 'This action is blocked for today.');
       return;
     }
 
@@ -353,12 +383,12 @@ export default function StudentIdScanPanel({
       const body = {
         school_id: schoolId,
         student_id: scanned.person.id,
-        type: mode === 'arrival' ? 'arrival' : 'departure',
+        type: effectiveMode === 'arrival' ? 'arrival' : 'departure',
         verification_method: 'id_card_scan',
         person_type: 'student',
       };
 
-      if (mode === 'departure') {
+      if (effectiveMode === 'departure') {
         body.from_ready_queue = releaseFromQueue || pickup?.readyForPickup;
         const notice = pickup?.pickupNotice;
         const request = pickup?.pickupRequest;
@@ -398,7 +428,7 @@ export default function StudentIdScanPanel({
         throw new Error(data.error || 'Could not save');
       }
       toast.success(
-        `${scanned.person.name} — ${mode === 'arrival' ? 'checked in' : 'released'} (ID scan)`
+        `${scanned.person.name} — ${effectiveMode === 'arrival' ? 'checked in' : 'signed out / released'} (ID scan)`
       );
       setScanned(null);
       setManualCode('');

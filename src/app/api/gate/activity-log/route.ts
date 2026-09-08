@@ -35,7 +35,7 @@ export async function GET(request: NextRequest) {
     const allowed = session.roles.some(
       (r) =>
         r.school_id === schoolId &&
-        ['gate_officer', 'school_admin', 'super_admin'].includes(r.role)
+        ['gate_officer', 'gate_manager', 'security_officer', 'school_admin', 'super_admin'].includes(r.role)
     );
     if (!allowed && !sessionHasRole(session, 'super_admin')) {
       return NextResponse.json({ error: 'Access denied' }, { status: 403 });
@@ -142,7 +142,7 @@ export async function POST(request: NextRequest) {
     const allowed = session.roles.some(
       (r) =>
         r.school_id === primarySchoolId &&
-        ['gate_officer', 'school_admin', 'super_admin'].includes(r.role)
+        ['gate_officer', 'gate_manager', 'security_officer', 'school_admin', 'super_admin'].includes(r.role)
     );
     if (!allowed && !sessionHasRole(session, 'super_admin')) {
       return NextResponse.json({ error: 'Access denied' }, { status: 403 });

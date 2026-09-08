@@ -36,24 +36,35 @@ export async function POST(request: NextRequest) {
     switch (action) {
       case 'get_school_admin_data': {
         const requestedRole = params?.role || 'school_admin';
-        if (!session.roles.some((r: { role: string }) => r.role === requestedRole)) {
+        const isGateRole = ['gate_officer', 'gate_manager', 'security_officer'].includes(requestedRole);
+        const GATE_ROLES = ['gate_officer', 'gate_manager', 'security_officer', 'school_admin', 'super_admin'];
+
+        const hasAccess = isGateRole
+          ? session.roles.some((r: { role: string }) => GATE_ROLES.includes(r.role))
+          : session.roles.some((r: { role: string }) => r.role === requestedRole || r.role === 'super_admin');
+
+        if (!hasAccess) {
           return NextResponse.json(
             { error: 'Access denied', school: null, school_id: null },
             { status: 403 }
           );
         }
         
-        // FIXED: Using maybeSingle() inside wrapper mapping structures
+        let query = supabase.from('user_school_roles').select('school_id').eq('user_id', session.user_id).eq('is_active', true);
+        if (isGateRole) {
+          query = query.in('role', ['gate_officer', 'gate_manager', 'security_officer', 'school_admin']);
+        } else {
+          query = query.eq('role', requestedRole);
+        }
+
         const roleRes = await withTimeout(
-          supabase.from('user_school_roles').select('school_id')
-            .eq('user_id', session.user_id).eq('role', requestedRole).eq('is_active', true).limit(1).maybeSingle(),
+          query.limit(1).maybeSingle(),
           8000
         ).catch(() => ({ data: null }));
         
         const role = roleRes?.data;
         if (!role?.school_id) return NextResponse.json({ error: 'No school found', school: null, school_id: null }, { status: 200 });
         
-        // FIXED: Refactored .single() to .maybeSingle() with robust catch wrapper logic to stop unhandled rejections
         const schoolRes = await withTimeout(
           supabase.from('schools').select('*').eq('id', role.school_id).maybeSingle(), 
           8000

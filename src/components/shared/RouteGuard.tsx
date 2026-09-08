@@ -5,7 +5,7 @@ import { useRouter } from 'next/navigation';
 import { getSession } from '@/lib/api';
 
 interface Props {
-  requiredRole: string;
+  requiredRole: string | string[];
   children: React.ReactNode;
 }
 
@@ -38,8 +38,10 @@ export function RouteGuard({ requiredRole, children }: Props) {
       return;
     }
 
-    // Check if user has the required role
-    if (roles.includes(requiredRole) || process.env.NODE_ENV === 'development') {
+    // Check if user has any of the required roles
+    const requiredRoles = Array.isArray(requiredRole) ? requiredRole : [requiredRole];
+    const hasRole = roles.some((r: string) => requiredRoles.includes(r));
+    if (hasRole || process.env.NODE_ENV === 'development') {
       setAuthorized(true);
       setChecking(false);
       return;
@@ -53,8 +55,14 @@ export function RouteGuard({ requiredRole, children }: Props) {
         school_admin: '/dashboard/school-admin',
         teacher: '/dashboard/teacher',
         gate_officer: '/dashboard/gate',
+        gate_manager: '/dashboard/gate',
+        security_officer: '/dashboard/gate',
         parent: '/dashboard/parent',
         staff: '/dashboard/staff',
+        escort: '/dashboard/escort',
+        school_escort: '/dashboard/escort',
+        myeduride_escort: '/dashboard/myeduride-escort',
+        driver: '/dashboard/myeduride-escort',
       };
       router.replace(roleToPath[roles[0]] || '/dashboard');
     } else {

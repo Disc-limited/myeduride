@@ -36,7 +36,7 @@ export async function GET(request: NextRequest) {
     const allowed = session.roles.some(
       (r) =>
         r.school_id === schoolId &&
-        ['gate_officer', 'school_admin', 'super_admin'].includes(r.role)
+        ['gate_officer', 'gate_manager', 'security_officer', 'school_admin', 'super_admin'].includes(r.role)
     );
     if (!allowed && !session.roles.some((r) => r.role === 'super_admin')) {
       return NextResponse.json({ error: 'Access denied' }, { status: 403 });

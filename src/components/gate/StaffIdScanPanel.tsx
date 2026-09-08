@@ -228,18 +228,37 @@ export default function StaffIdScanPanel({
     }
   };
 
-  const gateAction = mode === 'arrival' ? 'arrival' : 'departure';
-  const block = isActionBlocked(scanned?.today_status, gateAction, true);
-  const fullyComplete = scanned?.scan_hints?.already_complete;
+  const isScannedAlreadyIn = Boolean(scanned?.today_status?.has_clock_in);
+  const isScannedAlreadyOut = Boolean(scanned?.today_status?.has_clock_out);
+  const effectiveGateAction = (isScannedAlreadyIn && !isScannedAlreadyOut)
+    ? 'departure'
+    : (mode === 'arrival' ? 'arrival' : 'departure');
+
+  const block = isActionBlocked(scanned?.today_status, effectiveGateAction, true);
+  const fullyComplete = scanned?.scan_hints?.already_complete || (isScannedAlreadyIn && isScannedAlreadyOut);
 
   const executeAutoConfirm = async (scannedData) => {
-    const check = isActionBlocked(scannedData.today_status, gateAction, true);
-    if (check.blocked) {
-      toast.error(check.message || 'Action blocked');
+    const isAlreadyIn = Boolean(scannedData.today_status?.has_clock_in);
+    const isAlreadyOut = Boolean(scannedData.today_status?.has_clock_out);
+
+    // Smart direction detection: if staff already clocked in and not yet departed, auto-route to departure (sign out)
+    let effectiveMode = mode;
+    if (isAlreadyIn && !isAlreadyOut) {
+      effectiveMode = 'departure';
+      onModeChange?.('departure');
+    } else if (scannedData.scan_hints?.suggested_mode === 'departure' && mode === 'arrival') {
+      effectiveMode = 'departure';
+      onModeChange?.('departure');
+    }
+
+    if (scannedData.scan_hints?.already_complete || (isAlreadyIn && isAlreadyOut)) {
+      toast.info(`${scannedData.person.name} is already signed in and out today`);
       return;
     }
-    if (scannedData.scan_hints?.already_complete) {
-      toast.info(`${scannedData.person.name} is already signed in/out`);
+
+    const check = isActionBlocked(scannedData.today_status, effectiveMode, true);
+    if (check.blocked) {
+      toast.error(check.message || 'Action blocked');
       return;
     }
 
@@ -251,7 +270,7 @@ export default function StaffIdScanPanel({
         credentials: 'include',
         body: JSON.stringify({
           school_id: schoolId,
-          type: mode === 'arrival' ? 'arrival' : 'departure',
+          type: effectiveMode === 'arrival' ? 'arrival' : 'departure',
           verification_method: 'id_card_scan',
           person_type: 'staff',
           staff_profile_id: scannedData.person.id,
@@ -263,7 +282,7 @@ export default function StaffIdScanPanel({
         throw new Error(data.error || 'Could not save');
       }
       toast.success(
-        `${scannedData.person.name} — ${mode === 'arrival' ? 'signed in' : 'signed out'} (Auto-Confirm)`
+        `${scannedData.person.name} — ${effectiveMode === 'arrival' ? 'signed in' : 'signed out'} (Auto-Confirm)`
       );
       setScanned(null);
       setManualCode('');
@@ -278,12 +297,23 @@ export default function StaffIdScanPanel({
 
   const confirmScan = async () => {
     if (!scanned?.person || saving) return;
-    if (fullyComplete) {
+
+    const isAlreadyIn = Boolean(scanned.today_status?.has_clock_in);
+    const isAlreadyOut = Boolean(scanned.today_status?.has_clock_out);
+
+    let effectiveMode = mode;
+    if (isAlreadyIn && !isAlreadyOut) {
+      effectiveMode = 'departure';
+    }
+
+    if (fullyComplete || (isAlreadyIn && isAlreadyOut)) {
       toast.info(`${scanned.person.name} has already signed in and out today.`);
       return;
     }
-    if (block.blocked) {
-      toast.error(block.message || 'This action is blocked for today.');
+
+    const currentBlock = isActionBlocked(scanned.today_status, effectiveMode, true);
+    if (currentBlock.blocked) {
+      toast.error(currentBlock.message || 'This action is blocked for today.');
       return;
     }
 
@@ -295,7 +325,7 @@ export default function StaffIdScanPanel({
         credentials: 'include',
         body: JSON.stringify({
           school_id: schoolId,
-          type: mode === 'arrival' ? 'arrival' : 'departure',
+          type: effectiveMode === 'arrival' ? 'arrival' : 'departure',
           verification_method: 'id_card_scan',
           person_type: 'staff',
           staff_profile_id: scanned.person.id,
@@ -320,7 +350,7 @@ export default function StaffIdScanPanel({
         throw new Error(data.error || 'Could not save');
       }
       toast.success(
-        `${scanned.person.name} — ${mode === 'arrival' ? 'signed in' : 'signed out'} (ID scan)`
+        `${scanned.person.name} — ${effectiveMode === 'arrival' ? 'signed in' : 'signed out'} (ID scan)`
       );
       setScanned(null);
       setManualCode('');

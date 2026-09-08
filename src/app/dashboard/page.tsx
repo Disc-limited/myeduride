@@ -22,6 +22,8 @@ const ROLE_CONFIG: Record<string, { label: string; desc: string; href: string; i
   portal_user: { label: 'School Escort', desc: 'School-aligned escort managing bus routes, student pickup manifest, and gate clearance', href: '/dashboard/escort', icon: Bus, gradient: 'from-blue-600 to-indigo-600' },
   teacher: { label: 'Teacher', desc: 'View class attendance and manage student dismissals', href: '/dashboard/teacher', icon: Users, gradient: 'from-green-500 to-emerald-600' },
   gate_officer: { label: 'Gate Officer', desc: 'Scan and verify students at the school gate', href: '/dashboard/gate', icon: DoorOpen, gradient: 'from-orange-500 to-amber-600' },
+  gate_manager: { label: 'Gate Manager', desc: 'Manage school gate operations, student and staff access verification', href: '/dashboard/gate', icon: DoorOpen, gradient: 'from-emerald-600 to-teal-700' },
+  security_officer: { label: 'Security Officer', desc: 'School gate security, staff badge clock-in/out, and student verification', href: '/dashboard/gate', icon: DoorOpen, gradient: 'from-amber-600 to-orange-700' },
   parent: { label: 'Parent', desc: 'View your children attendance and notifications', href: '/dashboard/parent', icon: User, gradient: 'from-pink-500 to-rose-600' },
   staff: { label: 'Staff', desc: 'View your sign-in history and attendance', href: '/dashboard/staff', icon: User, gradient: 'from-slate-500 to-slate-700' },
 };
