@@ -28,7 +28,8 @@ import {
   Eye,
   Send,
   Zap,
-  X
+  X,
+  Plus
 } from 'lucide-react';
 import { toast } from 'sonner';
 
