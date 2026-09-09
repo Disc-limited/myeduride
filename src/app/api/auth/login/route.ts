@@ -139,7 +139,7 @@ export async function POST(request: NextRequest) {
                 phone: profile.phone,
                 avatar_url: profile.avatar_url,
               }, { onConflict: 'id' });
-            } catch {}
+            } catch { }
 
             // Ensure escort role in DB
             try {
@@ -149,7 +149,7 @@ export async function POST(request: NextRequest) {
                 role: 'driver',
                 is_active: true,
               }, { onConflict: 'user_id,school_id,role' });
-            } catch {}
+            } catch { }
           }
         }
       } catch (err) {
@@ -162,7 +162,7 @@ export async function POST(request: NextRequest) {
         actor_user_id: '00000000-0000-0000-0000-000000000000',
         action: 'login_failed_unknown_user',
         details: { username: rawInput },
-      }).catch(() => {});
+      }).catch(() => { });
       return NextResponse.json({ error: 'Invalid username or password' }, { status: 401 });
     }
 
@@ -205,7 +205,7 @@ export async function POST(request: NextRequest) {
           if (matchedApp) {
             passwordMatched = true;
           }
-        } catch {}
+        } catch { }
       }
 
       if (!passwordMatched) {
@@ -214,7 +214,7 @@ export async function POST(request: NextRequest) {
           if (authUserData?.user?.user_metadata?.login_password === password) {
             passwordMatched = true;
           }
-        } catch {}
+        } catch { }
       }
 
       if (passwordMatched) {
@@ -291,7 +291,7 @@ export async function POST(request: NextRequest) {
           actor_user_id: profile.id,
           action: 'login_failed_wrong_school',
           details: { username: rawInput },
-        }).catch(() => {});
+        }).catch(() => { });
 
         return NextResponse.json(
           {
@@ -363,7 +363,7 @@ export async function POST(request: NextRequest) {
         .select('id, name, logo_url, welcome_message, gps_lat, gps_lng, address, location_address, location_landmark, location_pinned_at')
         .eq('id', schoolRole.school_id)
         .limit(1);
-        
+
       const school = schoolsList?.[0] || null;
       if (school) {
         let welcome = school.welcome_message;
@@ -374,7 +374,7 @@ export async function POST(request: NextRequest) {
             if (parsed.director_signature) delete parsed.director_signature;
             if (parsed.logo) delete parsed.logo;
             welcome = JSON.stringify(parsed);
-          } catch {}
+          } catch { }
         }
 
         const latVal = school.gps_lat != null ? Number(school.gps_lat) : null;
