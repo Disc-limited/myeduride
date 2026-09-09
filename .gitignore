@@ -57,3 +57,4 @@ android/local.properties
 android/.idea/
 android/.gradle/
 android/app/build/
+#comment out 
