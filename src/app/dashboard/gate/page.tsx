@@ -41,6 +41,7 @@ import {
   Camera,
   Menu,
   KeyRound,
+  ArrowRight,
 } from 'lucide-react';
 import NotificationsInbox from '@/components/notifications/NotificationsInbox';
 import SchoolNoticeBanner from '@/components/shared/SchoolNoticeBanner';
@@ -53,6 +54,7 @@ import GateActivitiesReport from '@/components/gate/GateActivitiesReport';
 import AttendanceSignLog from '@/components/attendance/AttendanceSignLog';
 import ReadyForPickupList from '@/components/gate/ReadyForPickupList';
 import DigitalVisitorPassModal from '@/components/gate/DigitalVisitorPassModal';
+import EscortBatchReceptionModal from '@/components/gate/EscortBatchReceptionModal';
 import UnderDevelopment from '@/components/super-admin/UnderDevelopment';
 import { toast } from 'sonner';
 import { photoSrc } from '@/lib/photo';
@@ -158,6 +160,21 @@ export default function GateOfficerDashboard() {
   const [createdVisitorPass, setCreatedVisitorPass] = useState<any | null>(null);
   const [studentSearchQuery, setStudentSearchQuery] = useState('');
 
+  // Escort Batch Reception States
+  const [showEscortBatchModal, setShowEscortBatchModal] = useState(false);
+  const [activeSchoolEscorts, setActiveSchoolEscorts] = useState<any[]>([]);
+  const [loadingEscorts, setLoadingEscorts] = useState(false);
+  const [selectedEscortBatch, setSelectedEscortBatch] = useState<any | null>(null);
+  const [escortLookupInput, setEscortLookupInput] = useState('');
+
+  // Staff Directory for Visitor Registration Host Selection
+  const [staffDirectory, setStaffDirectory] = useState<any[]>([]);
+  const [loadingStaffDir, setLoadingStaffDir] = useState(false);
+  const [selectedHostUserId, setSelectedHostUserId] = useState('');
+  const [visitorStaffSearch, setVisitorStaffSearch] = useState('');
+  const [useCustomStaffHost, setUseCustomStaffHost] = useState(false);
+  const [customHostText, setCustomHostText] = useState('');
+
   // Live Clock
   useEffect(() => {
     setCurrentTime(new Date());
@@ -226,6 +243,63 @@ export default function GateOfficerDashboard() {
       }
     } catch {
       // Fallback defaults
+    }
+  };
+
+  const loadStaffDirectory = useCallback(async () => {
+    if (!schoolId) return;
+    try {
+      setLoadingStaffDir(true);
+      const res = await fetch(`/api/schools/staff?school_id=${schoolId}`);
+      const json = await res.json();
+      if (json.staff) {
+        const mapped = json.staff.map((s: any) => ({
+          user_id: s.user_id || s.id,
+          name: s.name || s.full_name || 'Staff Member',
+          role_label: s.role_name || s.teacher_responsibility || (s.role === 'teacher' ? 'Class Teacher' : s.role === 'school_admin' ? 'School Administrator' : 'Staff'),
+          department: s.department || 'General Administration',
+          staff_id_number: s.staff_id_number || '',
+          photo_url: s.photo_url || null,
+        }));
+        setStaffDirectory(mapped);
+      }
+    } catch (e) {
+      console.warn('Failed to load staff directory for visitors', e);
+    } finally {
+      setLoadingStaffDir(false);
+    }
+  }, [schoolId]);
+
+  const loadActiveSchoolEscorts = useCallback(async () => {
+    if (!schoolId) return;
+    try {
+      setLoadingEscorts(true);
+      const res = await fetch(`/api/gate/escort-batch?school_id=${schoolId}&list_active=1`);
+      const json = await res.json();
+      if (json.active_escorts) {
+        setActiveSchoolEscorts(json.active_escorts);
+      }
+    } catch (e) {
+      console.warn('Failed to load active escorts', e);
+    } finally {
+      setLoadingEscorts(false);
+    }
+  }, [schoolId]);
+
+  const handleLookupEscort = async (query: string) => {
+    if (!query.trim() || !schoolId) return;
+    try {
+      setLoadingEscorts(true);
+      const res = await fetch(`/api/gate/escort-batch?school_id=${schoolId}&query=${encodeURIComponent(query.trim())}`);
+      const json = await res.json();
+      if (!res.ok || !json.success) {
+        throw new Error(json.error || 'Escort not found for this search/code');
+      }
+      setSelectedEscortBatch(json);
+    } catch (err: any) {
+      toast.error(err.message || 'Escort lookup failed');
+    } finally {
+      setLoadingEscorts(false);
     }
   };
 
@@ -705,6 +779,20 @@ export default function GateOfficerDashboard() {
                   >
                     <Users size={14} />
                     <span>Visitor Pass</span>
+                  </button>
+
+                  {/* Escort Bus Batch Reception Station */}
+                  <button
+                    type="button"
+                    onClick={() => {
+                      loadActiveSchoolEscorts();
+                      setShowEscortBatchModal(true);
+                    }}
+                    className="px-3.5 py-2.5 rounded-2xl bg-teal-700 hover:bg-teal-600 text-white font-black text-xs flex items-center justify-center gap-1.5 shadow-lg shadow-teal-700/30 transition-all cursor-pointer"
+                    title="Open Escort Batch Reception & Release (No-Queue Bus Check-in)"
+                  >
+                    <Car size={14} className="text-teal-300" />
+                    <span>Escort Bus Reception</span>
                   </button>
                 </div>
               </div>
@@ -2260,6 +2348,13 @@ export default function GateOfficerDashboard() {
                 const purpose = (form.elements.namedItem('visitPurpose') as HTMLInputElement).value;
                 const vehicle = (form.elements.namedItem('vehiclePlate') as HTMLInputElement)?.value || '';
 
+                const selectedStaff = staffDirectory.find((s) => s.user_id === selectedHostUserId);
+                const personToSee = useCustomStaffHost
+                  ? customHostText.trim() || 'General Administration'
+                  : selectedStaff
+                  ? `${selectedStaff.name} (${selectedStaff.role_label})`
+                  : 'School Admin / Staff';
+
                 setIsRegisteringVisitor(true);
                 try {
                   const res = await fetch('/api/gate/visitors', {
@@ -2274,7 +2369,9 @@ export default function GateOfficerDashboard() {
                         phone,
                         purpose_of_visit: purpose,
                         vehicle_plate: vehicle,
-                        person_to_see: 'School Admin / Staff',
+                        person_to_see: personToSee,
+                        host_user_id: !useCustomStaffHost ? selectedHostUserId || null : null,
+                        department: selectedStaff?.department || 'General Administration',
                         visitor_type: 'Visitor / Guardian',
                       },
                     }),
@@ -2309,6 +2406,7 @@ export default function GateOfficerDashboard() {
                   className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-xs text-slate-900 focus:outline-none focus:ring-2 focus:ring-purple-500/20 focus:border-purple-500"
                 />
               </div>
+
               <div>
                 <label className="block text-slate-700 mb-1">Phone Number</label>
                 <input
@@ -2319,6 +2417,57 @@ export default function GateOfficerDashboard() {
                   className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-xs font-mono text-slate-900 focus:outline-none focus:ring-2 focus:ring-purple-500/20 focus:border-purple-500"
                 />
               </div>
+
+              {/* Staff Member Host Selection */}
+              <div>
+                <div className="flex items-center justify-between mb-1">
+                  <label className="block text-slate-700 font-extrabold">Staff Member to See (Host)</label>
+                  <button
+                    type="button"
+                    onClick={() => setUseCustomStaffHost(!useCustomStaffHost)}
+                    className="text-[10px] text-purple-700 font-bold hover:underline cursor-pointer"
+                  >
+                    {useCustomStaffHost ? '← Select from Staff List' : 'Enter Non-Staff Host →'}
+                  </button>
+                </div>
+
+                {!useCustomStaffHost ? (
+                  <div className="space-y-1.5">
+                    <select
+                      value={selectedHostUserId}
+                      onChange={(e) => {
+                        setSelectedHostUserId(e.target.value);
+                        const found = staffDirectory.find((s) => s.user_id === e.target.value);
+                        if (found) {
+                          setCustomHostText(`${found.name} (${found.role_label})`);
+                        }
+                      }}
+                      className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-xs font-semibold text-slate-900 focus:outline-none focus:ring-2 focus:ring-purple-500/20 focus:border-purple-500 cursor-pointer"
+                    >
+                      <option value="">-- Choose Staff Host ({staffDirectory.length} Staff Loaded) --</option>
+                      {staffDirectory.map((st) => (
+                        <option key={st.user_id} value={st.user_id}>
+                          {st.name} · {st.role_label} {st.staff_id_number ? `(${st.staff_id_number})` : ''}
+                        </option>
+                      ))}
+                    </select>
+                    {loadingStaffDir && (
+                      <p className="text-[10px] text-purple-600 font-medium flex items-center gap-1">
+                        <RefreshCw size={10} className="animate-spin" /> Loading active school staff directory...
+                      </p>
+                    )}
+                  </div>
+                ) : (
+                  <input
+                    type="text"
+                    value={customHostText}
+                    onChange={(e) => setCustomHostText(e.target.value)}
+                    placeholder="e.g. Bursar Office / PTA Chairperson / Maintenance"
+                    className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-xs text-slate-900 focus:outline-none focus:ring-2 focus:ring-purple-500/20 focus:border-purple-500"
+                  />
+                )}
+              </div>
+
               <div>
                 <label className="block text-slate-700 mb-1">Vehicle Plate (Optional)</label>
                 <input
@@ -2328,16 +2477,18 @@ export default function GateOfficerDashboard() {
                   className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-xs uppercase font-mono text-slate-900 focus:outline-none"
                 />
               </div>
+
               <div>
-                <label className="block text-slate-700 mb-1">Purpose of Visit / Person to See</label>
+                <label className="block text-slate-700 mb-1">Purpose of Visit</label>
                 <input
                   required
                   name="visitPurpose"
                   type="text"
-                  placeholder="e.g. Meeting with Principal"
+                  placeholder="e.g. PTA Consultation, Enrollment Inquiry, Document Submission"
                   className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-xs text-slate-900 focus:outline-none focus:ring-2 focus:ring-purple-500/20 focus:border-purple-500"
                 />
               </div>
+
               <div className="flex gap-3 pt-3">
                 <button
                   type="button"
@@ -2364,6 +2515,134 @@ export default function GateOfficerDashboard() {
             </form>
           </div>
         </div>
+      )}
+
+      {/* MODAL: ESCORT BATCH RECEPTION LAUNCHER */}
+      {showEscortBatchModal && !selectedEscortBatch && (
+        <div className="fixed inset-0 z-50 bg-slate-950/70 flex items-center justify-center p-4 backdrop-blur-xs">
+          <div className="bg-white rounded-3xl w-full max-w-lg p-6 max-h-[90vh] overflow-y-auto border border-slate-200 shadow-2xl space-y-4">
+            <div className="flex items-center justify-between pb-3 border-b border-slate-100">
+              <div className="flex items-center gap-2.5">
+                <div className="w-10 h-10 rounded-2xl bg-teal-100 text-teal-800 flex items-center justify-center">
+                  <Car size={20} />
+                </div>
+                <div>
+                  <h3 className="font-black text-slate-900 text-base">Escort Bus Rapid Reception &amp; Release</h3>
+                  <p className="text-xs text-slate-500 font-medium">No-Queue Batch Check-In / Check-Out for Escort Vehicles</p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setShowEscortBatchModal(false)}
+                className="text-slate-400 hover:text-slate-600 cursor-pointer"
+              >
+                <X size={20} />
+              </button>
+            </div>
+
+            {/* Quick Code / ID Lookup */}
+            <form
+              onSubmit={(e) => {
+                e.preventDefault();
+                handleLookupEscort(escortLookupInput);
+              }}
+              className="space-y-2"
+            >
+              <label className="block text-slate-700 text-xs font-extrabold">Scan or Enter Escort ID / Phone</label>
+              <div className="flex items-center gap-2">
+                <div className="relative flex-1">
+                  <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
+                  <input
+                    type="text"
+                    value={escortLookupInput}
+                    onChange={(e) => setEscortLookupInput(e.target.value)}
+                    placeholder="Scan barcode, enter Escort ID, phone, or name..."
+                    className="w-full bg-slate-50 border border-slate-200 rounded-xl pl-9 pr-3 py-2 text-xs text-slate-900 focus:outline-none focus:ring-2 focus:ring-teal-500/20 focus:border-teal-500"
+                    autoFocus
+                  />
+                </div>
+                <button
+                  type="submit"
+                  disabled={loadingEscorts || !escortLookupInput.trim()}
+                  className="px-4 py-2 rounded-xl bg-teal-700 hover:bg-teal-800 text-white font-extrabold text-xs shadow-xs cursor-pointer disabled:opacity-50 flex items-center gap-1 shrink-0"
+                >
+                  {loadingEscorts ? <RefreshCw size={13} className="animate-spin" /> : 'Find Bus'}
+                </button>
+              </div>
+            </form>
+
+            {/* Active Escort Routes Today */}
+            <div className="pt-2 border-t border-slate-100 space-y-2">
+              <div className="flex items-center justify-between">
+                <span className="text-[10px] font-extrabold uppercase tracking-wider text-slate-400">
+                  Assigned Escort Routes Today ({activeSchoolEscorts.length})
+                </span>
+                <button
+                  type="button"
+                  onClick={loadActiveSchoolEscorts}
+                  className="text-[10px] text-teal-700 font-bold hover:underline cursor-pointer flex items-center gap-1"
+                >
+                  <RefreshCw size={10} /> Refresh
+                </button>
+              </div>
+
+              <div className="space-y-2 max-h-60 overflow-y-auto pr-1">
+                {activeSchoolEscorts.map((escortItem) => (
+                  <div
+                    key={escortItem.escort_id}
+                    onClick={() => handleLookupEscort(escortItem.escort_id)}
+                    className="p-3 bg-slate-50 hover:bg-teal-50/70 border border-slate-200 hover:border-teal-300 rounded-2xl flex items-center justify-between gap-3 transition-all cursor-pointer shadow-2xs"
+                  >
+                    <div className="flex items-center gap-3 min-w-0">
+                      <img
+                        src={escortItem.photo_url || 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=150&auto=format&fit=crop&q=80'}
+                        alt={escortItem.name}
+                        className="w-10 h-10 rounded-xl object-cover border border-emerald-500 shrink-0"
+                        onError={(e) => {
+                          (e.target as HTMLImageElement).src = 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=150&auto=format&fit=crop&q=80';
+                        }}
+                      />
+                      <div className="min-w-0">
+                        <p className="font-extrabold text-slate-900 text-xs leading-tight truncate">{escortItem.name}</p>
+                        <p className="text-[10px] text-slate-500 font-mono mt-0.5">{escortItem.phone || 'Transit Escort'}</p>
+                      </div>
+                    </div>
+
+                    <div className="text-right shrink-0 flex items-center gap-2">
+                      <span className="px-2.5 py-1 rounded-full bg-teal-100 text-teal-800 font-black text-xs">
+                        {escortItem.student_count} Students
+                      </span>
+                      <ArrowRight size={14} className="text-slate-400" />
+                    </div>
+                  </div>
+                ))}
+
+                {activeSchoolEscorts.length === 0 && !loadingEscorts && (
+                  <div className="py-8 text-center text-slate-400 text-xs">
+                    No active transit escorts assigned to this school today yet.
+                  </div>
+                )}
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* RENDER ACTIVE ESCORT BATCH RECEPTION MODAL */}
+      {selectedEscortBatch && (
+        <EscortBatchReceptionModal
+          schoolId={schoolId}
+          batchData={selectedEscortBatch}
+          onClose={() => {
+            setSelectedEscortBatch(null);
+            setShowEscortBatchModal(false);
+          }}
+          onSuccess={() => {
+            setSelectedEscortBatch(null);
+            setShowEscortBatchModal(false);
+            loadGateData();
+          }}
+        />
       )}
 
       {/* MODAL: DIGITAL VISITOR PASS */}

@@ -7,6 +7,7 @@ import { toast } from 'sonner';
 import StudentAvatar from '@/components/shared/StudentAvatar';
 import TodayScanStatusBanner from '@/components/gate/TodayScanStatusBanner';
 import StudentPickupVerify from '@/components/pickup/StudentPickupVerify';
+import EscortBatchReceptionModal from '@/components/gate/EscortBatchReceptionModal';
 import { applyScanHints, isActionBlocked } from '@/lib/gate/scan-hints-client';
 import { triggerHapticNotification } from '@/lib/platform/haptics';
 
@@ -52,6 +53,7 @@ export default function StudentIdScanPanel({
   const [releaseFromQueue, setReleaseFromQueue] = useState(fromReadyQueue);
   const [autoConfirm, setAutoConfirm] = useState(true);
   const [cameraError, setCameraError] = useState(false);
+  const [escortBatchData, setEscortBatchData] = useState<any | null>(null);
   const videoRef = useRef(null);
   const streamRef = useRef(null);
   const scanIntervalRef = useRef(null);
@@ -243,6 +245,14 @@ export default function StudentIdScanPanel({
         setScanned(data);
         triggerHapticNotification('SUCCESS').catch(() => {});
         toast.success(`Parent Card Verified: ${data.parent?.full_name || 'Parent'}`);
+        return;
+      }
+
+      if (data.type === 'escort_batch') {
+        stopCamera();
+        setEscortBatchData(data);
+        triggerHapticNotification('SUCCESS').catch(() => {});
+        toast.success(`Escort Transit Verified: ${data.escort?.name} (${data.students?.length || 0} students)`);
         return;
       }
 
@@ -808,6 +818,22 @@ export default function StudentIdScanPanel({
             )}
           </div>
         </div>
+      )}
+
+      {escortBatchData && (
+        <EscortBatchReceptionModal
+          schoolId={schoolId}
+          batchData={escortBatchData}
+          onClose={() => {
+            setEscortBatchData(null);
+            startCamera();
+          }}
+          onSuccess={() => {
+            setEscortBatchData(null);
+            onSuccess?.();
+            startCamera();
+          }}
+        />
       )}
     </div>
   );

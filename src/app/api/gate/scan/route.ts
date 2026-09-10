@@ -276,7 +276,195 @@ export async function POST(request: NextRequest) {
       });
     }
 
-    return NextResponse.json({ error: 'ID or QR code not recognized — scan a valid student, staff, or parent card' }, { status: 404 });
+    // 4. Escort ID Card / QR Scan Resolution
+    let escortSearch = scan;
+    if (escortSearch.toUpperCase().startsWith('MYEDURIDE:ESCORT:')) {
+      escortSearch = escortSearch.slice('MYEDURIDE:ESCORT:'.length).trim();
+    }
+
+    const isEscortUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(escortSearch);
+    let escortRecord: any = null;
+
+    if (isEscortUuid) {
+      const { data: byId } = await supabase
+        .from('escort_applications')
+        .select('*')
+        .or(`id.eq.${escortSearch},user_id.eq.${escortSearch}`)
+        .maybeSingle();
+
+      if (byId) {
+        escortRecord = byId;
+      } else {
+        const { data: userProf } = await supabase
+          .from('user_profiles')
+          .select('id, full_name, phone, avatar_url, username')
+          .eq('id', escortSearch)
+          .maybeSingle();
+
+        if (userProf) {
+          const { data: appByUser } = await supabase
+            .from('escort_applications')
+            .select('*')
+            .eq('user_id', userProf.id)
+            .maybeSingle();
+
+          escortRecord = appByUser || {
+            id: userProf.id,
+            user_id: userProf.id,
+            full_name: userProf.full_name,
+            phone: userProf.phone,
+            passport_photograph: userProf.avatar_url,
+          };
+        }
+      }
+    } else {
+      const { data: bySearch } = await supabase
+        .from('escort_applications')
+        .select('*')
+        .or(`phone.ilike.%${escortSearch}%,email.ilike.%${escortSearch}%,full_name.ilike.%${escortSearch}%,nin.eq.${escortSearch}`)
+        .limit(1)
+        .maybeSingle();
+
+      if (bySearch) {
+        escortRecord = bySearch;
+      }
+    }
+
+    if (escortRecord) {
+      // Find assigned vehicle and route
+      const [vehicleRes, routeRes] = await Promise.all([
+        supabase
+          .from('school_vehicles')
+          .select('id, reg_number, make, model, type, capacity, assigned_driver_name')
+          .eq('school_id', school_id)
+          .eq('assigned_escort_id', escortRecord.id)
+          .maybeSingle(),
+        supabase
+          .from('transport_routes')
+          .select('id, name, code, departure_morning, departure_afternoon')
+          .eq('school_id', school_id)
+          .eq('assigned_escort_id', escortRecord.id)
+          .maybeSingle(),
+      ]);
+
+      const vehicle = vehicleRes.data;
+      const route = routeRes.data;
+
+      // Query assigned students for this school
+      let assignQuery = supabase
+        .from('escort_assignments')
+        .select(`
+          student_id,
+          status,
+          student:students(
+            id,
+            first_name,
+            last_name,
+            student_id_number,
+            photo_url,
+            house_address,
+            pickup_address,
+            class_id,
+            class:school_classes(name)
+          )
+        `)
+        .eq('school_id', school_id)
+        .in('status', ['active', 'pending_confirmation']);
+
+      if (escortRecord.id && escortRecord.user_id) {
+        assignQuery = assignQuery.or(`escort_application_id.eq.${escortRecord.id},escort_application_id.eq.${escortRecord.user_id}`);
+      } else {
+        assignQuery = assignQuery.eq('escort_application_id', escortRecord.id || escortRecord.user_id);
+      }
+
+      const { data: assignments } = await assignQuery;
+      const rawStudents = (assignments || []).map((a: any) => a.student).filter(Boolean);
+      const studentIds = rawStudents.map((s: any) => s.id);
+
+      let arrivalsMap = new Map();
+      let departuresMap = new Map();
+
+      if (studentIds.length > 0) {
+        const day = todayInLagos();
+        const [arrRes, depRes] = await Promise.all([
+          supabase
+            .from('attendance_records')
+            .select('student_id, timestamp, verification_method')
+            .eq('school_id', school_id)
+            .in('student_id', studentIds)
+            .eq('type', 'arrival')
+            .gte('timestamp', `${day}T00:00:00.000Z`)
+            .lte('timestamp', `${day}T23:59:59.999Z`),
+          supabase
+            .from('attendance_records')
+            .select('student_id, timestamp, verification_method')
+            .eq('school_id', school_id)
+            .in('student_id', studentIds)
+            .eq('type', 'departure')
+            .gte('timestamp', `${day}T00:00:00.000Z`)
+            .lte('timestamp', `${day}T23:59:59.999Z`),
+        ]);
+
+        (arrRes.data || []).forEach((a: any) => arrivalsMap.set(a.student_id, a));
+        (depRes.data || []).forEach((d: any) => departuresMap.set(d.student_id, d));
+      }
+
+      const studentsManifest = rawStudents.map((st: any) => {
+        const arr = arrivalsMap.get(st.id);
+        const dep = departuresMap.get(st.id);
+        const cls = Array.isArray(st.class) ? st.class[0]?.name : (st.class?.name || 'Class');
+
+        return {
+          id: st.id,
+          name: `${st.first_name || ''} ${st.last_name || ''}`.trim() || 'Student',
+          student_id_number: st.student_id_number || 'N/A',
+          photo_url: st.photo_url || null,
+          class_name: cls,
+          pickup_address: st.house_address || st.pickup_address || 'Designated Stop',
+          today_status: {
+            has_arrival: Boolean(arr),
+            arrival_time: arr?.timestamp ? new Date(arr.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : null,
+            has_departure: Boolean(dep),
+            departure_time: dep?.timestamp ? new Date(dep.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : null,
+          },
+        };
+      });
+
+      const alreadyArrived = studentsManifest.filter((s) => s.today_status.has_arrival).length;
+      const alreadyDeparted = studentsManifest.filter((s) => s.today_status.has_departure).length;
+      const totalCount = studentsManifest.length;
+      const currentHour = new Date().getHours();
+      const suggestedMode = currentHour < 12 ? 'arrival' : 'departure';
+
+      return NextResponse.json({
+        type: 'escort_batch',
+        escort: {
+          id: escortRecord.id,
+          user_id: escortRecord.user_id,
+          name: escortRecord.full_name || 'Assigned Escort',
+          phone: escortRecord.phone || '',
+          photo_url: escortRecord.passport_photograph || escortRecord.photo_url || null,
+          vehicle_plate: vehicle?.reg_number || 'Transit Vehicle',
+          vehicle_name: vehicle ? `${vehicle.make || ''} ${vehicle.model || ''}`.trim() : 'School Bus Fleet',
+          route_name: route?.name || 'Assigned Route',
+          route_code: route?.code || 'RT-01',
+          today_trip_status: escortRecord.today_trip_status || 'pending',
+          ready_for_pickup: Boolean(escortRecord.ready_for_pickup),
+        },
+        students: studentsManifest,
+        batch_metrics: {
+          total_assigned: totalCount,
+          already_checked_in: alreadyArrived,
+          already_checked_out: alreadyDeparted,
+          pending_arrival: Math.max(0, totalCount - alreadyArrived),
+          pending_departure: Math.max(0, totalCount - alreadyDeparted),
+        },
+        suggested_mode: suggestedMode,
+        school_location: schoolLocation,
+      });
+    }
+
+    return NextResponse.json({ error: 'ID or QR code not recognized — scan a valid student, staff, parent, or escort card' }, { status: 404 });
   } catch (err: unknown) {
     const message = err instanceof Error ? err.message : 'Scan failed';
     return NextResponse.json({ error: message }, { status: 500 });
