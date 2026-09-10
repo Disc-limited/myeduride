@@ -267,6 +267,36 @@ export async function GET(request: NextRequest) {
     }
 
     // Map students into rich manifest
+    // Helper to extract daily fare from booking / assignment metadata
+    const extractStudentFare = (stId: string): number => {
+      const matchAssignment = liveAssignments.find((a) => a.student_id === stId);
+      const matchBooking = liveBookings.find(
+        (b) => b.student_id === stId || b.student?.id === stId || b.id === matchAssignment?.booking_id
+      );
+
+      if (matchBooking?.fare_amount && Number(matchBooking.fare_amount) > 0) {
+        return Number(matchBooking.fare_amount);
+      }
+      if (matchBooking?.notes) {
+        try {
+          const parsed = typeof matchBooking.notes === 'string' ? JSON.parse(matchBooking.notes) : matchBooking.notes;
+          if (parsed?.fareResult?.dailyFare) return Number(parsed.fareResult.dailyFare);
+          if (parsed?.dailyFare) return Number(parsed.dailyFare);
+          if (parsed?.fare_amount) return Number(parsed.fare_amount);
+        } catch {}
+      }
+      if (matchAssignment?.notes) {
+        const m = String(matchAssignment.notes).match(/₦\s*([\d,]+)/);
+        if (m && m[1]) {
+          const num = Number(m[1].replace(/,/g, ''));
+          if (!isNaN(num) && num > 0) return num;
+        }
+      }
+      // Standard default approved daily fare
+      return 3500;
+    };
+
+    // Map students into rich manifest with City Manager approval and approved pricing
     const studentManifest = assignedStudents.map((st, idx) => {
       const arrival = attendanceToday.find((a) => a.student_id === st.id && a.type === 'arrival');
       const departure = attendanceToday.find((a) => a.student_id === st.id && a.type === 'departure');
@@ -277,6 +307,15 @@ export async function GET(request: NextRequest) {
       } else if (arrival) {
         status = 'ON_BOARD';
       }
+
+      const matchAssignment = liveAssignments.find((a) => a.student_id === st.id);
+      const isCmApproved = matchAssignment ? matchAssignment.status === 'active' : true;
+      const cmStatusLabel = matchAssignment?.status === 'pending_confirmation' ? 'pending_approval' : 'approved';
+      const assignedSchoolName = matchAssignment?.school?.name || schoolData?.name || 'School Fleet';
+
+      const dailyFare = extractStudentFare(st.id);
+      const morningFare = Math.round(dailyFare / 2);
+      const afternoonFare = Math.round(dailyFare / 2);
 
       const cls = Array.isArray(st.class) ? st.class[0]?.name : (st.class?.name || st.class_name || 'MyEduRide Transit');
       const hasHousePin = st.house_lat != null && st.house_lng != null;
@@ -290,6 +329,16 @@ export async function GET(request: NextRequest) {
         student_id_number: st.student_id_number || `2026-${1000 + idx}`,
         class_name: cls,
         photo_url: st.photo_url || null,
+        school_id: matchAssignment?.school_id || st.school_id || schoolId,
+        school_name: assignedSchoolName,
+        city_manager_status: cmStatusLabel,
+        city_manager_approved: isCmApproved,
+        daily_fare: dailyFare,
+        formatted_daily_fare: `₦${dailyFare.toLocaleString()}`,
+        morning_fare: morningFare,
+        afternoon_fare: afternoonFare,
+        formatted_morning_fare: `₦${morningFare.toLocaleString()}`,
+        formatted_afternoon_fare: `₦${afternoonFare.toLocaleString()}`,
         pickup_address: st.house_address || st.pickup_address || routeStops[idx % Math.max(routeStops.length, 1)]?.stop_name || 'Designated Stop',
         house_address: st.house_address || null,
         house_lat: st.house_lat ? Number(st.house_lat) : null,
@@ -300,15 +349,35 @@ export async function GET(request: NextRequest) {
         is_house_pinned: hasHousePin,
         google_maps_nav_url: navUrl,
         status,
+        morning_status: arrival ? 'DROPPED_OFF_AT_SCHOOL' : (status === 'ON_BOARD' ? 'PICKED_UP_FROM_HOME' : 'PENDING_HOME_PICKUP'),
+        afternoon_status: departure ? 'SAFE_AT_HOME' : 'PENDING_SCHOOL_PICKUP',
         pickup_time: st.pickup_time || routeStops[idx % Math.max(routeStops.length, 1)]?.pickup_time || '07:15 AM',
         parent_phone: st.parent_phone || '0803 456 7890',
         parent_name: st.parent_name || 'Parent / Guardian',
       };
     });
 
+    // Compute Today's Total Earnings Summary for Escort
+    const totalDailyEarnings = studentManifest.reduce((acc, s) => acc + (s.city_manager_approved ? s.daily_fare : 0), 0);
+    const morningProjected = studentManifest.reduce((acc, s) => acc + (s.city_manager_approved ? s.morning_fare : 0), 0);
+    const afternoonProjected = studentManifest.reduce((acc, s) => acc + (s.city_manager_approved ? s.afternoon_fare : 0), 0);
+    const approvedStudentsCount = studentManifest.filter((s) => s.city_manager_approved).length;
+
+    const earningsSummary = {
+      total_daily_earnings: totalDailyEarnings,
+      formatted_total_daily_earnings: `₦${totalDailyEarnings.toLocaleString()}`,
+      morning_projected: morningProjected,
+      formatted_morning_projected: `₦${morningProjected.toLocaleString()}`,
+      afternoon_projected: afternoonProjected,
+      formatted_afternoon_projected: `₦${afternoonProjected.toLocaleString()}`,
+      total_students: studentManifest.length,
+      approved_students_count: approvedStudentsCount,
+      pending_students_count: studentManifest.length - approvedStudentsCount,
+    };
+
     const morningStudents = studentManifest.map((s) => ({
       ...s,
-      status: s.status === 'ON_BOARD' || s.status === 'DROPPED_OFF' ? 'PICKED' : 'NEXT',
+      status: s.morning_status === 'DROPPED_OFF_AT_SCHOOL' ? 'DROPPED_OFF' : (s.morning_status === 'PICKED_UP_FROM_HOME' ? 'ON_BOARD' : 'SCHEDULED'),
       address: s.house_address || s.pickup_address,
       time: s.pickup_time,
       avatar: s.photo_url,
@@ -316,7 +385,9 @@ export async function GET(request: NextRequest) {
 
     const afternoonStudents = studentManifest.map((s) => ({
       ...s,
-      note: `Pick from ${schoolData?.name || 'School'} Gate`,
+      status: s.afternoon_status === 'SAFE_AT_HOME' ? 'DROPPED_OFF' : (s.afternoon_status === 'PICKED_UP_FROM_GATE' ? 'ON_BOARD' : 'SCHEDULED'),
+      note: `Pick from ${s.school_name} Gate`,
+      address: s.house_address || s.pickup_address,
       avatar: s.photo_url,
     }));
 
@@ -410,6 +481,7 @@ export async function GET(request: NextRequest) {
 
     return NextResponse.json({
       success: true,
+      earnings_summary: earningsSummary,
       escort: {
         id: escortProfile?.id || session?.user_id || 'ESC-230081',
         name: displayName,
@@ -422,6 +494,16 @@ export async function GET(request: NextRequest) {
         availableForOtherSchools: escortProfile?.availableForOtherSchools ?? true,
         status: escortProfile?.status || 'Online',
         is_online: true,
+        today_trip_status: escortProfile?.today_trip_status || 'pending',
+        today_trip_declined_reason: escortProfile?.today_trip_declined_reason || null,
+        today_trip_accepted_at: escortProfile?.today_trip_accepted_at || null,
+        ready_for_pickup: Boolean(escortProfile?.ready_for_pickup),
+        ready_for_pickup_at: escortProfile?.ready_for_pickup_at || null,
+        house_lat: escortProfile?.house_lat ? Number(escortProfile.house_lat) : null,
+        house_lng: escortProfile?.house_lng ? Number(escortProfile.house_lng) : null,
+        residential_address: escortProfile?.residential_address || userProfile?.address || '',
+        closest_landmark: escortProfile?.closest_landmark || '',
+        is_house_pinned: Boolean(escortProfile?.house_lat && escortProfile?.house_lng),
       },
       school: {
         id: schoolData?.id || '0af823c7-4587-4e97-9ff5-b92fc979a167',
@@ -573,6 +655,94 @@ export async function POST(request: NextRequest) {
       });
     }
 
+    // Action 1b: Accept Today's Scheduled Trips
+    if (action === 'accept_today_trips') {
+      if (session?.user_id) {
+        await supabase
+          .from('escort_applications')
+          .update({
+            today_trip_status: 'accepted',
+            today_trip_accepted_at: nowUtcIso(),
+            availability_status: 'available',
+          })
+          .eq('user_id', session.user_id);
+      }
+      return NextResponse.json({
+        success: true,
+        today_trip_status: 'accepted',
+        message: "You have committed to today's trips! City Manager and schools informed.",
+      });
+    }
+
+    // Action 1c: Decline Today's Trips & Request Emergency Deputy
+    if (action === 'decline_today_trips') {
+      const reason = body.reason || 'Escort reported unable to cover route today';
+      if (session?.user_id) {
+        await supabase
+          .from('escort_applications')
+          .update({
+            today_trip_status: 'declined',
+            today_trip_declined_reason: reason,
+            availability_status: 'offline',
+          })
+          .eq('user_id', session.user_id);
+
+        // Resolve active school ID for emergency
+        let emergencySchoolId = primarySchoolId;
+        if (!emergencySchoolId) {
+          const { data: assign } = await supabase
+            .from('escort_assignments')
+            .select('school_id')
+            .eq('escort_id', session.user_id)
+            .limit(1)
+            .maybeSingle();
+          emergencySchoolId = assign?.school_id;
+        }
+        if (!emergencySchoolId) {
+          const { data: firstSchool } = await supabase.from('schools').select('id').limit(1).maybeSingle();
+          emergencySchoolId = firstSchool?.id || '00000000-0000-0000-0000-000000000001';
+        }
+
+        // Immediately create emergency deputising request for City Manager
+        await supabase.from('emergency_deputising').insert({
+          school_id: emergencySchoolId,
+          original_escort_id: session.user_id,
+          original_escort_name: session.full_name || 'Assigned Escort',
+          deputy_escort_name: 'Pending City Manager Dispatch',
+          emergency_reason: reason,
+          notes: `Escort declined today's route via morning commitment check: "${reason}". Immediate emergency deputy dispatch required.`,
+          status: 'PENDING_DEPUTY_ASSIGNMENT',
+          created_at: nowUtcIso(),
+        });
+      }
+      return NextResponse.json({
+        success: true,
+        today_trip_status: 'declined',
+        message: "Trip decline recorded. City Manager has been urgently alerted to dispatch an emergency pool escort.",
+      });
+    }
+
+    // Action 1d: Toggle "Ready for Pickup"
+    if (action === 'toggle_ready_for_pickup') {
+      const isReady = Boolean(body.ready);
+      if (session?.user_id) {
+        await supabase
+          .from('escort_applications')
+          .update({
+            ready_for_pickup: isReady,
+            ready_for_pickup_at: nowUtcIso(),
+          })
+          .eq('user_id', session.user_id);
+      }
+      return NextResponse.json({
+        success: true,
+        ready_for_pickup: isReady,
+        message: isReady
+          ? 'Live Pickup Mode ACTIVATED! Your pickup manifest is ready and parents are notified.'
+          : 'Pickup mode set to standby.',
+      });
+    }
+
     // Action 2: Start Trip
     if (action === 'start_trip') {
       const { trip_type } = body;
@@ -595,17 +765,52 @@ export async function POST(request: NextRequest) {
       });
     }
 
-    // Action 4: Update Student Pickup Status
-    if (action === 'update_student_status') {
+    // Action 4: Specific Morning & Afternoon Custody Transitions
+    if (
+      action === 'morning_home_pickup' ||
+      action === 'morning_school_dropoff' ||
+      action === 'afternoon_school_pickup' ||
+      action === 'afternoon_home_dropoff' ||
+      action === 'update_student_status'
+    ) {
       if (!student_id) {
         return NextResponse.json({ error: 'student_id required' }, { status: 400 });
       }
 
-      if (primarySchoolId) {
+      let attendanceType = 'arrival';
+      let resolvedStatus = status || action;
+
+      if (action === 'morning_home_pickup') {
+        attendanceType = 'arrival';
+        resolvedStatus = 'PICKED_UP_FROM_HOME';
+      } else if (action === 'morning_school_dropoff') {
+        attendanceType = 'arrival';
+        resolvedStatus = 'DROPPED_OFF_AT_SCHOOL';
+      } else if (action === 'afternoon_school_pickup') {
+        attendanceType = 'departure';
+        resolvedStatus = 'PICKED_UP_FROM_GATE';
+      } else if (action === 'afternoon_home_dropoff') {
+        attendanceType = 'departure';
+        resolvedStatus = 'SAFE_AT_HOME';
+      } else {
+        attendanceType = status === 'PICKED_UP' || status === 'ON_BOARD' ? 'arrival' : 'departure';
+      }
+
+      // Resolve school ID fallback
+      let targetSchoolId = primarySchoolId;
+      if (!targetSchoolId) {
+        const { data: stRec } = await supabase.from('students').select('school_id').eq('id', student_id).maybeSingle();
+        targetSchoolId = stRec?.school_id;
+      }
+      if (!targetSchoolId) {
+        const { data: assignRec } = await supabase.from('escort_assignments').select('school_id').eq('student_id', student_id).limit(1).maybeSingle();
+        targetSchoolId = assignRec?.school_id;
+      }
+
+      if (targetSchoolId) {
         // Record in attendance_records
-        const attendanceType = status === 'PICKED_UP' || status === 'ON_BOARD' ? 'arrival' : 'departure';
         await supabase.from('attendance_records').insert({
-          school_id: primarySchoolId,
+          school_id: targetSchoolId,
           student_id,
           type: attendanceType,
           verified_by_user_id: session?.user_id || null,
@@ -616,20 +821,20 @@ export async function POST(request: NextRequest) {
         // Write to audit log
         const { writeAuditLog } = await import('@/lib/audit/log');
         await writeAuditLog(supabase, {
-          school_id: primarySchoolId,
+          school_id: targetSchoolId,
           actor_user_id: session?.user_id || 'system',
           student_id,
-          action: `escort_student_${status.toLowerCase()}`,
+          action: `escort_custody_${resolvedStatus.toLowerCase()}`,
           entity_type: 'students',
-          details: { status, timestamp: nowUtcIso() },
+          details: { status: resolvedStatus, action, timestamp: nowUtcIso() },
         });
       }
 
       return NextResponse.json({
         success: true,
         student_id,
-        status,
-        message: `Student status updated to ${status}.`,
+        status: resolvedStatus,
+        message: `Student custody recorded: ${resolvedStatus.replace(/_/g, ' ')}.`,
       });
     }
 

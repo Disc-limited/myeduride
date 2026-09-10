@@ -72,7 +72,7 @@ export async function GET(request: NextRequest) {
     const query = request.nextUrl.searchParams.get('q')?.trim();
     const [schoolsRes, escortsRes, bookingsRes, assignmentsRes, auditRes, deputisingRes, vehiclesRes, routesRes, walkHomeRes] = await Promise.all([
       db.from('schools').select('id,name').order('name').then((r: any) => r.data || [], () => []),
-      db.from('escort_applications').select('id,full_name,email,phone,operating_area,status,availability_status,emergency_pool_enabled,last_available_at,application_data,user_id').in('status', ['CITY_MANAGER_APPROVED', 'ACTIVE']).then((r: any) => r.data || [], () => []),
+      db.from('escort_applications').select('id,full_name,email,phone,operating_area,status,availability_status,emergency_pool_enabled,last_available_at,application_data,user_id,residential_address,closest_landmark,lga,house_lat,house_lng,location_pinned_at,today_trip_status,today_trip_declined_reason,ready_for_pickup').in('status', ['CITY_MANAGER_APPROVED', 'ACTIVE']).then((r: any) => r.data || [], () => []),
       db.from('transport_bookings').select('*, school:schools(name), student:students(first_name,last_name,student_id_number,class_id)').order('created_at', { ascending: false }).limit(100).then((r: any) => r.data || [], () => []),
       db.from('escort_assignments').select('*, escort:escort_applications(id,full_name,phone,operating_area,status), school:schools(id,name), student:students(id,first_name,last_name,student_id_number,photo_url,class:school_classes(name))').order('created_at', { ascending: false }).limit(100).then((r: any) => r.data || [], () => []),
       db.from('city_manager_audit_log').select('*').order('created_at', { ascending: false }).limit(100).then((r: any) => r.data || [], () => []),

@@ -20,6 +20,7 @@ import { emergencyDeputisingDomainSuite } from './unit/emergency-deputising-doma
 import { telemetryTrackerUnitSuite } from './unit/telemetry-tracker.test';
 import { calendarGateInvariantsSuite } from './unit/calendar-gate-invariants.test';
 import { schoolGeofenceSuite } from './unit/school-geofence.test';
+import { escortPrioritiesSuite } from './unit/escort-priorities.test';
 import { pickupControlApiSuite } from './integration/pickup-control-api.test';
 import { escortApisSuite } from './integration/escort-apis.test';
 import { routesVehiclesApiSuite } from './integration/routes-vehicles-api.test';
@@ -70,6 +71,7 @@ async function runAllTests() {
     telemetryTrackerUnitSuite,
     calendarGateInvariantsSuite,
     schoolGeofenceSuite,
+    escortPrioritiesSuite,
     pickupControlApiSuite,
     escortApisSuite,
     routesVehiclesApiSuite,
