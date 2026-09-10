@@ -49,7 +49,45 @@ export default function NotificationsInbox({ schoolId, compact = false }) {
     load();
   };
 
+  const [respondingId, setRespondingId] = useState(null);
+
+  const handleVisitorResponse = async (e, notif, decision) => {
+    e.stopPropagation();
+    const visitorId = notif.action_payload?.visitor_id;
+    setRespondingId(notif.id);
+
+    try {
+      const res = await fetch('/api/gate/visitors', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify({
+          action: 'host_respond',
+          school_id: notif.school_id || schoolId,
+          visitor_id: visitorId,
+          decision,
+        }),
+      });
+      const json = await res.json();
+      if (json.success) {
+        if (decision === 'accepted') {
+          toast.success(json.message || 'Visitor approved for entry!');
+        } else {
+          toast.error(json.message || 'Visitor entry declined.', { duration: 5000 });
+        }
+        await markRead(notif.id);
+      } else {
+        toast.error(json.error || 'Failed to respond to visitor request');
+      }
+    } catch (err) {
+      toast.error('Network error responding to visitor');
+    } finally {
+      setRespondingId(null);
+    }
+  };
+
   const typeColor = (type) => {
+    if (type === 'visitor_access_request') return 'bg-purple-100 text-purple-800 border border-purple-200';
     if (type === 'pickup_request' || type === 'pickup_person') return 'bg-blue-50 text-blue-800';
     if (type === 'late') return 'bg-amber-50 text-amber-800';
     if (type === 'dismissal') return 'bg-orange-50 text-orange-800';
@@ -68,12 +106,12 @@ export default function NotificationsInbox({ schoolId, compact = false }) {
           )}
         </div>
         {unread > 0 && (
-          <button type="button" onClick={markAllRead} className="text-xs text-primary-600 flex items-center gap-1">
+          <button type="button" onClick={markAllRead} className="text-xs text-primary-600 flex items-center gap-1 cursor-pointer">
             <CheckCheck size={14} /> Mark all read
           </button>
         )}
       </div>
-      <p className="text-xs text-slate-500">Pickup requests, registrations, attendance, and dismissals</p>
+      <p className="text-xs text-slate-500">Pickup requests, registrations, visitor clearances, and dismissals</p>
 
       {loading && <p className="text-sm text-slate-400 animate-pulse">Loading…</p>}
 
@@ -85,27 +123,53 @@ export default function NotificationsInbox({ schoolId, compact = false }) {
         {items.map((n) => {
           const st = n.student;
           const student = Array.isArray(st) ? st[0] : st;
+          const isVisitorRequest = n.type === 'visitor_access_request';
+
           return (
-            <button
+            <div
               key={n.id}
-              type="button"
               onClick={() => !n.is_read && markRead(n.id)}
-              className={`w-full text-left card p-3 transition ${!n.is_read ? 'border-l-4 border-l-primary-500 bg-primary-50/30' : ''}`}
+              className={`w-full text-left card p-3.5 transition cursor-pointer ${
+                !n.is_read ? 'border-l-4 border-l-primary-500 bg-primary-50/20 shadow-xs' : ''
+              }`}
             >
               <div className="flex justify-between gap-2 items-start">
                 <span className={`text-[10px] font-bold uppercase px-1.5 py-0.5 rounded ${typeColor(n.type)}`}>
-                  {(n.type || 'system').replace('_', ' ')}
+                  {(n.type || 'system').replace(/_/g, ' ')}
                 </span>
                 <span className="text-[10px] text-slate-400 shrink-0">{formatDateTimeLagos(n.created_at)}</span>
               </div>
               <p className="font-semibold text-sm text-slate-900 mt-1">{n.title}</p>
-              <p className="text-xs text-slate-600 mt-0.5">{n.message}</p>
+              <p className="text-xs text-slate-600 mt-0.5 leading-relaxed">{n.message}</p>
+
+              {/* Action Buttons for Visitor Clearance */}
+              {isVisitorRequest && (
+                <div className="mt-3 pt-2.5 border-t border-slate-100 flex items-center gap-2">
+                  <button
+                    type="button"
+                    disabled={respondingId === n.id}
+                    onClick={(e) => handleVisitorResponse(e, n, 'accepted')}
+                    className="px-3 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold shadow-xs cursor-pointer disabled:opacity-50"
+                  >
+                    {respondingId === n.id ? 'Updating…' : '✓ Accept Entry'}
+                  </button>
+                  <button
+                    type="button"
+                    disabled={respondingId === n.id}
+                    onClick={(e) => handleVisitorResponse(e, n, 'declined')}
+                    className="px-3 py-1.5 rounded-lg bg-rose-600 hover:bg-rose-700 text-white text-xs font-bold shadow-xs cursor-pointer disabled:opacity-50"
+                  >
+                    {respondingId === n.id ? 'Updating…' : '✕ Decline & Turn Away'}
+                  </button>
+                </div>
+              )}
+
               {student && (
                 <p className="text-[10px] text-slate-500 mt-1">
-                  {student.first_name} {student.last_name}
+                  Student: {student.first_name} {student.last_name}
                 </p>
               )}
-            </button>
+            </div>
           );
         })}
       </div>
