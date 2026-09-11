@@ -108,8 +108,8 @@ export default function ParentLiveMovementView({
   const child = liveData?.child || activeChild;
 
   // Derive stage
-  const stage = liveData?.journeyStage || 'scheduled';
-  const stageConfig = {
+  const stage = (liveData?.journeyStage || 'scheduled') as string;
+  const STAGE_CONFIGS: Record<string, { title: string; subtitle: string; badgeColor: string; dotColor: string }> = {
     scheduled: {
       title: 'Scheduled Route Active',
       subtitle: 'Awaiting scheduled morning departure or escort dispatch',
@@ -146,7 +146,9 @@ export default function ParentLiveMovementView({
       badgeColor: 'bg-purple-100 text-purple-800 border-purple-300',
       dotColor: 'bg-purple-500',
     },
-  }[stage] || {
+  };
+
+  const stageConfig = STAGE_CONFIGS[stage] || {
     title: 'Transit Corridor Ready',
     subtitle: 'Live GPS ready for movement tracking',
     badgeColor: 'bg-slate-100 text-slate-800 border-slate-300',

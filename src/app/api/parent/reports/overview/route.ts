@@ -46,9 +46,10 @@ export async function GET(request: NextRequest) {
       .eq('parent_user_id', session.user_id);
 
     const allChildrenMap = new Map<string, any>();
-    (directChildren || []).forEach((c) => allChildrenMap.set(c.id, c));
-    (linkedChildren || []).forEach((l) => {
-      if (l.student?.id) allChildrenMap.set(l.student.id, l.student);
+    (directChildren || []).forEach((c: any) => allChildrenMap.set(c.id, c));
+    (linkedChildren || []).forEach((l: any) => {
+      const studentObj = Array.isArray(l.student) ? l.student[0] : l.student;
+      if (studentObj?.id) allChildrenMap.set(studentObj.id, studentObj);
     });
 
     const allChildren = Array.from(allChildrenMap.values());
