@@ -64,6 +64,9 @@ import MigoAIFloatingWidget from '@/components/parent/MigoAIFloatingWidget';
 import PickupAuthorizationModal from '@/components/parent/PickupAuthorizationModal';
 import InteractiveLocationPickerModal from '@/components/shared/InteractiveLocationPickerModal';
 import ParentRoutePinningWidget from '@/components/routes/ParentRoutePinningWidget';
+import ParentLiveMovementView from '@/components/parent/ParentLiveMovementView';
+import ParentMobileBottomNav from '@/components/parent/ParentMobileBottomNav';
+import { IdCardPreviewModal } from '@/components/id-card/IdCardPreviewModal';
 
 // Helper to sanitize internal technical metadata like [sender_id:...] and [Message from ...]
 const cleanNotificationText = (text?: string) => {
@@ -102,6 +105,7 @@ export default function ParentDashboard() {
   const [showWalletModal, setShowWalletModal] = useState(false);
   const [showLocationModal, setShowLocationModal] = useState(false);
   const [locationModalChild, setLocationModalChild] = useState<any>(null);
+  const [showIdPassModal, setShowIdPassModal] = useState(false);
 
   // Pickup Form state
   const [pickupForm, setPickupForm] = useState({
@@ -501,11 +505,13 @@ export default function ParentDashboard() {
         setActiveTab('safety');
         break;
       case 'track_vehicle':
-        setSafetyPillar('edrive');
-        setActiveTab('safety');
+        setActiveTab('live');
         break;
       case 'authorize_pickup':
         setShowPickupModal(true);
+        break;
+      case 'digital_id_pass':
+        setShowIdPassModal(true);
         break;
       case 'pin_house':
         setLocationModalChild(safeChildren[0] || null);
@@ -520,8 +526,7 @@ export default function ParentDashboard() {
         });
         break;
       case 'journey_history':
-        setSafetyPillar('edrive');
-        setActiveTab('safety');
+        setActiveTab('live');
         break;
       case 'attendance_report':
         setActiveTab('attendance');
@@ -595,6 +600,7 @@ export default function ParentDashboard() {
             setActiveTab('safety');
           }}
           unreadChatCount={unreadEduChartCount}
+          onOpenIdPass={() => setShowIdPassModal(true)}
           isCollapsed={isSidebarCollapsed}
           onToggleCollapse={() => setIsSidebarCollapsed(!isSidebarCollapsed)}
         />
@@ -621,6 +627,7 @@ export default function ParentDashboard() {
             setActiveTab('safety');
           }}
           unreadChatCount={unreadEduChartCount}
+          onOpenIdPass={() => setShowIdPassModal(true)}
           isMobileDrawer={true}
           onCloseMobileDrawer={() => setIsMobileSidebarOpen(false)}
         />
@@ -638,13 +645,26 @@ export default function ParentDashboard() {
           onOpenChat={() => setShowEduChatModal(true)}
           onOpenMigoAI={() => setShowMigoAI(!showMigoAI)}
           onOpenAccountSettings={() => setShowAccountModal(true)}
+          onOpenIdPass={() => setShowIdPassModal(true)}
           onToggleMobileSidebar={() => setIsMobileSidebarOpen(!isMobileSidebarOpen)}
           searchQuery={searchQuery}
           setSearchQuery={setSearchQuery}
         />
         {/* Main Content Dashboard - EXACT 9-COL / 3-COL STRUCTURE */}
-        <main className="flex-1 p-4 sm:p-6 lg:p-6 overflow-y-auto">
-          {activeTab === 'notices' ? (
+        <main className="flex-1 p-4 sm:p-6 lg:p-6 pb-24 lg:pb-6 overflow-y-auto">
+          {activeTab === 'live' ? (
+            <div className="max-w-[1600px] mx-auto space-y-5">
+              <ParentLiveMovementView
+                childrenList={safeChildren}
+                initialChildId={selectedChild || safeChildren[0]?.id}
+                onOpenChat={() => setShowEduChatModal(true)}
+                onOpenPinHouse={(ch) => {
+                  setLocationModalChild(ch || safeChildren[0] || null);
+                  setShowLocationModal(true);
+                }}
+              />
+            </div>
+          ) : activeTab === 'notices' ? (
             <div className="max-w-[1600px] mx-auto space-y-5">
               <SchoolNoticesInboxView role="parents" />
             </div>
@@ -1315,6 +1335,32 @@ export default function ParentDashboard() {
           </div>
         </div>
       )}
+
+      {/* Parent Scannable Gate Digital ID Pass Modal */}
+      {showIdPassModal && (
+        <IdCardPreviewModal
+          isOpen={showIdPassModal}
+          onClose={() => setShowIdPassModal(false)}
+          data={{
+            kind: 'parent',
+            fullName: userName || (session as any)?.full_name || 'Parent / Legal Guardian',
+            idNumber: `PAR-${((session as any)?.user_id || 'PARENT').slice(0, 8).toUpperCase()}`,
+            photoUrl: userPhotoUrl,
+            roleLabel: 'Verified Parent / Legal Guardian',
+            schoolName: (safeChildren[0] as any)?.schools?.name || (safeChildren[0] as any)?.school_name || 'MyEduRide Partner Campus',
+            qrData: `MYEDURIDE:PARENT:${(session as any)?.user_id}`,
+            primaryColor: '#1B4D3E',
+          }}
+        />
+      )}
+
+      {/* Mobile Ergonomic Bottom Navigation Bar */}
+      <ParentMobileBottomNav
+        activeTab={activeTab}
+        setActiveTab={setActiveTab}
+        onOpenMobileMenu={() => setIsMobileSidebarOpen(true)}
+        unreadChatCount={unreadEduChartCount}
+      />
     </div>
   );
 }

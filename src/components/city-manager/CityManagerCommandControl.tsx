@@ -48,6 +48,8 @@ import {
   Info,
   MapPin,
   Flame,
+  Home,
+  ExternalLink,
   ShieldCheck,
   ShieldAlert,
   BarChart3,
@@ -113,6 +115,9 @@ export function CityManagerCommandControl({
   const [corridorSchool, setCorridorSchool] = useState<any>(null);
   const [corridorMetrics, setCorridorMetrics] = useState<any>(null);
   const [loadingCorridors, setLoadingCorridors] = useState(false);
+  const [pinnedParentAddresses, setPinnedParentAddresses] = useState<any[]>([]);
+  const [pinnedAddressSearch, setPinnedAddressSearch] = useState('');
+  const [pinnedAddressSchoolFilter, setPinnedAddressSchoolFilter] = useState('ALL');
 
   const loadCorridors = async () => {
     try {
@@ -123,6 +128,9 @@ export function CityManagerCommandControl({
         setTransitRoutes(json.routes || []);
         setCorridorSchool(json.school || null);
         setCorridorMetrics(json.metrics || null);
+        if (json.all_pinned_students?.length > 0) {
+          setPinnedParentAddresses((prev) => (prev.length > 0 ? prev : json.all_pinned_students));
+        }
         if (json.routes?.length > 0) {
           setSelectedCorridorRoute((prev) => prev || json.routes[0]);
         }
@@ -207,6 +215,9 @@ export function CityManagerCommandControl({
           }
           if (Array.isArray(data.parent_requests)) {
             setParentRequests(data.parent_requests);
+          }
+          if (Array.isArray(data.pinned_parent_addresses)) {
+            setPinnedParentAddresses(data.pinned_parent_addresses);
           }
         }
       })
@@ -621,7 +632,7 @@ export function CityManagerCommandControl({
           { id: 'escorts', label: 'Monitor Escorts (MyEduRide & School)', icon: UserCheck, count: escorts.length },
           { id: 'gate-monitor', label: 'Gate Officers & Gate Stream', icon: DoorOpen, count: gateOfficers.length },
           { id: 'trips-management', label: 'Active Trips & Operational Timing', icon: Navigation, count: escorts.filter(e => e.status === 'ON_TRIP').length },
-          { id: 'corridor-map', label: 'Transit Corridors & Pinned Houses', icon: MapPin, count: corridorMetrics?.total_pinned_houses },
+          { id: 'corridor-map', label: 'Transit Corridors & Pinned Houses', icon: MapPin, count: pinnedParentAddresses.length || corridorMetrics?.total_pinned_houses || 0 },
           { id: 'assignments', label: 'Bookings & Escort Assignments', icon: ClipboardList, count: parentRequests.length },
           { id: 'safety-incidents', label: 'Safety Incidents & Panic Triage', icon: AlertTriangle, count: safetyIncidents.length, alert: safetyIncidents.length > 0 },
           { id: 'escalations', label: 'Parent & School Escalations', icon: AlertCircle, count: escalations.length },
@@ -1408,7 +1419,7 @@ export function CityManagerCommandControl({
 
               <div className="flex items-center gap-2">
                 <span className="px-3 py-1.5 rounded-full bg-teal-500/20 text-teal-300 text-xs font-bold border border-teal-500/30">
-                  📌 {corridorMetrics?.total_pinned_houses ?? 0} Parent House Pins Synced
+                  📌 {pinnedParentAddresses.length || corridorMetrics?.total_pinned_houses || 0} Parent House Pins Synced
                 </span>
               </div>
             </div>
@@ -1439,7 +1450,9 @@ export function CityManagerCommandControl({
                 <div className="text-xs text-slate-400 font-medium">
                   Escort: <strong className="text-white">{selectedCorridorRoute.assigned_escort_name}</strong> ·
                   Vehicle: <strong className="text-white">{selectedCorridorRoute.assigned_vehicle}</strong> ·
-                  <span className="text-teal-400 font-bold ml-1">📌 {selectedCorridorRoute.pinned_by_parents_count ?? 0} Pinned Homes</span>
+                  <span className="text-teal-400 font-bold ml-1">
+                    📌 {selectedCorridorRoute.pinned_by_parents_count || selectedCorridorRoute.passenger_students?.length || 0} Corridor Homes
+                  </span>
                 </div>
               )}
             </div>
@@ -1451,14 +1464,174 @@ export function CityManagerCommandControl({
                 routeCode={selectedCorridorRoute.code}
                 routeName={selectedCorridorRoute.name}
                 stops={selectedCorridorRoute.stops || []}
-                students={selectedCorridorRoute.passenger_students || []}
-                heightClassName="h-[600px]"
+                students={
+                  selectedCorridorRoute.passenger_students?.length > 0
+                    ? selectedCorridorRoute.passenger_students
+                    : pinnedParentAddresses.map((p) => ({
+                        student_id: p.student_id,
+                        name: p.student_name,
+                        class: p.class_name,
+                        house_address: p.house_address,
+                        house_lat: p.house_lat,
+                        house_lng: p.house_lng,
+                        house_landmark: p.house_landmark,
+                        house_notes: p.house_notes,
+                        is_house_pinned: true,
+                      }))
+                }
+                heightClassName="h-[520px]"
               />
             ) : (
               <div className="p-12 text-center text-slate-500 text-xs bg-slate-900/40 rounded-2xl border border-slate-800">
                 {loadingCorridors ? 'Loading transit corridors and student house coordinates...' : 'No active routes found for this jurisdiction.'}
               </div>
             )}
+
+            {/* Parent Pinned Addresses Registry & Doorstep Oversight */}
+            <div className="pt-4 border-t border-slate-800 space-y-4">
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                <div>
+                  <h4 className="text-sm font-extrabold text-white flex items-center gap-2">
+                    <Home size={16} className="text-teal-400" />
+                    <span>Parent Pinned Addresses Registry (City Jurisdiction)</span>
+                  </h4>
+                  <p className="text-xs text-slate-400">
+                    Live directory of typed doorstep residential addresses, landmarks, and GPS coordinates submitted by parents.
+                  </p>
+                </div>
+
+                <div className="flex items-center gap-2">
+                  <span className="px-3 py-1 rounded-xl bg-teal-500/20 text-teal-300 font-mono font-bold text-xs border border-teal-500/30">
+                    {pinnedParentAddresses.length} Addresses Pinned
+                  </span>
+                </div>
+              </div>
+
+              {/* Search & School Filters */}
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 bg-slate-900/90 p-3 rounded-xl border border-slate-800">
+                <div className="relative flex-1 max-w-md">
+                  <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={14} />
+                  <input
+                    type="text"
+                    value={pinnedAddressSearch}
+                    onChange={(e) => setPinnedAddressSearch(e.target.value)}
+                    placeholder="Search by student name, school, or typed address..."
+                    className="w-full pl-9 pr-3 py-1.5 text-xs bg-slate-800 border border-slate-700 rounded-lg text-white placeholder-slate-400 focus:outline-none focus:ring-1 focus:ring-teal-500"
+                  />
+                </div>
+
+                <div className="flex items-center gap-2">
+                  <span className="text-xs text-slate-400 font-bold">School:</span>
+                  <select
+                    value={pinnedAddressSchoolFilter}
+                    onChange={(e) => setPinnedAddressSchoolFilter(e.target.value)}
+                    className="px-2.5 py-1.5 text-xs bg-slate-800 border border-slate-700 rounded-lg text-white focus:outline-none"
+                  >
+                    <option value="ALL">All Schools ({schools.length})</option>
+                    {schools.map((s) => (
+                      <option key={s.id} value={s.id}>
+                        {s.name}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              </div>
+
+              {/* Cards Grid */}
+              {(() => {
+                const filtered = pinnedParentAddresses.filter((p) => {
+                  if (pinnedAddressSchoolFilter !== 'ALL' && p.school_id !== pinnedAddressSchoolFilter) return false;
+                  if (pinnedAddressSearch.trim()) {
+                    const q = pinnedAddressSearch.toLowerCase();
+                    const matchName = p.student_name?.toLowerCase().includes(q);
+                    const matchAddr = p.house_address?.toLowerCase().includes(q);
+                    const matchSch = p.school_name?.toLowerCase().includes(q);
+                    const matchLandmark = p.house_landmark?.toLowerCase().includes(q);
+                    if (!matchName && !matchAddr && !matchSch && !matchLandmark) return false;
+                  }
+                  return true;
+                });
+
+                if (filtered.length === 0) {
+                  return (
+                    <div className="p-8 text-center bg-slate-900/40 rounded-xl border border-slate-800 text-slate-400 text-xs">
+                      No parent-pinned addresses found matching your filter criteria.
+                    </div>
+                  );
+                }
+
+                return (
+                  <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
+                    {filtered.map((item) => (
+                      <div
+                        key={item.student_id}
+                        className="bg-slate-900/80 rounded-2xl p-4 border border-slate-800 hover:border-teal-500/40 transition-all space-y-3 flex flex-col justify-between"
+                      >
+                        <div className="space-y-2">
+                          <div className="flex items-start justify-between gap-2">
+                            <div>
+                              <h5 className="font-extrabold text-white text-xs">{item.student_name}</h5>
+                              <span className="text-[11px] text-teal-300 font-semibold">{item.school_name}</span>
+                              <span className="text-[10px] text-slate-400 ml-1.5">({item.class_name})</span>
+                            </div>
+                            <span
+                              className={`px-2 py-0.5 rounded-full text-[9px] font-black uppercase ${
+                                item.is_assigned
+                                  ? 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/30'
+                                  : 'bg-amber-500/20 text-amber-300 border border-amber-500/30'
+                              }`}
+                            >
+                              {item.is_assigned ? 'Escort Assigned' : 'Unassigned'}
+                            </span>
+                          </div>
+
+                          <div className="p-2.5 rounded-xl bg-slate-950/60 border border-slate-800 text-xs space-y-1">
+                            <div className="flex items-center justify-between">
+                              <span className="text-[10px] font-black uppercase text-teal-400 flex items-center gap-1">
+                                <MapPin size={11} />
+                                <span>Typed Doorstep Address</span>
+                              </span>
+                              <span className="text-[9px] font-mono text-slate-400">PINNED ✓</span>
+                            </div>
+                            <p className="font-bold text-slate-200 text-[11px] leading-snug">
+                              {item.house_address || 'Designated Home Residence'}
+                            </p>
+                            {item.house_landmark && (
+                              <p className="text-[10px] text-slate-400">🏢 Landmark: {item.house_landmark}</p>
+                            )}
+                            {item.house_notes && (
+                              <p className="text-[10px] text-slate-400 italic">📝 &ldquo;{item.house_notes}&rdquo;</p>
+                            )}
+                            <div className="pt-1 flex items-center justify-between border-t border-slate-800/80 text-[10px] font-mono text-slate-400">
+                              <span>
+                                GPS: {item.house_lat?.toFixed(5)}, {item.house_lng?.toFixed(5)}
+                              </span>
+                            </div>
+                          </div>
+                        </div>
+
+                        <div className="pt-2 border-t border-slate-800 flex items-center justify-between text-[11px]">
+                          <span className="text-slate-400">
+                            {item.assigned_escort_name ? `Escort: ${item.assigned_escort_name}` : 'Awaiting dispatch'}
+                          </span>
+                          {item.house_lat && item.house_lng && (
+                            <a
+                              href={`https://www.google.com/maps/dir/?api=1&destination=${item.house_lat},${item.house_lng}`}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="font-bold text-teal-400 hover:text-teal-300 flex items-center gap-1 cursor-pointer"
+                            >
+                              <span>Google Maps</span>
+                              <ExternalLink size={11} />
+                            </a>
+                          )}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                );
+              })()}
+            </div>
           </div>
         </div>
       )}

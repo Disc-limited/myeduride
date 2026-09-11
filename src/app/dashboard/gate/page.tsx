@@ -217,35 +217,6 @@ export default function GateOfficerDashboard() {
     }
   }, [schoolId]);
 
-  useEffect(() => {
-    if (!schoolId) return undefined;
-    loadGateData();
-    const poll = setInterval(loadGateData, 12000);
-    return () => clearInterval(poll);
-  }, [schoolId, loadGateData]);
-
-  const loadSchoolData = async () => {
-    try {
-      const data = await fetchData('get_school_admin_data', { role: 'gate_officer' });
-      if (data.school_id) {
-        setSchoolId(data.school_id);
-      }
-      if (data.school) {
-        setSchoolInfo({
-          name: data.school.name || 'School Campus',
-          address: data.school.address || 'Campus Location',
-          logo_url: data.school.logo_url || '',
-          primary_color: data.school.primary_color || '#1B4D3E',
-        });
-      }
-      if (data.user?.full_name) {
-        setOfficerInfo((prev) => ({ ...prev, name: data.user.full_name }));
-      }
-    } catch {
-      // Fallback defaults
-    }
-  };
-
   const loadStaffDirectory = useCallback(async () => {
     if (!schoolId) return;
     try {
@@ -269,6 +240,36 @@ export default function GateOfficerDashboard() {
       setLoadingStaffDir(false);
     }
   }, [schoolId]);
+
+  useEffect(() => {
+    if (!schoolId) return undefined;
+    loadGateData();
+    loadStaffDirectory();
+    const poll = setInterval(loadGateData, 12000);
+    return () => clearInterval(poll);
+  }, [schoolId, loadGateData, loadStaffDirectory]);
+
+  const loadSchoolData = async () => {
+    try {
+      const data = await fetchData('get_school_admin_data', { role: 'gate_officer' });
+      if (data.school_id) {
+        setSchoolId(data.school_id);
+      }
+      if (data.school) {
+        setSchoolInfo({
+          name: data.school.name || 'School Campus',
+          address: data.school.address || 'Campus Location',
+          logo_url: data.school.logo_url || '',
+          primary_color: data.school.primary_color || '#1B4D3E',
+        });
+      }
+      if (data.user?.full_name) {
+        setOfficerInfo((prev) => ({ ...prev, name: data.user.full_name }));
+      }
+    } catch {
+      // Fallback defaults
+    }
+  };
 
   const loadActiveSchoolEscorts = useCallback(async () => {
     if (!schoolId) return;
@@ -576,6 +577,7 @@ export default function GateOfficerDashboard() {
 
               <StudentIdScanPanel
                 schoolId={schoolId}
+                staffList={staffDirectory}
                 mode={scanMode}
                 onModeChange={(m) => {
                   setScanMode(m as 'arrival' | 'departure');
@@ -793,6 +795,20 @@ export default function GateOfficerDashboard() {
                   >
                     <Car size={14} className="text-teal-300" />
                     <span>Escort Bus Reception</span>
+                  </button>
+
+                  {/* Parent Reception Station (Drop-off, Pickup & Campus Visit) */}
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setScanMode('arrival');
+                      setActiveNav('student-scan');
+                    }}
+                    className="px-3.5 py-2.5 rounded-2xl bg-amber-600 hover:bg-amber-500 text-white font-black text-xs flex items-center justify-center gap-1.5 shadow-lg shadow-amber-600/30 transition-all cursor-pointer"
+                    title="Scan Parent Digital ID for Drop-off, Pickup, or Official Campus Visit"
+                  >
+                    <ShieldCheck size={14} className="text-amber-200" />
+                    <span>Parent Reception</span>
                   </button>
                 </div>
               </div>
@@ -1805,6 +1821,7 @@ export default function GateOfficerDashboard() {
               <StudentIdScanPanel
                 key="modal-student"
                 schoolId={schoolId}
+                staffList={staffDirectory}
                 mode={scanMode}
                 onModeChange={(m) => setScanMode(m as 'arrival' | 'departure')}
                 onForgotId={() => {

@@ -41,12 +41,14 @@ export default function SchoolTransportRoutesPage() {
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState('');
   const [modalOpen, setModalOpen] = useState(false);
-  const [activeTab, setActiveTab] = useState<'routes' | 'map' | 'stops' | 'manifests' | 'directions'>('routes');
-  const [selectedRoute, setSelectedRoute] = useState(null);
+  const [activeTab, setActiveTab] = useState<'routes' | 'map' | 'stops' | 'manifests' | 'directions' | 'pins'>('routes');
+  const [selectedRoute, setSelectedRoute] = useState<any>(null);
   const [submitting, setSubmitting] = useState(false);
-
-  const [escorts, setEscorts] = useState<any[]>([]);
-  const [vehicles, setVehicles] = useState<any[]>([]);
+  const [escorts, setEscorts] = useState([]);
+  const [vehicles, setVehicles] = useState([]);
+  const [allPinnedStudents, setAllPinnedStudents] = useState<any[]>([]);
+  const [pinSearchQuery, setPinSearchQuery] = useState('');
+  const [pinFilter, setPinFilter] = useState<'all' | 'assigned' | 'unassigned'>('all');
   const [editingRoute, setEditingRoute] = useState<any | null>(null);
 
   // New / Edit Route Form
@@ -77,6 +79,7 @@ export default function SchoolTransportRoutesPage() {
         setEscorts(json.escorts || []);
         setVehicles(json.vehicles || []);
         setMetrics(json.metrics || {});
+        setAllPinnedStudents(json.all_pinned_students || []);
         if (json.school) {
           setSchool(json.school);
         }
@@ -458,7 +461,11 @@ export default function SchoolTransportRoutesPage() {
               routeCode={selectedRoute.code}
               routeName={selectedRoute.name}
               stops={selectedRoute.stops || []}
-              students={selectedRoute.passenger_students || []}
+              students={
+                allPinnedStudents.length > 0
+                  ? allPinnedStudents
+                  : (selectedRoute.passenger_students || [])
+              }
               heightClassName="h-[580px]"
             />
           ) : (
@@ -476,83 +483,164 @@ export default function SchoolTransportRoutesPage() {
             <div>
               <h3 className="font-black text-slate-900 text-base">Parent Pinned Pickup Locations (Synced Doorstep GPS)</h3>
               <p className="text-xs text-slate-500">
-                Exact house coordinates pinned by parents for doorstep pickup, escort route planning, and gate security.
+                Exact house coordinates and typed street addresses submitted by parents for doorstep pickup, escort route planning, and gate security.
               </p>
             </div>
-            <span className="px-3 py-1.5 rounded-xl bg-teal-50 border border-teal-200 text-teal-800 font-extrabold text-xs">
-              📌 {metrics.total_pinned_houses || 0} Families Pinned
-            </span>
+            <div className="flex items-center gap-2">
+              <span className="px-3 py-1.5 rounded-xl bg-teal-50 border border-teal-200 text-teal-800 font-extrabold text-xs">
+                📌 {allPinnedStudents.length} Families Pinned
+              </span>
+              <span className="px-3 py-1.5 rounded-xl bg-amber-50 border border-amber-200 text-amber-800 font-extrabold text-xs">
+                ⚡ {allPinnedStudents.filter((s) => !s.is_route_assigned).length} Unassigned
+              </span>
+            </div>
           </div>
 
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-            {routes.flatMap((r) =>
-              (r.passenger_students || []).map((stu) => ({ ...stu, routeCode: r.code, routeName: r.name }))
-            ).map((stu, idx) => (
-              <div
-                key={idx}
-                className={`bg-white rounded-3xl p-5 border space-y-3 flex flex-col justify-between ${
-                  stu.is_house_pinned ? 'border-teal-300 ring-1 ring-teal-500/20 shadow-xs' : 'border-slate-200 opacity-80'
-                }`}
-              >
-                <div className="space-y-2">
-                  <div className="flex items-start justify-between gap-2">
-                    <div>
-                      <h4 className="font-black text-slate-900 text-sm">{stu.name}</h4>
-                      <span className="text-[11px] font-bold text-slate-500">{stu.class}</span>
+          {/* Search & Filter Controls */}
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 bg-white p-4 rounded-2xl border border-slate-200 shadow-2xs">
+            <div className="relative flex-1 max-w-md">
+              <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400" size={15} />
+              <input
+                type="text"
+                value={pinSearchQuery}
+                onChange={(e) => setPinSearchQuery(e.target.value)}
+                placeholder="Search student name, class, or typed address..."
+                className="w-full pl-10 pr-4 py-2 text-xs bg-slate-50 border border-slate-200 rounded-xl font-medium text-slate-900 focus:outline-none focus:ring-2 focus:ring-teal-500/20 focus:border-teal-500"
+              />
+            </div>
+
+            <div className="flex items-center gap-1.5">
+              {[
+                { id: 'all', label: `All (${allPinnedStudents.length})` },
+                { id: 'assigned', label: `Assigned (${allPinnedStudents.filter((s) => s.is_route_assigned).length})` },
+                { id: 'unassigned', label: `Awaiting Corridor (${allPinnedStudents.filter((s) => !s.is_route_assigned).length})` },
+              ].map((f) => (
+                <button
+                  key={f.id}
+                  type="button"
+                  onClick={() => setPinFilter(f.id as any)}
+                  className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all cursor-pointer ${
+                    pinFilter === f.id
+                      ? 'bg-teal-700 text-white shadow-2xs'
+                      : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
+                  }`}
+                >
+                  {f.label}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          {/* Students Grid */}
+          {(() => {
+            const listToDisplay = (allPinnedStudents.length > 0
+              ? allPinnedStudents
+              : routes.flatMap((r: any) =>
+                  (r.passenger_students || []).map((stu: any) => ({
+                    ...stu,
+                    route_code: r.code,
+                    route_name: r.name,
+                    is_route_assigned: true,
+                  }))
+                )
+            ).filter((stu: any) => {
+              if (pinFilter === 'assigned' && !stu.is_route_assigned) return false;
+              if (pinFilter === 'unassigned' && stu.is_route_assigned) return false;
+              if (pinSearchQuery.trim()) {
+                const q = pinSearchQuery.toLowerCase();
+                const matchName = stu.name?.toLowerCase().includes(q);
+                const matchAddr = stu.house_address?.toLowerCase().includes(q);
+                const matchClass = stu.class?.toLowerCase().includes(q);
+                const matchLandmark = stu.house_landmark?.toLowerCase().includes(q);
+                if (!matchName && !matchAddr && !matchClass && !matchLandmark) return false;
+              }
+              return true;
+            });
+
+            if (listToDisplay.length === 0) {
+              return (
+                <div className="p-12 text-center bg-white rounded-3xl border border-slate-200 text-slate-400 text-xs">
+                  No parent-pinned addresses found matching your search.
+                </div>
+              );
+            }
+
+            return (
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                {listToDisplay.map((stu: any, idx: number) => (
+                  <div
+                    key={stu.student_id || idx}
+                    className="bg-white rounded-3xl p-5 border border-teal-300 ring-1 ring-teal-500/20 shadow-xs space-y-3 flex flex-col justify-between"
+                  >
+                    <div className="space-y-2">
+                      <div className="flex items-start justify-between gap-2">
+                        <div>
+                          <h4 className="font-black text-slate-900 text-sm">{stu.name}</h4>
+                          <span className="text-[11px] font-bold text-slate-500">{stu.class}</span>
+                        </div>
+                        <span
+                          className={`px-2 py-0.5 rounded-md font-mono font-bold text-[10px] ${
+                            stu.is_route_assigned
+                              ? 'bg-slate-900 text-white'
+                              : 'bg-amber-100 text-amber-900 border border-amber-300'
+                          }`}
+                        >
+                          {stu.route_code || 'UNASSIGNED'}
+                        </span>
+                      </div>
+
+                      <div className="p-3 rounded-2xl bg-teal-50/80 border border-teal-200 text-xs space-y-1.5">
+                        <div className="flex items-center justify-between font-bold text-teal-900">
+                          <div className="flex items-center gap-1.5">
+                            <MapPin size={14} className="text-teal-700 shrink-0" />
+                            <span>Pinned Doorstep Address</span>
+                          </div>
+                          <span className="px-1.5 py-0.2 bg-teal-200 text-teal-900 rounded text-[9px] font-black">
+                            PARENT TYPED
+                          </span>
+                        </div>
+                        <p className="font-extrabold text-slate-900 text-xs leading-snug">
+                          {stu.house_address || 'Address registered'}
+                        </p>
+                        {stu.house_landmark && (
+                          <p className="text-[11px] text-slate-600 font-medium">
+                            🏢 Landmark: <strong className="text-slate-800">{stu.house_landmark}</strong>
+                          </p>
+                        )}
+                        {stu.house_notes && (
+                          <p className="text-[11px] text-slate-600 font-medium">
+                            📝 Driver Note: &ldquo;{stu.house_notes}&rdquo;
+                          </p>
+                        )}
+                        <div className="pt-1.5 flex items-center justify-between border-t border-teal-200/60 text-[10px] font-mono text-teal-800">
+                          <span>
+                            GPS: {stu.house_lat != null ? Number(stu.house_lat).toFixed(5) : 'N/A'},{' '}
+                            {stu.house_lng != null ? Number(stu.house_lng).toFixed(5) : 'N/A'}
+                          </span>
+                          <span className="text-emerald-700 font-bold">✓ Synced</span>
+                        </div>
+                      </div>
                     </div>
-                    <span className="px-2 py-0.5 rounded-md bg-slate-900 text-white font-mono font-bold text-[10px]">
-                      {stu.routeCode}
-                    </span>
+
+                    <div className="pt-2 border-t border-slate-100 flex items-center justify-between text-xs text-slate-500">
+                      <span className="font-medium">📞 Parent: {stu.parent_phone || 'On Record'}</span>
+                      {stu.house_lat != null && stu.house_lng != null && (
+                        <a
+                          href={`https://www.google.com/maps/dir/?api=1&destination=${stu.house_lat},${stu.house_lng}`}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="font-bold text-teal-700 hover:text-teal-900 flex items-center gap-1 cursor-pointer"
+                        >
+                          <span>Google Maps</span>
+                          <ChevronRight size={12} />
+                        </a>
+                      )}
+                    </div>
                   </div>
-
-                  {stu.is_house_pinned ? (
-                    <div className="p-3 rounded-2xl bg-teal-50/80 border border-teal-200 text-xs space-y-1.5">
-                      <div className="flex items-center gap-1.5 font-bold text-teal-900">
-                        <MapPin size={14} className="text-teal-700 shrink-0" />
-                        <span>Pinned House Address</span>
-                      </div>
-                      <p className="font-semibold text-slate-800 text-[11px]">{stu.house_address || 'Address registered'}</p>
-                      {stu.house_landmark && (
-                        <p className="text-[11px] text-slate-600">🏢 Landmark: {stu.house_landmark}</p>
-                      )}
-                      {stu.house_notes && (
-                        <p className="text-[11px] text-slate-600">📝 Notes: "{stu.house_notes}"</p>
-                      )}
-                      <div className="pt-1 flex items-center justify-between border-t border-teal-200/60 text-[10px] font-mono text-teal-800">
-                        <span>GPS: {stu.house_lat?.toFixed(5)}, {stu.house_lng?.toFixed(5)}</span>
-                        <span className="text-emerald-700 font-bold">✓ Synced</span>
-                      </div>
-                    </div>
-                  ) : (
-                    <div className="p-3 rounded-2xl bg-amber-50 border border-amber-200 text-xs space-y-1 text-amber-900">
-                      <span className="font-bold block">⚠️ Awaiting Parent Pin</span>
-                      <p className="text-[11px] text-amber-800">
-                        Parent has not dropped an interactive map pin yet. Defaulting to registered street address.
-                      </p>
-                    </div>
-                  )}
-                </div>
-
-                <div className="pt-2 border-t border-slate-100 flex items-center justify-between text-xs text-slate-500">
-                  <span className="font-medium">📞 Parent: {stu.parent_phone || 'Available'}</span>
-                  {stu.is_house_pinned && (
-                    <button
-                      type="button"
-                      onClick={() => {
-                        const rMatch = routes.find((r) => r.code === stu.routeCode);
-                        if (rMatch) setSelectedRoute(rMatch);
-                        setActiveTab('map');
-                      }}
-                      className="font-bold text-teal-700 hover:text-teal-900 flex items-center gap-1 cursor-pointer"
-                    >
-                      <span>View Map Pin</span>
-                      <ChevronRight size={12} />
-                    </button>
-                  )}
-                </div>
+                ))}
               </div>
-            ))}
-          </div>
+            );
+          })()}
         </div>
       )}
 

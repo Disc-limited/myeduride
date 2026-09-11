@@ -22,6 +22,9 @@ import { calendarGateInvariantsSuite } from './unit/calendar-gate-invariants.tes
 import { schoolGeofenceSuite } from './unit/school-geofence.test';
 import { escortPrioritiesSuite } from './unit/escort-priorities.test';
 import { gateEscortBatchSuite } from './unit/gate-escort-batch.test';
+import { parentAddressPinningSuite } from './unit/parent-address-pinning.test';
+import { parentPortalCleanupSuite } from './unit/parent-portal-cleanup.test';
+import { parentGateReceptionSuite } from './unit/parent-gate-reception.test';
 import { pickupControlApiSuite } from './integration/pickup-control-api.test';
 import { escortApisSuite } from './integration/escort-apis.test';
 import { routesVehiclesApiSuite } from './integration/routes-vehicles-api.test';
@@ -74,6 +77,9 @@ async function runAllTests() {
     schoolGeofenceSuite,
     escortPrioritiesSuite,
     gateEscortBatchSuite,
+    parentAddressPinningSuite,
+    parentPortalCleanupSuite,
+    parentGateReceptionSuite,
     pickupControlApiSuite,
     escortApisSuite,
     routesVehiclesApiSuite,

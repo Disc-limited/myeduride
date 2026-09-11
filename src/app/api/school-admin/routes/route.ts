@@ -116,6 +116,57 @@ export async function GET(request: NextRequest) {
       }
     }
 
+    // 3b. Fetch ALL students belonging to this school who have pinned their house location
+    const { data: allSchoolPinnedData } = await supabase
+      .from('students')
+      .select(`
+        id, first_name, last_name, photo_url, custom_fields,
+        class:school_classes(name),
+        house_address, house_lat, house_lng, house_landmark, house_notes, house_pinned_at, house_pinned_by
+      `)
+      .eq('school_id', primarySchoolId)
+      .eq('is_active', true)
+      .not('house_lat', 'is', null);
+
+    // Map route assignment lookup for quick status check
+    const studentAssignedRouteMap = new Map<string, { route_id: string; route_code: string; route_name: string }>();
+    if (dbAssignments && rawRoutes) {
+      const routeMap = new Map(rawRoutes.map((r) => [r.id, r]));
+      for (const sa of dbAssignments) {
+        const rId = sa.morning_route_id || sa.afternoon_route_id;
+        const rObj = routeMap.get(rId);
+        if (rObj) {
+          studentAssignedRouteMap.set(sa.student_id, {
+            route_id: rObj.id,
+            route_code: rObj.code,
+            route_name: rObj.name,
+          });
+        }
+      }
+    }
+
+    const allPinnedStudents = (allSchoolPinnedData || []).map((stu: any) => {
+      const assigned = studentAssignedRouteMap.get(stu.id);
+      return {
+        student_id: stu.id,
+        name: `${stu.first_name} ${stu.last_name}`.trim(),
+        photo_url: stu.photo_url || null,
+        class: stu.class?.name || 'Class',
+        parent_phone: stu.custom_fields?.parent_phone || null,
+        house_address: stu.house_address || 'Pinned Residence',
+        house_lat: stu.house_lat ? Number(stu.house_lat) : null,
+        house_lng: stu.house_lng ? Number(stu.house_lng) : null,
+        house_landmark: stu.house_landmark || null,
+        house_notes: stu.house_notes || null,
+        house_pinned_at: stu.house_pinned_at || null,
+        is_house_pinned: true,
+        route_id: assigned?.route_id || null,
+        route_code: assigned?.route_code || 'UNASSIGNED',
+        route_name: assigned?.route_name || 'Awaiting Corridor Assignment',
+        is_route_assigned: Boolean(assigned),
+      };
+    });
+
     // 4. Fetch School Escorts
     const { data: roleEscorts } = await supabase
       .from('user_school_roles')
@@ -204,7 +255,7 @@ export async function GET(request: NextRequest) {
 
     const totalStops = routes.reduce((acc, r) => acc + (r.stops?.length || 0), 0);
     const totalPassengers = routes.reduce((acc, r) => acc + (r.passenger_students?.length || 0), 0);
-    const totalPinnedHouses = routes.reduce((acc, r) => acc + (r.pinned_by_parents_count || 0), 0);
+    const totalPinnedHouses = allPinnedStudents.length;
 
     return NextResponse.json({
       success: true,
@@ -227,9 +278,11 @@ export async function GET(request: NextRequest) {
         total_stops: totalStops,
         total_enrolled_passengers: totalPassengers,
         total_pinned_houses: totalPinnedHouses,
+        unassigned_pinned_houses: allPinnedStudents.filter((s) => !s.is_route_assigned).length,
         active_routes: routes.filter((r) => r.status === 'active').length,
       },
       routes,
+      all_pinned_students: allPinnedStudents,
       escorts,
       vehicles,
     });

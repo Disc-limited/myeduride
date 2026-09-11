@@ -8,6 +8,7 @@ import {
   Bot,
   Sparkles,
   MapPin,
+  CreditCard,
 } from 'lucide-react';
 
 interface QuickActionsGridProps {
@@ -60,6 +61,15 @@ export default function QuickActionsGrid({ onActionClick }: QuickActionsGridProp
       icon: UserCheck,
       bgColor: 'bg-emerald-100 text-emerald-700',
       hoverColor: 'hover:bg-emerald-200/80',
+    },
+    {
+      key: 'digital_id_pass',
+      label: 'Gate ID Pass',
+      fullLabel: 'Parent Gate Digital ID Pass',
+      description: 'Display official QR code for gate reception, student drop-off, pickup & school visits',
+      icon: CreditCard,
+      bgColor: 'bg-amber-100 text-amber-900',
+      hoverColor: 'hover:bg-amber-200/80',
     },
     {
       key: 'pin_house',

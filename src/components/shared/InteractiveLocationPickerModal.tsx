@@ -594,6 +594,36 @@ export default function InteractiveLocationPickerModal({
             </div>
           </div>
 
+          {/* Explicit Typed Street Address Input (Ensures parent can type exact address) */}
+          <div className="space-y-1.5 p-3.5 bg-teal-50/70 border border-teal-200 rounded-2xl">
+            <div className="flex items-center justify-between">
+              <label className="text-xs font-black text-teal-950 flex items-center gap-1.5">
+                <Home size={14} className="text-teal-700" />
+                <span>{mode === 'school_admin' ? 'School Campus Physical Address' : 'House / Street Address (Type or Edit Exact Address)'}</span>
+              </label>
+              {geocoding && (
+                <span className="text-[10px] text-teal-700 font-bold flex items-center gap-1">
+                  <Loader2 size={10} className="animate-spin" /> Fetching street...
+                </span>
+              )}
+            </div>
+            <textarea
+              required
+              rows={2}
+              value={address}
+              onChange={(e) => setAddress(e.target.value)}
+              placeholder={
+                mode === 'school_admin'
+                  ? 'e.g. 15 Admiralty Way, Lekki Phase 1, Lagos'
+                  : 'Type full street address, e.g. Plot 12B, Road 4, Silver Estate, Victoria Island, Lagos'
+              }
+              className="w-full px-3.5 py-2 text-xs bg-white border border-teal-300 rounded-xl font-medium text-slate-900 focus:outline-none focus:ring-2 focus:ring-teal-500/30 focus:border-teal-600"
+            />
+            <p className="text-[10px] text-teal-800/80 font-medium">
+              💡 Type your exact door/building number and street name. This address will sync to the school route and city manager system.
+            </p>
+          </div>
+
           {/* Landmark & Instructions Fields */}
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             <div className="space-y-1">

@@ -11,17 +11,54 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
+    const { searchParams } = new URL(request.url);
+    const dateFilter = searchParams.get('date_filter') || 'month';
+    const targetStudentId = searchParams.get('student_id') || '';
+
     const supabase = getAdminClient();
 
-    // 1. Fetch parent's real children
-    const { data: children } = await supabase
+    // 1. Calculate Date Filter Window (in UTC/Lagos context)
+    const now = new Date();
+    let sinceDate = new Date();
+
+    if (dateFilter === 'today') {
+      sinceDate = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 0, 0, 0);
+    } else if (dateFilter === 'week') {
+      sinceDate = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
+    } else if (dateFilter === 'month') {
+      sinceDate = new Date(now.getFullYear(), now.getMonth(), 1, 0, 0, 0);
+    } else if (dateFilter === 'year') {
+      sinceDate = new Date(now.getFullYear(), 0, 1, 0, 0, 0);
+    } else {
+      sinceDate = new Date(now.getFullYear(), now.getMonth(), 1, 0, 0, 0);
+    }
+    const sinceIso = sinceDate.toISOString();
+
+    // 2. Fetch parent's real children
+    const { data: directChildren } = await supabase
       .from('students')
       .select('id, first_name, last_name, class:classes(name), avatar_url, photo_url')
       .eq('parent_id', session.user_id);
 
-    const childIds = (children || []).map((c) => c.id);
+    const { data: linkedChildren } = await supabase
+      .from('student_parents')
+      .select('student:students(id, first_name, last_name, class:classes(name), avatar_url, photo_url)')
+      .eq('parent_user_id', session.user_id);
 
-    // 2. Fetch real Gate Activity Logs
+    const allChildrenMap = new Map<string, any>();
+    (directChildren || []).forEach((c) => allChildrenMap.set(c.id, c));
+    (linkedChildren || []).forEach((l) => {
+      if (l.student?.id) allChildrenMap.set(l.student.id, l.student);
+    });
+
+    const allChildren = Array.from(allChildrenMap.values());
+    let childIds = allChildren.map((c) => c.id);
+
+    if (targetStudentId && childIds.includes(targetStudentId)) {
+      childIds = [targetStudentId];
+    }
+
+    // 3. Fetch real Gate Activity Logs
     let gateLogs: any[] = [];
     let totalEntries = 0;
     let totalExits = 0;
@@ -29,12 +66,15 @@ export async function GET(request: NextRequest) {
     let earlyPickups = 0;
 
     if (childIds.length > 0) {
-      const { data: logs } = await supabase
+      let query = supabase
         .from('gate_activity_logs')
         .select('*')
         .in('student_id', childIds)
+        .gte('created_at', sinceIso)
         .order('created_at', { ascending: false })
-        .limit(20);
+        .limit(30);
+
+      const { data: logs } = await query;
 
       if (logs && logs.length > 0) {
         logs.forEach((log) => {
@@ -67,7 +107,7 @@ export async function GET(request: NextRequest) {
       }
     }
 
-    // 3. Fetch real Escort Movements & Bookings
+    // 4. Fetch real Escort Movements & Bookings within date window
     let escortTrips = 0;
     let completedServices = 0;
     let escortTimeline: any[] = [];
@@ -77,6 +117,7 @@ export async function GET(request: NextRequest) {
       .from('shared_ride_bookings')
       .select('*, escort_route:shared_ride_escorts(pickup_address, dropoff_address, departure_time, return_time, vehicle_model, vehicle_reg)')
       .eq('parent_user_id', session.user_id)
+      .gte('created_at', sinceIso)
       .order('created_at', { ascending: false });
 
     // Query transport bookings
@@ -84,6 +125,7 @@ export async function GET(request: NextRequest) {
       .from('transport_bookings')
       .select('*')
       .eq('parent_user_id', session.user_id)
+      .gte('created_at', sinceIso)
       .order('created_at', { ascending: false });
 
     const allBookings = [...(sharedBookings || []), ...(transportBookings || [])];
@@ -91,7 +133,7 @@ export async function GET(request: NextRequest) {
     completedServices = allBookings.filter((b) => b.status === 'completed' || b.status === 'confirmed').length;
 
     if (sharedBookings && sharedBookings.length > 0) {
-      sharedBookings.slice(0, 4).forEach((b) => {
+      sharedBookings.slice(0, 6).forEach((b) => {
         const route = b.escort_route;
         if (route) {
           if (route.pickup_address) {
@@ -112,7 +154,7 @@ export async function GET(request: NextRequest) {
       });
     }
 
-    // 4. Fetch real Wallet & Financials
+    // 5. Fetch real Wallet & Financials
     const { data: wallet } = await supabase
       .from('wallets')
       .select('balance')
@@ -183,12 +225,13 @@ export async function GET(request: NextRequest) {
       },
     ].filter((item) => item.amount > 0) : [];
 
-    // 5. Fetch real Withdrawals & Referrals from audit_logs
+    // 6. Fetch real Withdrawals & Referrals from audit_logs within window
     const { data: withdrawalLogs } = await supabase
       .from('audit_logs')
       .select('*')
       .eq('user_id', session.user_id)
       .eq('action', 'WALLET_WITHDRAWAL')
+      .gte('created_at', sinceIso)
       .order('created_at', { ascending: false })
       .limit(10);
 
@@ -207,6 +250,7 @@ export async function GET(request: NextRequest) {
       .select('*')
       .eq('user_id', session.user_id)
       .like('action', 'REFERRAL_%')
+      .gte('created_at', sinceIso)
       .order('created_at', { ascending: false })
       .limit(10);
 
@@ -222,14 +266,50 @@ export async function GET(request: NextRequest) {
       };
     });
 
+    const labelPeriod =
+      dateFilter === 'today'
+        ? 'Today'
+        : dateFilter === 'week'
+        ? 'Past 7 Days'
+        : dateFilter === 'year'
+        ? 'This Year'
+        : 'This Month';
+
     const responsePayload = {
+      date_filter: dateFilter,
+      student_id: targetStudentId || null,
+      filtered_since: sinceIso,
       summary_kpis: {
-        gate_activities: { count: totalEntries + totalExits, label: 'Total Entries/Exits', change: totalEntries > 0 ? '+100% active' : 'No logs yet' },
-        escort_movements: { count: escortTrips, label: 'Total Trips', change: escortTrips > 0 ? `${escortTrips} active trips` : 'No trips yet' },
-        services_completed: { count: completedServices, label: 'Completed Services', change: `${completedServices} completed` },
-        total_spent: { amount: totalSpent, label: 'This Month', change: totalSpent > 0 ? `₦${totalSpent.toLocaleString()} recorded` : '₦0.00 spent' },
-        total_withdrawn: { amount: withdrawalReport.reduce((acc, curr) => acc + curr.amount, 0), label: 'This Month', change: withdrawalReport.length > 0 ? `${withdrawalReport.length} payouts` : '₦0.00 withdrawn' },
-        bonuses_earned: { amount: bonusesEarned, label: 'This Month', change: bonusesEarned > 0 ? `₦${bonusesEarned.toLocaleString()} earned` : '₦0.00 earned' },
+        gate_activities: {
+          count: totalEntries + totalExits,
+          label: `Entries/Exits (${labelPeriod})`,
+          change: totalEntries > 0 ? `${totalEntries} In / ${totalExits} Out` : 'No logs in period',
+        },
+        escort_movements: {
+          count: escortTrips,
+          label: `Trips (${labelPeriod})`,
+          change: escortTrips > 0 ? `${escortTrips} active trips` : 'No trips in period',
+        },
+        services_completed: {
+          count: completedServices,
+          label: `Completed (${labelPeriod})`,
+          change: `${completedServices} completed`,
+        },
+        total_spent: {
+          amount: totalSpent,
+          label: labelPeriod,
+          change: totalSpent > 0 ? `₦${totalSpent.toLocaleString()} recorded` : '₦0.00 spent',
+        },
+        total_withdrawn: {
+          amount: withdrawalReport.reduce((acc, curr) => acc + curr.amount, 0),
+          label: labelPeriod,
+          change: withdrawalReport.length > 0 ? `${withdrawalReport.length} payouts` : '₦0.00 withdrawn',
+        },
+        bonuses_earned: {
+          amount: bonusesEarned,
+          label: labelPeriod,
+          change: bonusesEarned > 0 ? `₦${bonusesEarned.toLocaleString()} earned` : '₦0.00 earned',
+        },
       },
       gate_activity_report: {
         total_entries: totalEntries,
@@ -249,7 +329,7 @@ export async function GET(request: NextRequest) {
       financial_report: {
         total_spent: totalSpent,
         breakdown: breakdown,
-        recent_transactions: recentTransactions.slice(0, 5),
+        recent_transactions: recentTransactions.slice(0, 10),
       },
       wallet_report: {
         opening_balance: currentBalance > 0 ? currentBalance : 0,

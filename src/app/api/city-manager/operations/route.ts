@@ -70,16 +70,17 @@ export async function GET(request: NextRequest) {
   try {
     const db = getAdminClient();
     const query = request.nextUrl.searchParams.get('q')?.trim();
-    const [schoolsRes, escortsRes, bookingsRes, assignmentsRes, auditRes, deputisingRes, vehiclesRes, routesRes, walkHomeRes] = await Promise.all([
+    const [schoolsRes, escortsRes, bookingsRes, assignmentsRes, auditRes, deputisingRes, vehiclesRes, routesRes, walkHomeRes, pinnedParentsRes] = await Promise.all([
       db.from('schools').select('id,name').order('name').then((r: any) => r.data || [], () => []),
       db.from('escort_applications').select('id,full_name,email,phone,operating_area,status,availability_status,emergency_pool_enabled,last_available_at,application_data,user_id,residential_address,closest_landmark,lga,house_lat,house_lng,location_pinned_at,today_trip_status,today_trip_declined_reason,ready_for_pickup').in('status', ['CITY_MANAGER_APPROVED', 'ACTIVE']).then((r: any) => r.data || [], () => []),
-      db.from('transport_bookings').select('*, school:schools(name), student:students(first_name,last_name,student_id_number,class_id)').order('created_at', { ascending: false }).limit(100).then((r: any) => r.data || [], () => []),
-      db.from('escort_assignments').select('*, escort:escort_applications(id,full_name,phone,operating_area,status), school:schools(id,name), student:students(id,first_name,last_name,student_id_number,photo_url,class:school_classes(name))').order('created_at', { ascending: false }).limit(100).then((r: any) => r.data || [], () => []),
+      db.from('transport_bookings').select('*, school:schools(name), student:students(first_name,last_name,student_id_number,class_id,house_address,house_lat,house_lng,house_landmark,house_notes,house_pinned_at)').order('created_at', { ascending: false }).limit(100).then((r: any) => r.data || [], () => []),
+      db.from('escort_assignments').select('*, escort:escort_applications(id,full_name,phone,operating_area,status), school:schools(id,name), student:students(id,first_name,last_name,student_id_number,photo_url,class:school_classes(name),house_address,house_lat,house_lng,house_landmark,house_notes,house_pinned_at)').order('created_at', { ascending: false }).limit(100).then((r: any) => r.data || [], () => []),
       db.from('city_manager_audit_log').select('*').order('created_at', { ascending: false }).limit(100).then((r: any) => r.data || [], () => []),
       db.from('emergency_deputising').select('*').order('created_at', { ascending: false }).limit(100).then((r: any) => r.data || [], () => []),
       db.from('school_vehicles').select('*').order('created_at', { ascending: false }).limit(100).then((r: any) => r.data || [], () => []),
       db.from('transport_routes').select('id, name, code, assigned_vehicle_id, assigned_escort_id').order('created_at', { ascending: false }).limit(100).then((r: any) => r.data || [], () => []),
       db.from('attendance_records').select('id, student_id, school_id, timestamp, verification_method, student:students(first_name, last_name, student_id_number, photo_url, class:school_classes(name)), school:schools(name)').eq('type', 'departure').ilike('verification_method', '%walk_home%').order('timestamp', { ascending: false }).limit(50).then((r: any) => r.data || [], () => []),
+      db.from('students').select('id, first_name, last_name, student_id_number, photo_url, school_id, school:schools(id, name), class:school_classes(name), house_address, house_lat, house_lng, house_landmark, house_notes, house_pinned_at, house_pinned_by').not('house_lat', 'is', null).order('house_pinned_at', { ascending: false }).limit(200).then((r: any) => r.data || [], () => []),
     ]);
 
     let students: any[] = [];
@@ -285,6 +286,32 @@ export async function GET(request: NextRequest) {
       };
     });
 
+    const formattedPinnedAddresses = (pinnedParentsRes || []).map((st: any) => {
+      const sch = Array.isArray(st.school) ? st.school[0] : st.school;
+      const cls = Array.isArray(st.class) ? st.class[0] : st.class;
+      const matchedAssignment = (assignmentsRes || []).find((a: any) => a.student_id === st.id && a.status === 'active');
+      const escortObj = Array.isArray(matchedAssignment?.escort) ? matchedAssignment.escort[0] : matchedAssignment?.escort;
+
+      return {
+        student_id: st.id,
+        student_name: `${st.first_name || ''} ${st.last_name || ''}`.trim() || 'Student',
+        student_number: st.student_id_number || 'N/A',
+        photo_url: st.photo_url || null,
+        school_id: st.school_id,
+        school_name: sch?.name || 'Assigned School',
+        class_name: cls?.name || 'Class',
+        house_address: st.house_address || 'Designated Home Residence',
+        house_landmark: st.house_landmark || null,
+        house_notes: st.house_notes || null,
+        house_lat: st.house_lat ? Number(st.house_lat) : null,
+        house_lng: st.house_lng ? Number(st.house_lng) : null,
+        house_pinned_at: st.house_pinned_at || null,
+        assigned_escort_name: escortObj?.full_name || null,
+        assigned_escort_phone: escortObj?.phone || null,
+        is_assigned: Boolean(escortObj),
+      };
+    });
+
     return NextResponse.json({
       schools: schoolsRes,
       escorts: escortsList,
@@ -293,6 +320,8 @@ export async function GET(request: NextRequest) {
       parent_requests: parentRequests,
       assignments: formattedAssignments,
       walk_home_records: formattedWalkHomeRecords,
+      pinned_parent_addresses: formattedPinnedAddresses,
+      total_pinned_families_count: formattedPinnedAddresses.length,
       audit: auditRes,
       audit_logs: auditRes,
       students,

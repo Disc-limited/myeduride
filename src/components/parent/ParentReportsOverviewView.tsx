@@ -24,7 +24,8 @@ import {
   MapPin,
   TrendingUp,
   TrendingDown,
-  Inbox
+  Inbox,
+  RefreshCw,
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { photoSrc } from '@/lib/photo';
@@ -51,6 +52,7 @@ export default function ParentReportsOverviewView({
   // API Data state
   const [reportsData, setReportsData] = useState<any>(null);
   const [loading, setLoading] = useState(true);
+  const [manualRefreshing, setManualRefreshing] = useState(false);
 
   // Real enrolled children
   const safeChildren = Array.isArray(childrenList) ? childrenList : [];
@@ -62,14 +64,15 @@ export default function ParentReportsOverviewView({
     }
   }, [childrenList]);
 
-  useEffect(() => {
-    fetchReportsData();
-  }, [dateFilter]);
-
-  const fetchReportsData = async () => {
-    setLoading(true);
+  const fetchReportsData = async (isManual = false) => {
+    if (isManual) setManualRefreshing(true);
+    else setLoading(true);
     try {
-      const res = await fetch('/api/parent/reports/overview', {
+      const params = new URLSearchParams();
+      if (dateFilter) params.set('date_filter', dateFilter);
+      if (selectedStudentId) params.set('student_id', selectedStudentId);
+
+      const res = await fetch(`/api/parent/reports/overview?${params.toString()}`, {
         credentials: 'include',
         cache: 'no-store',
       });
@@ -81,8 +84,13 @@ export default function ParentReportsOverviewView({
       console.warn('[ParentReportsOverviewView] fetch error:', err);
     } finally {
       setLoading(false);
+      setManualRefreshing(false);
     }
   };
+
+  useEffect(() => {
+    fetchReportsData();
+  }, [dateFilter, selectedStudentId]);
 
   const selectedChild = useMemo(() => {
     return safeChildren.find((c) => c.id === selectedStudentId) || safeChildren[0] || null;
@@ -117,15 +125,30 @@ export default function ParentReportsOverviewView({
             <span className="text-slate-800 font-bold">Overview</span>
           </div>
           <h1 className="text-xl md:text-2xl font-black text-slate-900 tracking-tight">
-            Reports Overview
+            Reports &amp; Analytics Overview
           </h1>
           <p className="text-slate-500 text-xs font-medium mt-0.5">
-            View and track all activities, movements, and financial transactions in real-time.
+            Real-time activity logs, gate scans, transit expenditures, and escort movement verification.
           </p>
         </div>
 
         {/* Date Filter Range Tabs & Picker Pill */}
         <div className="flex flex-wrap items-center gap-2">
+          {safeChildren.length > 1 && (
+            <select
+              value={selectedStudentId}
+              onChange={(e) => setSelectedStudentId(e.target.value)}
+              className="bg-slate-100 border border-slate-200 rounded-2xl px-3 py-1.5 text-xs font-bold text-slate-800 focus:outline-none"
+            >
+              <option value="">All Children</option>
+              {safeChildren.map((c) => (
+                <option key={c.id} value={c.id}>
+                  {c.first_name} {c.last_name}
+                </option>
+              ))}
+            </select>
+          )}
+
           <div className="flex items-center bg-slate-100 p-1 rounded-2xl text-xs font-bold">
             <button
               onClick={() => setDateFilter('today')}
@@ -146,7 +169,7 @@ export default function ParentReportsOverviewView({
             <button
               onClick={() => setDateFilter('month')}
               className={`px-3 py-1.5 rounded-xl transition-all cursor-pointer ${
-                dateFilter === 'month' ? 'bg-blue-600 text-white shadow-xs font-black' : 'text-slate-500 hover:text-slate-900'
+                dateFilter === 'month' ? 'bg-emerald-600 text-white shadow-xs font-black' : 'text-slate-500 hover:text-slate-900'
               }`}
             >
               This Month
@@ -161,10 +184,16 @@ export default function ParentReportsOverviewView({
             </button>
           </div>
 
-          <div className="flex items-center gap-2 bg-slate-50 px-3.5 py-2 rounded-2xl border border-slate-200 text-xs font-extrabold text-slate-800">
-            <span>{monthRangeFormatted}</span>
-            <Calendar size={14} className="text-slate-400" />
-          </div>
+          <button
+            type="button"
+            onClick={() => fetchReportsData(true)}
+            disabled={loading || manualRefreshing}
+            className="px-3.5 py-2 rounded-2xl bg-slate-900 hover:bg-slate-800 text-white font-bold text-xs flex items-center gap-1.5 transition-all cursor-pointer disabled:opacity-50 shrink-0"
+            title="Refresh Reports from Database"
+          >
+            <RefreshCw size={13} className={loading || manualRefreshing ? 'animate-spin' : ''} />
+            <span className="hidden sm:inline">Refresh</span>
+          </button>
         </div>
       </div>
 

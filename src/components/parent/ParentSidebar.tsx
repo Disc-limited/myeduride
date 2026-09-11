@@ -26,11 +26,13 @@ import {
   Camera,
   ArrowDownRight,
   CalendarCheck,
+  CreditCard,
 } from 'lucide-react';
 import { toast } from 'sonner';
 
 export type ParentTabType =
   | 'dashboard'
+  | 'live'
   | 'notices'
   | 'children'
   | 'pin_house'
@@ -52,6 +54,7 @@ interface ParentSidebarProps {
   onSelectSafetyPillar?: (pillar: SafetyPillarTab) => void;
   unreadChatCount?: number;
   unreadNoticesCount?: number;
+  onOpenIdPass?: () => void;
   isCollapsed?: boolean;
   onToggleCollapse?: () => void;
   isMobileDrawer?: boolean;
@@ -65,57 +68,66 @@ export default function ParentSidebar({
   onSelectSafetyPillar,
   unreadChatCount = 0,
   unreadNoticesCount = 1,
+  onOpenIdPass,
   isCollapsed = false,
   onToggleCollapse,
   isMobileDrawer = false,
   onCloseMobileDrawer,
 }: ParentSidebarProps) {
-  const [safetySubmenuOpen, setSafetySubmenuOpen] = useState(true);
-  const [reportsSubmenuOpen, setReportsSubmenuOpen] = useState(true);
+  const [safetySubmenuOpen, setSafetySubmenuOpen] = useState(false);
 
-  const menuItems = [
-    { id: 'dashboard', label: 'Dashboard', icon: LayoutDashboard },
+  const menuSections = [
     {
-      id: 'safety',
-      label: 'Safety Connect',
-      icon: ShieldAlert,
-      badge: 'Live',
-      children: [
-        { id: 'safety_hub', label: 'Safety Hub', pillar: 'school_escort' as SafetyPillarTab, icon: ShieldAlert },
-        { id: 'school_escort', label: 'School Escort', pillar: 'school_escort' as SafetyPillarTab, icon: UserCheck },
-        { id: 'escort_assigned', label: 'Escort Assigned', pillar: 'school_escort' as SafetyPillarTab, icon: CheckCircle2 },
-        { id: 'live_location', label: 'Live Location', pillar: 'school_escort' as SafetyPillarTab, icon: MapPin },
-        { id: 'history', label: 'History', pillar: 'school_escort' as SafetyPillarTab, icon: Clock },
-        { id: 'myeduride_escort', label: 'MyEduRide Escort', pillar: 'myeduride_escort' as SafetyPillarTab, icon: Sparkles },
-        { id: 'shared_ride_escort', label: 'Shared Ride Escort', pillar: 'shared_ride_escort' as SafetyPillarTab, icon: Car },
-        { id: 'edrive', label: 'E-Drive Tracking', pillar: 'edrive' as SafetyPillarTab, icon: Navigation },
+      section: 'OPERATIONS & RADAR',
+      items: [
+        { id: 'dashboard', label: 'Dashboard', icon: LayoutDashboard },
+        { id: 'live', label: 'Live Movement', icon: Radio, badge: 'LIVE', isLive: true },
+        {
+          id: 'safety',
+          label: 'Safety Connect',
+          icon: ShieldAlert,
+          children: [
+            { id: 'school_escort', label: 'School Escort', pillar: 'school_escort' as SafetyPillarTab, icon: UserCheck },
+            { id: 'myeduride_escort', label: 'MyEduRide Escort', pillar: 'myeduride_escort' as SafetyPillarTab, icon: Sparkles },
+            { id: 'shared_ride_escort', label: 'Shared Ride Escort', pillar: 'shared_ride_escort' as SafetyPillarTab, icon: Car },
+            { id: 'edrive', label: 'E-Drive Tracking', pillar: 'edrive' as SafetyPillarTab, icon: Navigation },
+          ],
+        },
       ],
     },
-    { id: 'notices', label: 'School Notices', icon: Megaphone, badge: unreadNoticesCount > 0 ? unreadNoticesCount : undefined },
-    { id: 'children', label: 'My Children', icon: Users },
-    { id: 'pin_house', label: '📍 Pin House Location', icon: MapPin, badge: 'GPS' },
-    { id: 'attendance', label: 'Attendance', icon: CalendarCheck },
-    { id: 'wallet', label: 'Wallet', icon: Wallet },
     {
-      id: 'reports',
-      label: 'Reports',
-      icon: BarChart3,
-      children: [
-        { id: 'gate_activity_report', label: 'Gate Activity Report', icon: Camera },
-        { id: 'escort_movement_report', label: 'Escort Movement Report', icon: Car },
-        { id: 'financial_report', label: 'Financial Report', icon: Wallet },
-        { id: 'wallet_report', label: 'Wallet Report', icon: Wallet },
-        { id: 'withdrawal_report', label: 'Withdrawal Report', icon: ArrowDownRight },
-        { id: 'referral_report', label: 'Referral & Bonus Report', icon: Gift },
-        { id: 'notifications_report', label: 'Notification Report', icon: Megaphone },
+      section: 'FAMILY & LOGISTICS',
+      items: [
+        { id: 'children', label: 'My Children', icon: Users },
+        { id: 'id_pass', label: 'Gate ID Pass', icon: CreditCard, badge: 'QR' },
+        { id: 'pin_house', label: '📍 Doorstep Pin', icon: MapPin, badge: 'GPS' },
+        { id: 'attendance', label: 'Attendance Logs', icon: CalendarCheck },
+        { id: 'notices', label: 'School Notices', icon: Megaphone, badge: unreadNoticesCount > 0 ? unreadNoticesCount : undefined },
       ],
     },
-    { id: 'educhat', label: 'EduChat', icon: MessageSquare, badge: unreadChatCount },
-    { id: 'migoai', label: 'Migo AI', icon: Bot },
-    { id: 'settings', label: 'Settings', icon: Settings },
+    {
+      section: 'INTELLIGENCE & REPORTS',
+      items: [
+        { id: 'reports', label: 'Reports & History', icon: BarChart3 },
+        { id: 'educhat', label: 'EduChat', icon: MessageSquare, badge: unreadChatCount },
+        { id: 'migoai', label: 'Migo AI Assistant', icon: Bot, badge: 'AI' },
+      ],
+    },
+    {
+      section: 'FINANCIAL & SETTINGS',
+      items: [
+        { id: 'wallet', label: 'Transport Wallet', icon: Wallet },
+        { id: 'settings', label: 'Account Settings', icon: Settings },
+      ],
+    },
   ];
 
   const handleItemClick = (id: string, label: string) => {
+    if (id === 'id_pass') {
+      if (onOpenIdPass) onOpenIdPass();
+      if (isMobileDrawer && onCloseMobileDrawer) onCloseMobileDrawer();
+      return;
+    }
     if (id === 'wallet') {
       toast.info(`${label} is currently undergoing development`, {
         description: 'Stay tuned! Full functionality will be available in the upcoming release.',
@@ -126,12 +138,6 @@ export default function ParentSidebar({
     if (id === 'safety') {
       setActiveTab('safety');
       setSafetySubmenuOpen(!safetySubmenuOpen);
-      if (isMobileDrawer && onCloseMobileDrawer) onCloseMobileDrawer();
-      return;
-    }
-    if (id === 'reports') {
-      setActiveTab('reports');
-      setReportsSubmenuOpen(!reportsSubmenuOpen);
       if (isMobileDrawer && onCloseMobileDrawer) onCloseMobileDrawer();
       return;
     }
@@ -201,100 +207,113 @@ export default function ParentSidebar({
           </div>
         )}
 
-        {/* Navigation Links */}
-        <div className="space-y-1 pt-1">
-          {menuItems.map((item) => {
-            const Icon = item.icon;
-            const isActive = activeTab === item.id;
-            const hasChildren = Boolean(item.children && item.children.length > 0);
-            const isSubOpen = item.id === 'safety' ? safetySubmenuOpen : item.id === 'reports' ? reportsSubmenuOpen : false;
+        {/* Navigation Sections */}
+        <div className="space-y-3 pt-1">
+          {menuSections.map((sectionGroup) => (
+            <div key={sectionGroup.section} className="space-y-1">
+              {!isCollapsed && (
+                <p className="px-3 pt-1 text-[9px] font-black uppercase tracking-wider text-slate-400/80">
+                  {sectionGroup.section}
+                </p>
+              )}
+              {sectionGroup.items.map((item: any) => {
+                const Icon = item.icon;
+                const isActive = activeTab === item.id;
+                const hasChildren = Boolean(item.children && item.children.length > 0);
+                const isSubOpen = item.id === 'safety' ? safetySubmenuOpen : false;
 
-            return (
-              <div key={item.id} className="space-y-1">
-                <button
-                  type="button"
-                  onClick={() => handleItemClick(item.id, item.label)}
-                  className={`w-full flex items-center ${
-                    isCollapsed ? 'justify-center px-0 py-2.5' : 'justify-between px-3 py-2'
-                  } rounded-xl font-medium text-xs transition-all group ${
-                    isActive
-                      ? 'bg-emerald-600 text-white font-bold shadow-md shadow-emerald-900/40'
-                      : 'hover:bg-slate-800/80 hover:text-white text-slate-400'
-                  }`}
-                  title={isCollapsed ? item.label : undefined}
-                >
-                  <div className={`flex items-center gap-2.5 ${isCollapsed ? 'justify-center' : ''}`}>
-                    <Icon
-                      className={`w-4 h-4 shrink-0 ${
-                        isActive ? 'text-white' : 'text-slate-400 group-hover:text-white'
+                return (
+                  <div key={item.id} className="space-y-1">
+                    <button
+                      type="button"
+                      onClick={() => handleItemClick(item.id, item.label)}
+                      className={`w-full flex items-center ${
+                        isCollapsed ? 'justify-center px-0 py-2.5' : 'justify-between px-3 py-2'
+                      } rounded-xl font-medium text-xs transition-all group cursor-pointer ${
+                        isActive
+                          ? 'bg-emerald-600 text-white font-bold shadow-md shadow-emerald-900/40'
+                          : 'hover:bg-slate-800/80 hover:text-white text-slate-300'
                       }`}
-                    />
-                    {!isCollapsed && <span>{item.label}</span>}
-                  </div>
-                  {!isCollapsed && (
-                    <div className="flex items-center gap-1.5">
-                      {item.badge ? (
-                        typeof item.badge === 'number' ? (
-                          item.badge > 0 ? (
-                            <span className="bg-red-500 text-white text-[9px] font-extrabold px-1.5 py-0.5 rounded-full">
-                              {item.badge}
-                            </span>
-                          ) : null
-                        ) : (
-                          <span className="bg-emerald-500/20 text-emerald-300 text-[9px] font-black uppercase px-2 py-0.5 rounded-full border border-emerald-400/30">
-                            {item.badge}
-                          </span>
-                        )
-                      ) : null}
-                      {hasChildren && (
-                        isSubOpen ? <ChevronDown className="w-3.5 h-3.5 text-slate-400" /> : <ChevronRight className="w-3.5 h-3.5 text-slate-400" />
-                      )}
-                    </div>
-                  )}
-                  {isCollapsed && item.badge ? (
-                    <span className="absolute top-1 right-2 w-2 h-2 rounded-full bg-emerald-400" />
-                  ) : null}
-                </button>
-
-                {/* Submenu for Safety Connect */}
-                {hasChildren && isSubOpen && !isCollapsed && (
-                  <div className="ml-5 pl-2.5 border-l border-slate-800 space-y-0.5 py-1">
-                    {item.children?.map((child: any) => {
-                      const ChildIcon = child.icon;
-                      const isPillarSelected = child.pillar
-                        ? activeTab === 'safety' && activeSafetyPillar === child.pillar
-                        : activeTab === item.id;
-
-                      return (
-                        <button
-                          key={child.id}
-                          type="button"
-                          onClick={() => {
-                            if (child.pillar) {
-                              handlePillarClick(child.pillar);
-                            } else {
-                              setActiveTab(item.id as ParentTabType);
-                              if (onCloseMobileDrawer) onCloseMobileDrawer();
-                              const el = document.getElementById(child.id);
-                              if (el) el.scrollIntoView({ behavior: 'smooth' });
-                            }
-                          }}
-                          className={`w-full flex items-center gap-2 px-2.5 py-1.5 rounded-lg text-[11px] font-medium transition-all cursor-pointer ${
-                            isPillarSelected
-                              ? 'bg-slate-800/90 text-emerald-400 font-bold'
-                              : 'text-slate-400 hover:text-slate-200 hover:bg-slate-850'
+                      title={isCollapsed ? item.label : undefined}
+                    >
+                      <div className={`flex items-center gap-2.5 ${isCollapsed ? 'justify-center' : ''}`}>
+                        <Icon
+                          className={`w-4 h-4 shrink-0 ${
+                            isActive ? 'text-white' : item.isLive ? 'text-emerald-400' : 'text-slate-400 group-hover:text-white'
                           }`}
-                        >
-                          <ChildIcon className="w-3.5 h-3.5 shrink-0" />
-                          <span className="truncate">{child.label}</span>
-                        </button>
-                      );
-                    })}
+                        />
+                        {!isCollapsed && <span>{item.label}</span>}
+                      </div>
+                      {!isCollapsed && (
+                        <div className="flex items-center gap-1.5">
+                          {item.badge ? (
+                            typeof item.badge === 'number' ? (
+                              item.badge > 0 ? (
+                                <span className="bg-red-500 text-white text-[9px] font-extrabold px-1.5 py-0.5 rounded-full">
+                                  {item.badge}
+                                </span>
+                              ) : null
+                            ) : (
+                              <span
+                                className={`text-[9px] font-black uppercase px-2 py-0.5 rounded-full border ${
+                                  item.isLive
+                                    ? 'bg-emerald-500 text-slate-950 border-emerald-400 animate-pulse font-black'
+                                    : 'bg-emerald-500/20 text-emerald-300 border-emerald-400/30'
+                                }`}
+                              >
+                                {item.badge}
+                              </span>
+                            )
+                          ) : null}
+                          {hasChildren && (
+                            isSubOpen ? <ChevronDown className="w-3.5 h-3.5 text-slate-400" /> : <ChevronRight className="w-3.5 h-3.5 text-slate-400" />
+                          )}
+                        </div>
+                      )}
+                      {isCollapsed && item.badge ? (
+                        <span className="absolute top-1 right-2 w-2 h-2 rounded-full bg-emerald-400" />
+                      ) : null}
+                    </button>
+
+                    {/* Submenu for Safety Connect */}
+                    {hasChildren && isSubOpen && !isCollapsed && (
+                      <div className="ml-5 pl-2.5 border-l border-slate-800 space-y-0.5 py-1">
+                        {item.children?.map((child: any) => {
+                          const ChildIcon = child.icon;
+                          const isPillarSelected = child.pillar
+                            ? activeTab === 'safety' && activeSafetyPillar === child.pillar
+                            : activeTab === item.id;
+
+                          return (
+                            <button
+                              key={child.id}
+                              type="button"
+                              onClick={() => {
+                                if (child.pillar) {
+                                  handlePillarClick(child.pillar);
+                                } else {
+                                  setActiveTab(item.id as ParentTabType);
+                                  if (onCloseMobileDrawer) onCloseMobileDrawer();
+                                }
+                              }}
+                              className={`w-full flex items-center gap-2 px-2.5 py-1.5 rounded-lg text-[11px] font-medium transition-all cursor-pointer ${
+                                isPillarSelected
+                                  ? 'bg-slate-800/90 text-emerald-400 font-bold'
+                                  : 'text-slate-400 hover:text-slate-200 hover:bg-slate-850'
+                              }`}
+                            >
+                              <ChildIcon className="w-3.5 h-3.5 shrink-0" />
+                              <span className="truncate">{child.label}</span>
+                            </button>
+                          );
+                        })}
+                      </div>
+                    )}
                   </div>
-                )}
-              </div>
-            );
-          })}
+                );
+              })}
+            </div>
+          ))}
         </div>
       </div>
 

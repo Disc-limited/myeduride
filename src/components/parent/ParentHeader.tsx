@@ -1,7 +1,7 @@
 'use client';
 
 import { useState } from 'react';
-import { Bell, MessageSquare, Search, ChevronDown, LogOut, KeyRound, Bot, Menu, User } from 'lucide-react';
+import { Bell, MessageSquare, Search, ChevronDown, LogOut, KeyRound, Bot, Menu, User, CreditCard } from 'lucide-react';
 import { logout } from '@/lib/api';
 import { photoSrc } from '@/lib/photo';
 
@@ -14,6 +14,7 @@ interface ParentHeaderProps {
   onOpenChat: () => void;
   onOpenMigoAI: () => void;
   onOpenAccountSettings: () => void;
+  onOpenIdPass?: () => void;
   onToggleMobileSidebar?: () => void;
   searchQuery: string;
   setSearchQuery: (q: string) => void;
@@ -32,6 +33,7 @@ export default function ParentHeader({
   onOpenChat,
   onOpenMigoAI,
   onOpenAccountSettings,
+  onOpenIdPass,
   onToggleMobileSidebar,
   searchQuery,
   setSearchQuery,
@@ -131,6 +133,20 @@ export default function ParentHeader({
             <span className="text-[10px] text-blue-400 font-normal ml-0.5">✕</span>
           </button>
 
+          {/* Gate Digital ID Pass Quick Action */}
+          {onOpenIdPass && (
+            <button
+              type="button"
+              onClick={onOpenIdPass}
+              className="flex items-center gap-1.5 bg-emerald-50 hover:bg-emerald-100 border border-emerald-300 text-emerald-800 font-extrabold text-xs px-3 py-1.5 rounded-full transition-all shadow-2xs active:scale-95 cursor-pointer"
+              title="View your official Parent Digital ID Pass for school gate entry, visits & student pickup"
+            >
+              <CreditCard className="w-4 h-4 text-emerald-700" />
+              <span className="hidden sm:inline">Gate ID Pass</span>
+              <span className="sm:hidden">ID</span>
+            </button>
+          )}
+
           {/* Parent Profile Pill Dropdown with Default Avatar Support */}
           <div className="relative">
             <button
@@ -166,6 +182,19 @@ export default function ParentHeader({
                   <p className="text-xs font-bold text-slate-800">{userName || 'Parent'}</p>
                   <p className="text-[10px] text-slate-400">Parent Account</p>
                 </div>
+                {onOpenIdPass && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setProfileDropdownOpen(false);
+                      onOpenIdPass();
+                    }}
+                    className="w-full px-4 py-2.5 text-left text-xs font-semibold text-emerald-800 hover:bg-emerald-50 flex items-center gap-2.5 transition-colors"
+                  >
+                    <CreditCard className="w-4 h-4 text-emerald-600" />
+                    Digital ID Pass
+                  </button>
+                )}
                 <button
                   type="button"
                   onClick={() => {
