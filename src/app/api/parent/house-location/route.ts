@@ -74,19 +74,26 @@ export async function POST(request: NextRequest) {
       house_notes,
     } = body;
 
-    // Validate coordinates
-    const lat = Number(house_lat);
-    const lng = Number(house_lng);
+    if (!house_address || !house_address.trim()) {
+      return NextResponse.json({ error: 'House street address is required' }, { status: 400 });
+    }
 
-    if (isNaN(lat) || lat < -90 || lat > 90 || isNaN(lng) || lng < -180 || lng > 180) {
+    const hasCoords =
+      house_lat !== undefined &&
+      house_lat !== null &&
+      house_lng !== undefined &&
+      house_lng !== null &&
+      !isNaN(Number(house_lat)) &&
+      !isNaN(Number(house_lng));
+
+    const lat = hasCoords ? Number(house_lat) : null;
+    const lng = hasCoords ? Number(house_lng) : null;
+
+    if (hasCoords && (lat! < -90 || lat! > 90 || lng! < -180 || lng! > 180)) {
       return NextResponse.json(
         { error: 'Valid GPS latitude (-90 to 90) and longitude (-180 to 180) are required' },
         { status: 400 }
       );
-    }
-
-    if (!house_address || !house_address.trim()) {
-      return NextResponse.json({ error: 'House street address is required' }, { status: 400 });
     }
 
     const supabase = getAdminClient();
@@ -119,16 +126,19 @@ export async function POST(request: NextRequest) {
     }
 
     const nowIso = nowUtcIso();
-    const updatePayload = {
+    const updatePayload: Record<string, any> = {
       house_address: house_address.trim(),
-      house_lat: lat,
-      house_lng: lng,
       house_landmark: house_landmark?.trim() || null,
       house_notes: house_notes?.trim() || null,
-      house_pinned_at: nowIso,
-      house_pinned_by: session.user_id,
       updated_at: nowIso,
     };
+
+    if (hasCoords) {
+      updatePayload.house_lat = lat;
+      updatePayload.house_lng = lng;
+      updatePayload.house_pinned_at = nowIso;
+      updatePayload.house_pinned_by = session.user_id;
+    }
 
     const { error: updateErr } = await supabase
       .from('students')

@@ -66,7 +66,7 @@ import InteractiveLocationPickerModal from '@/components/shared/InteractiveLocat
 import ParentRoutePinningWidget from '@/components/routes/ParentRoutePinningWidget';
 import ParentLiveMovementView from '@/components/parent/ParentLiveMovementView';
 import ParentMobileBottomNav from '@/components/parent/ParentMobileBottomNav';
-import { IdCardPreviewModal } from '@/components/id-card/IdCardPreviewModal';
+import ParentVisitorGatePassModal from '@/components/parent/ParentVisitorGatePassModal';
 
 // Helper to sanitize internal technical metadata like [sender_id:...] and [Message from ...]
 const cleanNotificationText = (text?: string) => {
@@ -1336,21 +1336,19 @@ export default function ParentDashboard() {
         </div>
       )}
 
-      {/* Parent Scannable Gate Digital ID Pass Modal */}
+      {/* Parent Digital Visitor & Gate Pass Modal (Non-printable on-screen pass with linked children) */}
       {showIdPassModal && (
-        <IdCardPreviewModal
+        <ParentVisitorGatePassModal
           isOpen={showIdPassModal}
           onClose={() => setShowIdPassModal(false)}
-          data={{
-            kind: 'parent',
-            fullName: userName || (session as any)?.full_name || 'Parent / Legal Guardian',
-            idNumber: `PAR-${((session as any)?.user_id || 'PARENT').slice(0, 8).toUpperCase()}`,
-            photoUrl: userPhotoUrl,
-            roleLabel: 'Verified Parent / Legal Guardian',
-            schoolName: (safeChildren[0] as any)?.schools?.name || (safeChildren[0] as any)?.school_name || 'MyEduRide Partner Campus',
-            qrData: `MYEDURIDE:PARENT:${(session as any)?.user_id}`,
-            primaryColor: '#1B4D3E',
+          parent={{
+            id: (session as any)?.user_id || 'PARENT',
+            full_name: userName || (session as any)?.full_name || 'Verified Parent / Legal Guardian',
+            phone: (session as any)?.phone || (session as any)?.user_metadata?.phone || '',
+            photo_url: userPhotoUrl,
           }}
+          schoolName={(safeChildren[0] as any)?.schools?.name || (safeChildren[0] as any)?.school_name || 'MyEduRide Partner Campus'}
+          childrenList={safeChildren}
         />
       )}
 

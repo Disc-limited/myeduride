@@ -70,25 +70,76 @@ export default function ParentRoutePinningWidget({ schoolId, studentId }: Parent
     }
   };
 
+  const [selectedChildIdState, setSelectedChildIdState] = useState<string>('');
+  const [houseAddressInput, setHouseAddressInput] = useState('');
+  const [houseLandmarkInput, setHouseLandmarkInput] = useState('');
+  const [houseNotesInput, setHouseNotesInput] = useState('');
+  const [applyToAllState, setApplyToAllState] = useState(false);
+  const [savingAddress, setSavingAddress] = useState(false);
+
   const activeChild = studentId
-    ? childrenLocations.find((c) => c.id === studentId) || childrenLocations[0]
-    : childrenLocations[0];
+    ? childrenLocations.find((c) => c.id === (selectedChildIdState || studentId)) || childrenLocations[0]
+    : childrenLocations.find((c) => c.id === selectedChildIdState) || childrenLocations[0];
+
+  // Sync inputs when active child changes
+  useEffect(() => {
+    if (activeChild) {
+      setHouseAddressInput(activeChild.house_address || '');
+      setHouseLandmarkInput(activeChild.house_landmark || '');
+      setHouseNotesInput(activeChild.house_notes || '');
+      if (!selectedChildIdState) setSelectedChildIdState(activeChild.id);
+    }
+  }, [activeChild?.id, activeChild?.house_address, activeChild?.house_landmark, activeChild?.house_notes]);
+
+  const handleSaveDirectAddress = async () => {
+    if (!houseAddressInput.trim()) {
+      toast.error('Please enter a house number and street address');
+      return;
+    }
+    setSavingAddress(true);
+    try {
+      const payload = {
+        student_id: activeChild?.id,
+        apply_to_all_children: applyToAllState,
+        house_address: houseAddressInput.trim(),
+        house_lat: activeChild?.house_lat || null,
+        house_lng: activeChild?.house_lng || null,
+        house_landmark: houseLandmarkInput.trim() || null,
+        house_notes: houseNotesInput.trim() || null,
+      };
+
+      const res = await fetch('/api/parent/house-location', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
+      });
+      const data = await res.json();
+      if (!res.ok || data.error) throw new Error(data.error || 'Failed to save address');
+
+      toast.success(data.message || 'House address saved successfully!');
+      loadData();
+    } catch (err: any) {
+      toast.error(err.message || 'Failed to save house address');
+    } finally {
+      setSavingAddress(false);
+    }
+  };
 
   if (loading) {
     return <div className="p-4 text-xs text-slate-400">Loading school transit corridors...</div>;
   }
 
   return (
-    <div className="bg-white rounded-3xl p-5 md:p-6 border border-slate-200 shadow-xs space-y-4 font-sans">
+    <div className="bg-white rounded-3xl p-5 md:p-6 border border-slate-200 shadow-xs space-y-5 font-sans">
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-slate-100 pb-4">
         <div className="flex items-center gap-2.5">
           <div className="w-10 h-10 rounded-2xl bg-teal-100 text-teal-800 flex items-center justify-center font-black">
             <Bookmark size={18} />
           </div>
           <div>
-            <h3 className="font-black text-slate-900 text-base">Pinned School Transit Corridors</h3>
+            <h3 className="font-black text-slate-900 text-base">Child Home Address &amp; Corridor Pinning</h3>
             <p className="text-xs text-slate-500 font-medium">
-              Pin child house location and preferred corridor stops to receive approaching-bus alerts and escort guidance.
+              Type your exact house number and address, pin your doorstep on the map, and select corridor stops for bus and escort guidance.
             </p>
           </div>
         </div>
@@ -102,55 +153,142 @@ export default function ParentRoutePinningWidget({ schoolId, studentId }: Parent
           className="px-4 py-2 rounded-xl bg-teal-700 hover:bg-teal-800 text-white font-black text-xs flex items-center gap-1.5 shadow-xs transition-all self-start sm:self-auto cursor-pointer"
         >
           <Home size={14} />
-          <span>{activeChild?.house_lat ? 'Edit Child House Pin' : '📍 Pin Child House Location'}</span>
+          <span>{activeChild?.house_lat ? 'Adjust House Pin on Map' : '📍 Drop House Pin on Map'}</span>
         </button>
       </div>
 
-      {/* Child House Location Banner */}
+      {/* Child House Address & Pinning Card (Mirrors School Settings Experience) */}
       {activeChild && (
-        <div className={`p-4 rounded-2xl border flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 ${
-          activeChild.house_lat && activeChild.house_lng
-            ? 'bg-teal-50/70 border-teal-200 text-teal-950'
-            : 'bg-amber-50/70 border-amber-200 text-amber-950'
-        }`}>
-          <div className="flex items-start gap-3">
-            <div className={`w-8 h-8 rounded-xl flex items-center justify-center shrink-0 ${
-              activeChild.house_lat ? 'bg-teal-700 text-white' : 'bg-amber-600 text-white'
-            }`}>
-              <Home size={16} />
-            </div>
-            <div>
-              <div className="flex items-center gap-2">
-                <span className="font-black text-xs">{activeChild.first_name}&apos;s Pickup House:</span>
-                {activeChild.house_lat ? (
-                  <span className="px-2 py-0.5 rounded-md bg-teal-200/80 text-teal-900 font-mono font-bold text-[10px]">
-                    📍 Pinned ({Number(activeChild.house_lat).toFixed(4)}, {Number(activeChild.house_lng).toFixed(4)})
-                  </span>
-                ) : (
-                  <span className="px-2 py-0.5 rounded-md bg-amber-200/80 text-amber-900 font-bold text-[10px]">
-                    ⚠️ Not yet pinned
-                  </span>
-                )}
+        <div className="p-4 sm:p-5 rounded-3xl bg-teal-50/50 border border-teal-200/90 space-y-4">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-teal-100 pb-3">
+            <div className="flex items-center gap-2.5">
+              <div className="w-8 h-8 rounded-xl bg-teal-700 text-white flex items-center justify-center font-black">
+                <Home size={16} />
               </div>
-              <p className="text-xs text-slate-700 mt-0.5">
-                {activeChild.house_address || 'Pin your home location so it appears on the route map for school admin, city manager, and your assigned escort.'}
+              <div>
+                <div className="flex items-center gap-2">
+                  <h4 className="text-xs sm:text-sm font-black text-slate-900">
+                    {activeChild.first_name}&apos;s Pickup &amp; Doorstep Address
+                  </h4>
+                  {activeChild.house_lat && activeChild.house_lng ? (
+                    <span className="px-2 py-0.5 rounded-md bg-emerald-100 text-emerald-800 font-mono font-black text-[10px]">
+                      📍 Pinned ({Number(activeChild.house_lat).toFixed(4)}, {Number(activeChild.house_lng).toFixed(4)})
+                    </span>
+                  ) : (
+                    <span className="px-2 py-0.5 rounded-md bg-amber-200 text-amber-900 font-black text-[10px]">
+                      ⚠️ Doorstep Unpinned
+                    </span>
+                  )}
+                </div>
+                <p className="text-[11px] text-slate-500 font-medium">
+                  This address and coordinates are synced to school transport coordinators, escorts, and city manager route maps.
+                </p>
+              </div>
+            </div>
+
+            {/* Child Selector Tabs (if multiple children) */}
+            {childrenLocations.length > 1 && (
+              <div className="flex flex-wrap items-center gap-1.5 pt-1 sm:pt-0">
+                {childrenLocations.map((c) => (
+                  <button
+                    key={c.id}
+                    type="button"
+                    onClick={() => {
+                      setSelectedChildIdState(c.id);
+                      setSelectedChildForPin(c);
+                    }}
+                    className={`px-2.5 py-1 rounded-lg text-xs font-bold transition-all cursor-pointer ${
+                      activeChild.id === c.id
+                        ? 'bg-teal-700 text-white shadow-2xs'
+                        : 'bg-white text-teal-900 border border-teal-200 hover:bg-teal-100'
+                    }`}
+                  >
+                    {c.first_name}
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
+
+          {/* Form Fields: House Address & Landmark */}
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-3.5">
+            <div className="space-y-1.5 md:col-span-2">
+              <label className="block text-xs font-black text-slate-800">
+                House / Flat Number &amp; Street Address <span className="text-rose-600">*</span>
+              </label>
+              <input
+                type="text"
+                value={houseAddressInput}
+                onChange={(e) => setHouseAddressInput(e.target.value)}
+                placeholder="e.g. Plot 12B, Flat 3, Road 4, Silver Estate, Lekki Phase 1, Lagos"
+                className="w-full px-3.5 py-2.5 bg-white border border-teal-300 rounded-xl text-xs font-medium text-slate-900 focus:outline-none focus:ring-2 focus:ring-teal-500/30 focus:border-teal-600 shadow-2xs"
+              />
+              <p className="text-[10px] text-slate-500 font-medium">
+                Type your exact house or apartment number. If your house number is not on map directories, typing it here ensures drivers and escorts arrive at the right door.
               </p>
-              {activeChild.house_landmark && (
-                <p className="text-[11px] text-slate-500 font-medium">Landmark: {activeChild.house_landmark}</p>
-              )}
+            </div>
+
+            <div className="space-y-1">
+              <label className="block text-xs font-bold text-slate-700">Nearest Landmark / Junction</label>
+              <input
+                type="text"
+                value={houseLandmarkInput}
+                onChange={(e) => setHouseLandmarkInput(e.target.value)}
+                placeholder="e.g. Opposite Central Mosque, black gate"
+                className="w-full px-3 py-2 bg-white border border-slate-200 rounded-xl text-xs font-medium text-slate-900 focus:outline-none focus:ring-2 focus:ring-teal-500/20"
+              />
+            </div>
+
+            <div className="space-y-1">
+              <label className="block text-xs font-bold text-slate-700">Driver / Escort Arrival Notes</label>
+              <input
+                type="text"
+                value={houseNotesInput}
+                onChange={(e) => setHouseNotesInput(e.target.value)}
+                placeholder="e.g. Call parent 5 mins before bus arrives"
+                className="w-full px-3 py-2 bg-white border border-slate-200 rounded-xl text-xs font-medium text-slate-900 focus:outline-none focus:ring-2 focus:ring-teal-500/20"
+              />
             </div>
           </div>
 
-          <button
-            type="button"
-            onClick={() => {
-              setSelectedChildForPin(activeChild);
-              setShowHousePinModal(true);
-            }}
-            className="px-3 py-1.5 rounded-xl bg-white border border-slate-200 text-xs font-bold text-slate-800 hover:bg-slate-50 transition-all shrink-0 cursor-pointer shadow-2xs"
-          >
-            {activeChild.house_lat ? 'Change House Pin' : 'Pin Doorstep Now'}
-          </button>
+          {/* Action Row */}
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pt-1 border-t border-teal-100">
+            {childrenLocations.length > 1 ? (
+              <label className="flex items-center gap-2 cursor-pointer text-xs font-bold text-teal-900">
+                <input
+                  type="checkbox"
+                  checked={applyToAllState}
+                  onChange={(e) => setApplyToAllState(e.target.checked)}
+                  className="rounded text-teal-600 focus:ring-teal-500 w-4 h-4 cursor-pointer"
+                />
+                <span>Apply this address &amp; pin to all my {childrenLocations.length} children</span>
+              </label>
+            ) : <div />}
+
+            <div className="flex items-center gap-2">
+              <button
+                type="button"
+                onClick={handleSaveDirectAddress}
+                disabled={savingAddress || !houseAddressInput.trim()}
+                className="px-4 py-2 rounded-xl bg-teal-700 hover:bg-teal-800 text-white font-black text-xs flex items-center gap-1.5 shadow-xs disabled:opacity-50 cursor-pointer transition-all"
+              >
+                <Check size={14} />
+                <span>{savingAddress ? 'Saving Address…' : 'Save Address'}</span>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => {
+                  setSelectedChildForPin(activeChild);
+                  setShowHousePinModal(true);
+                }}
+                className="px-4 py-2 rounded-xl bg-white border border-teal-300 text-teal-850 hover:bg-teal-100/70 font-black text-xs flex items-center gap-1.5 shadow-2xs cursor-pointer transition-all"
+              >
+                <MapPin size={14} />
+                <span>{activeChild.house_lat ? '📍 Adjust Pin on Map' : '📍 Drop Pin on Map'}</span>
+              </button>
+            </div>
+          </div>
         </div>
       )}
 

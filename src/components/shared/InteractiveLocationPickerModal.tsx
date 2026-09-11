@@ -66,6 +66,8 @@ export default function InteractiveLocationPickerModal({
   const [notes, setNotes] = useState(initialNotes || '');
   const [applyToAll, setApplyToAll] = useState(false);
   const [selectedChildId, setSelectedChildId] = useState(child?.id || (childrenList[0]?.id || ''));
+  const [isManualAddress, setIsManualAddress] = useState(Boolean(initialAddress));
+  const [detectedStreet, setDetectedStreet] = useState<string | null>(null);
 
   const [loadingMap, setLoadingMap] = useState(true);
   const [locating, setLocating] = useState(false);
@@ -81,7 +83,10 @@ export default function InteractiveLocationPickerModal({
     if (initialLat && initialLng) {
       setCoords({ lat: Number(initialLat), lng: Number(initialLng) });
     }
-    if (initialAddress) setAddress(initialAddress);
+    if (initialAddress) {
+      setAddress(initialAddress);
+      setIsManualAddress(true);
+    }
     if (initialLandmark) setLandmark(initialLandmark);
     if (initialNotes) setNotes(initialNotes);
     if (child?.id) setSelectedChildId(child.id);
@@ -188,7 +193,17 @@ export default function InteractiveLocationPickerModal({
           const road = addr?.road || addr?.suburb || addr?.neighbourhood || '';
           const city = addr?.city || addr?.town || addr?.state || '';
           const shortAddress = road && city ? `${road}, ${city}` : data.display_name.split(',').slice(0, 3).join(',').trim();
-          setAddress(shortAddress);
+          setDetectedStreet(shortAddress);
+
+          // IMPORTANT: NEVER overwrite user-typed house/flat numbers!
+          // Only auto-fill if the user has NOT entered any address yet.
+          setAddress((current) => {
+            if (!current || !current.trim()) {
+              return shortAddress;
+            }
+            return current;
+          });
+
           if (!landmark && addr?.amenity) {
             setLandmark(addr.amenity);
           }
@@ -207,9 +222,12 @@ export default function InteractiveLocationPickerModal({
   const accuracyCircleRef = useRef<any>(null);
 
   // Search Address or Raw Coordinates Geocoding
-  const handleAddressSearch = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!address.trim()) return;
+  const handleAddressSearch = async (e?: React.FormEvent) => {
+    if (e) e.preventDefault();
+    if (!address.trim()) {
+      toast.error('Please type an address to search');
+      return;
+    }
 
     // 1. Check if user entered direct coordinates (e.g. "6.4521, 3.4211")
     const coordMatch = address.trim().match(/^(-?\d+(\.\d+)?)[,\s]+(-?\d+(\.\d+)?)$/);
@@ -228,33 +246,50 @@ export default function InteractiveLocationPickerModal({
       }
     }
 
-    // 2. Query Geocoding Service
+    // 2. Query Geocoding Service with graceful fallback for unindexed house numbers
     try {
       setGeocoding(true);
       const cleanAddress = address.trim().replace(/,\s*(nigeria|lagos)$/i, '');
       const query = encodeURIComponent(`${cleanAddress}, Nigeria`);
-      const res = await fetch(`https://nominatim.openstreetmap.org/search?format=json&q=${query}&limit=3`);
-      if (res.ok) {
-        const results = await res.json();
-        if (results && results.length > 0) {
-          const first = results[0];
-          const newLat = parseFloat(first.lat);
-          const newLng = parseFloat(first.lon);
+      let res = await fetch(`https://nominatim.openstreetmap.org/search?format=json&q=${query}&limit=3`);
+      let results = res.ok ? await res.json() : [];
 
-          setCoords({ lat: newLat, lng: newLng });
+      // Fallback: If exact house number/flat is not indexed, strip prefixes to find the street/area
+      if (!results || results.length === 0) {
+        const strippedStreet = cleanAddress
+          .replace(/^(plot|no\.?|house|flat|block|suite|room|apt)\s*[\w\d\-\/]+\s*,?\s*/i, '')
+          .replace(/^(no|number)\s*\d+\s*,?\s*/i, '')
+          .trim();
 
-          if (mapInstanceRef.current && markerInstanceRef.current) {
-            mapInstanceRef.current.setView([newLat, newLng], 17);
-            markerInstanceRef.current.setLatLng([newLat, newLng]);
+        if (strippedStreet && strippedStreet !== cleanAddress) {
+          const fallbackQuery = encodeURIComponent(`${strippedStreet}, Nigeria`);
+          const fallbackRes = await fetch(`https://nominatim.openstreetmap.org/search?format=json&q=${fallbackQuery}&limit=3`);
+          if (fallbackRes.ok) {
+            results = await fallbackRes.json();
           }
-          reverseGeocode(newLat, newLng);
-          toast.success('Map updated to search location');
-        } else {
-          toast.error('Location not found by name. Try dragging the pin directly on the map.');
         }
       }
+
+      if (results && results.length > 0) {
+        const first = results[0];
+        const newLat = parseFloat(first.lat);
+        const newLng = parseFloat(first.lon);
+
+        setCoords({ lat: newLat, lng: newLng });
+
+        if (mapInstanceRef.current && markerInstanceRef.current) {
+          mapInstanceRef.current.setView([newLat, newLng], 17);
+          markerInstanceRef.current.setLatLng([newLat, newLng]);
+        }
+        reverseGeocode(newLat, newLng);
+        toast.success('Map centered on neighborhood. Drag the pin directly onto your building or gate.');
+      } else {
+        toast.info(
+          'Address recorded! Since this specific house number is not indexed on map providers, please tap or drag the pin directly to mark your exact doorstep.'
+        );
+      }
     } catch (err) {
-      toast.error('Search service currently unreachable');
+      toast.info('Search service currently unreachable. You can drag the pin directly on the map to set your location.');
     } finally {
       setGeocoding(false);
     }
@@ -489,139 +524,165 @@ export default function InteractiveLocationPickerModal({
             </div>
           )}
 
-          {/* Search / Geocode Input */}
-          <form onSubmit={handleAddressSearch} className="flex gap-2">
-            <div className="relative flex-1">
-              <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400" size={16} />
-              <input
-                type="text"
-                value={address}
-                onChange={(e) => setAddress(e.target.value)}
-                placeholder="Search street name, area, or landmark..."
-                className="w-full pl-10 pr-4 py-2.5 text-xs bg-slate-50 border border-slate-200 rounded-xl font-medium text-slate-900 focus:outline-none focus:ring-2 focus:ring-teal-500/20 focus:border-teal-500"
-              />
-            </div>
-            <button
-              type="submit"
-              disabled={geocoding || !address.trim()}
-              className="px-4 py-2.5 rounded-xl bg-slate-900 text-white text-xs font-bold hover:bg-slate-800 disabled:opacity-50 transition-all shrink-0 flex items-center gap-1.5"
-            >
-              {geocoding ? <Loader2 size={14} className="animate-spin" /> : <Search size={14} />}
-              <span>Search</span>
-            </button>
-            <button
-              type="button"
-              onClick={handleDetectLocation}
-              disabled={locating}
-              title="Use current GPS device location"
-              className="px-3.5 py-2.5 rounded-xl bg-teal-50 text-teal-800 border border-teal-200 text-xs font-bold hover:bg-teal-100 disabled:opacity-50 transition-all shrink-0 flex items-center gap-1.5"
-            >
-              {locating ? <Loader2 size={14} className="animate-spin text-teal-700" /> : <Navigation size={14} />}
-              <span className="hidden sm:inline">Use My Location</span>
-            </button>
-          </form>
-
-          {/* Map Viewport */}
-          <div className="relative rounded-2xl overflow-hidden border border-slate-200 shadow-inner bg-slate-100 h-64 sm:h-72">
-            <div ref={mapContainerRef} className="w-full h-full z-0" />
-
-            {/* Satellite / Street Map Switcher */}
-            <div className="absolute top-2.5 right-2.5 z-10 flex items-center gap-1.5">
-              <button
-                type="button"
-                onClick={toggleMapLayer}
-                className={`px-3 py-1.5 rounded-xl font-extrabold text-[11px] backdrop-blur-md shadow-md transition-all flex items-center gap-1.5 cursor-pointer ${
-                  mapLayer === 'satellite'
-                    ? 'bg-amber-400 text-slate-950 border border-amber-300'
-                    : 'bg-slate-900/90 text-white border border-slate-700 hover:bg-slate-800'
-                }`}
-              >
-                <Compass size={13} />
-                <span>{mapLayer === 'satellite' ? '🗺️ Street Map' : '🛰️ Satellite Aerial View'}</span>
-              </button>
-            </div>
-
-            {/* GPS Accuracy Badge */}
-            {gpsAccuracy !== null && (
-              <div className="absolute top-2.5 left-2.5 z-10 px-2.5 py-1 rounded-xl bg-emerald-500 text-slate-950 font-black text-[10px] backdrop-blur-md shadow-md flex items-center gap-1">
-                🎯 GPS Precision: ±{Math.round(gpsAccuracy)}m
-              </div>
-            )}
-
-            {/* Coordinate Overlay & Target Guide */}
-            <div className="absolute bottom-2.5 left-2.5 right-2.5 z-10 pointer-events-auto flex flex-wrap items-center justify-between gap-2 bg-slate-900/90 backdrop-blur-md text-white px-3 py-2 rounded-xl text-[11px] font-mono border border-slate-700">
-              <span className="flex items-center gap-1 text-emerald-400 font-bold">
-                <MapPin size={13} />
-                <span className="hidden sm:inline">Drag pin or click map to adjust</span>
-              </span>
-
-              <div className="flex items-center gap-2 text-[10px]">
-                <label className="text-slate-400 font-bold">Lat:</label>
-                <input
-                  type="number"
-                  step="0.00001"
-                  value={coords.lat}
-                  onChange={(e) => {
-                    const val = parseFloat(e.target.value);
-                    if (!isNaN(val)) {
-                      setCoords((prev) => ({ ...prev, lat: val }));
-                      if (mapInstanceRef.current && markerInstanceRef.current) {
-                        mapInstanceRef.current.setView([val, coords.lng]);
-                        markerInstanceRef.current.setLatLng([val, coords.lng]);
-                      }
-                    }
-                  }}
-                  className="w-20 bg-slate-800 border border-slate-700 rounded px-1.5 py-0.5 text-emerald-300 font-bold"
-                />
-                <label className="text-slate-400 font-bold">Lng:</label>
-                <input
-                  type="number"
-                  step="0.00001"
-                  value={coords.lng}
-                  onChange={(e) => {
-                    const val = parseFloat(e.target.value);
-                    if (!isNaN(val)) {
-                      setCoords((prev) => ({ ...prev, lng: val }));
-                      if (mapInstanceRef.current && markerInstanceRef.current) {
-                        mapInstanceRef.current.setView([coords.lat, val]);
-                        markerInstanceRef.current.setLatLng([coords.lat, val]);
-                      }
-                    }
-                  }}
-                  className="w-20 bg-slate-800 border border-slate-700 rounded px-1.5 py-0.5 text-emerald-300 font-bold"
-                />
-              </div>
-            </div>
-          </div>
-
-          {/* Explicit Typed Street Address Input (Ensures parent can type exact address) */}
-          <div className="space-y-1.5 p-3.5 bg-teal-50/70 border border-teal-200 rounded-2xl">
+          {/* Step 1: House Number & Physical Address Input (Prioritized Above Map) */}
+          <div className="space-y-2 p-4 bg-teal-50/70 border border-teal-200 rounded-2xl">
             <div className="flex items-center justify-between">
-              <label className="text-xs font-black text-teal-950 flex items-center gap-1.5">
-                <Home size={14} className="text-teal-700" />
-                <span>{mode === 'school_admin' ? 'School Campus Physical Address' : 'House / Street Address (Type or Edit Exact Address)'}</span>
-              </label>
+              <div className="flex items-center gap-2">
+                <div className="w-6 h-6 rounded-lg bg-teal-700 text-white flex items-center justify-center">
+                  {mode === 'school_admin' ? <Building size={14} /> : <Home size={14} />}
+                </div>
+                <div>
+                  <label className="text-xs font-black text-teal-950 block">
+                    {mode === 'school_admin' ? 'School Campus Physical Address' : 'House / Flat Number & Street Address'}
+                    <span className="text-rose-600 ml-0.5">*</span>
+                  </label>
+                  <span className="text-[10px] font-bold text-teal-700 uppercase tracking-wider">
+                    Step 1: Enter Complete Doorstep Address
+                  </span>
+                </div>
+              </div>
               {geocoding && (
                 <span className="text-[10px] text-teal-700 font-bold flex items-center gap-1">
-                  <Loader2 size={10} className="animate-spin" /> Fetching street...
+                  <Loader2 size={10} className="animate-spin" /> Geocoding...
                 </span>
               )}
             </div>
+
+            <p className="text-[11px] text-slate-600 leading-snug">
+              💡 <strong>House address not on the map?</strong> Type your exact house, plot, or flat number here. We will preserve your typed address for school routes and escort manifests while you pin your exact gate coordinates below.
+            </p>
+
             <textarea
               required
               rows={2}
               value={address}
-              onChange={(e) => setAddress(e.target.value)}
+              onChange={(e) => {
+                setAddress(e.target.value);
+                setIsManualAddress(true);
+              }}
               placeholder={
                 mode === 'school_admin'
                   ? 'e.g. 15 Admiralty Way, Lekki Phase 1, Lagos'
-                  : 'Type full street address, e.g. Plot 12B, Road 4, Silver Estate, Victoria Island, Lagos'
+                  : 'Type full address with house number, e.g. Plot 12B, Flat 3, Road 4, Silver Estate, Lekki, Lagos'
               }
-              className="w-full px-3.5 py-2 text-xs bg-white border border-teal-300 rounded-xl font-medium text-slate-900 focus:outline-none focus:ring-2 focus:ring-teal-500/30 focus:border-teal-600"
+              className="w-full px-3.5 py-2.5 text-xs bg-white border border-teal-300 rounded-xl font-medium text-slate-900 focus:outline-none focus:ring-2 focus:ring-teal-500/30 focus:border-teal-600 shadow-2xs"
             />
-            <p className="text-[10px] text-teal-800/80 font-medium">
-              💡 Type your exact door/building number and street name. This address will sync to the school route and city manager system.
-            </p>
+
+            {/* Quick Action Toolbar: Search Area & GPS Detect */}
+            <div className="flex flex-wrap items-center justify-between gap-2 pt-1">
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={handleAddressSearch}
+                  disabled={geocoding || !address.trim()}
+                  className="px-3.5 py-1.5 rounded-xl bg-slate-900 hover:bg-slate-800 text-white font-bold text-xs flex items-center gap-1.5 shadow-xs disabled:opacity-50 cursor-pointer transition-all"
+                >
+                  {geocoding ? <Loader2 size={13} className="animate-spin" /> : <Search size={13} />}
+                  <span>Center Map on Area</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={handleDetectLocation}
+                  disabled={locating}
+                  className="px-3 py-1.5 rounded-xl bg-white border border-teal-300 text-teal-850 hover:bg-teal-100/70 font-bold text-xs flex items-center gap-1.5 shadow-2xs disabled:opacity-50 cursor-pointer transition-all"
+                >
+                  {locating ? <Loader2 size={13} className="animate-spin text-teal-700" /> : <Navigation size={13} />}
+                  <span>Use Device GPS</span>
+                </button>
+              </div>
+
+              {detectedStreet && (
+                <div className="text-[10px] text-slate-500 flex items-center gap-1 font-medium truncate max-w-xs">
+                  <span>📍 Map area:</span>
+                  <span className="font-bold text-teal-900 truncate">{detectedStreet}</span>
+                </div>
+              )}
+            </div>
+          </div>
+
+          {/* Step 2: Map Viewport & Pinpoint Gate Location */}
+          <div className="space-y-1.5">
+            <div className="flex items-center justify-between">
+              <span className="text-xs font-black text-slate-900 flex items-center gap-1.5">
+                <MapPin size={14} className="text-teal-700" />
+                Step 2: Pinpoint Exact Gate / Doorstep on Map
+              </span>
+              <span className="text-[10px] text-slate-500 font-medium hidden sm:inline">
+                Drag the pin directly onto your building or gate
+              </span>
+            </div>
+
+            <div className="relative rounded-2xl overflow-hidden border border-slate-200 shadow-inner bg-slate-100 h-60 sm:h-68">
+              <div ref={mapContainerRef} className="w-full h-full z-0" />
+
+              {/* Satellite / Street Map Switcher */}
+              <div className="absolute top-2.5 right-2.5 z-10 flex items-center gap-1.5">
+                <button
+                  type="button"
+                  onClick={toggleMapLayer}
+                  className={`px-3 py-1.5 rounded-xl font-extrabold text-[11px] backdrop-blur-md shadow-md transition-all flex items-center gap-1.5 cursor-pointer ${
+                    mapLayer === 'satellite'
+                      ? 'bg-amber-400 text-slate-950 border border-amber-300'
+                      : 'bg-slate-900/90 text-white border border-slate-700 hover:bg-slate-800'
+                  }`}
+                >
+                  <Compass size={13} />
+                  <span>{mapLayer === 'satellite' ? '🗺️ Street Map' : '🛰️ Satellite Aerial View'}</span>
+                </button>
+              </div>
+
+              {/* GPS Accuracy Badge */}
+              {gpsAccuracy !== null && (
+                <div className="absolute top-2.5 left-2.5 z-10 px-2.5 py-1 rounded-xl bg-emerald-500 text-slate-950 font-black text-[10px] backdrop-blur-md shadow-md flex items-center gap-1">
+                  🎯 GPS Precision: ±{Math.round(gpsAccuracy)}m
+                </div>
+              )}
+
+              {/* Coordinate Overlay & Target Guide */}
+              <div className="absolute bottom-2.5 left-2.5 right-2.5 z-10 pointer-events-auto flex flex-wrap items-center justify-between gap-2 bg-slate-900/90 backdrop-blur-md text-white px-3 py-2 rounded-xl text-[11px] font-mono border border-slate-700">
+                <span className="flex items-center gap-1 text-emerald-400 font-bold">
+                  <MapPin size={13} />
+                  <span className="hidden sm:inline">Drag pin or click map to adjust</span>
+                </span>
+
+                <div className="flex items-center gap-2 text-[10px]">
+                  <label className="text-slate-400 font-bold">Lat:</label>
+                  <input
+                    type="number"
+                    step="0.00001"
+                    value={coords.lat}
+                    onChange={(e) => {
+                      const val = parseFloat(e.target.value);
+                      if (!isNaN(val)) {
+                        setCoords((prev) => ({ ...prev, lat: val }));
+                        if (mapInstanceRef.current && markerInstanceRef.current) {
+                          mapInstanceRef.current.setView([val, coords.lng]);
+                          markerInstanceRef.current.setLatLng([val, coords.lng]);
+                        }
+                      }
+                    }}
+                    className="w-20 bg-slate-800 border border-slate-700 rounded px-1.5 py-0.5 text-emerald-300 font-bold"
+                  />
+                  <label className="text-slate-400 font-bold">Lng:</label>
+                  <input
+                    type="number"
+                    step="0.00001"
+                    value={coords.lng}
+                    onChange={(e) => {
+                      const val = parseFloat(e.target.value);
+                      if (!isNaN(val)) {
+                        setCoords((prev) => ({ ...prev, lng: val }));
+                        if (mapInstanceRef.current && markerInstanceRef.current) {
+                          mapInstanceRef.current.setView([coords.lat, val]);
+                          markerInstanceRef.current.setLatLng([coords.lat, val]);
+                        }
+                      }
+                    }}
+                    className="w-20 bg-slate-800 border border-slate-700 rounded px-1.5 py-0.5 text-emerald-300 font-bold"
+                  />
+                </div>
+              </div>
+            </div>
           </div>
 
           {/* Landmark & Instructions Fields */}

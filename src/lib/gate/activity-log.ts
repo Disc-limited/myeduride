@@ -37,3 +37,5 @@ export async function writeGateActivityLog(
     console.warn('[gate_activity_logs]', entry.action_type, error.message);
   }
 }
+
+export const logGateActivity = writeGateActivityLog;
