@@ -28,6 +28,7 @@ import {
   RefreshCw
 } from 'lucide-react';
 import { toast } from 'sonner';
+import AssignStudentToEscortModal from '@/components/school-admin/AssignStudentToEscortModal';
 
 export default function SchoolEscortManagementPage() {
   const [activeTab, setActiveTab] = useState<'escorts' | 'profiles' | 'assignments' | 'students' | 'records'>('escorts');
@@ -45,6 +46,8 @@ export default function SchoolEscortManagementPage() {
   const [selectedProfile, setSelectedProfile] = useState(null);
   const [addModalOpen, setAddModalOpen] = useState(false);
   const [submitting, setSubmitting] = useState(false);
+  const [assignModalOpen, setAssignModalOpen] = useState(false);
+  const [assignEscortId, setAssignEscortId] = useState('');
 
   // Form for Add School Escort
   const [form, setForm] = useState({
@@ -159,7 +162,19 @@ export default function SchoolEscortManagementPage() {
           </p>
         </div>
 
-        <div className="flex items-center gap-3">
+        <div className="flex flex-wrap items-center gap-3">
+          <button
+            type="button"
+            onClick={() => {
+              setAssignEscortId('');
+              setAssignModalOpen(true);
+            }}
+            className="px-5 py-3 rounded-2xl bg-gradient-to-r from-emerald-600 to-teal-700 hover:from-emerald-500 hover:to-teal-600 text-white font-extrabold text-xs transition-all shadow-lg shadow-emerald-600/20 flex items-center gap-2 cursor-pointer shrink-0"
+          >
+            <UserCheck size={16} />
+            <span>Assign Student to Escort</span>
+          </button>
+
           <Link
             href="/dashboard/school-admin/escort/add"
             className="px-5 py-3 rounded-2xl bg-[#00A859] hover:bg-emerald-600 text-white font-extrabold text-xs transition-all shadow-lg shadow-emerald-600/30 flex items-center gap-2 cursor-pointer shrink-0"
@@ -433,9 +448,22 @@ export default function SchoolEscortManagementPage() {
                       <p className="text-xs text-slate-500 font-medium">{escort.assignedRoute} · {escort.assignedVehicle}</p>
                     </div>
                   </div>
-                  <span className="px-3 py-1 rounded-full bg-emerald-100 text-emerald-800 font-extrabold text-xs">
-                    {manifest.length} Assigned Students
-                  </span>
+                  <div className="flex items-center gap-2">
+                    <span className="px-3 py-1 rounded-full bg-emerald-100 text-emerald-800 font-extrabold text-xs">
+                      {manifest.length} Assigned Students
+                    </span>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setAssignEscortId(escort.id);
+                        setAssignModalOpen(true);
+                      }}
+                      className="px-3 py-1 rounded-xl bg-slate-900 hover:bg-slate-800 text-white font-bold text-xs flex items-center gap-1 cursor-pointer transition-all shadow-xs"
+                    >
+                      <Plus size={13} />
+                      <span>Assign Student</span>
+                    </button>
+                  </div>
                 </div>
 
                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
@@ -763,6 +791,15 @@ export default function SchoolEscortManagementPage() {
           </div>
         </div>
       )}
+
+      {/* Assign Student to Escort Modal */}
+      <AssignStudentToEscortModal
+        isOpen={assignModalOpen}
+        onClose={() => setAssignModalOpen(false)}
+        onSuccess={loadData}
+        defaultEscortType="school_escort"
+        defaultEscortId={assignEscortId}
+      />
     </div>
   );
 }

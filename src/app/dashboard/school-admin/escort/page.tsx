@@ -25,6 +25,7 @@ import { toast } from 'sonner';
 import { photoSrc } from '@/lib/photo';
 import StudentAvatar from '@/components/shared/StudentAvatar';
 import EscortDetailDrawer from '@/components/school-admin/EscortDetailDrawer';
+import AssignStudentToEscortModal from '@/components/school-admin/AssignStudentToEscortModal';
 
 export default function EscortRecordsHubPage() {
   const [escorts, setEscorts] = useState<any[]>([]);
@@ -40,6 +41,7 @@ export default function EscortRecordsHubPage() {
   const [statusFilter, setStatusFilter] = useState('ALL');
   const [typeFilter, setTypeFilter] = useState('ALL');
   const [selectedEscort, setSelectedEscort] = useState<any | null>(null);
+  const [assignModalOpen, setAssignModalOpen] = useState(false);
 
   useEffect(() => {
     loadEscorts();
@@ -163,6 +165,14 @@ export default function EscortRecordsHubPage() {
           >
             <Sparkles size={14} className="text-amber-400" /> MyEduRide Escorts
           </Link>
+
+          <button
+            type="button"
+            onClick={() => setAssignModalOpen(true)}
+            className="px-3.5 py-2 rounded-xl bg-gradient-to-r from-emerald-600 to-teal-700 hover:from-emerald-500 hover:to-teal-600 text-white text-xs font-bold transition-all shadow-xs flex items-center gap-1.5 cursor-pointer"
+          >
+            <UserCheck size={14} className="text-white" /> Assign Student to Escort
+          </button>
         </div>
       </div>
 
@@ -341,6 +351,13 @@ export default function EscortRecordsHubPage() {
         escort={selectedEscort}
         onClose={() => setSelectedEscort(null)}
         onUpdateStatus={handleUpdateStatus}
+      />
+
+      {/* Assign Student to Escort Modal (Strict Pinned Address & CM Approval Flow) */}
+      <AssignStudentToEscortModal
+        isOpen={assignModalOpen}
+        onClose={() => setAssignModalOpen(false)}
+        onSuccess={loadEscorts}
       />
     </div>
   );

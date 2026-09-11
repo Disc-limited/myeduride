@@ -35,6 +35,8 @@ import {
   Sparkles,
   KeyRound,
   Calendar,
+  ClipboardCheck,
+  Activity,
 } from 'lucide-react';
 import { logout } from '@/lib/api';
 
@@ -119,6 +121,7 @@ export function AdminSidebar({
           icon: <GraduationCap size={18} />,
           children: [
             { label: 'Staff List', href: '/dashboard/school-admin/staff', icon: <GraduationCap size={16} /> },
+            { label: 'Staff Attendance', href: '/dashboard/school-admin/reports/staff-attendance', icon: <ClipboardCheck size={16} /> },
             { label: 'Add Staff', href: '/dashboard/school-admin/staff/new', icon: <GraduationCap size={16} /> },
           ],
         },
@@ -131,6 +134,7 @@ export function AdminSidebar({
             { label: 'School Escorts', href: '/dashboard/school-admin/escort/school-escort', icon: <UserCheck size={16} /> },
             { label: 'MyEduRide Escorts', href: '/dashboard/school-admin/escort/myeduride-escort', icon: <Shield size={16} /> },
             { label: 'Add School Escort', href: '/dashboard/school-admin/escort/add', icon: <UserPlus size={16} /> },
+            { label: 'Live Escort Movement', href: '/dashboard/school-admin/live-tracking', icon: <Activity size={16} />, badge: 'Live', badgeColor: 'bg-emerald-500 text-white' },
           ],
         },
         { label: 'Calendar & Events', href: '/dashboard/school-admin/calendar', icon: <Calendar size={18} /> },
@@ -139,7 +143,7 @@ export function AdminSidebar({
     {
       title: 'TRANSPORT & SAFETY',
       items: [
-        { label: 'Live Vehicle Movement', href: '/dashboard/school-admin/live-tracking', icon: <Navigation size={18} /> },
+        { label: 'Live Escort Movement', href: '/dashboard/school-admin/live-tracking', icon: <Navigation size={18} />, badge: 'Live', badgeColor: 'bg-emerald-500 text-white' },
         { label: 'Pickup List', href: '/dashboard/school-admin/pickup-persons', icon: <Car size={18} /> },
         { label: 'Vehicles', href: '/dashboard/school-admin/vehicles', icon: <Car size={18} /> },
         { label: 'Routes', href: '/dashboard/school-admin/routes', icon: <MapPin size={18} /> },
@@ -172,8 +176,10 @@ export function AdminSidebar({
           href: '/dashboard/school-admin/reports',
           icon: <BarChart3 size={18} />,
           children: [
-            { label: 'Attendance Report', href: '/dashboard/school-admin/reports', icon: <BarChart3 size={16} /> },
+            { label: 'Student Attendance', href: '/dashboard/school-admin/reports', icon: <BarChart3 size={16} /> },
+            { label: 'Staff Attendance', href: '/dashboard/school-admin/reports/staff-attendance', icon: <ClipboardCheck size={16} /> },
             { label: 'Gate Activity Log', href: '/dashboard/school-admin/reports/gate-activities', icon: <DoorOpen size={16} /> },
+            { label: 'Visitors Report', href: '/dashboard/school-admin/reports/visitors', icon: <Users size={16} />, badge: 'New', badgeColor: 'bg-blue-500 text-white' },
             { label: 'Audit Log', href: '/dashboard/school-admin/audit', icon: <Shield size={16} /> },
           ],
         },

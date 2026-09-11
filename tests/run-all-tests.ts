@@ -25,6 +25,10 @@ import { gateEscortBatchSuite } from './unit/gate-escort-batch.test';
 import { parentAddressPinningSuite } from './unit/parent-address-pinning.test';
 import { parentPortalCleanupSuite } from './unit/parent-portal-cleanup.test';
 import { parentGateReceptionSuite } from './unit/parent-gate-reception.test';
+import { schoolEscortAssignmentSuite } from './unit/school-escort-assignment.test';
+import { staffAttendanceReportSuite } from './unit/staff-attendance-report.test';
+import { schoolEscortTrackingSuite } from './unit/school-escort-tracking.test';
+import { visitorsReportSuite } from './unit/visitors-report.test';
 import { pickupControlApiSuite } from './integration/pickup-control-api.test';
 import { escortApisSuite } from './integration/escort-apis.test';
 import { routesVehiclesApiSuite } from './integration/routes-vehicles-api.test';
@@ -80,6 +84,10 @@ async function runAllTests() {
     parentAddressPinningSuite,
     parentPortalCleanupSuite,
     parentGateReceptionSuite,
+    schoolEscortAssignmentSuite,
+    staffAttendanceReportSuite,
+    schoolEscortTrackingSuite,
+    visitorsReportSuite,
     pickupControlApiSuite,
     escortApisSuite,
     routesVehiclesApiSuite,

@@ -731,8 +731,36 @@ export async function POST(request: NextRequest) {
           .update({
             ready_for_pickup: isReady,
             ready_for_pickup_at: nowUtcIso(),
+            operational_status: isReady ? 'Active On Duty' : 'Standby',
           })
           .eq('user_id', session.user_id);
+
+        if (isReady && primarySchoolId) {
+          const { data: appRow } = await supabase
+            .from('escort_applications')
+            .select('id, house_lat, house_lng')
+            .eq('user_id', session.user_id)
+            .maybeSingle();
+
+          const escortAppId = appRow?.id || session.user_id;
+          const initialLat = appRow?.house_lat ? Number(appRow.house_lat) : 6.4474;
+          const initialLng = appRow?.house_lng ? Number(appRow.house_lng) : 3.4731;
+
+          await supabase.from('vehicle_active_sessions').insert({
+            school_id: primarySchoolId,
+            escort_id: escortAppId,
+            escort_user_id: session.user_id,
+            trip_type: 'morning_pickup',
+            status: 'in_progress',
+            current_lat: initialLat,
+            current_lng: initialLng,
+            current_speed_kmh: 0,
+            current_heading: 0,
+            battery_level: 95,
+            started_at: nowUtcIso(),
+            last_ping_at: nowUtcIso(),
+          });
+        }
       }
       return NextResponse.json({
         success: true,
@@ -746,6 +774,46 @@ export async function POST(request: NextRequest) {
     // Action 2: Start Trip
     if (action === 'start_trip') {
       const { trip_type } = body;
+      const tripKind = trip_type === 'afternoon' ? 'afternoon_dropoff' : 'morning_pickup';
+
+      if (session?.user_id) {
+        await supabase
+          .from('escort_applications')
+          .update({
+            today_trip_status: 'in_progress',
+            operational_status: 'In Transit',
+            ready_for_pickup: true,
+          })
+          .eq('user_id', session.user_id);
+
+        if (primarySchoolId) {
+          const { data: appRow } = await supabase
+            .from('escort_applications')
+            .select('id, house_lat, house_lng')
+            .eq('user_id', session.user_id)
+            .maybeSingle();
+
+          const escortAppId = appRow?.id || session.user_id;
+          const initialLat = appRow?.house_lat ? Number(appRow.house_lat) : 6.4474;
+          const initialLng = appRow?.house_lng ? Number(appRow.house_lng) : 3.4731;
+
+          await supabase.from('vehicle_active_sessions').insert({
+            school_id: primarySchoolId,
+            escort_id: escortAppId,
+            escort_user_id: session.user_id,
+            trip_type: tripKind,
+            status: 'in_progress',
+            current_lat: initialLat,
+            current_lng: initialLng,
+            current_speed_kmh: 24,
+            current_heading: 45,
+            battery_level: 92,
+            started_at: nowUtcIso(),
+            last_ping_at: nowUtcIso(),
+          });
+        }
+      }
+
       return NextResponse.json({
         success: true,
         trip_type: trip_type || 'morning',
@@ -757,6 +825,29 @@ export async function POST(request: NextRequest) {
     // Action 3: Complete Trip
     if (action === 'complete_trip') {
       const { trip_type } = body;
+
+      if (session?.user_id) {
+        await supabase
+          .from('escort_applications')
+          .update({
+            today_trip_status: 'completed',
+            operational_status: 'Standby',
+            ready_for_pickup: false,
+          })
+          .eq('user_id', session.user_id);
+
+        if (primarySchoolId) {
+          await supabase
+            .from('vehicle_active_sessions')
+            .update({
+              status: 'completed',
+              completed_at: nowUtcIso(),
+            })
+            .eq('escort_user_id', session.user_id)
+            .eq('status', 'in_progress');
+        }
+      }
+
       return NextResponse.json({
         success: true,
         trip_type: trip_type || 'morning',

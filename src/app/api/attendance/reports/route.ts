@@ -178,6 +178,18 @@ export async function GET(request: NextRequest) {
             },
           });
         }
+        if (format === 'csv') {
+          const csvRows = staffReport.map((s) => ({
+            entity: 'staff',
+            name: s.full_name,
+            role: s.role,
+            status: s.status,
+            sign_in: s.clock_in_time || '',
+            sign_out: s.clock_out_time || '',
+            minutes_late: s.minutes_late ?? '',
+          }));
+          return buildCsvResponse(csvRows, `staff_daily_${dateParam}`);
+        }
         return NextResponse.json({
           type: 'daily',
           date: dateParam,
@@ -201,6 +213,28 @@ export async function GET(request: NextRequest) {
         monthCalendarDays,
         { staffUserIds: caps.staffUserIds, nonSchoolDays, lateThreshold }
       );
+
+      if (format === 'csv') {
+        const rows: Record<string, string | number | null>[] = [];
+        for (const staff of staffReport) {
+          for (const day of staff.days) {
+            rows.push({
+              entity: 'staff',
+              date: day.date,
+              name: staff.full_name,
+              role: staff.role,
+              status: day.status,
+              present: day.present ? 'Yes' : 'No',
+              minutes_late: day.minutes_late ?? '',
+            });
+          }
+        }
+        const label =
+          reportType === 'monthly' && monthLabel
+            ? `staff_monthly_${monthLabel}`
+            : `staff_${reportType}_${dateParam}`;
+        return buildCsvResponse(rows, label);
+      }
 
       return NextResponse.json({
         type: reportType,

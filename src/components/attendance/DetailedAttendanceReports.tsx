@@ -1,8 +1,8 @@
 // @ts-nocheck
 'use client';
 
-import { useCallback, useEffect, useState } from 'react';
-import { Download, BarChart3 } from 'lucide-react';
+import { useCallback, useEffect, useState, useMemo } from 'react';
+import { Download, BarChart3, Users, UserCheck, Search, Filter } from 'lucide-react';
 import { toast } from 'sonner';
 import { formatTimeLagos, todayInLagos } from '@/lib/timezone';
 
@@ -38,6 +38,8 @@ export default function DetailedAttendanceReports({
   const [month, setMonth] = useState(todayInLagos().slice(0, 7));
   const [classId, setClassId] = useState(classFilter || '');
   const [monthView, setMonthView] = useState(defaultView === 'staff' ? 'staff' : 'students');
+  const [staffRoleFilter, setStaffRoleFilter] = useState('');
+  const [staffSearchQuery, setStaffSearchQuery] = useState('');
   const [loading, setLoading] = useState(false);
   const [data, setData] = useState(null);
 
@@ -74,6 +76,16 @@ export default function DetailedAttendanceReports({
     }
     setLoading(false);
   }, [schoolId, reportType, date, month, classId, monthView]);
+
+  const filteredStaffReport = useMemo(() => {
+    const list = data?.staff_report || [];
+    return list.filter((r) => {
+      const q = staffSearchQuery.trim().toLowerCase();
+      const matchSearch = !q || (r.full_name || '').toLowerCase().includes(q) || (r.role || '').toLowerCase().includes(q);
+      const matchRole = !staffRoleFilter || (r.role || '').toLowerCase().includes(staffRoleFilter.toLowerCase());
+      return matchSearch && matchRole;
+    });
+  }, [data?.staff_report, staffSearchQuery, staffRoleFilter]);
 
   useEffect(() => {
     loadReport();
@@ -161,7 +173,7 @@ export default function DetailedAttendanceReports({
             <input type="date" className="input" value={date} onChange={(e) => setDate(e.target.value)} />
           )}
         </div>
-        {!classFilter && classes.length > 0 && (
+        {monthView === 'students' && !classFilter && classes.length > 0 && (
           <div>
             <label className="text-xs font-semibold text-slate-500 uppercase block mb-1">Class</label>
             <select className="input" value={classId} onChange={(e) => setClassId(e.target.value)}>
@@ -172,38 +184,39 @@ export default function DetailedAttendanceReports({
             </select>
           </div>
         )}
+
+        {monthView === 'staff' && (
+          <>
+            <div>
+              <label className="text-xs font-semibold text-slate-500 uppercase block mb-1">Staff Role</label>
+              <select
+                className="input"
+                value={staffRoleFilter}
+                onChange={(e) => setStaffRoleFilter(e.target.value)}
+              >
+                <option value="">All Roles</option>
+                <option value="teacher">Teachers</option>
+                <option value="staff">Administrative Staff</option>
+                <option value="gate_officer">Gate Officers</option>
+                <option value="school_admin">School Admins</option>
+              </select>
+            </div>
+            <div>
+              <label className="text-xs font-semibold text-slate-500 uppercase block mb-1">Search Staff</label>
+              <input
+                type="text"
+                className="input"
+                placeholder="Search staff by name or role..."
+                value={staffSearchQuery}
+                onChange={(e) => setStaffSearchQuery(e.target.value)}
+              />
+            </div>
+          </>
+        )}
       </div>
 
-      {showStudentReports &&
-        reportType === 'daily' &&
-        data?.type === 'daily' &&
-        !data?.excluded &&
-        showStaffTab &&
-        data.staff_report != null && (
-        <div className="pill-tabs">
-          <button
-            type="button"
-            onClick={() => setMonthView('students')}
-            className={monthView === 'students' ? 'pill-tab-active' : 'pill-tab-inactive'}
-          >
-            Students
-          </button>
-          <button
-            type="button"
-            onClick={() => setMonthView('staff')}
-            className={monthView === 'staff' ? 'pill-tab-active' : 'pill-tab-inactive'}
-          >
-            {staffTabLabel}
-          </button>
-        </div>
-      )}
-
-      {showStudentReports &&
-        (reportType === 'monthly' || reportType === 'weekly') &&
-        data &&
-        (data.type === 'monthly' || data.type === 'weekly') &&
-        showStaffTab && (
-        <div className="pill-tabs">
+      {showStudentReports && showStaffTab && (
+        <div className="pill-tabs mb-4">
           <button
             type="button"
             onClick={() => setMonthView('students')}
@@ -242,63 +255,85 @@ export default function DetailedAttendanceReports({
         monthView === 'staff' &&
         showStaffTab && (
         <>
-          <div className="grid grid-cols-3 gap-2">
-            {[
-              ['Staff', data.staff_summary?.total],
-              ['On time', data.staff_summary?.present],
-              ...(data.type === 'daily' ? [['Late', data.staff_summary?.late]] : []),
-              ['Absent', data.staff_summary?.absent],
-            ].map(([label, val]) => (
-              <div key={label} className="card text-center py-3">
-                <p className="text-xl font-bold">{val ?? 0}</p>
-                <p className="text-[10px] text-slate-500 uppercase">{label}</p>
-              </div>
-            ))}
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 mb-4">
+            <div className="card text-center py-3">
+              <p className="text-xl font-bold">{data.staff_summary?.total ?? filteredStaffReport.length}</p>
+              <p className="text-[10px] text-slate-500 uppercase">Total Staff</p>
+            </div>
+            <div className="card text-center py-3 bg-emerald-50/50 border-emerald-200">
+              <p className="text-xl font-bold text-emerald-700">{data.staff_summary?.present ?? 0}</p>
+              <p className="text-[10px] text-emerald-800 uppercase font-semibold">On Time (Present)</p>
+            </div>
+            <div className="card text-center py-3 bg-amber-50/50 border-amber-200">
+              <p className="text-xl font-bold text-amber-700">{data.staff_summary?.late ?? 0}</p>
+              <p className="text-[10px] text-amber-800 uppercase font-semibold">Late Clock-in</p>
+            </div>
+            <div className="card text-center py-3 bg-red-50/50 border-red-200">
+              <p className="text-xl font-bold text-red-700">{data.staff_summary?.absent ?? 0}</p>
+              <p className="text-[10px] text-red-800 uppercase font-semibold">Absent / Not Signed In</p>
+            </div>
           </div>
           <div className="card-elevated overflow-x-auto">
             <table className="w-full text-sm">
               <thead className="bg-slate-50 border-b">
                 <tr>
-                  <th className="text-left px-3 py-2 text-xs text-slate-500">Staff</th>
-                  <th className="text-left px-3 py-2 text-xs text-slate-500">Role</th>
-                  <th className="text-left px-3 py-2 text-xs text-slate-500">Status</th>
-                  <th className="text-left px-3 py-2 text-xs text-slate-500">Sign in</th>
-                  <th className="text-left px-3 py-2 text-xs text-slate-500">Sign out</th>
+                  <th className="text-left px-3 py-2 text-xs text-slate-500">Staff Member</th>
+                  <th className="text-left px-3 py-2 text-xs text-slate-500">Role / Title</th>
+                  <th className="text-left px-3 py-2 text-xs text-slate-500">Attendance Status</th>
+                  <th className="text-left px-3 py-2 text-xs text-slate-500">Sign-in Time</th>
+                  <th className="text-left px-3 py-2 text-xs text-slate-500">Sign-out Time</th>
                   {data.type === 'daily' && (
-                    <th className="text-left px-3 py-2 text-xs text-slate-500">Late (min)</th>
+                    <th className="text-left px-3 py-2 text-xs text-slate-500">Late (mins)</th>
                   )}
                 </tr>
               </thead>
               <tbody className="divide-y">
-                {(data.staff_report || []).map((r) => (
-                  <tr key={r.user_id}>
-                    <td className="px-3 py-2 font-medium">{r.full_name}</td>
-                    <td className="px-3 py-2 text-slate-600 capitalize">{r.role}</td>
+                {filteredStaffReport.map((r) => (
+                  <tr key={r.user_id} className="hover:bg-slate-50/50">
+                    <td className="px-3 py-2 font-medium text-slate-900">{r.full_name}</td>
+                    <td className="px-3 py-2 text-slate-600 capitalize text-xs">{r.role}</td>
                     <td className="px-3 py-2">
                       <span
                         className={`text-xs font-bold uppercase px-2 py-0.5 rounded ${
                           r.status === 'absent'
-                            ? 'bg-red-50 text-red-700'
+                            ? 'bg-red-50 text-red-700 border border-red-200'
                             : r.status === 'late'
-                              ? 'bg-amber-50 text-amber-800'
-                              : 'bg-emerald-50 text-emerald-800'
+                              ? 'bg-amber-50 text-amber-800 border border-amber-200'
+                              : 'bg-emerald-50 text-emerald-800 border border-emerald-200'
                         }`}
                       >
                         {STATUS_LABELS[r.status] || r.status}
                       </span>
                     </td>
-                    <td className="px-3 py-2 whitespace-nowrap">{formatTimeLagos(r.clock_in_time)}</td>
-                    <td className="px-3 py-2 whitespace-nowrap">{formatTimeLagos(r.clock_out_time)}</td>
+                    <td className="px-3 py-2 whitespace-nowrap text-xs text-slate-700 font-mono">
+                      {formatTimeLagos(r.clock_in_time) || '—'}
+                    </td>
+                    <td className="px-3 py-2 whitespace-nowrap text-xs text-slate-700 font-mono">
+                      {formatTimeLagos(r.clock_out_time) || '—'}
+                    </td>
                     {data.type === 'daily' && (
-                      <td className="px-3 py-2">{r.minutes_late ?? '—'}</td>
+                      <td className="px-3 py-2 text-xs font-semibold">
+                        {r.minutes_late ? (
+                          <span className="text-amber-700 font-mono">+{r.minutes_late} min</span>
+                        ) : (
+                          <span className="text-slate-400">—</span>
+                        )}
+                      </td>
                     )}
                   </tr>
                 ))}
+                {filteredStaffReport.length === 0 && (
+                  <tr>
+                    <td colSpan={6} className="px-3 py-8 text-center text-slate-400 text-xs">
+                      No staff records matched the selected role or search query.
+                    </td>
+                  </tr>
+                )}
               </tbody>
             </table>
           </div>
           <p className="text-[10px] text-slate-400">
-            Staff present = ID card sign-in at gate or admin scan. Sign-out time shown when recorded.
+            Staff present = Verified ID card scan or gate manager sign-in. Sign-out timestamp shown when recorded at campus exit.
           </p>
         </>
       )}
@@ -462,14 +497,14 @@ export default function DetailedAttendanceReports({
       {!loading &&
         (data?.type === 'monthly' || data?.type === 'weekly') &&
         monthView === 'staff' &&
-        data.staff_report?.length > 0 && (
+        filteredStaffReport.length > 0 && (
         <>
           <div className="card p-4">
             <p className="text-lg font-bold">
               Staff — {data.type === 'weekly' ? 'this week' : data.month}
             </p>
             <p className="text-xs text-slate-500">
-              Staff ID card scans only (gate or admin) · {data.summary?.total_staff} staff
+              Staff ID card scans only (gate or admin) · {filteredStaffReport.length} staff
             </p>
           </div>
           <div className="card-elevated overflow-x-auto">
@@ -478,7 +513,7 @@ export default function DetailedAttendanceReports({
                 <tr>
                   <th className="text-left px-2 py-2 text-xs sticky left-0 bg-slate-50 z-10">Name</th>
                   <th className="text-left px-2 py-2 text-xs">Role</th>
-                  {(data.staff_report?.[0]?.days || []).map((d) => (
+                  {(filteredStaffReport[0]?.days || []).map((d) => (
                     <th key={d.date} className="px-0.5 py-1 text-[9px] text-slate-500 font-normal w-6">
                       {d.date.slice(8)}
                     </th>
@@ -487,7 +522,7 @@ export default function DetailedAttendanceReports({
                 </tr>
               </thead>
               <tbody className="divide-y">
-                {(data.staff_report || []).map((r) => (
+                {filteredStaffReport.map((r) => (
                   <tr key={r.user_id}>
                     <td className="px-2 py-2 font-medium sticky left-0 bg-white z-10 text-xs">{r.full_name}</td>
                     <td className="px-2 py-2 text-slate-600 capitalize text-xs">{r.role}</td>

@@ -5,7 +5,7 @@ import { useEffect, useState } from 'react';
 import { fetchData } from '@/lib/api';
 import DetailedAttendanceReports from '@/components/attendance/DetailedAttendanceReports';
 import Link from 'next/link';
-import { ClipboardList, DoorOpen } from 'lucide-react';
+import { ClipboardList, ClipboardCheck, DoorOpen, Users } from 'lucide-react';
 
 export default function ReportsPage() {
   const [loading, setLoading] = useState(true);
@@ -49,12 +49,25 @@ export default function ReportsPage() {
         </div>
       </div>
 
-      <div className="grid sm:grid-cols-2 gap-3 mb-6">
+      <div className="grid sm:grid-cols-2 lg:grid-cols-4 gap-3 mb-6">
         <div className="card border-2 border-primary-200 bg-primary-50/40">
           <ClipboardList size={20} className="text-primary-600 mb-2" />
-          <p className="font-semibold text-slate-900">Attendance report</p>
+          <p className="font-semibold text-slate-900">Student Attendance</p>
           <p className="text-xs text-slate-500 mt-1">Present, absent, late — by class</p>
         </div>
+        <Link
+          href="/dashboard/school-admin/reports/staff-attendance"
+          className="card hover:border-emerald-300 hover:shadow-md transition-all group"
+        >
+          <ClipboardCheck size={20} className="text-emerald-600 mb-2 group-hover:scale-105 transition-transform" />
+          <div className="flex items-center justify-between">
+            <p className="font-semibold text-slate-900">Staff Attendance</p>
+            <span className="px-1.5 py-0.5 rounded text-[9px] font-black uppercase bg-emerald-100 text-emerald-800">
+              Staff
+            </span>
+          </div>
+          <p className="text-xs text-slate-500 mt-1">Clock-in/out, lateness, and role summaries</p>
+        </Link>
         <Link
           href="/dashboard/school-admin/reports/gate-activities"
           className="card hover:border-primary-200 hover:shadow-md transition-all"
@@ -62,6 +75,19 @@ export default function ReportsPage() {
           <DoorOpen size={20} className="text-slate-600 mb-2" />
           <p className="font-semibold text-slate-900">Gate activities</p>
           <p className="text-xs text-slate-500 mt-1">Releases, check-in/out, pickup persons</p>
+        </Link>
+        <Link
+          href="/dashboard/school-admin/reports/visitors"
+          className="card hover:border-blue-300 hover:shadow-md transition-all group"
+        >
+          <Users size={20} className="text-blue-600 mb-2 group-hover:scale-105 transition-transform" />
+          <div className="flex items-center justify-between">
+            <p className="font-semibold text-slate-900">Visitors Report</p>
+            <span className="px-1.5 py-0.5 rounded text-[9px] font-black uppercase bg-blue-100 text-blue-800">
+              Pass & Log
+            </span>
+          </div>
+          <p className="text-xs text-slate-500 mt-1">Visit/exit times, purpose, and Accept/Decline</p>
         </Link>
       </div>
 

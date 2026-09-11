@@ -126,6 +126,10 @@ export async function GET(request: NextRequest) {
 
       const isConfirmed = b.status === 'assigned' || matchedAssignment?.status === 'active';
 
+      const preferredEscortId = meta.assigned_escort_id || meta.escort_id || null;
+      const preferredEscortName = meta.assigned_escort_name || meta.escort_name || null;
+      const isPinned = Boolean(stu?.house_lat && stu?.house_lng);
+
       return {
         booking_id: b.id,
         assignment_id: matchedAssignment?.id || null,
@@ -142,16 +146,22 @@ export async function GET(request: NextRequest) {
         afternoon_fare: afternoonFare,
         daily_fare: dailyFare,
         trip_type: tripType,
-        preferred_escort_id: meta.escort_id || null,
-        escort_id: escort?.id || meta.escort_id || null,
-        escort_name: escort?.full_name || (isConfirmed ? 'Assigned Escort' : 'Awaiting City Manager Assignment'),
-        escort_phone: escort?.phone || null,
+        escort_type: meta.escort_type || 'myeduride_escort',
+        preferred_escort_id: preferredEscortId,
+        escort_id: escort?.id || preferredEscortId || null,
+        escort_name: escort?.full_name || preferredEscortName || (isConfirmed ? 'Assigned Escort' : 'Awaiting City Manager Assignment'),
+        escort_phone: escort?.phone || meta.assigned_escort_phone || null,
         vehicle_plate: escort?.vehicle_plate || escort?.application_data?.assignedVehicle || null,
         operating_area: escort?.operating_area || 'Lagos Metropolis',
         pickup_date: b.requested_pickup_at ? b.requested_pickup_at.split('T')[0] : 'Today',
         pickup_time: meta.pickup_time || (b.requested_pickup_at ? b.requested_pickup_at.split('T')[1]?.slice(0, 5) : '07:00'),
         dropoff_time: meta.dropoff_time || '15:30',
-        pickup_location: b.pickup_address || 'Designated Stop',
+        pickup_location: b.pickup_address || stu?.house_address || 'Designated Doorstep',
+        house_address: stu?.house_address || b.pickup_address || '',
+        house_lat: stu?.house_lat ? Number(stu.house_lat) : (b.pickup_lat ? Number(b.pickup_lat) : null),
+        house_lng: stu?.house_lng ? Number(stu.house_lng) : (b.pickup_lng ? Number(b.pickup_lng) : null),
+        house_landmark: stu?.house_landmark || null,
+        is_house_pinned: isPinned,
         reason: meta.notes || b.notes || 'School Escort Assignment',
         security_pin: securityPin,
         stage: isConfirmed ? 5 : 2,
@@ -538,6 +548,75 @@ export async function POST(request: NextRequest) {
         message: `Booking approved and assigned to ${escortName}. Parent notified with Security PIN: ${securityPin}`,
         booking: updatedBooking,
         assignment: newAssignment,
+      });
+    }
+
+    if (body.action === 'batch_approve_school_assignments') {
+      const { booking_ids } = body;
+      const targetQuery = db
+        .from('transport_bookings')
+        .select('id, school_id, student_id, notes')
+        .eq('status', 'pending');
+
+      const { data: pendingBookings } = Array.isArray(booking_ids) && booking_ids.length > 0
+        ? await targetQuery.in('id', booking_ids)
+        : await targetQuery.limit(50);
+
+      let approvedCount = 0;
+      for (const b of (pendingBookings || [])) {
+        let meta: any = {};
+        try {
+          if (b.notes && b.notes.startsWith('{')) meta = JSON.parse(b.notes);
+        } catch {
+          meta = {};
+        }
+
+        const escortId = meta.assigned_escort_id || meta.escort_id;
+        if (!escortId) continue;
+
+        const securityPin = Math.floor(1000 + Math.random() * 9000).toString();
+
+        await db
+          .from('transport_bookings')
+          .update({
+            status: 'assigned',
+            notes: b.notes ? `${b.notes} | PIN: ${securityPin}` : `PIN: ${securityPin}`,
+            updated_at: nowUtcIso(),
+          })
+          .eq('id', b.id);
+
+        await db
+          .from('escort_assignments')
+          .update({
+            status: 'active',
+            confirmed_at: nowUtcIso(),
+            updated_at: nowUtcIso(),
+          })
+          .eq('booking_id', b.id);
+
+        try {
+          await notifyEscortAssignmentApproved({
+            bookingId: b.id,
+            escortId,
+            securityPin,
+            schoolId: b.school_id,
+            studentId: b.student_id,
+          });
+        } catch (e) {
+          console.warn('[batch_approve_school_assignments] notify error:', e);
+        }
+
+        approvedCount++;
+      }
+
+      await audit(db, session.user_id, 'BATCH_SCHOOL_ASSIGNMENTS_APPROVED', 'transport_bookings', 'batch', {
+        approved_count: approvedCount,
+      });
+
+      return NextResponse.json({
+        success: true,
+        message: `Successfully approved and cleared ${approvedCount} school escort assignment(s)! Security PINs and live notifications issued to parents and escorts.`,
+        approved_count: approvedCount,
       });
     }
 

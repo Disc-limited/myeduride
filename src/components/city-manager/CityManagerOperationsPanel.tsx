@@ -2,7 +2,7 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import { ClipboardList, RefreshCw, Search, UserPlus, Sparkles, CheckCircle2, ShieldCheck, Clock, MapPin, Phone, Car, Users, ArrowRightLeft, Footprints, AlertTriangle } from 'lucide-react';
+import { ClipboardList, RefreshCw, Search, UserPlus, Sparkles, CheckCircle2, ShieldCheck, Clock, MapPin, Phone, Car, Users, ArrowRightLeft, Footprints, AlertTriangle, Zap, CheckCheck } from 'lucide-react';
 import { toast } from 'sonner';
 import StudentAvatar from '@/components/shared/StudentAvatar';
 
@@ -145,6 +145,26 @@ export function CityManagerOperationsPanel() {
       toast.error(err.message || 'Approval failed');
     } finally {
       setProcessingBookingId(null);
+    }
+  };
+
+  const [approvingBatch, setApprovingBatch] = useState(false);
+  const handleBatchApprove = async () => {
+    setApprovingBatch(true);
+    try {
+      const r = await fetch('/api/city-manager/operations', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'batch_approve_school_assignments' }),
+      });
+      const d = await r.json();
+      if (!r.ok) throw new Error(d.error || 'Batch approval failed');
+      toast.success(d.message || 'All pending school assignments cleared!');
+      await load();
+    } catch (err: any) {
+      toast.error(err.message || 'Batch approval error');
+    } finally {
+      setApprovingBatch(false);
     }
   };
 
@@ -495,9 +515,22 @@ export function CityManagerOperationsPanel() {
               </p>
             </div>
           </div>
-          <span className="px-3 py-1 rounded-full bg-amber-500/20 text-amber-300 font-black text-[10px] uppercase border border-amber-400/30">
-            City Manager Approval Active
-          </span>
+          <div className="flex flex-wrap items-center gap-2">
+            {parentRequests.some((r: any) => r.status !== 'CONFIRMED' && r.source === 'school') && (
+              <button
+                type="button"
+                disabled={batchApproving}
+                onClick={handleBatchApprove}
+                className="px-3.5 py-1.5 rounded-xl bg-gradient-to-r from-emerald-500 to-teal-600 hover:from-emerald-400 hover:to-teal-500 text-slate-950 font-black text-xs cursor-pointer transition-all shadow-md flex items-center gap-1.5 disabled:opacity-50"
+              >
+                <Zap size={14} className="fill-slate-950" />
+                <span>{batchApproving ? 'Approving All...' : '⚡ Approve All Pending School Assignments'}</span>
+              </button>
+            )}
+            <span className="px-3 py-1 rounded-full bg-amber-500/20 text-amber-300 font-black text-[10px] uppercase border border-amber-400/30">
+              City Manager Approval Active
+            </span>
+          </div>
         </div>
 
         <div className="space-y-3">
@@ -521,6 +554,24 @@ export function CityManagerOperationsPanel() {
                   >
                     {req.source === 'school' ? '🏫 School Assigned' : '👤 Parent Request'}
                   </span>
+                  {req.escort_type && (
+                    <span className={`px-2 py-0.5 rounded-md text-[10px] font-bold border ${
+                      req.escort_type === 'school_escort'
+                        ? 'bg-purple-500/20 text-purple-300 border-purple-500/30'
+                        : 'bg-indigo-500/20 text-indigo-300 border-indigo-500/30'
+                    }`}>
+                      {req.escort_type === 'school_escort' ? '🏫 School Escort' : '✨ MyEduRide Escort'}
+                    </span>
+                  )}
+                  {req.lat != null && req.lng != null ? (
+                    <span className="px-2 py-0.5 rounded-md text-[10px] font-bold bg-emerald-500/20 text-emerald-300 border border-emerald-500/30">
+                      📍 Pinned ({Number(req.lat).toFixed(4)}, {Number(req.lng).toFixed(4)})
+                    </span>
+                  ) : (
+                    <span className="px-2 py-0.5 rounded-md text-[10px] font-bold bg-amber-500/20 text-amber-300 border border-amber-500/30">
+                      📍 Address Not Pinned
+                    </span>
+                  )}
                 </div>
                 <p className="text-sm font-black text-white">{req.child_name}</p>
                 <p className="text-[11px] text-slate-400">
@@ -529,6 +580,11 @@ export function CityManagerOperationsPanel() {
                 <p className="text-[11px] text-slate-400 truncate max-w-sm">
                   📍 Doorstep Stop: <strong className="text-slate-200">{req.pickup_location}</strong>
                 </p>
+                {req.landmark && (
+                  <p className="text-[10px] text-amber-300/90 font-medium">
+                    Landmark: <span className="text-slate-200">{req.landmark}</span>
+                  </p>
+                )}
                 <p className="text-[10px] text-slate-400">
                   Time: <strong>{req.pickup_date}</strong> at <strong>{req.pickup_time}</strong>
                 </p>
