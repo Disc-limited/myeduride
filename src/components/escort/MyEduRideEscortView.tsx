@@ -1,7 +1,7 @@
 // @ts-nocheck
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import {
   Shield,
   Users,
@@ -38,6 +38,8 @@ interface MyEduRideEscortViewProps {
   onRefreshData?: () => void;
   onOpenVerificationModal: (student?: any) => void;
   onOpenIncidentModal: () => void;
+  activeNav?: string;
+  onNavChange?: (tab: string) => void;
 }
 
 export default function MyEduRideEscortView({
@@ -45,10 +47,28 @@ export default function MyEduRideEscortView({
   onRefreshData = () => {},
   onOpenVerificationModal,
   onOpenIncidentModal,
+  activeNav,
+  onNavChange,
 }: MyEduRideEscortViewProps) {
-  const [activeTab, setActiveTab] = useState<
+  const [internalTab, setInternalTab] = useState<
     'operations' | 'assignments' | 'vehicle' | 'optimisation' | 'journey' | 'attendance' | 'earnings' | 'incidents' | 'analytics'
   >('operations');
+
+  // Synchronize with activeNav if provided by dashboard shell
+  const activeTab = useMemo(() => {
+    if (activeNav) {
+      if (activeNav === 'roster') return 'assignments';
+      return activeNav as any;
+    }
+    return internalTab;
+  }, [activeNav, internalTab]);
+
+  const setActiveTab = (tab: any) => {
+    setInternalTab(tab);
+    if (onNavChange) {
+      onNavChange(tab);
+    }
+  };
 
   // Simulated Live Journey state
   const [journeyStatus, setJourneyStatus] = useState<'idle' | 'tracking' | 'completed'>('idle');
@@ -257,38 +277,38 @@ export default function MyEduRideEscortView({
   };
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-5 sm:space-y-6">
       {/* 1. DISC BRAND BANNER */}
-      <div className="bg-gradient-to-r from-[#0A1128] via-[#121E42] to-[#0A1128] rounded-3xl p-5 text-white shadow-md border border-white/10 flex flex-col md:flex-row items-center justify-between gap-4">
+      <div className="bg-gradient-to-r from-[#0A1128] via-[#121E42] to-[#0A1128] rounded-3xl p-4 sm:p-5 text-white shadow-lg border border-white/10 flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-4">
         <div className="flex items-center gap-3.5">
-          <div className="w-12 h-12 rounded-2xl bg-emerald-500/20 border border-emerald-400/40 flex items-center justify-center text-emerald-400 shrink-0 shadow-inner">
-            <Shield size={26} />
+          <div className="w-11 h-11 sm:w-12 sm:h-12 rounded-2xl bg-emerald-500/20 border border-emerald-400/40 flex items-center justify-center text-emerald-400 shrink-0 shadow-inner">
+            <Shield size={24} className="sm:w-[26px] sm:h-[26px]" />
           </div>
-          <div>
-            <div className="flex items-center gap-2">
+          <div className="min-w-0">
+            <div className="flex items-center gap-2 flex-wrap">
               <span className="bg-emerald-500/20 text-emerald-400 text-[10px] font-extrabold px-2.5 py-0.5 rounded-full border border-emerald-500/30 uppercase tracking-widest">
                 DISC-MANAGED ESCORT FLEET
               </span>
               <span className="text-xs text-slate-400">• Unit #{escort.code || 'DISC-902'}</span>
             </div>
-            <h3 className="font-extrabold text-lg tracking-tight text-white mt-1">
-              MyEduRide Official Transit Escort Command
+            <h3 className="font-black text-base sm:text-lg tracking-tight text-white mt-1 truncate">
+              MyEduRide Official Transit Escort
             </h3>
           </div>
         </div>
 
-        <div className="flex items-center gap-2 flex-wrap">
-          {/* READY FOR PICKUP BUTTON */}
+        <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2.5 w-full sm:w-auto shrink-0">
+          {/* READY FOR PICKUP BUTTON (WCAG Touch-friendly 46px height) */}
           <button
             type="button"
             onClick={handleToggleReady}
-            className={`px-4 py-2 rounded-2xl font-black text-xs flex items-center gap-2 transition-all shadow-md cursor-pointer ${
+            className={`min-h-[46px] px-4 py-2.5 rounded-2xl font-black text-xs flex items-center justify-center gap-2 transition-all shadow-md cursor-pointer ${
               isReadyForPickup
-                ? 'bg-emerald-500 text-white shadow-emerald-500/30 ring-2 ring-emerald-400 animate-pulse'
-                : 'bg-white/10 hover:bg-white/20 text-white border border-white/20'
+                ? 'bg-emerald-500 text-slate-950 shadow-emerald-500/30 ring-2 ring-emerald-400 animate-pulse font-black'
+                : 'bg-emerald-600 hover:bg-emerald-500 text-white border border-emerald-400/40'
             }`}
           >
-            <Zap size={14} className={isReadyForPickup ? 'text-amber-300' : 'text-slate-300'} />
+            <Zap size={16} className={isReadyForPickup ? 'text-slate-950 fill-slate-950' : 'text-amber-300'} />
             <span>{isReadyForPickup ? '✓ READY FOR PICKUP (ACTIVE)' : 'I AM READY FOR PICK UP'}</span>
           </button>
 
@@ -296,17 +316,17 @@ export default function MyEduRideEscortView({
           <button
             type="button"
             onClick={() => setPinLocationModalOpen(true)}
-            className="px-3.5 py-2 rounded-2xl bg-purple-600/80 hover:bg-purple-600 text-white text-xs font-bold flex items-center gap-1.5 transition-all shadow-sm cursor-pointer"
+            className="min-h-[46px] px-4 py-2.5 rounded-2xl bg-purple-600 hover:bg-purple-500 text-white text-xs font-bold flex items-center justify-center gap-2 transition-all shadow-sm cursor-pointer"
           >
-            <MapPin size={14} />
-            <span>{locationForm.house_lat ? 'Location Pinned' : 'Pin My Location'}</span>
+            <MapPin size={16} />
+            <span>{locationForm.house_lat ? '📍 Pinned Location' : 'Pin My Location'}</span>
           </button>
         </div>
       </div>
 
       {/* 2. DAILY TRIP COMMITMENT BANNER */}
       {isTripPending && (
-        <div className="p-5 rounded-3xl bg-amber-50 border-2 border-amber-300 shadow-sm flex flex-col md:flex-row items-start md:items-center justify-between gap-4">
+        <div className="p-4 sm:p-5 rounded-3xl bg-amber-50 border-2 border-amber-300 shadow-sm flex flex-col md:flex-row items-start md:items-center justify-between gap-4">
           <div className="flex items-start gap-3">
             <div className="w-10 h-10 rounded-2xl bg-amber-200 text-amber-900 flex items-center justify-center shrink-0">
               <Clock size={20} />
@@ -322,22 +342,22 @@ export default function MyEduRideEscortView({
             </div>
           </div>
 
-          <div className="flex items-center gap-2 w-full md:w-auto shrink-0">
+          <div className="flex items-center gap-2 w-full sm:w-auto shrink-0 pt-1 sm:pt-0">
             <button
               type="button"
               disabled={isSubmittingCommitment}
               onClick={handleAcceptTrips}
-              className="flex-1 md:flex-none px-4 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-black text-xs flex items-center justify-center gap-1.5 shadow-md shadow-emerald-600/20 cursor-pointer"
+              className="min-h-[44px] flex-1 sm:flex-none px-4 py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-black text-xs flex items-center justify-center gap-1.5 shadow-md shadow-emerald-600/20 cursor-pointer"
             >
-              <Check size={14} />
+              <Check size={15} />
               <span>Accept Today&apos;s Trips</span>
             </button>
             <button
               type="button"
               onClick={() => setDeclineModalOpen(true)}
-              className="flex-1 md:flex-none px-3.5 py-2 rounded-xl bg-rose-100 hover:bg-rose-200 text-rose-800 font-bold text-xs flex items-center justify-center gap-1 cursor-pointer"
+              className="min-h-[44px] flex-1 sm:flex-none px-3.5 py-2.5 rounded-xl bg-rose-100 hover:bg-rose-200 text-rose-800 font-bold text-xs flex items-center justify-center gap-1 cursor-pointer"
             >
-              <X size={14} />
+              <X size={15} />
               <span>Unable to Cover</span>
             </button>
           </div>
@@ -345,66 +365,66 @@ export default function MyEduRideEscortView({
       )}
 
       {isTripAccepted && (
-        <div className="px-4 py-2.5 rounded-2xl bg-emerald-50 border border-emerald-200 text-xs text-emerald-900 font-bold flex items-center justify-between">
-          <div className="flex items-center gap-2">
-            <CheckCircle2 size={16} className="text-emerald-600" />
-            <span>You have accepted today&apos;s scheduled trips. City Manager and schools are notified.</span>
+        <div className="px-4 py-3 rounded-2xl bg-emerald-50 border border-emerald-200 text-xs text-emerald-900 font-bold flex items-center justify-between gap-2">
+          <div className="flex items-center gap-2 min-w-0">
+            <CheckCircle2 size={16} className="text-emerald-600 shrink-0" />
+            <span className="truncate">You have accepted today&apos;s scheduled trips. City Manager and schools are notified.</span>
           </div>
-          <span className="text-[11px] text-emerald-700 font-mono font-normal">Active Route Status</span>
+          <span className="text-[11px] text-emerald-700 font-mono font-normal shrink-0 hidden xs:inline">Active Route Status</span>
         </div>
       )}
 
       {isTripDeclined && (
-        <div className="px-4 py-2.5 rounded-2xl bg-rose-50 border border-rose-200 text-xs text-rose-900 font-bold flex items-center justify-between">
-          <div className="flex items-center gap-2">
-            <AlertCircle size={16} className="text-rose-600" />
-            <span>You reported unable to cover today&apos;s trip. City Manager has dispatched emergency backup.</span>
+        <div className="px-4 py-3 rounded-2xl bg-rose-50 border border-rose-200 text-xs text-rose-900 font-bold flex items-center justify-between gap-2">
+          <div className="flex items-center gap-2 min-w-0">
+            <AlertCircle size={16} className="text-rose-600 shrink-0" />
+            <span className="truncate">You reported unable to cover today&apos;s trip. City Manager has dispatched emergency backup.</span>
           </div>
-          <span className="text-[11px] text-rose-700 font-mono font-normal">Emergency Deputised</span>
+          <span className="text-[11px] text-rose-700 font-mono font-normal shrink-0 hidden xs:inline">Emergency Deputised</span>
         </div>
       )}
 
       {/* 3. APPROVED PRICING & DAILY EARNINGS SUMMARY CARD */}
-      <div className="bg-white rounded-3xl p-6 border border-slate-200 shadow-xs space-y-4">
+      <div className="bg-white rounded-3xl p-4 sm:p-6 border border-slate-200 shadow-xs space-y-4">
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-slate-100 pb-3">
           <div className="flex items-center gap-2.5">
-            <div className="w-8 h-8 rounded-xl bg-emerald-100 text-emerald-800 flex items-center justify-center font-black">
+            <div className="w-8 h-8 rounded-xl bg-emerald-100 text-emerald-800 flex items-center justify-center font-black shrink-0">
               <DollarSign size={18} />
             </div>
             <div>
-              <h3 className="font-black text-slate-900 text-base">City Manager Approved Daily Earnings</h3>
-              <p className="text-xs text-slate-500 font-medium">
+              <h3 className="font-black text-slate-900 text-sm sm:text-base">City Manager Approved Daily Earnings</h3>
+              <p className="text-[11px] sm:text-xs text-slate-500 font-medium">
                 Verified daily transit rates approved by the City Manager for your assigned students.
               </p>
             </div>
           </div>
-          <span className="px-3 py-1 rounded-full bg-emerald-50 border border-emerald-200 text-emerald-800 font-black text-xs">
+          <span className="self-start sm:self-auto px-3 py-1 rounded-full bg-emerald-50 border border-emerald-200 text-emerald-800 font-black text-xs">
             {earningsSummary.approved_students_count} Students Approved
           </span>
         </div>
 
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-          <div className="p-4 rounded-2xl bg-emerald-50/80 border border-emerald-200 text-center">
-            <span className="text-[10px] font-black uppercase text-emerald-800 tracking-wider">Total Approved Today</span>
-            <p className="text-2xl font-black text-emerald-950 mt-1">{earningsSummary.formatted_total_daily_earnings}</p>
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-2.5 sm:gap-3">
+          <div className="p-3.5 sm:p-4 rounded-2xl bg-emerald-50/80 border border-emerald-200 text-center">
+            <span className="text-[9px] sm:text-[10px] font-black uppercase text-emerald-800 tracking-wider">Total Approved Today</span>
+            <p className="text-xl sm:text-2xl font-black text-emerald-950 mt-1">{earningsSummary.formatted_total_daily_earnings}</p>
             <span className="text-[10px] text-emerald-700 mt-0.5 block font-medium">Daily Roster Rate</span>
           </div>
 
-          <div className="p-4 rounded-2xl bg-blue-50/80 border border-blue-200 text-center">
-            <span className="text-[10px] font-black uppercase text-blue-800 tracking-wider">Morning Run (50%)</span>
-            <p className="text-2xl font-black text-blue-950 mt-1">{earningsSummary.formatted_morning_projected}</p>
+          <div className="p-3.5 sm:p-4 rounded-2xl bg-blue-50/80 border border-blue-200 text-center">
+            <span className="text-[9px] sm:text-[10px] font-black uppercase text-blue-800 tracking-wider">Morning Run (50%)</span>
+            <p className="text-xl sm:text-2xl font-black text-blue-950 mt-1">{earningsSummary.formatted_morning_projected}</p>
             <span className="text-[10px] text-blue-700 mt-0.5 block font-medium">Home ➔ School</span>
           </div>
 
-          <div className="p-4 rounded-2xl bg-purple-50/80 border border-purple-200 text-center">
-            <span className="text-[10px] font-black uppercase text-purple-800 tracking-wider">Afternoon Run (50%)</span>
-            <p className="text-2xl font-black text-purple-950 mt-1">{earningsSummary.formatted_afternoon_projected}</p>
+          <div className="p-3.5 sm:p-4 rounded-2xl bg-purple-50/80 border border-purple-200 text-center">
+            <span className="text-[9px] sm:text-[10px] font-black uppercase text-purple-800 tracking-wider">Afternoon Run (50%)</span>
+            <p className="text-xl sm:text-2xl font-black text-purple-950 mt-1">{earningsSummary.formatted_afternoon_projected}</p>
             <span className="text-[10px] text-purple-700 mt-0.5 block font-medium">School ➔ Home</span>
           </div>
 
-          <div className="p-4 rounded-2xl bg-slate-50 border border-slate-200 text-center">
-            <span className="text-[10px] font-black uppercase text-slate-600 tracking-wider">Wallet Balance</span>
-            <p className="text-2xl font-black text-slate-900 mt-1">₦{(escort.wallet_balance || 25000).toLocaleString()}</p>
+          <div className="p-3.5 sm:p-4 rounded-2xl bg-slate-50 border border-slate-200 text-center">
+            <span className="text-[9px] sm:text-[10px] font-black uppercase text-slate-600 tracking-wider">Wallet Balance</span>
+            <p className="text-xl sm:text-2xl font-black text-slate-900 mt-1">₦{(escort.wallet_balance || 25000).toLocaleString()}</p>
             <span className="text-[10px] text-slate-500 mt-0.5 block font-medium">Available Payout</span>
           </div>
         </div>
@@ -413,12 +433,13 @@ export default function MyEduRideEscortView({
       {/* OFFICIAL SCHOOL NOTICES */}
       <SchoolNoticeBanner role="escorts" schoolId={liveDashboardData?.escort?.school_id || liveDashboardData?.escort?.primary_school_id} />
 
-      {/* SECTION TABS HEADER */}
-      <div className="bg-white rounded-2xl border border-slate-200/80 p-2 shadow-xs flex flex-wrap gap-1.5 text-xs font-semibold">
+      {/* SECTION TABS HEADER - Smooth Horizontal Scroll on Mobile */}
+      <div className="bg-white rounded-2xl border border-slate-200/80 p-1.5 shadow-xs flex items-center gap-1.5 overflow-x-auto no-scrollbar scroll-smooth whitespace-nowrap text-xs font-semibold">
         <button
+          type="button"
           onClick={() => setActiveTab('operations')}
-          className={`flex items-center gap-2 px-3.5 py-2 rounded-xl transition-all cursor-pointer ${
-            activeTab === 'operations' ? 'bg-[#0A1128] text-white shadow-xs' : 'text-slate-600 hover:bg-slate-100'
+          className={`shrink-0 flex items-center gap-2 px-3.5 py-2 rounded-xl transition-all cursor-pointer ${
+            activeTab === 'operations' ? 'bg-[#0A1128] text-white shadow-xs font-bold' : 'text-slate-600 hover:bg-slate-100'
           }`}
         >
           <Shield size={15} />
@@ -426,29 +447,37 @@ export default function MyEduRideEscortView({
         </button>
 
         <button
+          type="button"
           onClick={() => setActiveTab('assignments')}
-          className={`flex items-center gap-2 px-3.5 py-2 rounded-xl transition-all cursor-pointer ${
-            activeTab === 'assignments' ? 'bg-[#0A1128] text-white shadow-xs' : 'text-slate-600 hover:bg-slate-100'
+          className={`shrink-0 flex items-center gap-2 px-3.5 py-2 rounded-xl transition-all cursor-pointer ${
+            activeTab === 'assignments' ? 'bg-[#0A1128] text-white shadow-xs font-bold' : 'text-slate-600 hover:bg-slate-100'
           }`}
         >
           <Users size={15} />
-          <span>Assigned Students ({displayRoster.length})</span>
+          <span>Assigned Students</span>
+          <span className={`px-2 py-0.5 rounded-full text-[10px] font-black ${
+            activeTab === 'assignments' ? 'bg-emerald-500 text-slate-950' : 'bg-slate-100 text-slate-700'
+          }`}>
+            {displayRoster.length}
+          </span>
         </button>
 
         <button
+          type="button"
           onClick={() => setActiveTab('vehicle')}
-          className={`flex items-center gap-2 px-3.5 py-2 rounded-xl transition-all cursor-pointer ${
-            activeTab === 'vehicle' ? 'bg-[#0A1128] text-white shadow-xs' : 'text-slate-600 hover:bg-slate-100'
+          className={`shrink-0 flex items-center gap-2 px-3.5 py-2 rounded-xl transition-all cursor-pointer ${
+            activeTab === 'vehicle' ? 'bg-[#0A1128] text-white shadow-xs font-bold' : 'text-slate-600 hover:bg-slate-100'
           }`}
         >
           <Bus size={15} />
-          <span>Vehicle Management</span>
+          <span>Vehicle Log</span>
         </button>
 
         <button
+          type="button"
           onClick={() => setActiveTab('optimisation')}
-          className={`flex items-center gap-2 px-3.5 py-2 rounded-xl transition-all cursor-pointer ${
-            activeTab === 'optimisation' ? 'bg-[#0A1128] text-white shadow-xs' : 'text-slate-600 hover:bg-slate-100'
+          className={`shrink-0 flex items-center gap-2 px-3.5 py-2 rounded-xl transition-all cursor-pointer ${
+            activeTab === 'optimisation' ? 'bg-[#0A1128] text-white shadow-xs font-bold' : 'text-slate-600 hover:bg-slate-100'
           }`}
         >
           <Sparkles size={15} />
@@ -456,36 +485,37 @@ export default function MyEduRideEscortView({
         </button>
 
         <button
+          type="button"
           onClick={() => setActiveTab('earnings')}
-          className={`flex items-center gap-2 px-3.5 py-2 rounded-xl transition-all cursor-pointer ${
-            activeTab === 'earnings' ? 'bg-[#0A1128] text-white shadow-xs' : 'text-slate-600 hover:bg-slate-100'
+          className={`shrink-0 flex items-center gap-2 px-3.5 py-2 rounded-xl transition-all cursor-pointer ${
+            activeTab === 'earnings' ? 'bg-[#0A1128] text-white shadow-xs font-bold' : 'text-slate-600 hover:bg-slate-100'
           }`}
         >
           <DollarSign size={15} />
-          <span>Daily Earnings Breakdown</span>
+          <span>Earnings Breakdown</span>
         </button>
       </div>
 
       {/* TAB 1: OPERATIONS */}
       {activeTab === 'operations' && (
-        <div className="space-y-6">
-          <div className="grid grid-cols-1 md:grid-cols-4 gap-4 text-xs">
-            <div className="p-4 bg-emerald-50 border border-emerald-200 rounded-2xl space-y-1">
+        <div className="space-y-5">
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-3 text-xs">
+            <div className="p-3.5 sm:p-4 bg-emerald-50 border border-emerald-200 rounded-2xl space-y-1">
               <span className="text-emerald-800 font-bold uppercase text-[10px]">FLEET STATUS</span>
-              <span className="font-extrabold text-base text-emerald-950 block">{operationsMetrics.fleetStatus}</span>
+              <span className="font-black text-sm sm:text-base text-emerald-950 block">{operationsMetrics.fleetStatus}</span>
             </div>
 
-            <div className="p-4 bg-blue-50 border border-blue-200 rounded-2xl space-y-1">
-              <span className="text-blue-800 font-bold uppercase text-[10px]">PASSENGER MANIFEST</span>
-              <span className="font-extrabold text-base text-blue-950 block">{operationsMetrics.totalPassengers} Students</span>
+            <div className="p-3.5 sm:p-4 bg-blue-50 border border-blue-200 rounded-2xl space-y-1">
+              <span className="text-blue-800 font-bold uppercase text-[10px]">PASSENGERS</span>
+              <span className="font-black text-sm sm:text-base text-blue-950 block">{operationsMetrics.totalPassengers} Students</span>
             </div>
 
-            <div className="p-4 bg-purple-50 border border-purple-200 rounded-2xl space-y-1">
-              <span className="text-purple-800 font-bold uppercase text-[10px]">APPROVED DAILY TOTAL</span>
-              <span className="font-extrabold text-base text-purple-950 block">{earningsSummary.formatted_total_daily_earnings}</span>
+            <div className="p-3.5 sm:p-4 bg-purple-50 border border-purple-200 rounded-2xl space-y-1">
+              <span className="text-purple-800 font-bold uppercase text-[10px]">DAILY APPROVED</span>
+              <span className="font-black text-sm sm:text-base text-purple-950 block">{earningsSummary.formatted_total_daily_earnings}</span>
             </div>
 
-            <div className="p-4 bg-slate-50 border border-slate-200 rounded-2xl space-y-1">
+            <div className="p-3.5 sm:p-4 bg-slate-50 border border-slate-200 rounded-2xl space-y-1">
               <span className="text-slate-500 font-bold uppercase text-[10px]">ESCORT LOCATION</span>
               <span className="font-bold text-slate-800 block text-xs truncate">
                 {locationForm.residential_address ? `${locationForm.residential_address} (Pinned)` : 'Not Pinned Yet'}
@@ -497,24 +527,26 @@ export default function MyEduRideEscortView({
 
       {/* TAB 2: ASSIGNED STUDENTS WITH CITY MANAGER APPROVAL & PRICING */}
       {activeTab === 'assignments' && (
-        <div className="bg-white rounded-3xl border border-slate-200 p-6 shadow-xs space-y-6">
+        <div className="bg-white rounded-3xl border border-slate-200 p-4 sm:p-6 shadow-xs space-y-5">
           <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-slate-100 pb-4">
             <div>
-              <h3 className="font-extrabold text-lg text-slate-900">Assigned Students Manifest</h3>
+              <h3 className="font-black text-base sm:text-lg text-slate-900">Assigned Students Manifest</h3>
               <p className="text-xs text-slate-500">
                 School-assigned passengers approved by City Manager with pricing and pinned house locations.
               </p>
             </div>
             <button
+              type="button"
               onClick={() => onOpenVerificationModal()}
-              className="bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs py-2 px-3.5 rounded-xl shadow-xs flex items-center gap-1.5 cursor-pointer"
+              className="min-h-[44px] bg-emerald-600 hover:bg-emerald-700 text-white font-black text-xs py-2.5 px-4 rounded-xl shadow-xs flex items-center justify-center gap-1.5 cursor-pointer"
             >
-              <QrCode size={15} />
+              <QrCode size={16} />
               <span>Verify Passenger PIN</span>
             </button>
           </div>
 
-          <div className="overflow-x-auto">
+          {/* DESKTOP VIEW (>= md): Structured Data Table */}
+          <div className="hidden md:block overflow-x-auto">
             <table className="w-full text-left text-xs">
               <thead>
                 <tr className="border-b border-slate-200 text-slate-400 font-bold uppercase text-[10px]">
@@ -636,96 +668,323 @@ export default function MyEduRideEscortView({
               </tbody>
             </table>
           </div>
+
+          {/* MOBILE PASSENGER CARDS VIEW (< md) */}
+          <div className="block md:hidden space-y-3">
+            {displayRoster.length === 0 ? (
+              <div className="p-8 text-center text-slate-400 bg-slate-50 rounded-2xl border border-dashed border-slate-200">
+                No students currently assigned to this transit corridor in the database.
+              </div>
+            ) : (
+              displayRoster.map((st: any) => {
+                const isApproved = st.city_manager_approved !== false;
+                const hasHousePin = Boolean(st.is_house_pinned || (st.house_lat && st.house_lng));
+                const parentPhone = st.parent_phone || st.guardianPhone || '';
+
+                return (
+                  <div
+                    key={st.id}
+                    className="p-4 rounded-2xl bg-white border border-slate-200 shadow-xs space-y-3"
+                  >
+                    {/* Top Row: Photo + Name + Status */}
+                    <div className="flex items-start justify-between gap-2.5">
+                      <div className="flex items-center gap-2.5 min-w-0">
+                        <img
+                          src={st.photo_url || 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=150&auto=format&fit=crop&q=80'}
+                          alt={st.name}
+                          className="w-11 h-11 rounded-2xl object-cover border-2 border-emerald-500/30 shrink-0 shadow-xs"
+                          onError={(e) => {
+                            (e.target as HTMLImageElement).src = 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=150&auto=format&fit=crop&q=80';
+                          }}
+                        />
+                        <div className="min-w-0">
+                          <h4 className="font-black text-sm text-slate-900 truncate">
+                            {st.name}
+                          </h4>
+                          <p className="text-[11px] text-slate-500 font-medium truncate">
+                            {st.school_name || 'Kings College'} • {st.class_name || 'Class'}
+                          </p>
+                          <span className="inline-block font-mono text-[10px] text-slate-400 mt-0.5">
+                            ID: {st.student_id_number || st.id?.slice(0, 8)}
+                          </span>
+                        </div>
+                      </div>
+
+                      {/* Approval Badge */}
+                      <div className="shrink-0">
+                        {isApproved ? (
+                          <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full bg-emerald-100 text-emerald-800 font-black text-[10px] border border-emerald-200">
+                            <CheckCircle2 size={11} className="text-emerald-700" /> Approved
+                          </span>
+                        ) : (
+                          <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full bg-amber-100 text-amber-800 font-black text-[10px] border border-amber-200">
+                            <Clock size={11} className="text-amber-700" /> Pending CM
+                          </span>
+                        )}
+                      </div>
+                    </div>
+
+                    {/* Details Row: Address & Fare */}
+                    <div className="p-3 rounded-xl bg-slate-50 border border-slate-100 text-xs space-y-1.5">
+                      <div className="flex items-start justify-between gap-2">
+                        <div className="flex items-start gap-1.5 min-w-0 flex-1">
+                          <MapPin size={13} className="text-purple-600 shrink-0 mt-0.5" />
+                          <div className="min-w-0">
+                            <p className="text-slate-800 font-medium text-[11px] leading-tight line-clamp-2">
+                              {st.house_address || st.pickup_address || 'Address on file'}
+                            </p>
+                            {st.house_landmark && (
+                              <p className="text-[10px] text-slate-400 mt-0.5">
+                                Landmark: {st.house_landmark}
+                              </p>
+                            )}
+                          </div>
+                        </div>
+
+                        <div className="text-right shrink-0">
+                          <span className="text-[10px] text-slate-400 block uppercase font-bold">Fare</span>
+                          <span className="font-mono font-black text-emerald-900 text-xs">
+                            {st.formatted_daily_fare || `₦${(st.daily_fare || 3500).toLocaleString()}`}
+                          </span>
+                        </div>
+                      </div>
+
+                      {/* Custody Status Pill */}
+                      <div className="flex items-center justify-between pt-1 border-t border-slate-200/60 text-[10px]">
+                        <span className="text-slate-500 font-medium">Transit Custody:</span>
+                        <span className={`font-black px-2 py-0.5 rounded-md uppercase ${
+                          st.status === 'ON_BOARD'
+                            ? 'bg-blue-100 text-blue-800'
+                            : st.status === 'DROPPED_OFF'
+                            ? 'bg-emerald-100 text-emerald-800'
+                            : 'bg-slate-200 text-slate-700'
+                        }`}>
+                          {st.status || 'SCHEDULED'}
+                        </span>
+                      </div>
+                    </div>
+
+                    {/* Touch-Friendly Action Buttons Row (min 42px height) */}
+                    <div className="grid grid-cols-3 gap-2 pt-1">
+                      {/* 1. Call Parent */}
+                      {parentPhone ? (
+                        <a
+                          href={`tel:${parentPhone}`}
+                          className="min-h-[42px] px-2 py-2 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-800 font-bold text-xs flex items-center justify-center gap-1.5 transition-colors border border-slate-200 shadow-xs"
+                        >
+                          <Phone size={14} className="text-emerald-600" />
+                          <span>Call</span>
+                        </a>
+                      ) : (
+                        <button
+                          type="button"
+                          disabled
+                          className="min-h-[42px] px-2 py-2 rounded-xl bg-slate-100 text-slate-400 font-medium text-xs flex items-center justify-center gap-1 cursor-not-allowed border border-slate-200 opacity-60"
+                        >
+                          <Phone size={14} />
+                          <span>No Tel</span>
+                        </button>
+                      )}
+
+                      {/* 2. GPS Navigation */}
+                      {hasHousePin ? (
+                        <a
+                          href={st.google_maps_nav_url || `https://www.google.com/maps?q=${st.house_lat},${st.house_lng}`}
+                          target="_blank"
+                          rel="noreferrer"
+                          className="min-h-[42px] px-2 py-2 rounded-xl bg-purple-50 hover:bg-purple-100 text-purple-700 font-bold text-xs flex items-center justify-center gap-1.5 transition-colors border border-purple-200 shadow-xs"
+                        >
+                          <Navigation size={14} className="text-purple-600" />
+                          <span>GPS</span>
+                        </a>
+                      ) : (
+                        <button
+                          type="button"
+                          disabled
+                          className="min-h-[42px] px-2 py-2 rounded-xl bg-slate-100 text-slate-400 font-medium text-xs flex items-center justify-center gap-1 cursor-not-allowed border border-slate-200 opacity-60"
+                        >
+                          <Navigation size={14} />
+                          <span>No GPS</span>
+                        </button>
+                      )}
+
+                      {/* 3. Verify PIN */}
+                      <button
+                        type="button"
+                        onClick={() => onOpenVerificationModal(st)}
+                        className="min-h-[42px] px-2 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white font-black text-xs flex items-center justify-center gap-1.5 transition-colors shadow-xs cursor-pointer"
+                      >
+                        <QrCode size={14} />
+                        <span>Verify</span>
+                      </button>
+                    </div>
+                  </div>
+                );
+              })
+            )}
+          </div>
         </div>
       )}
 
       {/* TAB 3: VEHICLE */}
       {activeTab === 'vehicle' && (
-        <div className="bg-white rounded-3xl border border-slate-200 p-6 shadow-xs space-y-6">
-          <h3 className="font-extrabold text-lg text-slate-900">DISC Vehicle Asset & Maintenance Log</h3>
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-4 text-xs">
+        <div className="bg-white rounded-3xl border border-slate-200 p-4 sm:p-6 shadow-xs space-y-5">
+          <div className="border-b border-slate-100 pb-3">
+            <h3 className="font-black text-base sm:text-lg text-slate-900">DISC Vehicle Asset & Inspection Log</h3>
+            <p className="text-xs text-slate-500">Official transit vehicle assigned by City Manager Operations.</p>
+          </div>
+
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 text-xs">
             <div className="p-4 bg-slate-50 border border-slate-200 rounded-2xl">
-              <span className="text-slate-400 font-bold block">Assigned Van</span>
-              <span className="font-extrabold text-slate-900 text-sm mt-0.5 block">{escort.vehicleType || 'Executive Shuttle'}</span>
+              <span className="text-slate-400 font-bold uppercase text-[10px] block">Assigned Transit Van</span>
+              <span className="font-black text-slate-900 text-sm mt-1 block">{escort.vehicleType || 'Executive Shuttle'}</span>
+              <span className="text-[10px] text-emerald-700 font-bold mt-1 block">✓ Fully Air-Conditioned</span>
             </div>
             <div className="p-4 bg-slate-50 border border-slate-200 rounded-2xl">
-              <span className="text-slate-400 font-bold block">License Plate</span>
-              <span className="font-mono font-bold text-slate-900 text-sm mt-0.5 block">{escort.regNumber || 'LAG-992-MY'}</span>
+              <span className="text-slate-400 font-bold uppercase text-[10px] block">License Plate</span>
+              <span className="font-mono font-black text-slate-900 text-sm mt-1 block">{escort.regNumber || 'LAG-992-MY'}</span>
+              <span className="text-[10px] text-slate-500 font-medium mt-1 block">Lagos State Commercial Plate</span>
             </div>
             <div className="p-4 bg-slate-50 border border-slate-200 rounded-2xl">
-              <span className="text-slate-400 font-bold block">Fuel Status</span>
-              <span className="font-bold text-emerald-600 text-sm mt-0.5 block">92% (Full Tank)</span>
+              <span className="text-slate-400 font-bold uppercase text-[10px] block">Fuel Level</span>
+              <span className="font-black text-emerald-700 text-sm mt-1 block">92% (Full Tank)</span>
+              <span className="text-[10px] text-emerald-600 font-medium mt-1 block">Tank topped up this morning</span>
             </div>
+          </div>
+
+          <div className="p-4 rounded-2xl bg-emerald-50/70 border border-emerald-200 text-xs flex items-center gap-3">
+            <ShieldCheck size={20} className="text-emerald-600 shrink-0" />
+            <p className="text-emerald-950 font-medium text-[11px] sm:text-xs">
+              Vehicle passes DISC Safety Standard Check (Seatbelts for all {displayRoster.length} students, first aid kit on board, fire extinguisher verified).
+            </p>
           </div>
         </div>
       )}
 
       {/* TAB 4: ROUTE OPTIMISATION */}
       {activeTab === 'optimisation' && (
-        <div className="bg-white rounded-3xl border border-slate-200 p-6 shadow-xs space-y-6">
-          <div className="flex items-center justify-between border-b border-slate-100 pb-4">
+        <div className="bg-white rounded-3xl border border-slate-200 p-4 sm:p-6 shadow-xs space-y-5">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-slate-100 pb-3">
             <div>
-              <h3 className="font-extrabold text-lg text-slate-900">AI Route Optimisation Engine</h3>
-              <p className="text-xs text-slate-500">Real-time Traffic & Shortest Corridor Suggestions</p>
+              <h3 className="font-black text-base sm:text-lg text-slate-900">AI Route Navigation & Stops</h3>
+              <p className="text-xs text-slate-500">Turn-by-turn sequence for morning pickup and afternoon school drop-off.</p>
             </div>
             <button
-              onClick={() => toast.success('Route re-optimised! Saved 8 minutes of transit time.')}
-              className="bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs py-2 px-3.5 rounded-xl shadow-xs flex items-center gap-1.5 cursor-pointer"
+              type="button"
+              onClick={() => toast.success('Corridor refreshed! Fastest route calculated.')}
+              className="min-h-[42px] bg-emerald-600 hover:bg-emerald-700 text-white font-black text-xs py-2 px-3.5 rounded-xl shadow-xs flex items-center justify-center gap-1.5 cursor-pointer"
             >
               <RefreshCw size={14} />
               <span>Re-calculate Best Path</span>
             </button>
           </div>
 
-          <div className="p-4 bg-emerald-50 border border-emerald-200 rounded-2xl text-xs text-emerald-900 font-medium">
-            ✨ Optimal Path Selected: Lekki Express Corridor ➔ Alma Beach ➔ Agbara Route (Saves 12 mins traffic delay).
+          <div className="p-3.5 rounded-2xl bg-emerald-50 border border-emerald-200 text-xs text-emerald-900 font-medium">
+            ✨ Optimal Path Active: Lekki Express Corridor ➔ Victoria Island ➔ Ikoyi Campus. Saves ~14 mins transit time.
+          </div>
+
+          {/* Sequential Stops List */}
+          <div className="space-y-2.5">
+            <h4 className="text-xs font-black uppercase tracking-wider text-slate-500">
+              Scheduled Stops Sequence ({displayRoster.length} Stops)
+            </h4>
+
+            {displayRoster.length === 0 ? (
+              <p className="text-xs text-slate-400 p-4 text-center bg-slate-50 rounded-2xl">
+                No active stops assigned for today.
+              </p>
+            ) : (
+              displayRoster.map((st: any, idx: number) => {
+                const hasHousePin = Boolean(st.is_house_pinned || (st.house_lat && st.house_lng));
+                return (
+                  <div
+                    key={st.id}
+                    className="p-3 rounded-2xl bg-slate-50 border border-slate-200/80 flex items-center justify-between gap-3 text-xs"
+                  >
+                    <div className="flex items-center gap-2.5 min-w-0">
+                      <div className="w-7 h-7 rounded-xl bg-[#0A1128] text-white flex items-center justify-center font-black text-xs shrink-0">
+                        {idx + 1}
+                      </div>
+                      <div className="min-w-0">
+                        <h5 className="font-black text-slate-900 truncate">{st.name}</h5>
+                        <p className="text-[11px] text-slate-500 truncate">
+                          {st.house_address || st.pickup_address || 'Doorstep Pickup'}
+                        </p>
+                      </div>
+                    </div>
+
+                    <div className="shrink-0 flex items-center gap-1.5">
+                      {hasHousePin && (
+                        <a
+                          href={st.google_maps_nav_url || `https://www.google.com/maps?q=${st.house_lat},${st.house_lng}`}
+                          target="_blank"
+                          rel="noreferrer"
+                          className="px-2.5 py-1.5 rounded-xl bg-purple-50 hover:bg-purple-100 text-purple-700 font-bold text-[11px] flex items-center gap-1 border border-purple-200 shadow-xs"
+                        >
+                          <Navigation size={12} />
+                          <span>GPS</span>
+                        </a>
+                      )}
+                    </div>
+                  </div>
+                );
+              })
+            )}
           </div>
         </div>
       )}
 
       {/* TAB 5: EARNINGS BREAKDOWN */}
       {activeTab === 'earnings' && (
-        <div className="bg-white rounded-3xl border border-slate-200 p-6 shadow-xs space-y-4">
+        <div className="bg-white rounded-3xl border border-slate-200 p-4 sm:p-6 shadow-xs space-y-4">
           <div className="border-b border-slate-100 pb-3">
-            <h3 className="font-extrabold text-lg text-slate-900">Per-Student Pricing & Earnings Breakdown</h3>
+            <h3 className="font-black text-base sm:text-lg text-slate-900">Per-Student Daily Earnings Breakdown</h3>
             <p className="text-xs text-slate-500">City Manager verified rates for each assigned passenger.</p>
           </div>
 
           <div className="divide-y divide-slate-100">
-            {displayRoster.map((s: any) => (
-              <div key={s.id} className="py-3 flex items-center justify-between text-xs">
-                <div>
-                  <span className="font-bold text-slate-900 block">{s.name}</span>
-                  <span className="text-[11px] text-slate-400">{s.school_name || 'Kings College'} · {s.pickup_address}</span>
+            {displayRoster.length === 0 ? (
+              <p className="text-xs text-slate-400 p-6 text-center">No assigned passenger fares recorded yet.</p>
+            ) : (
+              displayRoster.map((s: any) => (
+                <div key={s.id} className="py-3.5 flex items-center justify-between gap-3 text-xs">
+                  <div className="min-w-0">
+                    <span className="font-black text-slate-900 block truncate">{s.name}</span>
+                    <span className="text-[11px] text-slate-500 truncate block">
+                      {s.school_name || 'School'} • {s.pickup_address || 'Home'}
+                    </span>
+                  </div>
+                  <div className="text-right shrink-0">
+                    <span className="font-mono font-black text-emerald-800 text-sm block">
+                      {s.formatted_daily_fare || `₦${(s.daily_fare || 3500).toLocaleString()}`}
+                    </span>
+                    <span className="text-[10px] text-slate-400 block">
+                      ₦{Math.round((s.daily_fare || 3500) / 2).toLocaleString()} morning + ₦{Math.round((s.daily_fare || 3500) / 2).toLocaleString()} afternoon
+                    </span>
+                  </div>
                 </div>
-                <div className="text-right">
-                  <span className="font-mono font-black text-emerald-800 text-sm block">
-                    {s.formatted_daily_fare || `₦${(s.daily_fare || 3500).toLocaleString()}`}
-                  </span>
-                  <span className="text-[10px] text-slate-400">₦{Math.round((s.daily_fare || 3500) / 2).toLocaleString()} morning + ₦{Math.round((s.daily_fare || 3500) / 2).toLocaleString()} afternoon</span>
-                </div>
-              </div>
-            ))}
+              ))
+            )}
           </div>
         </div>
       )}
 
       {/* DECLINE TODAY TRIP MODAL */}
       {declineModalOpen && (
-        <div className="fixed inset-0 bg-slate-950/80 z-50 flex items-center justify-center p-4 backdrop-blur-xs">
-          <div className="bg-white rounded-3xl max-w-md w-full p-6 shadow-2xl border border-slate-200 space-y-4">
+        <div className="fixed inset-0 bg-slate-950/80 z-50 flex items-center justify-center p-3 sm:p-4 backdrop-blur-xs">
+          <div className="bg-white rounded-3xl w-[92vw] max-w-md p-5 sm:p-6 shadow-2xl border border-slate-200 space-y-4 max-h-[85vh] overflow-y-auto">
             <div className="flex items-center justify-between border-b border-slate-100 pb-3">
               <div className="flex items-center gap-2 text-rose-700 font-black text-sm">
                 <AlertCircle size={18} />
                 <span>Report Inability to Cover Route</span>
               </div>
-              <button onClick={() => setDeclineModalOpen(false)} className="text-slate-400 hover:text-slate-600 cursor-pointer">
+              <button onClick={() => setDeclineModalOpen(false)} className="text-slate-400 hover:text-slate-600 cursor-pointer p-1">
                 <X size={18} />
               </button>
             </div>
 
             <p className="text-xs text-slate-600 leading-relaxed">
-              Reporting unable to cover will immediately notify the City Manager to dispatch an emergency pool escort so students and parents are not disappointed.
+              Reporting unable to cover will immediately notify the City Manager to dispatch an emergency backup escort so students and parents are not stranded.
             </p>
 
             <div className="space-y-2 text-xs">
@@ -733,7 +992,7 @@ export default function MyEduRideEscortView({
               <select
                 value={declineReason}
                 onChange={(e) => setDeclineReason(e.target.value)}
-                className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl font-medium focus:outline-rose-600"
+                className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl font-medium focus:outline-rose-600 min-h-[44px]"
               >
                 <option value="">-- Choose Reason --</option>
                 <option value="Vehicle Breakdown / Mechanical Trouble">Vehicle Breakdown / Mechanical Trouble</option>
@@ -748,7 +1007,7 @@ export default function MyEduRideEscortView({
               <button
                 type="button"
                 onClick={() => setDeclineModalOpen(false)}
-                className="px-4 py-2 rounded-xl border border-slate-200 text-xs font-bold text-slate-600 cursor-pointer"
+                className="min-h-[42px] px-4 py-2 rounded-xl border border-slate-200 text-xs font-bold text-slate-600 cursor-pointer"
               >
                 Cancel
               </button>
@@ -756,9 +1015,9 @@ export default function MyEduRideEscortView({
                 type="button"
                 disabled={isSubmittingCommitment}
                 onClick={handleDeclineTrips}
-                className="px-4 py-2 rounded-xl bg-rose-600 hover:bg-rose-700 text-white text-xs font-black shadow-md shadow-rose-600/20 cursor-pointer"
+                className="min-h-[42px] px-4 py-2 rounded-xl bg-rose-600 hover:bg-rose-700 text-white text-xs font-black shadow-md shadow-rose-600/20 cursor-pointer"
               >
-                {isSubmittingCommitment ? 'Alerting...' : 'Alert City Manager for Emergency Backup'}
+                {isSubmittingCommitment ? 'Alerting...' : 'Alert City Manager'}
               </button>
             </div>
           </div>
@@ -767,14 +1026,14 @@ export default function MyEduRideEscortView({
 
       {/* PIN HOUSE LOCATION MODAL */}
       {pinLocationModalOpen && (
-        <div className="fixed inset-0 bg-slate-950/80 z-50 flex items-center justify-center p-4 backdrop-blur-xs">
-          <div className="bg-white rounded-3xl max-w-md w-full p-6 shadow-2xl border border-slate-200 space-y-4">
+        <div className="fixed inset-0 bg-slate-950/80 z-50 flex items-center justify-center p-3 sm:p-4 backdrop-blur-xs">
+          <div className="bg-white rounded-3xl w-[92vw] max-w-md p-5 sm:p-6 shadow-2xl border border-slate-200 space-y-4 max-h-[85vh] overflow-y-auto">
             <div className="flex items-center justify-between border-b border-slate-100 pb-3">
               <div className="flex items-center gap-2 text-purple-900 font-black text-sm">
                 <MapPin size={18} className="text-purple-700" />
                 <span>Pin My Residential Location</span>
               </div>
-              <button onClick={() => setPinLocationModalOpen(false)} className="text-slate-400 hover:text-slate-600 cursor-pointer">
+              <button onClick={() => setPinLocationModalOpen(false)} className="text-slate-400 hover:text-slate-600 cursor-pointer p-1">
                 <X size={18} />
               </button>
             </div>
@@ -792,7 +1051,7 @@ export default function MyEduRideEscortView({
                   placeholder="e.g. 14 Admiralty Way, Lekki Phase 1"
                   value={locationForm.residential_address}
                   onChange={(e) => setLocationForm({ ...locationForm, residential_address: e.target.value })}
-                  className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl font-medium focus:outline-purple-600"
+                  className="w-full px-3 py-2.5 bg-slate-50 border border-slate-200 rounded-xl font-medium focus:outline-purple-600 min-h-[42px]"
                 />
               </div>
 
@@ -803,7 +1062,7 @@ export default function MyEduRideEscortView({
                   placeholder="e.g. Opposite Ebeano Supermarket"
                   value={locationForm.closest_landmark}
                   onChange={(e) => setLocationForm({ ...locationForm, closest_landmark: e.target.value })}
-                  className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl font-medium focus:outline-purple-600"
+                  className="w-full px-3 py-2.5 bg-slate-50 border border-slate-200 rounded-xl font-medium focus:outline-purple-600 min-h-[42px]"
                 />
               </div>
 
@@ -815,7 +1074,7 @@ export default function MyEduRideEscortView({
                     type="button"
                     onClick={handleCaptureGps}
                     disabled={pinningGps}
-                    className="px-2.5 py-1 rounded-lg bg-purple-600 hover:bg-purple-700 text-white font-bold text-[10px] flex items-center gap-1 cursor-pointer"
+                    className="min-h-[36px] px-3 py-1.5 rounded-lg bg-purple-600 hover:bg-purple-700 text-white font-bold text-[10px] flex items-center gap-1 cursor-pointer"
                   >
                     <Compass size={12} />
                     <span>{pinningGps ? 'Fetching GPS...' : 'Capture Current GPS'}</span>
@@ -836,14 +1095,14 @@ export default function MyEduRideEscortView({
                 <button
                   type="button"
                   onClick={() => setPinLocationModalOpen(false)}
-                  className="px-4 py-2 rounded-xl border border-slate-200 text-xs font-bold text-slate-600 cursor-pointer"
+                  className="min-h-[42px] px-4 py-2 rounded-xl border border-slate-200 text-xs font-bold text-slate-600 cursor-pointer"
                 >
                   Cancel
                 </button>
                 <button
                   type="submit"
                   disabled={savingLocation}
-                  className="px-5 py-2 rounded-xl bg-purple-600 hover:bg-purple-700 text-white text-xs font-black shadow-md shadow-purple-600/20 cursor-pointer"
+                  className="min-h-[42px] px-5 py-2 rounded-xl bg-purple-600 hover:bg-purple-700 text-white text-xs font-black shadow-md shadow-purple-600/20 cursor-pointer"
                 >
                   {savingLocation ? 'Saving...' : 'Save Pinned Location'}
                 </button>

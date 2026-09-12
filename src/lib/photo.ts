@@ -33,7 +33,8 @@ export function extractStoragePath(input: string | null | undefined): string | n
     const decoded = decodeURIComponent(trimmed);
 
     // 4. Supabase Storage URLs (.../storage/v1/object/public/ or .../storage/v1/object/sign/)
-    const supabaseMatch = decoded.match(/\/storage\/v1\/object\/(?:public|sign)\/(?:photos|avatars|uploads)\/(.+?)(\?|$)/i);
+    const supabaseMatch = decoded.match(/\/storage\/v1\/object\/(?:public|sign)\/(?:photos)\/(.+?)(\?|$)/i) ||
+      decoded.match(/\/storage\/v1\/object\/(?:public|sign)\/(?:[a-zA-Z0-9_-]+)\/(.+?)(\?|$)/i);
     if (supabaseMatch) {
       return supabaseMatch[1].split('?')[0].replace(/^[/\\]+/, '');
     }
@@ -48,10 +49,10 @@ export function extractStoragePath(input: string | null | undefined): string | n
       return null;
     }
 
-    // 7. Relative clean storage path (e.g. "staff/123/STF-01.jpg" or "students/STU-01.jpg?t=123")
+    // 7. Relative clean storage path (e.g. "staff/123/STF-01.jpg" or "avatars/...")
     const clean = decoded.split('?')[0].replace(/^[/\\]+/, '');
-    // Strip redundant leading bucket name if present
-    return clean.replace(/^(?:photos|avatars|uploads)\//i, '');
+    // Strip redundant leading bucket name "photos/" if present
+    return clean.replace(/^photos\//i, '');
   } catch {
     return null;
   }
@@ -85,10 +86,10 @@ export function photoSrc(url: string | null | undefined): string | null {
     return trimmed;
   }
 
-  // 5. Relative clean storage path (e.g. "staff/school-id/STF-01.jpg" or with query param)
+  // 5. Relative clean storage path (e.g. "staff/school-id/STF-01.jpg", "avatars/...", or with query param)
   const [basePath, query] = trimmed.split('?');
   const storagePath = extractStoragePath(basePath) || basePath.replace(/^[/\\]+/, '');
-  const cleanPath = storagePath.replace(/^(?:photos|avatars|uploads)\//i, '');
+  const cleanPath = storagePath.replace(/^photos\//i, '');
 
   return `/api/photo?path=${encodeURIComponent(cleanPath)}${query ? `&${query}` : ''}`;
 }

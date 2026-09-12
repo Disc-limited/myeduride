@@ -71,6 +71,7 @@ export async function POST(request: NextRequest) {
     // Only overwrite avatar_url if the client explicitly sent a value
     if (avatar_url !== undefined) {
       updatePayload.avatar_url = avatar_url;
+      updatePayload.photo_url = avatar_url;
     }
 
     const { error: profileErr } = await supabase

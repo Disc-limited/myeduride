@@ -37,6 +37,16 @@ photoResolutionUnitSuite.test('Supabase Storage Path Extraction: Correctly trans
   expect(photoSrc(timestampedPath)).toBe('/api/photo?path=staff%2Fschool_101%2FSTF-001.jpg&t=1740000000');
 });
 
+photoResolutionUnitSuite.test('Avatars & Uploads Folder Preservation: Preserves avatars/ and uploads/ folders without stripping', () => {
+  const avatarPath = 'avatars/e349c539-939c-42d4-a09e-a18fabad0d50/1789242971412_eking-pics.jpg';
+  const uploadPath = 'uploads/1789242971412_receipt.png';
+  const supabaseAvatarPublic = 'https://xyz.supabase.co/storage/v1/object/public/photos/avatars/user-123/avatar.jpg';
+
+  expect(photoSrc(avatarPath)).toBe('/api/photo?path=avatars%2Fe349c539-939c-42d4-a09e-a18fabad0d50%2F1789242971412_eking-pics.jpg');
+  expect(photoSrc(uploadPath)).toBe('/api/photo?path=uploads%2F1789242971412_receipt.png');
+  expect(photoSrc(supabaseAvatarPublic)).toBe('/api/photo?path=avatars%2Fuser-123%2Favatar.jpg');
+});
+
 photoResolutionUnitSuite.test('Null & Empty Safety: Returns null for empty, undefined, or whitespace-only inputs', () => {
   expect(photoSrc(null)).toBe(null);
   expect(photoSrc(undefined)).toBe(null);

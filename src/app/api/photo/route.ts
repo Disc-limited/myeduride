@@ -41,37 +41,81 @@ export async function GET(request: NextRequest) {
     }
 
     // Cleanly isolate object key without leading slashes or bucket prefixes
-    let cleanPath = decodeURIComponent(rawPath).split('?')[0].replace(/^[/\\]+/, '');
-    cleanPath = cleanPath.replace(/^(?:photos|avatars|uploads)\//i, '');
+    const decodedRaw = decodeURIComponent(rawPath).split('?')[0].replace(/^[/\\]+/, '');
+    const cleanPath = decodedRaw.replace(/^photos\//i, '');
+
+    const knownFolders = [
+      'avatars',
+      'uploads',
+      'staff',
+      'students',
+      'logos',
+      'signatures',
+      'pickup-persons',
+      'chat-attachments',
+      'profiles',
+    ];
+
+    const candidates = new Set<string>();
+    candidates.add(cleanPath);
+    candidates.add(decodedRaw);
+
+    const hasKnownFolder = knownFolders.some((folder) =>
+      cleanPath.toLowerCase().startsWith(folder + '/')
+    );
+
+    if (!hasKnownFolder) {
+      for (const folder of knownFolders) {
+        candidates.add(`${folder}/${cleanPath}`);
+      }
+    }
 
     const supabase = getAdminClient();
     const bucketsToTry = ['photos', 'avatars', 'uploads'];
     let fileData: Blob | null = null;
+    let resolvedKey = cleanPath;
 
     for (const bucket of bucketsToTry) {
-      try {
-        const { data, error } = await supabase.storage.from(bucket).download(cleanPath);
-        if (!error && data) {
-          fileData = data;
-          break;
-        }
-      } catch {
-        // try next bucket
-      }
-    }
-
-    // Fallback attempt with raw path in case of custom folder structure
-    if (!fileData && rawPath !== cleanPath) {
-      for (const bucket of bucketsToTry) {
+      for (const candidate of candidates) {
         try {
-          const { data, error } = await supabase.storage.from(bucket).download(rawPath);
+          const { data, error } = await supabase.storage.from(bucket).download(candidate);
           if (!error && data) {
             fileData = data;
+            resolvedKey = candidate;
             break;
           }
         } catch {
-          // try next bucket
+          // try next candidate
         }
+      }
+      if (fileData) break;
+    }
+
+    // Secondary fallback: inspect user_profiles or escort_applications if path is or starts with user ID
+    if (!fileData) {
+      try {
+        const potentialId = cleanPath.split('/')[0];
+        if (potentialId && potentialId.length >= 20) {
+          const { data: userProf } = await supabase
+            .from('user_profiles')
+            .select('avatar_url, photo_url')
+            .eq('id', potentialId)
+            .maybeSingle();
+
+          const dbPhoto = (userProf?.avatar_url || userProf?.photo_url || '').replace(/^photos\//i, '').replace(/^[/\\]+/, '');
+          if (dbPhoto) {
+            for (const bucket of bucketsToTry) {
+              const { data, error } = await supabase.storage.from(bucket).download(dbPhoto);
+              if (!error && data) {
+                fileData = data;
+                resolvedKey = dbPhoto;
+                break;
+              }
+            }
+          }
+        }
+      } catch {
+        // continue
       }
     }
 
@@ -80,8 +124,10 @@ export async function GET(request: NextRequest) {
     }
 
     const buffer = Buffer.from(await fileData.arrayBuffer());
-    const contentType = contentTypeForPath(cleanPath);
-    const etag = `"${Buffer.from(cleanPath + '_' + buffer.length).toString('base64')}"`;
+    const contentType = fileData.type && fileData.type.startsWith('image/')
+      ? fileData.type
+      : contentTypeForPath(resolvedKey);
+    const etag = `"${Buffer.from(resolvedKey + '_' + buffer.length).toString('base64')}"`;
 
     if (request.headers.get('if-none-match') === etag) {
       return new NextResponse(null, { status: 304 });

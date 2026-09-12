@@ -23,21 +23,30 @@ export async function loadPhotoDataUrl(
   const storagePath = universalExtractStoragePath(trimmed);
 
   if (storagePath) {
-    const cleanPath = storagePath.replace(/^(?:photos|avatars|uploads)\//i, '').split('?')[0];
+    const cleanPath = storagePath.replace(/^photos\//i, '').split('?')[0];
     const bucketsToTry = ['photos', 'avatars', 'uploads'];
+    const candidates = [
+      cleanPath,
+      `avatars/${cleanPath}`,
+      `uploads/${cleanPath}`,
+      `staff/${cleanPath}`,
+      `students/${cleanPath}`,
+    ];
 
     for (const bucket of bucketsToTry) {
-      try {
-        const { data, error } = await supabase.storage.from(bucket).download(cleanPath);
-        if (!error && data) {
-          const buffer = Buffer.from(await data.arrayBuffer());
-          const base64 = buffer.toString('base64');
-          const lower = cleanPath.toLowerCase();
-          const mime = lower.endsWith('.png') ? 'image/png' : lower.endsWith('.webp') ? 'image/webp' : 'image/jpeg';
-          return `data:${mime};base64,${base64}`;
+      for (const candidate of candidates) {
+        try {
+          const { data, error } = await supabase.storage.from(bucket).download(candidate);
+          if (!error && data) {
+            const buffer = Buffer.from(await data.arrayBuffer());
+            const base64 = buffer.toString('base64');
+            const lower = candidate.toLowerCase();
+            const mime = lower.endsWith('.png') ? 'image/png' : lower.endsWith('.webp') ? 'image/webp' : 'image/jpeg';
+            return `data:${mime};base64,${base64}`;
+          }
+        } catch {
+          // try next candidate
         }
-      } catch {
-        // try next bucket
       }
     }
   }

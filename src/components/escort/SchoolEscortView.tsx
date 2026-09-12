@@ -593,10 +593,10 @@ export default function SchoolEscortView({
               pickupQueue.map((item, idx) => (
                 <div
                   key={item.id || idx}
-                  className="p-2.5 bg-slate-50 rounded-xl border border-slate-200/80 flex items-center justify-between gap-2 hover:bg-slate-100 transition-all text-xs"
+                  className="p-3 bg-slate-50 rounded-2xl border border-slate-200/80 flex flex-col sm:flex-row sm:items-center justify-between gap-2.5 hover:bg-slate-100 transition-all text-xs shadow-xs"
                 >
-                  <div className="flex items-center gap-2 min-w-0 flex-1">
-                    <div className="w-8 h-8 rounded-full bg-slate-200 flex items-center justify-center font-bold text-slate-700 text-[10px] shrink-0 overflow-hidden">
+                  <div className="flex items-center gap-2.5 min-w-0 flex-1">
+                    <div className="w-9 h-9 rounded-xl bg-slate-200 flex items-center justify-center font-bold text-slate-700 text-[11px] shrink-0 overflow-hidden shadow-xs">
                       {item.photo_url || item.avatar ? (
                         <img src={item.photo_url || item.avatar} alt={item.name} className="w-full h-full object-cover" />
                       ) : (
@@ -604,48 +604,52 @@ export default function SchoolEscortView({
                       )}
                     </div>
                     <div className="min-w-0 flex-1">
-                      <div className="flex items-center gap-1.5">
-                        <span className="font-bold text-slate-900 truncate leading-tight">{item.name}</span>
+                      <div className="flex items-center gap-1.5 flex-wrap">
+                        <span className="font-black text-slate-900 truncate leading-tight">{item.name}</span>
                         {item.house_lat && item.house_lng ? (
-                          <span className="px-1.5 py-0.2 rounded bg-teal-100 text-teal-800 font-bold text-[9px] shrink-0">
+                          <span className="px-1.5 py-0.5 rounded-full bg-teal-100 text-teal-800 font-bold text-[9px] shrink-0">
                             🏠 Pinned
                           </span>
                         ) : null}
                       </div>
-                      <div className="text-[10px] text-slate-500 truncate">
+                      <div className="text-[10px] text-slate-500 truncate mt-0.5">
                         {item.house_lat && item.house_address ? `🏠 ${item.house_address}` : (item.address || item.pickup_address || 'Designated Route Stop')}
                         {item.house_landmark ? ` · 📍 ${item.house_landmark}` : ''}
                       </div>
                     </div>
                   </div>
 
-                  <div className="flex items-center gap-1.5 shrink-0">
-                    {item.google_maps_nav_url ? (
-                      <a
-                        href={item.google_maps_nav_url}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className="bg-teal-700 hover:bg-teal-800 text-white font-bold text-[10px] px-2 py-1 rounded-lg transition-all flex items-center gap-1 shrink-0"
-                        title="Navigate to student doorstep"
-                      >
-                        <Navigation size={10} /> Nav
-                      </a>
-                    ) : null}
-                    <span className="text-[10px] font-mono text-slate-400 mr-1">
+                  <div className="flex items-center justify-between sm:justify-end gap-1.5 shrink-0 pt-1 sm:pt-0 border-t sm:border-t-0 border-slate-200/60">
+                    <span className="text-[10px] font-mono text-slate-400">
                       {item.distance || `${(0.3 + idx * 0.35).toFixed(1)} km`}
                     </span>
-                    <button
-                      onClick={() => handleScanId(item)}
-                      className="bg-[#00A859] hover:bg-emerald-600 text-white font-bold text-[10px] px-2.5 py-1 rounded-lg transition-all flex items-center gap-1"
-                    >
-                      <QrCode size={11} /> Scan ID
-                    </button>
-                    <button
-                      onClick={() => handleOverride(item)}
-                      className="bg-slate-200 hover:bg-slate-300 text-slate-700 font-bold text-[10px] px-2 py-1 rounded-lg transition-all flex items-center gap-1"
-                    >
-                      <ShieldCheck size={11} /> Override
-                    </button>
+                    <div className="flex items-center gap-1.5">
+                      {item.google_maps_nav_url ? (
+                        <a
+                          href={item.google_maps_nav_url}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="bg-teal-700 hover:bg-teal-800 text-white font-bold text-[10px] px-2.5 py-1.5 rounded-lg transition-all flex items-center gap-1 shrink-0 min-h-[34px]"
+                          title="Navigate to student doorstep"
+                        >
+                          <Navigation size={11} /> <span>Nav</span>
+                        </a>
+                      ) : null}
+                      <button
+                        type="button"
+                        onClick={() => handleScanId(item)}
+                        className="bg-[#00A859] hover:bg-emerald-600 text-white font-bold text-[10px] px-2.5 py-1.5 rounded-lg transition-all flex items-center gap-1 cursor-pointer min-h-[34px]"
+                      >
+                        <QrCode size={12} /> <span>Scan ID</span>
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => handleOverride(item)}
+                        className="bg-slate-200 hover:bg-slate-300 text-slate-700 font-bold text-[10px] px-2.5 py-1.5 rounded-lg transition-all flex items-center gap-1 cursor-pointer min-h-[34px]"
+                      >
+                        <ShieldCheck size={12} /> <span>Override</span>
+                      </button>
+                    </div>
                   </div>
                 </div>
               ))

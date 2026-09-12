@@ -53,8 +53,8 @@ export default function IncidentReportModal({
   };
 
   return (
-    <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-sm flex items-center justify-center p-4">
-      <div className="bg-white rounded-3xl max-w-md w-full p-6 shadow-2xl space-y-5 border border-slate-100 relative animate-in fade-in zoom-in duration-200">
+    <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-sm flex items-center justify-center p-3 sm:p-4">
+      <div className="bg-white rounded-3xl w-[92vw] max-w-md p-5 sm:p-6 shadow-2xl space-y-4 sm:space-y-5 border border-slate-100 relative animate-in fade-in zoom-in duration-200 max-h-[85vh] overflow-y-auto">
         {/* Close Button */}
         <button
           onClick={onClose}

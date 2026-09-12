@@ -77,6 +77,7 @@ export function ProfileSettingsCard({ onSuccess }: ProfileSettingsCardProps) {
         return;
       }
       setForm((prev) => ({ ...prev, avatar_url: data.path }));
+      toast.success('Photo uploaded successfully! Click "Save changes" below to update your profile.');
     } catch {
       toast.error('Photo upload failed');
       setAvatarPreview(null);
