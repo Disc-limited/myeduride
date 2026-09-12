@@ -2,7 +2,7 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import { ClipboardList, RefreshCw, Search, UserPlus, Sparkles, CheckCircle2, ShieldCheck, Clock, MapPin, Phone, Car, Users, ArrowRightLeft, Footprints, AlertTriangle, Zap, CheckCheck } from 'lucide-react';
+import { ClipboardList, RefreshCw, Search, UserPlus, Sparkles, CheckCircle2, ShieldCheck, Clock, MapPin, Phone, Car, Users, ArrowRightLeft, Footprints, AlertTriangle, Zap, CheckCheck, Tag } from 'lucide-react';
 import { toast } from 'sonner';
 import StudentAvatar from '@/components/shared/StudentAvatar';
 
@@ -45,13 +45,92 @@ export function CityManagerOperationsPanel() {
   // Escort Rosters Filters & In-Place Reassignment Modal State
   const [rosterSchoolFilter, setRosterSchoolFilter] = useState('all');
   const [rosterEscortFilter, setRosterEscortFilter] = useState('all');
-  const [reassignModal, setReassignModal] = useState<{ open: boolean; assignment: any; targetEscortId: string; notes: string }>({
+  const [reassignModal, setReassignModal] = useState<{
+    open: boolean;
+    assignment: any | null;
+    targetEscortId: string;
+    notes: string;
+  }>({
     open: false,
     assignment: null,
     targetEscortId: '',
     notes: '',
   });
   const [submittingReassign, setSubmittingReassign] = useState(false);
+
+  // Accountant-Approved Parent Discounted Fee State (Requirement G)
+  const [discountModal, setDiscountModal] = useState<{
+    open: boolean;
+    booking: any | null;
+    originalFare: number;
+    discountedFare: string;
+    accountantApprovalRef: string;
+    accountantName: string;
+    discountReason: string;
+    submitting: boolean;
+  }>({
+    open: false,
+    booking: null,
+    originalFare: 3500,
+    discountedFare: '2500',
+    accountantApprovalRef: '',
+    accountantName: 'School Bursar Office',
+    discountReason: 'Concession clearance authorized by Bursar',
+    submitting: false,
+  });
+
+  const handleApplyAccountantDiscount = async () => {
+    if (!discountModal.accountantApprovalRef.trim()) {
+      toast.error('Please enter the Accountant/Bursar Approval Reference');
+      return;
+    }
+    const dFare = Number(discountModal.discountedFare);
+    if (isNaN(dFare) || dFare <= 0) {
+      toast.error('Please enter a valid discounted fee amount');
+      return;
+    }
+    if (dFare >= discountModal.originalFare) {
+      toast.error(`Discounted fee must be less than base fee (₦${discountModal.originalFare.toLocaleString()})`);
+      return;
+    }
+
+    setDiscountModal((prev) => ({ ...prev, submitting: true }));
+    try {
+      const res = await fetch('/api/city-manager/operations', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          action: 'apply_accountant_discount',
+          bookingId: discountModal.booking?.booking_id,
+          studentId: discountModal.booking?.child_id,
+          originalFare: discountModal.originalFare,
+          discountedFare: dFare,
+          accountantApprovalRef: discountModal.accountantApprovalRef.trim(),
+          accountantName: discountModal.accountantName.trim(),
+          discountReason: discountModal.discountReason.trim(),
+        }),
+      });
+      const json = await res.json();
+      if (!res.ok) throw new Error(json.error || 'Failed to apply discount');
+
+      toast.success(json.message || `Accountant discount applied! Actual collected: ₦${dFare.toLocaleString()}`);
+      setDiscountModal({
+        open: false,
+        booking: null,
+        originalFare: 3500,
+        discountedFare: '2500',
+        accountantApprovalRef: '',
+        accountantName: 'School Bursar Office',
+        discountReason: '',
+        submitting: false,
+      });
+      await load();
+    } catch (err: any) {
+      toast.error(err.message || 'Error applying discount');
+    } finally {
+      setDiscountModal((prev) => ({ ...prev, submitting: false }));
+    }
+  };
 
   // Emergency Deputising State
   const [showDeputiseModal, setShowDeputiseModal] = useState(false);
@@ -610,10 +689,44 @@ export function CityManagerOperationsPanel() {
                 </div>
                 <div className="flex items-center justify-between text-[11px] pt-1 border-t border-slate-800">
                   <span className="text-emerald-300 font-bold">Daily Total:</span>
-                  <span className="font-black text-emerald-400 text-xs">
-                    ₦{Number(req.daily_fare || 2000).toLocaleString()}
-                  </span>
+                  <div className="text-right">
+                    {req.is_discounted ? (
+                      <div>
+                        <span className="text-[10px] text-slate-400 line-through mr-1">
+                          ₦{Number(req.daily_fare || 2000).toLocaleString()}
+                        </span>
+                        <span className="font-black text-amber-400 text-xs">
+                          ₦{Number(req.actual_amount_collected).toLocaleString()}
+                        </span>
+                        <span className="block text-[8px] text-emerald-400 font-bold">
+                          ✓ Ref: {req.accountant_approval_ref}
+                        </span>
+                      </div>
+                    ) : (
+                      <span className="font-black text-emerald-400 text-xs">
+                        ₦{Number(req.daily_fare || 2000).toLocaleString()}
+                      </span>
+                    )}
+                  </div>
                 </div>
+
+                <button
+                  type="button"
+                  onClick={() => setDiscountModal({
+                    open: true,
+                    booking: req,
+                    originalFare: Number(req.daily_fare || 3500),
+                    discountedFare: req.is_discounted ? String(req.actual_amount_collected) : String(Math.round(Number(req.daily_fare || 3500) * 0.75)),
+                    accountantApprovalRef: req.accountant_approval_ref || '',
+                    accountantName: req.accountant_name || 'School Bursar Office',
+                    discountReason: req.discount_details?.discountReason || 'Bursar concession authorized',
+                    submitting: false,
+                  })}
+                  className="w-full mt-1.5 py-1 px-2 rounded-lg bg-indigo-500/10 hover:bg-indigo-500/20 text-indigo-300 hover:text-white border border-indigo-500/30 text-[10px] font-extrabold flex items-center justify-center gap-1 transition-all cursor-pointer"
+                >
+                  <Tag size={10} />
+                  <span>{req.is_discounted ? 'Edit Accountant Discount' : 'Apply Accountant Discount'}</span>
+                </button>
               </div>
 
               {/* ESCORT ASSIGNMENT & ACTION BUTTONS */}
@@ -1300,6 +1413,139 @@ export function CityManagerOperationsPanel() {
               >
                 <ArrowRightLeft size={14} />
                 {submittingReassign ? 'Reassigning...' : 'Confirm Reassignment'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ACCOUNTANT-APPROVED PARENT DISCOUNT MODAL (Requirement G) */}
+      {discountModal.open && (
+        <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-xs flex items-center justify-center p-4">
+          <div className="bg-[#0b1c30] border border-slate-700 rounded-3xl max-w-md w-full p-6 shadow-2xl space-y-4">
+            <div className="flex items-center justify-between pb-3 border-b border-slate-800">
+              <div className="flex items-center gap-2.5">
+                <div className="w-10 h-10 rounded-xl bg-indigo-500/20 text-indigo-400 border border-indigo-500/30 flex items-center justify-center">
+                  <Tag size={18} />
+                </div>
+                <div>
+                  <h3 className="font-black text-white text-sm">Accountant-Approved Parent Discount</h3>
+                  <p className="text-[11px] text-slate-400">Record bursar concession & verify actual collection</p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setDiscountModal({ ...discountModal, open: false })}
+                className="p-1 rounded-lg text-slate-400 hover:text-white"
+              >
+                ✕
+              </button>
+            </div>
+
+            {/* Student & Parent Summary */}
+            <div className="p-3 rounded-2xl bg-slate-900 border border-slate-800 space-y-1 text-xs">
+              <div className="flex items-center justify-between">
+                <span className="text-slate-400">Student:</span>
+                <span className="font-bold text-white">{discountModal.booking?.child_name || 'Student'}</span>
+              </div>
+              <div className="flex items-center justify-between">
+                <span className="text-slate-400">School:</span>
+                <span className="font-semibold text-slate-300">{discountModal.booking?.school_name || 'School Campus'}</span>
+              </div>
+              <div className="flex items-center justify-between">
+                <span className="text-slate-400">Standard Daily Fare:</span>
+                <span className="font-mono font-bold text-slate-300">₦{discountModal.originalFare.toLocaleString()}</span>
+              </div>
+            </div>
+
+            {/* Discount Inputs */}
+            <div className="space-y-3 text-xs">
+              <div>
+                <label className="block text-[10px] font-bold uppercase text-slate-400 mb-1">
+                  Discounted Fare (Actual Amount to Collect) *
+                </label>
+                <div className="relative">
+                  <span className="absolute left-3 top-2.5 font-bold text-slate-400">₦</span>
+                  <input
+                    type="number"
+                    value={discountModal.discountedFare}
+                    onChange={(e) => setDiscountModal({ ...discountModal, discountedFare: e.target.value })}
+                    placeholder="2500"
+                    className="w-full pl-8 pr-3 py-2 bg-slate-900 border border-slate-700 rounded-xl text-white font-mono font-bold focus:outline-none focus:border-indigo-500"
+                  />
+                </div>
+                {Number(discountModal.discountedFare) > 0 && Number(discountModal.discountedFare) < discountModal.originalFare && (
+                  <div className="mt-1 flex items-center justify-between text-[11px] text-emerald-400 font-bold px-1">
+                    <span>Discount Savings: ₦{(discountModal.originalFare - Number(discountModal.discountedFare)).toLocaleString()}</span>
+                    <span>({Math.round(((discountModal.originalFare - Number(discountModal.discountedFare)) / discountModal.originalFare) * 100)}% off)</span>
+                  </div>
+                )}
+              </div>
+
+              <div>
+                <label className="block text-[10px] font-bold uppercase text-slate-400 mb-1">
+                  Accountant Approval Reference Number *
+                </label>
+                <input
+                  type="text"
+                  value={discountModal.accountantApprovalRef}
+                  onChange={(e) => setDiscountModal({ ...discountModal, accountantApprovalRef: e.target.value })}
+                  placeholder="e.g. ACC-DISC-2026-081"
+                  className="w-full px-3 py-2 bg-slate-900 border border-slate-700 rounded-xl text-white font-mono uppercase text-xs focus:outline-none focus:border-indigo-500"
+                />
+                <span className="text-[10px] text-slate-500 block mt-0.5">Reference token generated from School Bursar/Finance department.</span>
+              </div>
+
+              <div>
+                <label className="block text-[10px] font-bold uppercase text-slate-400 mb-1">
+                  Approving Accountant / Officer Name
+                </label>
+                <input
+                  type="text"
+                  value={discountModal.accountantName}
+                  onChange={(e) => setDiscountModal({ ...discountModal, accountantName: e.target.value })}
+                  placeholder="e.g. Bursar C. Adeleke"
+                  className="w-full px-3 py-2 bg-slate-900 border border-slate-700 rounded-xl text-white text-xs focus:outline-none focus:border-indigo-500"
+                />
+              </div>
+
+              <div>
+                <label className="block text-[10px] font-bold uppercase text-slate-400 mb-1">
+                  Concession Justification / Notes
+                </label>
+                <textarea
+                  value={discountModal.discountReason}
+                  onChange={(e) => setDiscountModal({ ...discountModal, discountReason: e.target.value })}
+                  placeholder="e.g. 3rd child sibling subsidy approved by finance..."
+                  rows={2}
+                  className="w-full px-3 py-2 bg-slate-900 border border-slate-700 rounded-xl text-white text-xs focus:outline-none focus:border-indigo-500"
+                />
+              </div>
+            </div>
+
+            {/* Escort Awareness Notice */}
+            <div className="p-2.5 rounded-xl bg-indigo-500/10 border border-indigo-500/20 text-[11px] text-indigo-300 flex items-start gap-2">
+              <Info size={14} className="shrink-0 mt-0.5" />
+              <span>Once confirmed, the actual collected amount (₦{Number(discountModal.discountedFare || 0).toLocaleString()}) and the bursar reference will sync immediately to the escort manifest.</span>
+            </div>
+
+            {/* Actions */}
+            <div className="flex items-center justify-end gap-2 pt-2 border-t border-slate-800">
+              <button
+                type="button"
+                onClick={() => setDiscountModal({ ...discountModal, open: false })}
+                className="px-4 py-2 rounded-xl bg-slate-800 text-slate-300 font-bold text-xs"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={handleApplyAccountantDiscount}
+                disabled={discountModal.submitting}
+                className="px-5 py-2.5 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white font-black text-xs flex items-center gap-1.5 shadow-lg cursor-pointer"
+              >
+                <Tag size={13} />
+                <span>{discountModal.submitting ? 'Applying...' : 'Confirm Accountant Discount'}</span>
               </button>
             </div>
           </div>

@@ -17,6 +17,8 @@ import {
   ExternalLink,
   Compass,
   CheckCircle2,
+  Building,
+  Clock,
 } from 'lucide-react';
 import { toast } from 'sonner';
 
@@ -33,6 +35,13 @@ export default function EscortStudentsView({
   const [selectedClass, setSelectedClass] = useState('all');
   const [approvalFilter, setApprovalFilter] = useState<'all' | 'approved' | 'pending'>('all');
   const [directionsModalStudent, setDirectionsModalStudent] = useState<any | null>(null);
+
+  const isSchoolEscort = Boolean(
+    liveDashboardData?.escort?.is_school_escort ||
+    liveDashboardData?.escort?.escort_category === 'school_escort' ||
+    liveDashboardData?.escort?.role === 'school_escort'
+  );
+  const isMyEduRideEscort = !isSchoolEscort;
 
   const students = liveDashboardData?.students?.manifest || [];
   const earnings = liveDashboardData?.earnings_summary || {};
@@ -52,7 +61,7 @@ export default function EscortStudentsView({
 
   return (
     <div className="space-y-6">
-      {/* 1. HEADER BAR & EARNINGS OVERVIEW */}
+      {/* 1. HEADER BAR & STATUS OVERVIEW */}
       <div className="bg-white rounded-3xl p-5 md:p-6 border border-slate-200 shadow-sm space-y-4">
         <div className="flex flex-col lg:flex-row items-start lg:items-center justify-between gap-4">
           <div className="space-y-1">
@@ -63,20 +72,39 @@ export default function EscortStudentsView({
               <h2 className="text-lg md:text-xl font-black text-slate-900">Assigned Students Directory</h2>
             </div>
             <p className="text-xs text-slate-500 font-medium">
-              School-assigned student roster verified by City Manager with approved daily pricing, doorstep GPS, and guardian authorizations.
+              {isSchoolEscort
+                ? 'School-assigned student roster verified by City Manager with doorstep GPS, verified route direction, and guardian authorizations.'
+                : 'School-assigned student roster verified by City Manager with approved daily pricing, doorstep GPS, and guardian authorizations.'}
             </p>
           </div>
 
-          {/* Quick Earnings & CM Approval Stat Badges */}
+          {/* Quick Status / Pricing Stat Badges */}
           <div className="flex flex-wrap items-center gap-2.5">
-            <div className="bg-emerald-50 border border-emerald-200 rounded-2xl px-3.5 py-2">
-              <span className="text-[10px] font-extrabold uppercase tracking-wider text-emerald-800 block">
-                CM Approved Daily Earnings
-              </span>
-              <p className="font-black text-emerald-700 text-base">
-                {earnings.formatted_total_daily_earnings || '₦0'}
-              </p>
-            </div>
+            {/* For MyEduRide Escorts: Show Approved Earnings */}
+            {isMyEduRideEscort && (
+              <div className="bg-emerald-50 border border-emerald-200 rounded-2xl px-3.5 py-2">
+                <span className="text-[10px] font-extrabold uppercase tracking-wider text-emerald-800 block">
+                  CM Approved Daily Earnings
+                </span>
+                <p className="font-black text-emerald-700 text-base">
+                  {earnings.formatted_total_daily_earnings || '₦0'}
+                </p>
+              </div>
+            )}
+
+            {/* For School Escorts: Show Designated School Fleet (NO PRICE) */}
+            {isSchoolEscort && (
+              <div className="bg-teal-50 border border-teal-200 rounded-2xl px-3.5 py-2">
+                <span className="text-[10px] font-extrabold uppercase tracking-wider text-teal-800 block">
+                  Designated School Fleet
+                </span>
+                <p className="font-black text-teal-700 text-sm flex items-center gap-1.5 mt-0.5">
+                  <Building size={14} className="shrink-0" />
+                  <span className="truncate max-w-[180px]">{liveDashboardData?.school?.name || 'School Campus Fleet'}</span>
+                </p>
+              </div>
+            )}
+
             <div className="bg-slate-50 border border-slate-200 rounded-2xl px-3 py-2 text-slate-700">
               <span className="text-[10px] font-extrabold uppercase tracking-wider text-slate-400 block">
                 Approved Manifest
@@ -188,24 +216,58 @@ export default function EscortStudentsView({
                   </div>
                 </div>
 
-                {/* Approved Pricing Pill */}
-                <div className="text-right shrink-0 bg-emerald-50/80 px-2.5 py-1.5 rounded-xl border border-emerald-100">
-                  <span className="text-[9px] font-extrabold uppercase text-emerald-800 block">Approved Fare</span>
-                  <span className="font-black text-emerald-700 text-xs block">{st.formatted_daily_fare || '₦3,500'}</span>
-                  <span className="text-[8px] text-slate-400">({st.formatted_morning_fare || '₦1,750'}/trip)</span>
-                </div>
+                {/* For MyEduRide Escort: Approved Pricing Pill */}
+                {isMyEduRideEscort && (
+                  <div className="text-right shrink-0 bg-emerald-50/80 px-2.5 py-1.5 rounded-xl border border-emerald-100">
+                    <span className="text-[9px] font-extrabold uppercase text-emerald-800 block">Approved Fare</span>
+                    <span className="font-black text-emerald-700 text-xs block">{st.formatted_daily_fare || '₦3,500'}</span>
+                    <span className="text-[8px] text-slate-400">({st.formatted_morning_fare || '₦1,750'}/trip)</span>
+                  </div>
+                )}
+
+                {/* For School Escort: Direction & Distance Corridor Pill (NO PRICE SHOWN) */}
+                {isSchoolEscort && (
+                  <div className="text-right shrink-0 bg-teal-50/90 px-2.5 py-1.5 rounded-xl border border-teal-200">
+                    <span className="text-[9px] font-extrabold uppercase text-teal-800 block">Route Direction</span>
+                    <span className="font-mono font-black text-teal-700 text-xs block">
+                      {st.distance_km != null ? `📏 ${st.distance_km} km` : 'Doorstep Route'}
+                    </span>
+                    <span className="text-[8px] text-slate-500 font-bold block">
+                      {st.estimated_transit_mins ? `⏱️ ~${st.estimated_transit_mins}m transit` : 'Campus Route'}
+                    </span>
+                  </div>
+                )}
               </div>
 
               {/* Details Box */}
               <div className="p-3 bg-slate-50 rounded-2xl border border-slate-100 space-y-2 text-xs">
                 <div className="flex items-center justify-between text-slate-600">
-                  <span className="text-[10px] font-bold text-slate-400 uppercase">Pickup Location</span>
-                  <span className="font-semibold text-slate-800 truncate ml-2">{st.pickup_address || 'Designated Stop'}</span>
+                  <span className="text-[10px] font-bold text-slate-400 uppercase">Doorstep Address</span>
+                  <span className="font-semibold text-slate-800 truncate ml-2">{st.house_address || st.pickup_address || 'Designated Stop'}</span>
                 </div>
                 {st.house_landmark && (
                   <div className="flex items-start justify-between text-slate-600">
                     <span className="text-[10px] font-bold text-slate-400 uppercase shrink-0">Landmark</span>
                     <span className="text-[11px] text-slate-700 truncate ml-2 text-right">{st.house_landmark}</span>
+                  </div>
+                )}
+                {/* School Route Direction & Distance */}
+                {st.distance_km != null && (
+                  <div className="flex items-center justify-between text-slate-600 bg-teal-50/60 px-2.5 py-1.5 rounded-lg border border-teal-100">
+                    <span className="text-[10px] font-bold text-teal-800 uppercase flex items-center gap-1">
+                      <Compass size={11} />
+                      <span>Campus Route</span>
+                    </span>
+                    <span className="font-mono font-extrabold text-teal-700 text-[11px]">
+                      📏 {st.distance_km} km (⏱️ ~{st.estimated_transit_mins || 12}m)
+                    </span>
+                  </div>
+                )}
+                {/* Pricing only for MyEduRide Escorts */}
+                {isMyEduRideEscort && st.formatted_daily_fare && (
+                  <div className="flex items-center justify-between text-slate-600 bg-emerald-50/50 px-2 py-1 rounded-lg border border-emerald-100">
+                    <span className="text-[10px] font-bold text-emerald-800 uppercase">Trip Pricing</span>
+                    <span className="font-black text-emerald-700 text-xs">{st.formatted_daily_fare} / day</span>
                   </div>
                 )}
                 <div className="flex items-center justify-between text-slate-600">
@@ -232,18 +294,19 @@ export default function EscortStudentsView({
                   className="py-2 px-2.5 rounded-xl bg-slate-100 hover:bg-emerald-50 hover:text-emerald-800 hover:border-emerald-300 border border-slate-200 text-slate-700 font-bold text-xs flex items-center justify-center gap-1.5 transition-all cursor-pointer"
                 >
                   <Navigation size={13} className="text-emerald-600" />
-                  <span>Doorstep Info</span>
+                  <span>{isSchoolEscort ? 'Route & Direction' : 'Doorstep Info'}</span>
                 </button>
 
-                {st.house_lat && st.house_lng ? (
+                {st.driving_directions_url || (st.house_lat && st.house_lng) ? (
                   <a
-                    href={st.google_maps_nav_url || `https://www.google.com/maps/dir/?api=1&destination=${st.house_lat},${st.house_lng}`}
+                    href={st.driving_directions_url || st.google_maps_nav_url || `https://www.google.com/maps/dir/?api=1&destination=${st.house_lat},${st.house_lng}`}
                     target="_blank"
                     rel="noopener noreferrer"
                     className="py-2 px-2.5 rounded-xl bg-teal-700 hover:bg-teal-800 text-white font-extrabold text-xs flex items-center justify-center gap-1.5 transition-all shadow-xs"
+                    title={isSchoolEscort ? 'Open Driving Directions from School to Student' : 'Open Google Maps Navigation'}
                   >
                     <ExternalLink size={13} />
-                    <span>Navigate</span>
+                    <span>{isSchoolEscort ? 'Driving Route' : 'Navigate'}</span>
                   </a>
                 ) : (
                   <button
@@ -363,11 +426,53 @@ export default function EscortStudentsView({
                 </div>
               )}
 
+              {/* Route Corridor & Directions for School Escorts (NO PRICE SHOWN) */}
+              {isSchoolEscort && (
+                <div className="p-3 bg-teal-50/80 rounded-2xl border border-teal-200 space-y-2">
+                  <div className="flex items-center justify-between">
+                    <span className="text-[10px] font-bold uppercase text-teal-800 flex items-center gap-1">
+                      <Compass size={12} />
+                      <span>School Route Direction</span>
+                    </span>
+                    <span className="px-2 py-0.5 rounded-full bg-teal-200/60 text-teal-900 font-mono font-black text-[10px]">
+                      {directionsModalStudent.distance_km != null ? `📏 ${directionsModalStudent.distance_km} km` : 'Doorstep Corridor'}
+                    </span>
+                  </div>
+                  <div className="grid grid-cols-2 gap-2 text-[11px]">
+                    <div className="bg-white p-2 rounded-xl border border-teal-100">
+                      <span className="text-[9px] text-slate-400 uppercase font-bold block">Campus Origin</span>
+                      <span className="font-bold text-slate-800 truncate block">
+                        {directionsModalStudent.school_name || liveDashboardData?.school?.name || 'School Campus'}
+                      </span>
+                    </div>
+                    <div className="bg-white p-2 rounded-xl border border-teal-100">
+                      <span className="text-[9px] text-slate-400 uppercase font-bold block">Est. Transit Time</span>
+                      <span className="font-bold text-teal-700 block">
+                        ⏱️ ~{directionsModalStudent.estimated_transit_mins || 12} mins
+                      </span>
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {/* Pricing Breakdown for MyEduRide Escorts */}
+              {isMyEduRideEscort && (
+                <div className="p-3 bg-emerald-50/80 rounded-2xl border border-emerald-200 flex items-center justify-between">
+                  <div>
+                    <span className="text-[10px] font-bold uppercase text-emerald-800 block">Approved Transport Fare</span>
+                    <p className="font-black text-emerald-700 text-sm">{directionsModalStudent.formatted_daily_fare || '₦3,500'} / day</p>
+                  </div>
+                  <span className="text-[10px] font-semibold text-slate-500 bg-white px-2 py-1 rounded-lg border border-emerald-100">
+                    {directionsModalStudent.formatted_morning_fare || '₦1,750'} / trip
+                  </span>
+                </div>
+              )}
+
               {/* Guardian Contact Info */}
-              <div className="p-3 bg-emerald-50/50 rounded-2xl border border-emerald-100 flex items-center justify-between">
+              <div className="p-3 bg-slate-50 rounded-2xl border border-slate-100 flex items-center justify-between">
                 <div>
-                  <span className="text-[10px] font-bold uppercase text-emerald-700">Guardian Contact</span>
-                  <p className="font-bold text-slate-900 text-xs">{directionsModalStudent.parent_name || 'Parent'}</p>
+                  <span className="text-[10px] font-bold uppercase text-slate-400">Guardian Contact</span>
+                  <p className="font-bold text-slate-900 text-xs">{directionsModalStudent.parent_name || 'Parent / Guardian'}</p>
                 </div>
                 <a
                   href={`tel:${directionsModalStudent.parent_phone || '08031234567'}`}
@@ -390,6 +495,7 @@ export default function EscortStudentsView({
               </button>
               <a
                 href={
+                  directionsModalStudent.driving_directions_url ||
                   directionsModalStudent.google_maps_nav_url ||
                   (directionsModalStudent.house_lat != null && directionsModalStudent.house_lng != null
                     ? `https://www.google.com/maps/dir/?api=1&destination=${directionsModalStudent.house_lat},${directionsModalStudent.house_lng}`
@@ -397,10 +503,10 @@ export default function EscortStudentsView({
                 }
                 target="_blank"
                 rel="noopener noreferrer"
-                className="flex-1 py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-extrabold text-xs flex items-center justify-center gap-1.5 shadow-md transition-all"
+                className="flex-1 py-2.5 rounded-xl bg-teal-700 hover:bg-teal-800 text-white font-extrabold text-xs flex items-center justify-center gap-1.5 shadow-md transition-all"
               >
                 <Navigation size={14} />
-                <span>Open in Google Maps</span>
+                <span>{isSchoolEscort ? 'Driving Route from School' : 'Open in Google Maps'}</span>
                 <ExternalLink size={12} className="opacity-75" />
               </a>
             </div>

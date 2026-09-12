@@ -296,7 +296,47 @@ export async function GET(request: NextRequest) {
       return 3500;
     };
 
-    // Map students into rich manifest with City Manager approval and approved pricing
+    const extractDiscountInfo = (stId: string): any => {
+      const matchAssignment = liveAssignments.find((a) => a.student_id === stId);
+      const matchBooking = liveBookings.find(
+        (b) => b.student_id === stId || b.student?.id === stId || b.id === matchAssignment?.booking_id
+      );
+      if (matchBooking?.notes) {
+        try {
+          const parsed = typeof matchBooking.notes === 'string' ? JSON.parse(matchBooking.notes) : matchBooking.notes;
+          if (parsed?.discount) return parsed.discount;
+        } catch {}
+      }
+      if (matchAssignment?.notes && String(matchAssignment.notes).includes('Accountant Discounted Fare')) {
+        return {
+          discountedFare: extractStudentFare(stId),
+          note: matchAssignment.notes,
+        };
+      }
+      return null;
+    };
+
+    const isSchoolEscort = Boolean(
+      escortProfile?.escortCategory === 'school_escort' ||
+      escortProfile?.createdBySchoolId ||
+      escortProfile?.schoolId ||
+      session?.roles?.some((r: any) => r.role === 'school_escort' || (r.school_id && r.role === 'driver'))
+    );
+    const escortCategory = isSchoolEscort ? 'school_escort' : 'myeduride_escort';
+
+    const computeHaversineDistanceKm = (lat1: number, lon1: number, lat2: number, lon2: number): number => {
+      const R = 6371;
+      const dLat = ((lat2 - lat1) * Math.PI) / 180;
+      const dLon = ((lon2 - lon1) * Math.PI) / 180;
+      const a =
+        Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+        Math.cos((lat1 * Math.PI) / 180) * Math.cos((lat2 * Math.PI) / 180) *
+        Math.sin(dLon / 2) * Math.sin(dLon / 2);
+      const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+      return Math.round(R * c * 100) / 100;
+    };
+
+    // Map students into rich manifest with City Manager approval, location, directions, and conditional pricing
     const studentManifest = assignedStudents.map((st, idx) => {
       const arrival = attendanceToday.find((a) => a.student_id === st.id && a.type === 'arrival');
       const departure = attendanceToday.find((a) => a.student_id === st.id && a.type === 'departure');
@@ -313,15 +353,35 @@ export async function GET(request: NextRequest) {
       const cmStatusLabel = matchAssignment?.status === 'pending_confirmation' ? 'pending_approval' : 'approved';
       const assignedSchoolName = matchAssignment?.school?.name || schoolData?.name || 'School Fleet';
 
-      const dailyFare = extractStudentFare(st.id);
-      const morningFare = Math.round(dailyFare / 2);
-      const afternoonFare = Math.round(dailyFare / 2);
+      const schoolLat = schoolData?.gps_lat ? Number(schoolData.gps_lat) : 6.4474;
+      const schoolLng = schoolData?.gps_lng ? Number(schoolData.gps_lng) : 3.4731;
+      const houseLat = st.house_lat ? Number(st.house_lat) : null;
+      const houseLng = st.house_lng ? Number(st.house_lng) : null;
+
+      let distanceKm: number | null = null;
+      let estimatedTransitMins: number | null = null;
+      let directionsUrl: string | null = null;
+
+      if (houseLat != null && houseLng != null) {
+        distanceKm = computeHaversineDistanceKm(schoolLat, schoolLng, houseLat, houseLng);
+        estimatedTransitMins = Math.max(5, Math.round((distanceKm / 25) * 60));
+        directionsUrl = `https://www.google.com/maps/dir/?api=1&origin=${schoolLat},${schoolLng}&destination=${houseLat},${houseLng}&travelmode=driving`;
+      }
+
+      // MyEduRide Escort: sees location, address, AND price
+      // School Escort: DOES NOT see any price, but sees location, doorstep address, distance, and direction
+      const rawDailyFare = extractStudentFare(st.id);
+      const dailyFare = isSchoolEscort ? null : rawDailyFare;
+      const morningFare = dailyFare != null ? Math.round(dailyFare / 2) : null;
+      const afternoonFare = dailyFare != null ? Math.round(dailyFare / 2) : null;
 
       const cls = Array.isArray(st.class) ? st.class[0]?.name : (st.class?.name || st.class_name || 'MyEduRide Transit');
-      const hasHousePin = st.house_lat != null && st.house_lng != null;
-      const navUrl = hasHousePin
-        ? `https://www.google.com/maps/dir/?api=1&destination=${st.house_lat},${st.house_lng}`
-        : null;
+      const hasHousePin = houseLat != null && houseLng != null;
+      const navUrl = directionsUrl || (hasHousePin
+        ? `https://www.google.com/maps/dir/?api=1&destination=${houseLat},${houseLng}`
+        : null);
+
+      const discountInfo = extractDiscountInfo(st.id);
 
       return {
         id: st.id,
@@ -331,22 +391,33 @@ export async function GET(request: NextRequest) {
         photo_url: st.photo_url || null,
         school_id: matchAssignment?.school_id || st.school_id || schoolId,
         school_name: assignedSchoolName,
+        school_lat: schoolLat,
+        school_lng: schoolLng,
+        school_address: schoolData?.location_address || schoolData?.address || 'School Campus Grounds',
         city_manager_status: cmStatusLabel,
         city_manager_approved: isCmApproved,
+        show_price: !isSchoolEscort,
         daily_fare: dailyFare,
-        formatted_daily_fare: `₦${dailyFare.toLocaleString()}`,
+        formatted_daily_fare: dailyFare != null ? `₦${dailyFare.toLocaleString()}` : null,
         morning_fare: morningFare,
         afternoon_fare: afternoonFare,
-        formatted_morning_fare: `₦${morningFare.toLocaleString()}`,
-        formatted_afternoon_fare: `₦${afternoonFare.toLocaleString()}`,
+        formatted_morning_fare: morningFare != null ? `₦${morningFare.toLocaleString()}` : null,
+        formatted_afternoon_fare: afternoonFare != null ? `₦${afternoonFare.toLocaleString()}` : null,
+        discount_applied: Boolean(discountInfo),
+        discount_amount: discountInfo?.variance || null,
+        accountant_ref: discountInfo?.accountantApprovalRef || null,
+        discount_note: discountInfo ? (discountInfo.discountReason || `Accountant Approved Concession (Ref: ${discountInfo.accountantApprovalRef || 'ACC'})`) : null,
         pickup_address: st.house_address || st.pickup_address || routeStops[idx % Math.max(routeStops.length, 1)]?.stop_name || 'Designated Stop',
         house_address: st.house_address || null,
-        house_lat: st.house_lat ? Number(st.house_lat) : null,
-        house_lng: st.house_lng ? Number(st.house_lng) : null,
+        house_lat: houseLat,
+        house_lng: houseLng,
         house_landmark: st.house_landmark || null,
         house_notes: st.house_notes || null,
         house_pinned_at: st.house_pinned_at || null,
         is_house_pinned: hasHousePin,
+        distance_km: distanceKm,
+        estimated_transit_mins: estimatedTransitMins,
+        driving_directions_url: directionsUrl,
         google_maps_nav_url: navUrl,
         status,
         morning_status: arrival ? 'DROPPED_OFF_AT_SCHOOL' : (status === 'ON_BOARD' ? 'PICKED_UP_FROM_HOME' : 'PENDING_HOME_PICKUP'),
@@ -358,22 +429,36 @@ export async function GET(request: NextRequest) {
     });
 
     // Compute Today's Total Earnings Summary for Escort
-    const totalDailyEarnings = studentManifest.reduce((acc, s) => acc + (s.city_manager_approved ? s.daily_fare : 0), 0);
-    const morningProjected = studentManifest.reduce((acc, s) => acc + (s.city_manager_approved ? s.morning_fare : 0), 0);
-    const afternoonProjected = studentManifest.reduce((acc, s) => acc + (s.city_manager_approved ? s.afternoon_fare : 0), 0);
+    const totalDailyEarnings = studentManifest.reduce((acc, s) => acc + (s.city_manager_approved && s.daily_fare ? s.daily_fare : 0), 0);
+    const morningProjected = studentManifest.reduce((acc, s) => acc + (s.city_manager_approved && s.morning_fare ? s.morning_fare : 0), 0);
+    const afternoonProjected = studentManifest.reduce((acc, s) => acc + (s.city_manager_approved && s.afternoon_fare ? s.afternoon_fare : 0), 0);
     const approvedStudentsCount = studentManifest.filter((s) => s.city_manager_approved).length;
 
-    const earningsSummary = {
-      total_daily_earnings: totalDailyEarnings,
-      formatted_total_daily_earnings: `₦${totalDailyEarnings.toLocaleString()}`,
-      morning_projected: morningProjected,
-      formatted_morning_projected: `₦${morningProjected.toLocaleString()}`,
-      afternoon_projected: afternoonProjected,
-      formatted_afternoon_projected: `₦${afternoonProjected.toLocaleString()}`,
-      total_students: studentManifest.length,
-      approved_students_count: approvedStudentsCount,
-      pending_students_count: studentManifest.length - approvedStudentsCount,
-    };
+    const earningsSummary = isSchoolEscort
+      ? {
+          is_school_salaried: true,
+          total_daily_earnings: null,
+          formatted_total_daily_earnings: null,
+          morning_projected: null,
+          formatted_morning_projected: null,
+          afternoon_projected: null,
+          formatted_afternoon_projected: null,
+          total_students: studentManifest.length,
+          approved_students_count: approvedStudentsCount,
+          pending_students_count: studentManifest.length - approvedStudentsCount,
+        }
+      : {
+          is_school_salaried: false,
+          total_daily_earnings: totalDailyEarnings,
+          formatted_total_daily_earnings: `₦${totalDailyEarnings.toLocaleString()}`,
+          morning_projected: morningProjected,
+          formatted_morning_projected: `₦${morningProjected.toLocaleString()}`,
+          afternoon_projected: afternoonProjected,
+          formatted_afternoon_projected: `₦${afternoonProjected.toLocaleString()}`,
+          total_students: studentManifest.length,
+          approved_students_count: approvedStudentsCount,
+          pending_students_count: studentManifest.length - approvedStudentsCount,
+        };
 
     const morningStudents = studentManifest.map((s) => ({
       ...s,
@@ -504,6 +589,9 @@ export async function GET(request: NextRequest) {
         residential_address: escortProfile?.residential_address || userProfile?.address || '',
         closest_landmark: escortProfile?.closest_landmark || '',
         is_house_pinned: Boolean(escortProfile?.house_lat && escortProfile?.house_lng),
+        escort_category: escortCategory,
+        is_school_escort: isSchoolEscort,
+        is_myeduride_escort: !isSchoolEscort,
       },
       school: {
         id: schoolData?.id || '0af823c7-4587-4e97-9ff5-b92fc979a167',

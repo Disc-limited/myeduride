@@ -121,6 +121,43 @@ function CityManagerDashboardContent() {
     zoomLevel: 1,
   });
 
+  // Available Schools for Quick Assignment
+  const [availableSchools, setAvailableSchools] = useState<Array<{ id: string; name: string }>>([]);
+  const [quickAssignModal, setQuickAssignModal] = useState<{
+    open: boolean;
+    app: any;
+    schoolId: string;
+    notes: string;
+    submitting: boolean;
+  }>({
+    open: false,
+    app: null,
+    schoolId: '',
+    notes: '',
+    submitting: false,
+  });
+  const [viewStudentsModal, setViewStudentsModal] = useState<{
+    open: boolean;
+    escort: any;
+    students: any[];
+  }>({
+    open: false,
+    escort: null,
+    students: [],
+  });
+
+  // Fetch Live Schools from Backend
+  useEffect(() => {
+    fetch('/api/city-manager/operations')
+      .then((res) => res.json())
+      .then((data) => {
+        if (data?.schools && Array.isArray(data.schools)) {
+          setAvailableSchools(data.schools);
+        }
+      })
+      .catch((err) => console.warn('[city-manager] fetch schools notice:', err));
+  }, []);
+
   // Fetch Live Escort Applications from Backend
   useEffect(() => {
     fetch(`/api/escorts/applications?city=${encodeURIComponent(selectedCity)}`)
@@ -133,6 +170,64 @@ function CityManagerDashboardContent() {
       })
       .catch((err) => console.warn('[city-manager] fetch applications notice:', err));
   }, [selectedCity]);
+
+  // Handler for Quick Approve & Assign to School
+  const handleQuickApproveAndAssignSubmit = async () => {
+    if (!quickAssignModal.app?.id) return;
+    if (!quickAssignModal.schoolId) {
+      toast.error('Please select a destination school to assign this escort.');
+      return;
+    }
+    const matchedSchool = availableSchools.find((s) => s.id === quickAssignModal.schoolId);
+    const schoolName = matchedSchool?.name || 'Designated School Campus';
+    setQuickAssignModal((prev) => ({ ...prev, submitting: true }));
+
+    try {
+      const res = await fetch('/api/city-manager/operations', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          action: 'quick_approve_and_assign_school',
+          escortApplicationId: quickAssignModal.app.id,
+          schoolId: quickAssignModal.schoolId,
+          schoolName,
+          notes: quickAssignModal.notes || `Approved & assigned to ${schoolName} by City Manager`,
+        }),
+      });
+      const d = await res.json();
+      if (!res.ok) throw new Error(d.error || 'Failed to approve and assign escort');
+
+      // Update local applications state
+      setEscortApplications((prev) =>
+        prev.map((a) =>
+          a.id === quickAssignModal.app.id
+            ? {
+                ...a,
+                status: 'CITY_MANAGER_APPROVED',
+                schoolId: quickAssignModal.schoolId,
+                createdBySchoolId: quickAssignModal.schoolId,
+                schoolName,
+                createdBySchoolName: schoolName,
+                escortCategory: 'school_escort',
+              }
+            : a
+        )
+      );
+
+      // Trigger approval notification modal preview
+      setApprovalModalTriggered({
+        ...quickAssignModal.app,
+        schoolName,
+        createdBySchoolName: schoolName,
+      });
+
+      toast.success(`Escort ${quickAssignModal.app.fullName || quickAssignModal.app.name || ''} approved and assigned to ${schoolName}!`);
+      setQuickAssignModal({ open: false, app: null, schoolId: '', notes: '', submitting: false });
+    } catch (err: any) {
+      toast.error(err.message || 'Could not complete quick approval and assignment');
+      setQuickAssignModal((prev) => ({ ...prev, submitting: false }));
+    }
+  };
 
   // Counts for Escort Pillars & Pending Corrections
   const countMyEduRide = escortApplications.filter(
@@ -572,7 +667,7 @@ function CityManagerDashboardContent() {
                         </div>
 
                         {/* Category Badge Pill */}
-                        <div className="flex items-center gap-1.5 mt-1">
+                        <div className="flex flex-wrap items-center gap-1.5 mt-1">
                           {isSchool ? (
                             <span className="px-2 py-0.5 rounded-md text-[9px] font-bold bg-amber-500/20 text-amber-300 border border-amber-500/30 flex items-center gap-1 truncate max-w-[170px]">
                               <School size={10} className="shrink-0" />
@@ -587,6 +682,13 @@ function CityManagerDashboardContent() {
                             <span className="px-2 py-0.5 rounded-md text-[9px] font-bold bg-indigo-500/20 text-indigo-300 border border-indigo-500/30 flex items-center gap-1">
                               <ShieldCheck size={10} className="shrink-0" />
                               <span>MyEduRide Escort</span>
+                            </span>
+                          )}
+
+                          {(app.assignedStudentsCount > 0 || app.assignedStudents?.length > 0) && (
+                            <span className="px-2 py-0.5 rounded-md text-[9px] font-bold bg-emerald-500/20 text-emerald-300 border border-emerald-500/30 flex items-center gap-1">
+                              <Users size={10} className="shrink-0" />
+                              <span>{app.assignedStudentsCount || app.assignedStudents?.length} Students</span>
                             </span>
                           )}
                         </div>
@@ -947,10 +1049,134 @@ function CityManagerDashboardContent() {
 
               </div>
 
+              {/* BOX 5: ASSIGNED STUDENTS & CUSTODY MANIFEST (Visible if approved or has students) */}
+              {(selectedApp.status === 'CITY_MANAGER_APPROVED' || selectedApp.status === 'ACTIVE' || (selectedApp.assignedStudents && selectedApp.assignedStudents.length > 0)) && (
+                <div className="p-4 rounded-2xl bg-[#06162a] border border-emerald-500/40 shadow-xl space-y-3">
+                  <div className="flex flex-wrap items-center justify-between gap-2 border-b border-slate-800 pb-2.5">
+                    <div className="flex items-center gap-2">
+                      <div className="w-8 h-8 rounded-xl bg-emerald-500/20 border border-emerald-500/30 flex items-center justify-center text-emerald-400">
+                        <Users className="w-4 h-4" />
+                      </div>
+                      <div>
+                        <h4 className="font-black text-white text-xs uppercase tracking-wide flex items-center gap-2">
+                          Students Assigned to Escort
+                          <span className="px-2 py-0.5 rounded-full bg-emerald-500/20 text-emerald-300 font-mono text-[10px] border border-emerald-500/30 font-black">
+                            {selectedApp.assignedStudents?.length || selectedApp.assignedStudentsCount || 0} Total
+                          </span>
+                        </h4>
+                        <p className="text-[10px] text-slate-400">
+                          Active custody roster for school transport &amp; doorstep pickup
+                        </p>
+                      </div>
+                    </div>
+
+                    <div className="flex items-center gap-2">
+                      {(selectedApp.assignedStudents?.length > 0) && (
+                        <button
+                          type="button"
+                          onClick={() => setViewStudentsModal({ open: true, escort: selectedApp, students: selectedApp.assignedStudents })}
+                          className="px-2.5 py-1 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-200 text-[10px] font-bold flex items-center gap-1 border border-slate-700"
+                        >
+                          <Maximize2 size={12} /> Expand Manifest
+                        </button>
+                      )}
+                      <button
+                        type="button"
+                        onClick={() => setQuickAssignModal({ open: true, app: selectedApp, schoolId: selectedApp.schoolId || availableSchools[0]?.id || '', notes: '', submitting: false })}
+                        className="px-2.5 py-1 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white text-[10px] font-extrabold flex items-center gap-1 shadow-sm"
+                      >
+                        <School size={12} /> {selectedApp.createdBySchoolName ? 'Change School' : 'Assign to School'}
+                      </button>
+                    </div>
+                  </div>
+
+                  {/* Assigned Students Grid / List */}
+                  {selectedApp.assignedStudents && selectedApp.assignedStudents.length > 0 ? (
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-2.5 max-h-72 overflow-y-auto pr-1">
+                      {selectedApp.assignedStudents.map((st: any) => (
+                        <div key={st.id || st.assignmentId} className="p-2.5 rounded-xl bg-slate-900/90 border border-slate-800 flex items-start gap-3 hover:border-slate-700 transition-colors">
+                          <StudentAvatar
+                            photoUrl={st.photo}
+                            name={st.name}
+                            size={40}
+                            className="shrink-0 rounded-xl"
+                          />
+                          <div className="min-w-0 flex-1 text-xs">
+                            <div className="flex items-center justify-between gap-1">
+                              <strong className="text-white font-bold truncate block">{st.name}</strong>
+                              <span className="text-[9px] font-black px-1.5 py-0.5 rounded bg-emerald-500/20 text-emerald-400 border border-emerald-500/30 shrink-0">
+                                {st.status === 'active' ? 'ACTIVE' : (st.status || 'ASSIGNED').toUpperCase()}
+                              </span>
+                            </div>
+                            <div className="flex items-center gap-2 text-[10px] text-slate-400 mt-0.5">
+                              <span className="text-amber-300 font-semibold">{st.className || 'Class N/A'}</span>
+                              <span>•</span>
+                              <span className="text-slate-400 font-mono">{st.studentIdNumber || 'ID: —'}</span>
+                            </div>
+                            <p className="text-[10px] text-slate-300 truncate mt-1 flex items-center gap-1">
+                              <MapPin size={10} className="text-emerald-400 shrink-0" />
+                              <span className="truncate">{st.houseAddress}</span>
+                              {st.isHousePinned && (
+                                <span className="text-[8px] font-black px-1 py-0.2 rounded bg-emerald-600 text-white shrink-0">
+                                  PINNED ✓
+                                </span>
+                              )}
+                            </p>
+                            {st.distanceKm != null && (
+                              <div className="flex items-center gap-1.5 mt-1 font-mono text-[10px]">
+                                <span className="px-1.5 py-0.5 rounded bg-emerald-500/20 text-emerald-300 font-bold border border-emerald-500/30">
+                                  📏 {st.distanceKm} km to School
+                                </span>
+                                <span className="text-amber-300">
+                                  ⏱️ ~{st.estimatedTransitMins || 12}m
+                                </span>
+                              </div>
+                            )}
+                            {st.parentPhone && (
+                              <p className="text-[10px] text-slate-400 mt-1 flex items-center gap-1">
+                                <PhoneCall size={10} className="text-slate-500 shrink-0" />
+                                <span className="font-mono text-slate-300">{st.parentPhone}</span>
+                              </p>
+                            )}
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  ) : (
+                    <div className="p-4 rounded-xl bg-slate-900/60 border border-dashed border-slate-800 text-center space-y-1.5">
+                      <Users className="w-6 h-6 text-slate-600 mx-auto" />
+                      <p className="text-xs font-bold text-slate-300">No Students Currently Assigned</p>
+                      <p className="text-[11px] text-slate-500 max-w-md mx-auto">
+                        This escort is approved and ready for school duty. You can assign students via the Operations &amp; Escort Assignments panel or parent booking approvals.
+                      </p>
+                      <button
+                        type="button"
+                        onClick={() => setActiveSection('assignments')}
+                        className="mt-2 inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-brand-green/20 hover:bg-brand-green/30 text-emerald-400 text-xs font-extrabold border border-brand-green/30 transition-all cursor-pointer"
+                      >
+                        <ClipboardList size={14} /> Open Assignments Dispatch
+                      </button>
+                    </div>
+                  )}
+                </div>
+              )}
+
               {/* 4 CITY MANAGER ACTIONS RIBBON */}
               <div className="pt-3 border-t border-slate-800">
                 <span className="text-[11px] font-bold text-slate-400 uppercase tracking-wider block mb-2">City Manager Verification Actions</span>
-                <div className="grid grid-cols-2 sm:grid-cols-6 gap-2">
+                <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-7 gap-2">
+                  {/* 0. QUICK APPROVE & ASSIGN TO SCHOOL */}
+                  <button
+                    type="button"
+                    onClick={() => setQuickAssignModal({ open: true, app: selectedApp, schoolId: selectedApp.schoolId || availableSchools[0]?.id || '', notes: '', submitting: false })}
+                    className="py-2.5 px-2 rounded-xl bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 text-white font-extrabold text-[11px] shadow-lg shadow-emerald-600/30 flex items-center justify-center gap-1.5 transition-all col-span-2 border border-emerald-400/40"
+                    title="Simultaneously approve escort and assign to school campus"
+                  >
+                    <School className="w-3.5 h-3.5 text-amber-300" />
+                    <CheckCircle2 className="w-3.5 h-3.5" />
+                    <span>Quick Approve &amp; Assign School</span>
+                  </button>
+
                   {/* 1. APPROVE */}
                   <button
                     type="button"
@@ -1081,6 +1307,225 @@ function CityManagerDashboardContent() {
           escortName={approvalModalTriggered.name}
           escortId={approvalModalTriggered.id}
         />
+      )}
+
+      {/* QUICK APPROVE & ASSIGN TO SCHOOL MODAL */}
+      {quickAssignModal.open && quickAssignModal.app && (
+        <div className="fixed inset-0 z-50 bg-slate-950/80 backdrop-blur-xs flex items-center justify-center p-4 animate-in fade-in">
+          <div className="bg-[#0c1e36] text-white rounded-3xl max-w-lg w-full p-6 border border-emerald-500/40 shadow-2xl space-y-4">
+            <div className="flex items-center justify-between border-b border-slate-800 pb-3">
+              <div className="flex items-center gap-2.5">
+                <div className="w-10 h-10 rounded-xl bg-emerald-500/20 border border-emerald-500/30 flex items-center justify-center text-emerald-400">
+                  <School className="w-5 h-5" />
+                </div>
+                <div>
+                  <h3 className="text-sm font-black text-white uppercase tracking-wider">
+                    Quick Approve &amp; Assign Escort
+                  </h3>
+                  <p className="text-[11px] text-slate-400">
+                    Approve application &amp; assign to designated school campus
+                  </p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setQuickAssignModal({ open: false, app: null, schoolId: '', notes: '', submitting: false })}
+                className="p-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-400 hover:text-white"
+              >
+                <X size={16} />
+              </button>
+            </div>
+
+            {/* Escort Summary Badge */}
+            <div className="p-3 rounded-2xl bg-slate-900/90 border border-slate-800 flex items-center gap-3">
+              {(quickAssignModal.app.photo || quickAssignModal.app.uploadedDocDetails?.selfie?.fileUrl) ? (
+                <img
+                  src={quickAssignModal.app.photo || quickAssignModal.app.uploadedDocDetails?.selfie?.fileUrl}
+                  alt={quickAssignModal.app.name || 'Escort'}
+                  className="w-12 h-12 rounded-xl object-cover border border-slate-700 shrink-0"
+                />
+              ) : (
+                <div className="w-12 h-12 rounded-xl bg-slate-800 border border-slate-700 flex items-center justify-center font-bold text-white shrink-0">
+                  {quickAssignModal.app.name?.[0] || 'E'}
+                </div>
+              )}
+              <div className="min-w-0 flex-1 text-xs">
+                <h4 className="font-extrabold text-white truncate">{quickAssignModal.app.fullName || quickAssignModal.app.name}</h4>
+                <p className="text-[11px] text-slate-400 font-mono mt-0.5">
+                  {quickAssignModal.app.phone || 'No phone'} • NIN: {quickAssignModal.app.nin || '—'}
+                </p>
+                <p className="text-[10px] text-emerald-400 font-semibold mt-0.5">
+                  Area: {quickAssignModal.app.operatingArea || quickAssignModal.app.city || 'Lagos Metropolis'}
+                </p>
+              </div>
+            </div>
+
+            {/* Target School Selector */}
+            <div className="space-y-1.5">
+              <label className="text-[11px] font-bold text-slate-300 uppercase tracking-wider block">
+                Select Destination School <span className="text-red-400">*</span>
+              </label>
+              <select
+                value={quickAssignModal.schoolId}
+                onChange={(e) => setQuickAssignModal(prev => ({ ...prev, schoolId: e.target.value }))}
+                className="w-full p-3 rounded-xl bg-slate-950 border border-slate-700 text-xs font-bold text-emerald-400 focus:ring-2 focus:ring-brand-green"
+              >
+                <option value="">-- Choose a School Campus --</option>
+                {availableSchools.map((s) => (
+                  <option key={s.id} value={s.id} className="text-white">
+                    {s.name}
+                  </option>
+                ))}
+              </select>
+            </div>
+
+            {/* Notes */}
+            <div className="space-y-1.5">
+              <label className="text-[11px] font-bold text-slate-300 uppercase tracking-wider block">
+                Assignment Directives / Operational Notes
+              </label>
+              <textarea
+                rows={2}
+                value={quickAssignModal.notes}
+                onChange={(e) => setQuickAssignModal(prev => ({ ...prev, notes: e.target.value }))}
+                placeholder="e.g. Assigned to Morning & Afternoon Primary Bus Fleet. Verified credentials."
+                className="w-full p-3 rounded-xl bg-slate-950 border border-slate-800 text-xs text-white placeholder-slate-500 font-medium focus:ring-2 focus:ring-brand-green"
+              />
+            </div>
+
+            {/* Action Buttons */}
+            <div className="flex items-center justify-end gap-2 pt-2 border-t border-slate-800">
+              <button
+                type="button"
+                onClick={() => setQuickAssignModal({ open: false, app: null, schoolId: '', notes: '', submitting: false })}
+                className="px-4 py-2.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 font-bold text-xs"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                disabled={quickAssignModal.submitting}
+                onClick={handleQuickApproveAndAssignSubmit}
+                className="px-5 py-2.5 rounded-xl bg-brand-green hover:bg-emerald-600 text-white font-extrabold text-xs shadow-lg shadow-emerald-600/30 flex items-center gap-1.5 disabled:opacity-50 cursor-pointer"
+              >
+                {quickAssignModal.submitting ? (
+                  <span>Processing Approval...</span>
+                ) : (
+                  <>
+                    <CheckCircle2 size={14} />
+                    <span>Approve &amp; Assign to School</span>
+                  </>
+                )}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* FULL ASSIGNED STUDENTS MANIFEST MODAL */}
+      {viewStudentsModal.open && (
+        <div className="fixed inset-0 z-50 bg-slate-950/85 backdrop-blur-md flex items-center justify-center p-4 animate-in fade-in">
+          <div className="bg-[#0b1d33] border border-slate-700 rounded-3xl max-w-3xl w-full max-h-[88vh] flex flex-col shadow-2xl overflow-hidden text-white">
+            <div className="px-5 py-4 bg-[#071628] border-b border-slate-800 flex items-center justify-between">
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 rounded-xl bg-emerald-500/10 border border-emerald-500/30 flex items-center justify-center text-emerald-400 font-bold">
+                  <Users className="w-5 h-5" />
+                </div>
+                <div>
+                  <h3 className="text-sm font-black text-white uppercase tracking-wider flex items-center gap-2">
+                    Assigned Students Manifest
+                    <span className="px-2 py-0.5 rounded-full bg-emerald-500/20 text-emerald-300 text-[10px] font-mono">
+                      {viewStudentsModal.students.length} Students
+                    </span>
+                  </h3>
+                  <p className="text-[11px] text-slate-400">
+                    Escort: <strong className="text-white">{viewStudentsModal.escort?.name || viewStudentsModal.escort?.fullName}</strong> • School: <strong className="text-amber-300">{viewStudentsModal.escort?.createdBySchoolName || 'Assigned School'}</strong>
+                  </p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setViewStudentsModal({ open: false, escort: null, students: [] })}
+                className="p-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-400 hover:text-white"
+              >
+                <X size={16} />
+              </button>
+            </div>
+
+            <div className="p-5 overflow-y-auto flex-1 space-y-3">
+              {viewStudentsModal.students.map((st: any) => (
+                <div key={st.id || st.assignmentId} className="p-3.5 rounded-2xl bg-slate-900/90 border border-slate-800 flex items-center justify-between gap-4">
+                  <div className="flex items-center gap-3 min-w-0">
+                    <StudentAvatar photoUrl={st.photo} name={st.name} size={48} className="rounded-xl shrink-0" />
+                    <div className="min-w-0">
+                      <h4 className="text-sm font-extrabold text-white truncate">{st.name}</h4>
+                      <p className="text-[11px] text-slate-400 font-mono">
+                        ID: <span className="text-slate-300 font-bold">{st.studentIdNumber || 'N/A'}</span> • Class: <span className="text-amber-300 font-bold">{st.className || 'Class N/A'}</span>
+                      </p>
+                      <p className="text-[11px] text-slate-300 truncate mt-1 flex items-center gap-1">
+                        <MapPin size={11} className="text-emerald-400 shrink-0" />
+                        <span>{st.houseAddress}</span>
+                        {st.isHousePinned && (
+                          <span className="text-[9px] font-black px-1.5 py-0.5 rounded bg-emerald-600 text-white shrink-0">
+                            PINNED: {st.houseLat?.toFixed(4)}, {st.houseLng?.toFixed(4)}
+                          </span>
+                        )}
+                      </p>
+                      {st.distanceKm != null && (
+                        <div className="flex items-center gap-2 mt-1.5 text-[11px] font-mono">
+                          <span className="px-2 py-0.5 rounded-full bg-emerald-500/20 text-emerald-300 font-bold border border-emerald-500/30">
+                            📏 {st.distanceKm} km from School Campus
+                          </span>
+                          <span className="text-amber-300 font-bold">
+                            ⏱️ ~{st.estimatedTransitMins || 12} mins transit
+                          </span>
+                        </div>
+                      )}
+                    </div>
+                  </div>
+
+                  <div className="text-right shrink-0 space-y-1">
+                    <span className="px-2.5 py-1 rounded-full text-[10px] font-black bg-emerald-500/20 text-emerald-300 border border-emerald-500/30 uppercase block">
+                      {st.status || 'ACTIVE'}
+                    </span>
+                    {st.directionsUrl && (
+                      <a
+                        href={st.directionsUrl}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-teal-600/20 hover:bg-teal-600/30 text-teal-300 border border-teal-500/30 text-[10px] font-bold transition-all"
+                      >
+                        <span>Driving Route</span>
+                        <ExternalLink size={10} />
+                      </a>
+                    )}
+                    {st.parentPhone && (
+                      <a
+                        href={`tel:${st.parentPhone}`}
+                        className="mt-1 block text-[11px] font-mono text-cyan-400 hover:underline"
+                      >
+                        <PhoneCall size={10} className="inline mr-1" />{st.parentPhone}
+                      </a>
+                    )}
+                  </div>
+                </div>
+              ))}
+            </div>
+
+            <div className="p-4 bg-[#071628] border-t border-slate-800 flex items-center justify-between">
+              <span className="text-[11px] text-slate-400">
+                Official City Operations Student Escort Assignment Record
+              </span>
+              <button
+                type="button"
+                onClick={() => setViewStudentsModal({ open: false, escort: null, students: [] })}
+                className="px-4 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-white font-bold text-xs cursor-pointer"
+              >
+                Close Manifest
+              </button>
+            </div>
+          </div>
+        </div>
       )}
 
       {/* 5. CREDENTIAL INSPECTION LIGHTBOX / MODAL */}

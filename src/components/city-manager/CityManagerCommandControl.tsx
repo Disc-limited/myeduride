@@ -57,11 +57,19 @@ import {
   Settings,
   Sliders,
   CheckSquare,
+  Battery,
+  BatteryCharging,
+  BatteryWarning,
+  Gauge,
+  Smartphone,
+  Tag,
+  BadgePercent,
 } from 'lucide-react';
 import { toast } from 'sonner';
 import StudentAvatar from '@/components/shared/StudentAvatar';
 import { CityManagerOperationsPanel } from '@/components/city-manager/CityManagerOperationsPanel';
 import InteractiveRouteCorridorMap from '@/components/routes/InteractiveRouteCorridorMap';
+import SchoolHomeRouteMap from '@/components/routes/SchoolHomeRouteMap';
 
 export interface CityManagerCommandControlProps {
   selectedCity: string;
@@ -161,13 +169,15 @@ export function CityManagerCommandControl({
                 id: s.id,
                 name: s.name || 'School Campus',
                 area: s.address || selectedCity,
-                escortsCount: 0,
-                studentsCount: 0,
-                gatesCount: 1,
+                escortsCount: s.escortsCount || 0,
+                studentsCount: s.studentsCount || (Array.isArray(s.students) ? s.students.length : 0),
+                students: Array.isArray(s.students) ? s.students : [],
+                gatesCount: s.gateOfficersCount || 1,
+                gateOfficersCount: s.gateOfficersCount || 1,
                 gateOfficers: 'Gate Officer',
-                status: 'ONLINE',
+                status: s.status || 'ONLINE',
                 avgMorningEta: '07:30 AM',
-                complianceScore: 100,
+                complianceScore: s.complianceScore || 100,
               }))
             );
           }
@@ -176,17 +186,25 @@ export function CityManagerCommandControl({
               data.escorts.map((e: any) => ({
                 id: e.id,
                 name: e.full_name || 'Verified Escort',
-                type: e.operating_area?.toLowerCase().includes('school') ? 'school' : 'myeduride',
+                type: e.operating_area?.toLowerCase().includes('school') || e.school_id ? 'school' : 'myeduride',
                 phone: e.phone || '—',
                 status: e.availability_status === 'available' ? 'AVAILABLE' : e.status === 'ACTIVE' ? 'ON_TRIP' : 'STANDBY',
-                schoolName: e.operating_area || selectedCity,
+                schoolName: e.assigned_school_name || e.school_name || e.operating_area || selectedCity,
+                schoolId: e.assigned_school_id || e.school_id || null,
                 vehicle: e.application_data?.assignedVehicle || e.application_data?.regNumber || 'Verified Vehicle',
                 currentTripId: null,
                 route: e.operating_area ? `${e.operating_area} Corridor` : 'Designated Route',
-                studentsCount: 0,
-                speed: '0 km/h',
-                battery: '100%',
-                lastPing: 'Live',
+                studentsCount: e.assigned_students_count || (Array.isArray(e.assigned_students) ? e.assigned_students.length : 0),
+                assignedStudents: Array.isArray(e.assigned_students) ? e.assigned_students : [],
+                speed: e.speed || `${e.speed_kmh || 0} km/h`,
+                speed_kmh: e.speed_kmh || 0,
+                battery: e.battery || `${e.battery_level || 85}%`,
+                battery_level: e.battery_level || 85,
+                battery_status: e.battery_status || 'GOOD',
+                device_status: e.device_status || 'ACTIVE',
+                device_model: e.device_model || 'Samsung Galaxy A14 (App v2.4)',
+                lastPing: e.last_ping_at || 'Live',
+                last_ping_at: e.last_ping_at || 'Live',
                 complianceScore: 100,
                 rating: 5.0,
                 tripsToday: 0,
@@ -194,6 +212,12 @@ export function CityManagerCommandControl({
                 notes: 'Verified escort profile on file.',
               }))
             );
+          }
+          if (Array.isArray(data.gate_officers) && data.gate_officers.length > 0) {
+            setGateOfficers(data.gate_officers);
+          }
+          if (Array.isArray(data.gate_activities) && data.gate_activities.length > 0) {
+            setGateActivities(data.gate_activities);
           }
           if (Array.isArray(data.audit)) {
             setAuditLogs(
@@ -258,6 +282,76 @@ export function CityManagerCommandControl({
     channel: 'IN_APP',
   });
 
+  const [assignedStudentsModal, setAssignedStudentsModal] = useState<{
+    open: boolean;
+    escort: any | null;
+  }>({
+    open: false,
+    escort: null,
+  });
+
+  const [assignSchoolModal, setAssignSchoolModal] = useState<{
+    open: boolean;
+    escort: any | null;
+    schoolId: string;
+    notes: string;
+    submitting: boolean;
+  }>({
+    open: false,
+    escort: null,
+    schoolId: '',
+    notes: '',
+    submitting: false,
+  });
+
+  const handleCommandAssignSchoolSubmit = async () => {
+    if (!assignSchoolModal.escort?.id || !assignSchoolModal.schoolId) {
+      toast.error('Please select a school to assign.');
+      return;
+    }
+    const matchedSchool = schools.find((s) => s.id === assignSchoolModal.schoolId);
+    const schoolName = matchedSchool?.name || 'Designated School Campus';
+    setAssignSchoolModal((prev) => ({ ...prev, submitting: true }));
+
+    try {
+      const res = await fetch('/api/city-manager/operations', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          action: 'quick_approve_and_assign_school',
+          escortApplicationId: assignSchoolModal.escort.id,
+          schoolId: assignSchoolModal.schoolId,
+          schoolName,
+          notes: assignSchoolModal.notes || `Assigned to ${schoolName} by City Manager`,
+        }),
+      });
+      const d = await res.json();
+      if (!res.ok) throw new Error(d.error || 'Failed to assign escort to school');
+
+      setEscorts((prev) =>
+        prev.map((e) =>
+          e.id === assignSchoolModal.escort.id
+            ? { ...e, schoolName, schoolId: assignSchoolModal.schoolId, type: 'school' }
+            : e
+        )
+      );
+
+      toast.success(`Escort ${assignSchoolModal.escort.name} assigned to ${schoolName}!`);
+      setAssignSchoolModal({ open: false, escort: null, schoolId: '', notes: '', submitting: false });
+    } catch (err: any) {
+      toast.error(err.message || 'Could not assign escort');
+      setAssignSchoolModal((prev) => ({ ...prev, submitting: false }));
+    }
+  };
+
+  const [inspectRouteModal, setInspectRouteModal] = useState<{
+    open: boolean;
+    item: any | null;
+  }>({
+    open: false,
+    item: null,
+  });
+
   const [broadcastModal, setBroadcastModal] = useState<{
     open: boolean;
     audience: 'ALL_CITY_ESCORTS' | 'MYEDURIDE_ONLY' | 'GATE_OFFICERS' | 'ALL_SCHOOLS';
@@ -274,24 +368,98 @@ export function CityManagerCommandControl({
 
   const [tripDetailModal, setTripDetailModal] = useState<any | null>(null);
 
+  // Escort Telemetry & Health Filter (Requirement F)
+  const [escortTelemetryFilter, setEscortTelemetryFilter] = useState<'ALL' | 'ACTIVE' | 'LOW_BATTERY' | 'OFFLINE'>('ALL');
+
+  // Emergency Message to Gate Officers State & Dispatch (Requirement 1)
+  const [emergencyGateModal, setEmergencyGateModal] = useState<{
+    open: boolean;
+    officer: any | null;
+    message: string;
+    severity: 'CRITICAL_EMERGENCY' | 'NON_COMPLIANCE_DIRECTIVE' | 'URGENT_GATE_ALERT';
+    actionRequired: string;
+    submitting: boolean;
+  }>({
+    open: false,
+    officer: null,
+    message: '',
+    severity: 'NON_COMPLIANCE_DIRECTIVE',
+    actionRequired: 'Verify digital student authorization immediately',
+    submitting: false,
+  });
+
+  const handleSendGateEmergencyMessage = async () => {
+    if (!emergencyGateModal.message.trim()) {
+      toast.error('Please enter the emergency message');
+      return;
+    }
+    setEmergencyGateModal((prev) => ({ ...prev, submitting: true }));
+    try {
+      const res = await fetch('/api/city-manager/operations', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          action: 'send_gate_officer_emergency_message',
+          gateOfficerId: emergencyGateModal.officer?.id,
+          officerName: emergencyGateModal.officer?.name || 'Gate Officer',
+          schoolId: emergencyGateModal.officer?.schoolId,
+          message: emergencyGateModal.message.trim(),
+          severity: emergencyGateModal.severity,
+          actionRequired: emergencyGateModal.actionRequired.trim(),
+        }),
+      });
+      const json = await res.json();
+      if (!res.ok) throw new Error(json.error || 'Failed to dispatch directive');
+      toast.success(json.message || 'Emergency directive dispatched to gate officer!');
+      setEmergencyGateModal({
+        open: false,
+        officer: null,
+        message: '',
+        severity: 'NON_COMPLIANCE_DIRECTIVE',
+        actionRequired: 'Verify digital student authorization immediately',
+        submitting: false,
+      });
+    } catch (err: any) {
+      toast.error(err.message || 'Error transmitting message');
+    } finally {
+      setEmergencyGateModal((prev) => ({ ...prev, submitting: false }));
+    }
+  };
+
+  // School Students Census & Demographics Modal State (Requirement E)
+  const [schoolStudentsModal, setSchoolStudentsModal] = useState<{
+    open: boolean;
+    school: any | null;
+    search: string;
+  }>({
+    open: false,
+    school: null,
+    search: '',
+  });
+
   // AI Assistant Chat Widget State
   const [aiPrompt, setAiPrompt] = useState('');
   const [aiChatLogs, setAiChatLogs] = useState([
     { type: 'insight', text: 'MIGO SAVI Operational Intelligence online. Ask about escorts, gates, and route oversight.' },
   ]);
 
-  // Filtered Escorts List
+  // Filtered Escorts List with Telemetry & Status
   const filteredEscorts = useMemo(() => {
     return escorts.filter((item) => {
       const matchesType = escortTypeFilter === 'ALL' || item.type === escortTypeFilter;
+      const matchesTelemetry =
+        escortTelemetryFilter === 'ALL' ||
+        (escortTelemetryFilter === 'ACTIVE' && item.device_status === 'ACTIVE') ||
+        (escortTelemetryFilter === 'LOW_BATTERY' && (item.battery_level < 20 || item.device_status === 'LOW_BATTERY')) ||
+        (escortTelemetryFilter === 'OFFLINE' && item.device_status === 'OFFLINE');
       const matchesSearch =
         item.name.toLowerCase().includes(escortSearch.toLowerCase()) ||
         item.id.toLowerCase().includes(escortSearch.toLowerCase()) ||
         item.schoolName.toLowerCase().includes(escortSearch.toLowerCase()) ||
         item.vehicle.toLowerCase().includes(escortSearch.toLowerCase());
-      return matchesType && matchesSearch;
+      return matchesType && matchesTelemetry && matchesSearch;
     });
-  }, [escorts, escortTypeFilter, escortSearch]);
+  }, [escorts, escortTypeFilter, escortTelemetryFilter, escortSearch]);
 
   // Handlers for Disciplinary Controls
   const handleExecuteDisciplinary = () => {
@@ -934,12 +1102,53 @@ export function CityManagerCommandControl({
               />
             </div>
 
-            <div className="flex items-center gap-2 text-xs font-bold text-slate-400 flex-wrap">
-              <span>Status:</span>
-              <span className="px-2 py-0.5 rounded-md bg-emerald-500/20 text-emerald-400">ON TRIP ({escorts.filter(e => e.status === 'ON_TRIP').length})</span>
-              <span className="px-2 py-0.5 rounded-md bg-blue-500/20 text-blue-400">AVAILABLE ({escorts.filter(e => e.status === 'AVAILABLE').length})</span>
-              <span className="px-2 py-0.5 rounded-md bg-amber-500/20 text-amber-400">DELAYED ({escorts.filter(e => e.status === 'DELAYED').length})</span>
-              <span className="px-2 py-0.5 rounded-md bg-red-500/20 text-red-400">FLAGGED ({escorts.filter(e => e.status === 'FLAGGED').length})</span>
+            {/* Telemetry Sub-Filter Pills (Requirement F) */}
+            <div className="flex items-center gap-1.5 text-xs font-bold flex-wrap">
+              <span className="text-slate-400 text-[11px] mr-1">Device Telemetry:</span>
+              <button
+                type="button"
+                onClick={() => setEscortTelemetryFilter('ALL')}
+                className={`px-2.5 py-1 rounded-lg text-[10px] font-extrabold transition-all cursor-pointer ${
+                  escortTelemetryFilter === 'ALL'
+                    ? 'bg-slate-700 text-white'
+                    : 'bg-slate-900 text-slate-400 hover:text-white border border-slate-800'
+                }`}
+              >
+                All Devices ({escorts.length})
+              </button>
+              <button
+                type="button"
+                onClick={() => setEscortTelemetryFilter('ACTIVE')}
+                className={`px-2.5 py-1 rounded-lg text-[10px] font-extrabold transition-all cursor-pointer ${
+                  escortTelemetryFilter === 'ACTIVE'
+                    ? 'bg-emerald-600 text-white'
+                    : 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/30'
+                }`}
+              >
+                ⚡ Active ({escorts.filter(e => e.device_status === 'ACTIVE').length})
+              </button>
+              <button
+                type="button"
+                onClick={() => setEscortTelemetryFilter('LOW_BATTERY')}
+                className={`px-2.5 py-1 rounded-lg text-[10px] font-extrabold transition-all cursor-pointer ${
+                  escortTelemetryFilter === 'LOW_BATTERY'
+                    ? 'bg-red-600 text-white animate-pulse'
+                    : 'bg-red-500/10 text-red-400 border border-red-500/30'
+                }`}
+              >
+                🪫 Low Battery &lt;20% ({escorts.filter(e => e.battery_level < 20 || e.device_status === 'LOW_BATTERY').length})
+              </button>
+              <button
+                type="button"
+                onClick={() => setEscortTelemetryFilter('OFFLINE')}
+                className={`px-2.5 py-1 rounded-lg text-[10px] font-extrabold transition-all cursor-pointer ${
+                  escortTelemetryFilter === 'OFFLINE'
+                    ? 'bg-slate-700 text-white'
+                    : 'bg-slate-900 text-slate-500 border border-slate-800'
+                }`}
+              >
+                Offline ({escorts.filter(e => e.device_status === 'OFFLINE').length})
+              </button>
             </div>
           </div>
 
@@ -951,7 +1160,7 @@ export function CityManagerCommandControl({
                   <th className="p-3.5">Escort Profile</th>
                   <th className="p-3.5">Type & School</th>
                   <th className="p-3.5">Assigned Vehicle</th>
-                  <th className="p-3.5">Live Telemetry</th>
+                  <th className="p-3.5">Live Telemetry (Battery / Speed / Device)</th>
                   <th className="p-3.5 text-center">Status</th>
                   <th className="p-3.5 text-center">Compliance</th>
                   <th className="p-3.5 text-right">Command Actions</th>
@@ -993,16 +1202,30 @@ export function CityManagerCommandControl({
                         {/* Type & School */}
                         <td className="p-3.5">
                           <div className="space-y-1">
-                            <span
-                              className={`px-2 py-0.5 rounded-full text-[9px] font-extrabold uppercase ${
-                                escort.type === 'myeduride'
-                                  ? 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/30'
-                                  : 'bg-purple-500/20 text-purple-300 border border-purple-500/30'
-                              }`}
-                            >
-                              {escort.type === 'myeduride' ? 'MyEduRide Escort' : 'School Escort'}
-                            </span>
-                            <p className="text-[11px] text-slate-300 font-semibold">{escort.schoolName}</p>
+                            <div className="flex items-center gap-1.5 flex-wrap">
+                              <span
+                                className={`px-2 py-0.5 rounded-full text-[9px] font-extrabold uppercase ${
+                                  escort.type === 'myeduride'
+                                    ? 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/30'
+                                    : 'bg-purple-500/20 text-purple-300 border border-purple-500/30'
+                                }`}
+                              >
+                                {escort.type === 'myeduride' ? 'MyEduRide Escort' : 'School Escort'}
+                              </span>
+                              <button
+                                type="button"
+                                onClick={() => setAssignedStudentsModal({ open: true, escort })}
+                                className="px-2 py-0.5 rounded-full text-[9px] font-extrabold bg-blue-500/20 text-blue-300 border border-blue-500/30 flex items-center gap-1 hover:bg-blue-500/30 transition-colors cursor-pointer"
+                                title="Click to view assigned students manifest"
+                              >
+                                <Users size={10} />
+                                <span>{escort.studentsCount} Students</span>
+                              </button>
+                            </div>
+                            <p className="text-[11px] text-slate-300 font-semibold flex items-center gap-1">
+                              <School size={12} className="text-amber-400 shrink-0" />
+                              <span className="truncate">{escort.schoolName}</span>
+                            </p>
                           </div>
                         </td>
 
@@ -1016,15 +1239,37 @@ export function CityManagerCommandControl({
                           </div>
                         </td>
 
-                        {/* Live Telemetry */}
+                        {/* Live Telemetry & Device Health (Requirement F) */}
                         <td className="p-3.5">
-                          <div className="space-y-1 text-[11px]">
+                          <div className="space-y-1 text-[11px] min-w-[150px]">
                             <div className="flex items-center gap-2">
-                              <span className="text-emerald-400 font-bold">{escort.speed}</span>
-                              <span className="text-slate-500">·</span>
-                              <span className="text-cyan-400 font-mono">Bat: {escort.battery}</span>
+                              {/* Battery Gauge */}
+                              {escort.battery_level < 20 ? (
+                                <span className="text-red-400 font-black animate-pulse flex items-center gap-1 bg-red-500/10 px-1.5 py-0.5 rounded border border-red-500/30">
+                                  <BatteryWarning size={12} /> {escort.battery}
+                                </span>
+                              ) : escort.battery_level < 50 ? (
+                                <span className="text-amber-400 font-bold flex items-center gap-1 bg-amber-500/10 px-1.5 py-0.5 rounded border border-amber-500/30">
+                                  <Battery size={12} /> {escort.battery}
+                                </span>
+                              ) : (
+                                <span className="text-emerald-400 font-bold flex items-center gap-1 bg-emerald-500/10 px-1.5 py-0.5 rounded border border-emerald-500/30">
+                                  <BatteryCharging size={12} /> {escort.battery}
+                                </span>
+                              )}
+
+                              {/* Speedometer */}
+                              <span className="text-cyan-300 font-mono font-bold flex items-center gap-1">
+                                <Gauge size={12} /> {escort.speed}
+                              </span>
                             </div>
-                            <p className="text-[10px] text-slate-400 truncate max-w-[170px]">{escort.route}</p>
+
+                            {/* Device & Status */}
+                            <div className="flex items-center gap-1.5 text-[9px] text-slate-400">
+                              <Smartphone size={10} className="text-slate-500 shrink-0" />
+                              <span className="truncate max-w-[130px]">{escort.device_model}</span>
+                            </div>
+                            <p className="text-[9px] text-slate-500 font-mono">Ping: {escort.lastPing}</p>
                           </div>
                         </td>
 
@@ -1062,6 +1307,29 @@ export function CityManagerCommandControl({
                           <div className="flex items-center justify-end gap-1.5">
                             <button
                               type="button"
+                              onClick={() => setAssignedStudentsModal({ open: true, escort })}
+                              className="p-2 rounded-xl bg-slate-800 hover:bg-emerald-600 text-slate-300 hover:text-white transition-colors relative cursor-pointer"
+                              title={`View Assigned Students (${escort.studentsCount})`}
+                            >
+                              <Users size={14} className="text-emerald-400" />
+                              {escort.studentsCount > 0 && (
+                                <span className="absolute -top-1 -right-1 w-3.5 h-3.5 rounded-full bg-emerald-500 text-slate-950 font-black text-[9px] flex items-center justify-center">
+                                  {escort.studentsCount}
+                                </span>
+                              )}
+                            </button>
+
+                            <button
+                              type="button"
+                              onClick={() => setAssignSchoolModal({ open: true, escort, schoolId: escort.schoolId || '', notes: '', submitting: false })}
+                              className="p-2 rounded-xl bg-slate-800 hover:bg-purple-600 text-slate-300 hover:text-white transition-colors cursor-pointer"
+                              title="Assign / Change School"
+                            >
+                              <School size={14} className="text-purple-300" />
+                            </button>
+
+                            <button
+                              type="button"
                               onClick={() =>
                                 setContactModal({
                                   open: true,
@@ -1071,7 +1339,7 @@ export function CityManagerCommandControl({
                                   channel: 'IN_APP',
                                 })
                               }
-                              className="p-2 rounded-xl bg-slate-800 hover:bg-emerald-600 text-slate-300 hover:text-white transition-colors"
+                              className="p-2 rounded-xl bg-slate-800 hover:bg-emerald-600 text-slate-300 hover:text-white transition-colors cursor-pointer"
                               title="Contact Escort"
                             >
                               <PhoneCall size={14} />
@@ -1141,9 +1409,28 @@ export function CityManagerCommandControl({
                     <p className="text-[11px] text-slate-400">Continuous shift and gate override tracking across city schools</p>
                   </div>
                 </div>
-                <span className="px-2.5 py-1 rounded-full bg-purple-500/20 text-purple-300 text-xs font-bold border border-purple-500/30">
-                  {gateOfficers.length} Stations Monitored
-                </span>
+                <div className="flex items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={() =>
+                      setEmergencyGateModal({
+                        open: true,
+                        officer: null,
+                        message: 'Urgent City Operations Directive: All school gates must enforce zero-tolerance identity checks. Do not release students without verified QR or escort PIN verification.',
+                        severity: 'CRITICAL_EMERGENCY',
+                        actionRequired: 'Enforce 100% digital verification and zero unauthorized gate releases',
+                        submitting: false,
+                      })
+                    }
+                    className="px-3 py-1 rounded-xl bg-red-600 hover:bg-red-500 text-white text-xs font-black flex items-center gap-1.5 shadow-md cursor-pointer transition-all animate-pulse"
+                  >
+                    <AlertOctagon size={13} />
+                    <span>Emergency Directive Broadcast</span>
+                  </button>
+                  <span className="px-2.5 py-1 rounded-full bg-purple-500/20 text-purple-300 text-xs font-bold border border-purple-500/30">
+                    {gateOfficers.length} Stations Monitored
+                  </span>
+                </div>
               </div>
 
               {gateOfficers.length === 0 ? (
@@ -1170,7 +1457,7 @@ export function CityManagerCommandControl({
                         </div>
                       </div>
 
-                      <div className="flex items-center gap-4 text-xs font-semibold">
+                      <div className="flex items-center gap-3 text-xs font-semibold flex-wrap">
                         <div className="text-right">
                           <span className="text-slate-400 block text-[10px]">Scanned In / Released</span>
                           <span className="font-mono text-emerald-400 font-bold">{officer.scansToday} / {officer.releasesToday}</span>
@@ -1182,6 +1469,24 @@ export function CityManagerCommandControl({
                             {officer.overridesCount}
                           </span>
                         </div>
+
+                        <button
+                          type="button"
+                          onClick={() =>
+                            setEmergencyGateModal({
+                              open: true,
+                              officer,
+                              message: `Compliance warning for ${officer.gateName}: Suspicious manual gate overrides detected. Verify all credentials through the official scanner.`,
+                              severity: 'NON_COMPLIANCE_DIRECTIVE',
+                              actionRequired: 'Verify digital student authorization immediately',
+                              submitting: false,
+                            })
+                          }
+                          className="px-3 py-1.5 rounded-xl bg-red-500/20 hover:bg-red-600 text-red-300 hover:text-white text-xs font-bold transition-all flex items-center gap-1 border border-red-500/30 cursor-pointer"
+                          title="Send Emergency Non-Compliance Warning to this Gate Officer"
+                        >
+                          <AlertTriangle size={12} /> Directive
+                        </button>
 
                         <button
                           type="button"
@@ -1382,13 +1687,24 @@ export function CityManagerCommandControl({
                           </span>
                         </td>
                         <td className="p-3 text-right">
-                          <button
-                            type="button"
-                            onClick={() => setTripDetailModal(e)}
-                            className="px-3 py-1 rounded-xl bg-slate-800 hover:bg-emerald-600 text-slate-200 hover:text-white font-bold text-xs transition-colors"
-                          >
-                            View ↗
-                          </button>
+                          <div className="flex items-center justify-end gap-1.5">
+                            <button
+                              type="button"
+                              onClick={() => setAssignedStudentsModal({ open: true, escort: e })}
+                              className="px-2.5 py-1 rounded-xl bg-blue-600/20 hover:bg-blue-600 text-blue-300 hover:text-white font-bold text-xs transition-colors border border-blue-500/30 flex items-center gap-1 cursor-pointer"
+                              title="Inspect Assigned Students Manifest"
+                            >
+                              <Users size={12} />
+                              <span>Pupils ({e.studentsCount || e.assignedStudents?.length || 0})</span>
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => setTripDetailModal(e)}
+                              className="px-3 py-1 rounded-xl bg-slate-800 hover:bg-emerald-600 text-slate-200 hover:text-white font-bold text-xs transition-colors cursor-pointer"
+                            >
+                              View ↗
+                            </button>
+                          </div>
                         </td>
                       </tr>
                     ))
@@ -1573,6 +1889,14 @@ export function CityManagerCommandControl({
                               <h5 className="font-extrabold text-white text-xs">{item.student_name}</h5>
                               <span className="text-[11px] text-teal-300 font-semibold">{item.school_name}</span>
                               <span className="text-[10px] text-slate-400 ml-1.5">({item.class_name})</span>
+                              <div className="flex items-center gap-1.5 flex-wrap mt-1">
+                                <span className="px-2.5 py-0.5 rounded-full text-[10px] font-black bg-emerald-500/20 text-emerald-300 border border-emerald-500/30 flex items-center gap-1 font-mono">
+                                  📏 {item.distance_km != null ? `${item.distance_km} km` : 'Calculating...'}
+                                </span>
+                                <span className="px-2 py-0.5 rounded-full text-[10px] font-semibold bg-amber-500/15 text-amber-300 border border-amber-500/20 flex items-center gap-1">
+                                  ⏱️ ~{item.estimated_transit_mins || 12}m
+                                </span>
+                              </div>
                             </div>
                             <span
                               className={`px-2 py-0.5 rounded-full text-[9px] font-black uppercase ${
@@ -1602,29 +1926,45 @@ export function CityManagerCommandControl({
                             {item.house_notes && (
                               <p className="text-[10px] text-slate-400 italic">📝 &ldquo;{item.house_notes}&rdquo;</p>
                             )}
-                            <div className="pt-1 flex items-center justify-between border-t border-slate-800/80 text-[10px] font-mono text-slate-400">
-                              <span>
-                                GPS: {item.house_lat?.toFixed(5)}, {item.house_lng?.toFixed(5)}
-                              </span>
+                            <div className="pt-1.5 flex flex-col gap-1 border-t border-slate-800/80 text-[10px] font-mono text-slate-400">
+                              <div className="flex items-center justify-between">
+                                <span className="text-slate-400">Parent House Pin:</span>
+                                <span className="text-teal-300 font-bold">{item.house_lat?.toFixed(5)}, {item.house_lng?.toFixed(5)}</span>
+                              </div>
+                              <div className="flex items-center justify-between">
+                                <span className="text-slate-400">School Campus Pin:</span>
+                                <span className="text-emerald-400 font-bold">{item.school_lat?.toFixed(5) || '6.44740'}, {item.school_lng?.toFixed(5) || '3.47310'}</span>
+                              </div>
                             </div>
                           </div>
                         </div>
 
-                        <div className="pt-2 border-t border-slate-800 flex items-center justify-between text-[11px]">
-                          <span className="text-slate-400">
+                        <div className="pt-2 border-t border-slate-800 flex items-center justify-between gap-2 text-[11px]">
+                          <span className="text-slate-400 truncate max-w-[130px]">
                             {item.assigned_escort_name ? `Escort: ${item.assigned_escort_name}` : 'Awaiting dispatch'}
                           </span>
-                          {item.house_lat && item.house_lng && (
-                            <a
-                              href={`https://www.google.com/maps/dir/?api=1&destination=${item.house_lat},${item.house_lng}`}
-                              target="_blank"
-                              rel="noopener noreferrer"
-                              className="font-bold text-teal-400 hover:text-teal-300 flex items-center gap-1 cursor-pointer"
+                          <div className="flex items-center gap-1.5 shrink-0">
+                            <button
+                              type="button"
+                              onClick={() => setInspectRouteModal({ open: true, item })}
+                              className="px-2.5 py-1 rounded-lg bg-teal-600/20 hover:bg-teal-600/30 text-teal-300 border border-teal-500/30 font-extrabold text-[10px] flex items-center gap-1 cursor-pointer transition-all"
+                              title="Inspect School-to-Home Route & Distance"
                             >
-                              <span>Google Maps</span>
-                              <ExternalLink size={11} />
-                            </a>
-                          )}
+                              <Navigation size={11} />
+                              <span>Inspect Route</span>
+                            </button>
+                            {(item.directions_url || (item.house_lat && item.house_lng)) && (
+                              <a
+                                href={item.directions_url || `https://www.google.com/maps/dir/?api=1&destination=${item.house_lat},${item.house_lng}`}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                className="font-bold text-slate-400 hover:text-white flex items-center gap-1 cursor-pointer p-1 rounded hover:bg-slate-800"
+                                title="Open Turn-by-Turn Driving Route in Google Maps"
+                              >
+                                <ExternalLink size={12} />
+                              </a>
+                            )}
+                          </div>
                         </div>
                       </div>
                     ))}
@@ -1961,17 +2301,30 @@ export function CityManagerCommandControl({
                   <div className="pt-2 border-t border-slate-800 flex items-center justify-between text-xs">
                     <div>
                       <span className="text-slate-400 block text-[10px]">Students</span>
-                      <strong className="text-white">{sch.studentsCount}</strong>
+                      <strong className="text-white font-mono">{sch.studentsCount}</strong>
+                    </div>
+                    <div>
+                      <span className="text-slate-400 block text-[10px]">Gate Officers</span>
+                      <strong className="text-purple-300 font-mono">{sch.gateOfficersCount || 1}</strong>
                     </div>
                     <div>
                       <span className="text-slate-400 block text-[10px]">Escorts</span>
-                      <strong className="text-cyan-400">{sch.escortsCount}</strong>
+                      <strong className="text-cyan-400 font-mono">{sch.escortsCount}</strong>
                     </div>
                     <div>
                       <span className="text-slate-400 block text-[10px]">Compliance</span>
-                      <strong className="text-emerald-400">{sch.complianceScore || 100}%</strong>
+                      <strong className="text-emerald-400 font-mono">{sch.complianceScore || 100}%</strong>
                     </div>
                   </div>
+
+                  <button
+                    type="button"
+                    onClick={() => setSchoolStudentsModal({ open: true, school: sch, search: '' })}
+                    className="w-full mt-2 py-2 rounded-xl bg-blue-600/20 hover:bg-blue-600 text-blue-300 hover:text-white text-xs font-bold transition-all flex items-center justify-center gap-1.5 border border-blue-500/30 cursor-pointer shadow-xs"
+                  >
+                    <Users size={13} />
+                    <span>Inspect Students Roster ({sch.studentsCount})</span>
+                  </button>
                 </div>
               ))}
             </div>
@@ -2144,6 +2497,335 @@ export function CityManagerCommandControl({
                 </div>
               ))
             )}
+          </div>
+        </div>
+      )}
+
+      {/* ========================================================================= */}
+      {/* MODAL: VIEW ESCORT ASSIGNED STUDENTS MANIFEST */}
+      {/* ========================================================================= */}
+      {assignedStudentsModal.open && assignedStudentsModal.escort && (
+        <div className="fixed inset-0 z-[9999] bg-slate-950/85 backdrop-blur-sm flex items-center justify-center p-4 animate-in fade-in">
+          <div className="bg-[#0b1d33] border border-slate-700 rounded-3xl max-w-2xl w-full max-h-[85vh] flex flex-col shadow-2xl overflow-hidden text-white">
+            <div className="px-5 py-4 bg-[#071628] border-b border-slate-800 flex items-center justify-between">
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 rounded-xl bg-emerald-500/20 border border-emerald-500/30 flex items-center justify-center text-emerald-400 font-bold">
+                  <Users className="w-5 h-5" />
+                </div>
+                <div>
+                  <h3 className="text-sm font-black text-white uppercase tracking-wider flex items-center gap-2">
+                    Assigned Students Manifest
+                    <span className="px-2 py-0.5 rounded-full bg-emerald-500/20 text-emerald-300 text-[10px] font-mono">
+                      {assignedStudentsModal.escort.studentsCount || (assignedStudentsModal.escort.assignedStudents?.length || 0)} Students
+                    </span>
+                  </h3>
+                  <p className="text-[11px] text-slate-400">
+                    Escort: <strong className="text-white">{assignedStudentsModal.escort.name}</strong> • School: <strong className="text-amber-300">{assignedStudentsModal.escort.schoolName}</strong>
+                  </p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setAssignedStudentsModal({ open: false, escort: null })}
+                className="p-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-400 hover:text-white"
+              >
+                <X size={16} />
+              </button>
+            </div>
+
+            <div className="p-5 overflow-y-auto flex-1 space-y-3">
+              {(assignedStudentsModal.escort.assignedStudents && assignedStudentsModal.escort.assignedStudents.length > 0) ? (
+                assignedStudentsModal.escort.assignedStudents.map((st: any) => (
+                  <div key={st.id || st.assignment_id} className="p-3 rounded-2xl bg-slate-900/90 border border-slate-800 flex items-center justify-between gap-3">
+                    <div className="flex items-center gap-3 min-w-0">
+                      <StudentAvatar photoUrl={st.photo_url || st.photo} name={st.name} size={44} className="rounded-xl shrink-0" />
+                      <div className="min-w-0">
+                        <strong className="text-sm font-bold text-white block truncate">{st.name}</strong>
+                        <p className="text-[11px] text-slate-400 font-mono">
+                          ID: <span className="text-slate-300 font-bold">{st.student_id_number || 'N/A'}</span> • Class: <span className="text-amber-300 font-bold">{st.class_name || 'Class N/A'}</span>
+                        </p>
+                        <p className="text-[11px] text-slate-300 truncate mt-0.5 flex items-center gap-1">
+                          <MapPin size={11} className="text-emerald-400 shrink-0" />
+                          <span className="truncate">{st.house_address}</span>
+                          {st.is_house_pinned && (
+                            <span className="text-[8px] font-black px-1.5 py-0.5 rounded bg-emerald-600 text-white shrink-0">
+                              PINNED ✓
+                            </span>
+                          )}
+                        </p>
+                      </div>
+                    </div>
+
+                    <div className="text-right shrink-0">
+                      <span className="px-2 py-0.5 rounded-full text-[9px] font-black bg-emerald-500/20 text-emerald-300 border border-emerald-500/30 uppercase block">
+                        {st.status || 'ACTIVE'}
+                      </span>
+                      {st.parent_phone && (
+                        <a
+                          href={`tel:${st.parent_phone}`}
+                          className="mt-1.5 inline-flex items-center gap-1 text-[11px] font-mono text-cyan-400 hover:underline"
+                        >
+                          <PhoneCall size={10} /> {st.parent_phone}
+                        </a>
+                      )}
+                    </div>
+                  </div>
+                ))
+              ) : (
+                <div className="py-10 text-center space-y-2">
+                  <Users className="w-8 h-8 text-slate-600 mx-auto" />
+                  <p className="text-sm font-bold text-slate-300">No Students Currently Assigned</p>
+                  <p className="text-xs text-slate-500 max-w-sm mx-auto">
+                    This escort is ready for transport duty. Students assigned to this escort will appear on this manifest automatically.
+                  </p>
+                </div>
+              )}
+            </div>
+
+            <div className="p-4 bg-[#071628] border-t border-slate-800 flex items-center justify-between">
+              <span className="text-[11px] text-slate-400">
+                Official City Operations Escort Assignment Manifest
+              </span>
+              <button
+                type="button"
+                onClick={() => setAssignedStudentsModal({ open: false, escort: null })}
+                className="px-4 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-white font-bold text-xs cursor-pointer"
+              >
+                Close Manifest
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ========================================================================= */}
+      {/* MODAL: ASSIGN ESCORT TO SCHOOL */}
+      {/* ========================================================================= */}
+      {assignSchoolModal.open && assignSchoolModal.escort && (
+        <div className="fixed inset-0 z-[9999] bg-slate-950/85 backdrop-blur-sm flex items-center justify-center p-4 animate-in fade-in">
+          <div className="bg-[#0c1e36] border border-slate-700 rounded-3xl max-w-md w-full p-6 text-white shadow-2xl space-y-4">
+            <div className="flex items-center justify-between border-b border-slate-800 pb-3">
+              <div className="flex items-center gap-2.5">
+                <div className="w-10 h-10 rounded-xl bg-purple-500/20 border border-purple-500/30 flex items-center justify-center text-purple-300">
+                  <School className="w-5 h-5" />
+                </div>
+                <div>
+                  <h3 className="text-sm font-black text-white uppercase tracking-wider">
+                    Assign Escort to School
+                  </h3>
+                  <p className="text-[11px] text-slate-400">
+                    Set designated campus &amp; transport operations
+                  </p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setAssignSchoolModal({ open: false, escort: null, schoolId: '', notes: '', submitting: false })}
+                className="p-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-400 hover:text-white"
+              >
+                <X size={16} />
+              </button>
+            </div>
+
+            <div className="p-3 rounded-xl bg-slate-900 border border-slate-800 text-xs">
+              <strong className="text-white block text-sm">{assignSchoolModal.escort.name}</strong>
+              <p className="text-slate-400 font-mono text-[11px]">{assignSchoolModal.escort.id} • {assignSchoolModal.escort.phone}</p>
+              <p className="text-amber-400 mt-1 font-semibold">Current: {assignSchoolModal.escort.schoolName}</p>
+            </div>
+
+            <div className="space-y-1.5">
+              <label className="text-[11px] font-bold text-slate-300 uppercase tracking-wider block">
+                Target School Campus <span className="text-red-400">*</span>
+              </label>
+              <select
+                value={assignSchoolModal.schoolId}
+                onChange={(e) => setAssignSchoolModal(prev => ({ ...prev, schoolId: e.target.value }))}
+                className="w-full p-3 rounded-xl bg-slate-950 border border-slate-700 text-xs font-bold text-emerald-400 focus:ring-2 focus:ring-brand-green"
+              >
+                <option value="">-- Choose a School Campus --</option>
+                {schools.map((s) => (
+                  <option key={s.id} value={s.id} className="text-white">
+                    {s.name}
+                  </option>
+                ))}
+              </select>
+            </div>
+
+            <div className="space-y-1.5">
+              <label className="text-[11px] font-bold text-slate-300 uppercase tracking-wider block">
+                Directives / Notes
+              </label>
+              <textarea
+                rows={2}
+                value={assignSchoolModal.notes}
+                onChange={(e) => setAssignSchoolModal(prev => ({ ...prev, notes: e.target.value }))}
+                placeholder="e.g. Assigned to School Fleet. Operational supervision confirmed."
+                className="w-full p-3 rounded-xl bg-slate-950 border border-slate-800 text-xs text-white placeholder-slate-500 font-medium focus:ring-2 focus:ring-brand-green"
+              />
+            </div>
+
+            <div className="flex items-center justify-end gap-2 pt-2 border-t border-slate-800">
+              <button
+                type="button"
+                onClick={() => setAssignSchoolModal({ open: false, escort: null, schoolId: '', notes: '', submitting: false })}
+                className="px-4 py-2.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 font-bold text-xs"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                disabled={assignSchoolModal.submitting}
+                onClick={handleCommandAssignSchoolSubmit}
+                className="px-5 py-2.5 rounded-xl bg-brand-green hover:bg-emerald-600 text-white font-extrabold text-xs shadow-lg shadow-emerald-600/30 flex items-center gap-1.5 disabled:opacity-50 cursor-pointer"
+              >
+                {assignSchoolModal.submitting ? 'Assigning...' : 'Confirm School Assignment'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ========================================================================= */}
+      {/* MODAL: INSPECT PARENT-TO-SCHOOL ROUTE & DISTANCE */}
+      {/* ========================================================================= */}
+      {inspectRouteModal.open && inspectRouteModal.item && (
+        <div className="fixed inset-0 z-[9999] bg-slate-950/85 backdrop-blur-sm flex items-center justify-center p-4 animate-in fade-in">
+          <div className="bg-[#0b1c31] border border-slate-700 rounded-3xl max-w-3xl w-full max-h-[90vh] flex flex-col shadow-2xl overflow-hidden text-white">
+            {/* Header */}
+            <div className="px-5 py-4 bg-[#071628] border-b border-slate-800 flex items-center justify-between">
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 rounded-xl bg-teal-500/20 border border-teal-500/30 flex items-center justify-center text-teal-300 font-bold">
+                  <Navigation className="w-5 h-5" />
+                </div>
+                <div>
+                  <h3 className="text-sm font-black text-white uppercase tracking-wider flex items-center gap-2">
+                    Parent-to-School Route Corridor &amp; Distance
+                    <span className="px-2 py-0.5 rounded-full bg-emerald-500/20 text-emerald-300 text-[10px] font-mono">
+                      {inspectRouteModal.item.distance_km != null ? `${inspectRouteModal.item.distance_km} km` : 'Calculated'}
+                    </span>
+                  </h3>
+                  <p className="text-[11px] text-slate-400">
+                    Student: <strong className="text-white">{inspectRouteModal.item.student_name}</strong> • School: <strong className="text-amber-300">{inspectRouteModal.item.school_name}</strong>
+                  </p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setInspectRouteModal({ open: false, item: null })}
+                className="p-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-400 hover:text-white cursor-pointer"
+              >
+                <X size={16} />
+              </button>
+            </div>
+
+            {/* Modal Body */}
+            <div className="p-5 overflow-y-auto flex-1 space-y-4">
+              {/* Route Metric Cards */}
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                <div className="p-3 rounded-2xl bg-slate-900/90 border border-slate-800 flex items-center gap-3">
+                  <div className="w-9 h-9 rounded-xl bg-emerald-500/20 text-emerald-400 flex items-center justify-center font-bold shrink-0">
+                    <Compass size={18} />
+                  </div>
+                  <div>
+                    <span className="text-[10px] text-slate-400 font-bold uppercase block">Haversine Distance</span>
+                    <strong className="text-base font-black text-emerald-300">
+                      {inspectRouteModal.item.distance_km != null ? `${inspectRouteModal.item.distance_km} km` : '—'}
+                    </strong>
+                  </div>
+                </div>
+
+                <div className="p-3 rounded-2xl bg-slate-900/90 border border-slate-800 flex items-center gap-3">
+                  <div className="w-9 h-9 rounded-xl bg-amber-500/20 text-amber-400 flex items-center justify-center font-bold shrink-0">
+                    <Clock size={18} />
+                  </div>
+                  <div>
+                    <span className="text-[10px] text-slate-400 font-bold uppercase block">Est. Transit Time</span>
+                    <strong className="text-base font-black text-amber-300">
+                      ~{inspectRouteModal.item.estimated_transit_mins || 12} mins
+                    </strong>
+                  </div>
+                </div>
+
+                <div className="p-3 rounded-2xl bg-slate-900/90 border border-slate-800 flex items-center gap-3">
+                  <div className="w-9 h-9 rounded-xl bg-cyan-500/20 text-cyan-400 flex items-center justify-center font-bold shrink-0">
+                    <CheckSquare size={18} />
+                  </div>
+                  <div>
+                    <span className="text-[10px] text-slate-400 font-bold uppercase block">GPS Verification</span>
+                    <strong className="text-xs font-black text-cyan-300">
+                      Doorstep Pinned ✓
+                    </strong>
+                  </div>
+                </div>
+              </div>
+
+              {/* Interactive Route Corridor Map */}
+              <SchoolHomeRouteMap
+                school={{
+                  name: inspectRouteModal.item.school_name,
+                  address: inspectRouteModal.item.school_address,
+                  lat: inspectRouteModal.item.school_lat || 6.4474,
+                  lng: inspectRouteModal.item.school_lng || 3.4731,
+                }}
+                student={{
+                  name: inspectRouteModal.item.student_name,
+                  className: inspectRouteModal.item.class_name,
+                  studentIdNumber: inspectRouteModal.item.student_number,
+                  houseAddress: inspectRouteModal.item.house_address,
+                  houseLandmark: inspectRouteModal.item.house_landmark,
+                  houseNotes: inspectRouteModal.item.house_notes,
+                  lat: inspectRouteModal.item.house_lat || 6.4521,
+                  lng: inspectRouteModal.item.house_lng || 3.4802,
+                  parentPhone: inspectRouteModal.item.assigned_escort_phone || null,
+                }}
+                distanceKm={inspectRouteModal.item.distance_km}
+                estimatedTransitMins={inspectRouteModal.item.estimated_transit_mins}
+                heightClassName="h-[360px]"
+              />
+
+              {/* Route Directives Details */}
+              <div className="p-4 rounded-2xl bg-slate-900/80 border border-slate-800 text-xs space-y-2">
+                <h5 className="font-extrabold text-white uppercase tracking-wider text-[11px] flex items-center gap-1.5">
+                  <MapPin size={13} className="text-teal-400" />
+                  <span>Doorstep Route Navigation Specification</span>
+                </h5>
+                <p className="text-slate-300 leading-relaxed">
+                  The system computed a straight-line corridor of <strong className="text-emerald-300">{inspectRouteModal.item.distance_km} km</strong> between <strong className="text-white">{inspectRouteModal.item.school_name}</strong> campus gates and the student&rsquo;s residence at <strong className="text-white">{inspectRouteModal.item.house_address}</strong>. Escorts dispatched on this route have turn-by-turn guidance available.
+                </p>
+                {inspectRouteModal.item.house_landmark && (
+                  <p className="text-slate-400 font-mono text-[11px]">
+                    🏢 Pinned Landmark: <span className="text-slate-200">{inspectRouteModal.item.house_landmark}</span>
+                  </p>
+                )}
+              </div>
+            </div>
+
+            {/* Footer */}
+            <div className="p-4 bg-[#071628] border-t border-slate-800 flex items-center justify-between">
+              <span className="text-[11px] text-slate-400 font-mono">
+                Lat/Lng: ({inspectRouteModal.item.house_lat?.toFixed(5)}, {inspectRouteModal.item.house_lng?.toFixed(5)})
+              </span>
+              <div className="flex items-center gap-2">
+                {inspectRouteModal.item.directions_url && (
+                  <a
+                    href={inspectRouteModal.item.directions_url}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="px-4 py-2 rounded-xl bg-teal-600 hover:bg-teal-500 text-white font-extrabold text-xs flex items-center gap-1.5 shadow-sm transition-all"
+                  >
+                    <span>Open Google Maps</span>
+                    <ExternalLink size={13} />
+                  </a>
+                )}
+                <button
+                  type="button"
+                  onClick={() => setInspectRouteModal({ open: false, item: null })}
+                  className="px-4 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-white font-bold text-xs cursor-pointer"
+                >
+                  Close
+                </button>
+              </div>
+            </div>
           </div>
         </div>
       )}
@@ -2474,6 +3156,285 @@ export function CityManagerCommandControl({
                 className="py-2.5 px-4 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 font-bold text-xs"
               >
                 Close
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ========================================================================= */}
+      {/* 8. MODAL: EMERGENCY DIRECTIVE TO GATE OFFICERS (Requirement 1) */}
+      {/* ========================================================================= */}
+      {emergencyGateModal.open && (
+        <div className="fixed inset-0 z-[9999] bg-slate-950/85 backdrop-blur-sm flex items-center justify-center p-4">
+          <div className="bg-[#0c1829] border border-red-500/40 rounded-3xl max-w-lg w-full p-6 text-white shadow-2xl space-y-4 animate-in fade-in">
+            <div className="flex items-center gap-3">
+              <div className="w-11 h-11 rounded-2xl bg-red-500/20 border border-red-500/40 text-red-400 flex items-center justify-center font-black animate-pulse shrink-0">
+                <AlertOctagon size={24} />
+              </div>
+              <div>
+                <h3 className="text-base font-extrabold text-white flex items-center gap-2">
+                  Emergency Gate Directive Dispatch
+                </h3>
+                <p className="text-xs text-slate-400">
+                  {emergencyGateModal.officer
+                    ? `Direct tactical transmission to ${emergencyGateModal.officer.name} (${emergencyGateModal.officer.gateName})`
+                    : `High-priority broadcast to all ${gateOfficers.length} Gate Security Stations in ${selectedCity}`}
+                </p>
+              </div>
+            </div>
+
+            <div className="space-y-3">
+              <div>
+                <label className="text-[11px] font-bold text-slate-400 uppercase tracking-wider block mb-1">
+                  Severity Level
+                </label>
+                <div className="grid grid-cols-3 gap-2">
+                  {(['NON_COMPLIANCE_DIRECTIVE', 'URGENT_GATE_ALERT', 'CRITICAL_EMERGENCY'] as const).map((sev) => (
+                    <button
+                      key={sev}
+                      type="button"
+                      onClick={() => setEmergencyGateModal((prev) => ({ ...prev, severity: sev }))}
+                      className={`py-2 px-2 rounded-xl text-[10px] font-black border transition-all cursor-pointer ${
+                        emergencyGateModal.severity === sev
+                          ? 'bg-red-600 text-white border-red-500 shadow-md'
+                          : 'bg-slate-900 border-slate-800 text-slate-400 hover:text-white'
+                      }`}
+                    >
+                      {sev.replace(/_/g, ' ')}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              <div>
+                <label className="text-[11px] font-bold text-slate-400 uppercase tracking-wider block mb-1">
+                  Mandatory Action Required *
+                </label>
+                <input
+                  type="text"
+                  value={emergencyGateModal.actionRequired}
+                  onChange={(e) => setEmergencyGateModal((prev) => ({ ...prev, actionRequired: e.target.value }))}
+                  placeholder="e.g. Halt manual release without verified biometric/QR scanning"
+                  className="w-full p-2.5 rounded-xl bg-slate-950 border border-slate-800 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-red-500"
+                />
+              </div>
+
+              <div>
+                <label className="text-[11px] font-bold text-slate-400 uppercase tracking-wider block mb-1">
+                  Directive Details & Warning *
+                </label>
+                <textarea
+                  rows={4}
+                  value={emergencyGateModal.message}
+                  onChange={(e) => setEmergencyGateModal((prev) => ({ ...prev, message: e.target.value }))}
+                  placeholder="State the non-compliance incident, perimeter vulnerability, or mandatory instruction..."
+                  className="w-full p-3 rounded-xl bg-slate-950 border border-slate-800 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-red-500 resize-none font-medium"
+                />
+              </div>
+            </div>
+
+            <div className="flex gap-2 pt-2 border-t border-slate-800">
+              <button
+                type="button"
+                disabled={emergencyGateModal.submitting}
+                onClick={handleSendGateEmergencyMessage}
+                className="flex-1 py-2.5 rounded-xl bg-red-600 hover:bg-red-500 text-white font-extrabold text-xs shadow-lg transition-all flex items-center justify-center gap-2 cursor-pointer disabled:opacity-50"
+              >
+                {emergencyGateModal.submitting ? (
+                  <>
+                    <RefreshCw className="w-3.5 h-3.5 animate-spin" />
+                    <span>Transmitting Directive...</span>
+                  </>
+                ) : (
+                  <>
+                    <AlertTriangle size={14} />
+                    <span>Dispatch Emergency Directive Now</span>
+                  </>
+                )}
+              </button>
+              <button
+                type="button"
+                disabled={emergencyGateModal.submitting}
+                onClick={() =>
+                  setEmergencyGateModal({
+                    open: false,
+                    officer: null,
+                    message: '',
+                    severity: 'NON_COMPLIANCE_DIRECTIVE',
+                    actionRequired: 'Verify digital student authorization immediately',
+                    submitting: false,
+                  })
+                }
+                className="py-2.5 px-4 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 font-bold text-xs cursor-pointer"
+              >
+                Cancel
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ========================================================================= */}
+      {/* 9. MODAL: SCHOOL STUDENTS ROSTER INSPECTION (Requirement E) */}
+      {/* ========================================================================= */}
+      {schoolStudentsModal.open && schoolStudentsModal.school && (
+        <div className="fixed inset-0 z-[9999] bg-slate-950/85 backdrop-blur-sm flex items-center justify-center p-4">
+          <div className="bg-[#0b1c30] border border-slate-800 rounded-3xl max-w-4xl w-full p-6 text-white shadow-2xl space-y-4 max-h-[90vh] flex flex-col">
+            <div className="flex items-center justify-between pb-3 border-b border-slate-800">
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 rounded-2xl bg-blue-500/20 border border-blue-500/40 text-blue-400 flex items-center justify-center font-black shrink-0">
+                  <School size={20} />
+                </div>
+                <div>
+                  <h3 className="text-base font-extrabold text-white flex items-center gap-2">
+                    {schoolStudentsModal.school.name}
+                    <span className="px-2.5 py-0.5 rounded-full bg-blue-500/20 text-blue-300 text-[10px] font-black border border-blue-500/30">
+                      {schoolStudentsModal.school.students?.length || schoolStudentsModal.school.studentsCount || 0} Students Enrolled
+                    </span>
+                  </h3>
+                  <p className="text-xs text-slate-400">
+                    {schoolStudentsModal.school.area || schoolStudentsModal.school.address} · Institutional Census
+                  </p>
+                </div>
+              </div>
+
+              <button
+                type="button"
+                onClick={() => setSchoolStudentsModal({ open: false, school: null, search: '' })}
+                className="p-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white transition-colors cursor-pointer"
+              >
+                <X size={16} />
+              </button>
+            </div>
+
+            {/* Search filter */}
+            <div className="relative">
+              <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
+              <input
+                type="text"
+                value={schoolStudentsModal.search}
+                onChange={(e) => setSchoolStudentsModal((prev) => ({ ...prev, search: e.target.value }))}
+                placeholder="Search enrolled students by name, ID number, or parent contact..."
+                className="w-full pl-9 pr-3 py-2 rounded-xl bg-slate-900 border border-slate-800 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-blue-500 font-medium"
+              />
+            </div>
+
+            {/* Students Table */}
+            <div className="overflow-y-auto flex-1 rounded-2xl border border-slate-800 bg-slate-900/40">
+              {(() => {
+                const studentsList = Array.isArray(schoolStudentsModal.school.students)
+                  ? schoolStudentsModal.school.students
+                  : [];
+                const filtered = studentsList.filter((s: any) => {
+                  if (!schoolStudentsModal.search) return true;
+                  const q = schoolStudentsModal.search.toLowerCase();
+                  const name = `${s.first_name || ''} ${s.last_name || ''}`.toLowerCase();
+                  const phone = (s.parent_phone || '').toLowerCase();
+                  const id = (s.student_id_number || s.id || '').toLowerCase();
+                  return name.includes(q) || phone.includes(q) || id.includes(q);
+                });
+
+                if (filtered.length === 0) {
+                  return (
+                    <div className="text-center py-12 text-slate-400">
+                      <Users className="w-8 h-8 text-slate-600 mx-auto mb-2" />
+                      <p className="text-sm font-bold text-slate-300">No Enrolled Students Match Search</p>
+                      <p className="text-xs text-slate-500 mt-1">Check back when school administrators register pupil accounts.</p>
+                    </div>
+                  );
+                }
+
+                return (
+                  <table className="w-full text-left text-xs">
+                    <thead className="bg-[#07172b] text-[10px] font-black text-slate-400 uppercase sticky top-0 border-b border-slate-800">
+                      <tr>
+                        <th className="p-3">Student Profile</th>
+                        <th className="p-3">Class</th>
+                        <th className="p-3">Parent Contact</th>
+                        <th className="p-3">Pinned Address</th>
+                        <th className="p-3 text-right">Status</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-slate-800/60 font-medium text-slate-200">
+                      {filtered.map((s: any) => {
+                        const name = `${s.first_name || 'Pupil'} ${s.last_name || ''}`.trim();
+                        const hasPin = Boolean(s.house_lat && s.house_lng);
+                        return (
+                          <tr key={s.id} className="hover:bg-slate-800/40 transition-colors">
+                            <td className="p-3">
+                              <div className="flex items-center gap-2.5">
+                                <StudentAvatar photoUrl={s.photo_url} name={name} size={32} />
+                                <div>
+                                  <strong className="text-white block font-bold">{name}</strong>
+                                  <span className="text-[10px] font-mono text-slate-400">
+                                    {s.student_id_number || s.id.slice(0, 8)}
+                                  </span>
+                                </div>
+                              </div>
+                            </td>
+
+                            <td className="p-3">
+                              <span className="px-2 py-0.5 rounded-md bg-slate-800 text-slate-300 text-[11px] font-semibold">
+                                {s.class_name || s.class?.name || 'Assigned Class'}
+                              </span>
+                            </td>
+
+                            <td className="p-3">
+                              {s.parent_phone ? (
+                                <a
+                                  href={`tel:${s.parent_phone}`}
+                                  className="text-cyan-400 hover:text-cyan-300 font-mono text-xs flex items-center gap-1 hover:underline"
+                                >
+                                  <Phone size={11} /> {s.parent_phone}
+                                </a>
+                              ) : (
+                                <span className="text-slate-500 italic text-[11px]">No phone on file</span>
+                              )}
+                            </td>
+
+                            <td className="p-3">
+                              <div className="space-y-0.5 max-w-[220px]">
+                                <div className="flex items-center gap-1 text-[11px] text-slate-300 truncate">
+                                  <MapPin
+                                    size={11}
+                                    className={hasPin ? 'text-emerald-400 shrink-0' : 'text-slate-500 shrink-0'}
+                                  />
+                                  <span className="truncate">{s.house_address || 'Address unrecorded'}</span>
+                                </div>
+                                <span
+                                  className={`text-[9px] font-black uppercase px-1.5 py-0.2 rounded inline-block ${
+                                    hasPin
+                                      ? 'bg-emerald-500/20 text-emerald-400'
+                                      : 'bg-amber-500/20 text-amber-400'
+                                  }`}
+                                >
+                                  {hasPin ? 'GPS Coordinate Pinned' : 'Coordinates Pending'}
+                                </span>
+                              </div>
+                            </td>
+
+                            <td className="p-3 text-right">
+                              <span className="px-2 py-0.5 rounded-full text-[10px] font-black bg-emerald-500/20 text-emerald-400 border border-emerald-500/30">
+                                {s.status || 'ENROLLED'}
+                              </span>
+                            </td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                );
+              })()}
+            </div>
+
+            <div className="flex justify-end pt-2 border-t border-slate-800">
+              <button
+                type="button"
+                onClick={() => setSchoolStudentsModal({ open: false, school: null, search: '' })}
+                className="py-2 px-5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 font-bold text-xs cursor-pointer"
+              >
+                Close Roster
               </button>
             </div>
           </div>

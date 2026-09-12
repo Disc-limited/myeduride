@@ -22,7 +22,7 @@ export async function GET(request: NextRequest) {
 export async function PATCH(request: NextRequest) {
   try {
     const body = await request.json();
-    const { appId, status, notes, escortEmail, escortName, uploadedDocDetails, isResubmitted, nin, photo } = body;
+    const { appId, status, notes, escortEmail, escortName, uploadedDocDetails, isResubmitted, nin, photo, schoolId, schoolName } = body;
 
     if (!appId || !status) {
       return NextResponse.json(
@@ -31,9 +31,7 @@ export async function PATCH(request: NextRequest) {
       );
     }
 
-
-
-    const result = await updateEscortApplicationStatus(appId, status, notes, { uploadedDocDetails, isResubmitted, nin, photo });
+    const result = await updateEscortApplicationStatus(appId, status, notes, { uploadedDocDetails, isResubmitted, nin, photo, schoolId, schoolName });
 
     // Keep City Manager approval decisions in the central accountability ledger.
     if (['CITY_MANAGER_APPROVED', 'REJECTED', 'CORRECTION_REQUESTED', 'ESCALATED'].includes(status)) {
@@ -41,10 +39,10 @@ export async function PATCH(request: NextRequest) {
         const session = getSessionFromRequest(request);
         await getAdminClient().from('city_manager_audit_log').insert({
           actor_user_id: session?.user_id || null,
-          action: 'ESCORT_APPLICATION_' + status,
+          action: schoolId ? 'ESCORT_APPLICATION_APPROVED_AND_ASSIGNED_SCHOOL' : ('ESCORT_APPLICATION_' + status),
           entity_type: 'escort_application',
           entity_id: appId,
-          details: { notes: notes || null },
+          details: { notes: notes || null, school_id: schoolId || null, school_name: schoolName || null },
         });
       } catch (auditError) {
         console.warn('[escorts/applications] audit logging notice:', auditError);
@@ -75,15 +73,17 @@ export async function PATCH(request: NextRequest) {
       let emailHtml = '';
 
       if (status === 'CITY_MANAGER_APPROVED') {
-        emailSubject = 'Congratulations! Your MyEduRide Escort account has been approved';
+        emailSubject = schoolName
+          ? `Congratulations! Escort Account Approved & Assigned to ${schoolName}`
+          : 'Congratulations! Your MyEduRide Escort account has been approved';
         emailHtml = `
           <div style="font-family: sans-serif; max-width: 520px; margin: 0 auto; background:#0b1c30; color:#ffffff; padding: 24px; border-radius: 16px;">
             <h2 style="color:#00A859; margin-top:0;">Account Approved by City Manager!</h2>
             <p>Dear <strong>${targetName || 'Escort'}</strong>,</p>
             <p style="background:#00A859; color:#ffffff; padding: 14px; border-radius: 10px; font-weight: bold;">
-              Congratulations! Your MyEduRide Escort account has been approved. You can now proceed with the required registration payment to activate your account.
+              ${schoolName ? `Congratulations! Your escort account has been approved and assigned to <strong>${schoolName}</strong>.` : 'Congratulations! Your MyEduRide Escort account has been approved. You can now proceed with the required registration payment to activate your account.'}
             </p>
-            <p style="font-size:13px; color:#cbd5e1;">Please log into your dashboard to complete the registration fee payment (₦1,200.00) and activate live operational trip features.</p>
+            <p style="font-size:13px; color:#cbd5e1;">Please log into your dashboard to view active school transport routes, gate pickup schedules, and assigned student manifests.</p>
             <p style="font-size:12px; color:#94a3b8; margin-top: 24px;">MyEduRide — Student Safety Platform</p>
           </div>
         `;

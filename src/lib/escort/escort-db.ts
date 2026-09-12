@@ -528,7 +528,108 @@ export async function getEscortApplications(city?: string) {
       return false;
     });
 
-    if (filtered.length > 0) return filtered;
+    if (filtered.length > 0) {
+      allApps = filtered;
+    }
+  }
+
+  // 6. Enrich with live assigned students from escort_assignments
+  try {
+    const supabase = getAdminClient();
+    const { data: assignments } = await supabase
+      .from('escort_assignments')
+      .select(`
+        id,
+        escort_application_id,
+        school_id,
+        student_id,
+        assignment_type,
+        status,
+        created_at,
+        school:schools(id, name, address, gps_lat, gps_lng),
+        student:students(id, first_name, last_name, student_id_number, photo_url, house_address, house_lat, house_lng, house_landmark, house_notes, house_pinned_at, parent_phone, class:school_classes(id, name))
+      `)
+      .in('status', ['active', 'pending_confirmation']);
+
+    if (Array.isArray(assignments) && assignments.length > 0) {
+      allApps = allApps.map((app) => {
+        const matching = assignments.filter((a) => a.escort_application_id === app.id);
+        const assignedStudents = matching.map((a) => {
+          const st = Array.isArray(a.student) ? a.student[0] : a.student;
+          const sch = Array.isArray(a.school) ? a.school[0] : a.school;
+          const cls = Array.isArray(st?.class) ? st.class[0] : st?.class;
+          const className = typeof cls === 'object' && cls !== null ? (cls.name || 'Class N/A') : (cls || 'Class N/A');
+
+          const schoolLat = sch?.gps_lat != null ? Number(sch.gps_lat) : 6.4474;
+          const schoolLng = sch?.gps_lng != null ? Number(sch.gps_lng) : 3.4731;
+          const houseLat = st?.house_lat ? Number(st.house_lat) : null;
+          const houseLng = st?.house_lng ? Number(st.house_lng) : null;
+          let distanceKm: number | null = null;
+          let estimatedTransitMins: number | null = null;
+          let directionsUrl: string | null = null;
+
+          if (houseLat != null && houseLng != null) {
+            const R = 6371;
+            const dLat = ((houseLat - schoolLat) * Math.PI) / 180;
+            const dLon = ((houseLng - schoolLng) * Math.PI) / 180;
+            const aConst =
+              Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+              Math.cos((schoolLat * Math.PI) / 180) * Math.cos((houseLat * Math.PI) / 180) *
+              Math.sin(dLon / 2) * Math.sin(dLon / 2);
+            const cConst = 2 * Math.atan2(Math.sqrt(aConst), Math.sqrt(1 - aConst));
+            distanceKm = Math.round(R * cConst * 100) / 100;
+            estimatedTransitMins = Math.max(5, Math.round((distanceKm / 25) * 60));
+            directionsUrl = `https://www.google.com/maps/dir/?api=1&origin=${schoolLat},${schoolLng}&destination=${houseLat},${houseLng}&travelmode=driving`;
+          }
+
+          return {
+            id: st?.id || a.student_id,
+            assignmentId: a.id,
+            name: st ? `${st.first_name || ''} ${st.last_name || ''}`.trim() : 'Assigned Student',
+            firstName: st?.first_name || '',
+            lastName: st?.last_name || '',
+            studentIdNumber: st?.student_id_number || 'N/A',
+            photo: st?.photo_url || null,
+            className,
+            schoolId: a.school_id || sch?.id || app.schoolId,
+            schoolName: sch?.name || app.createdBySchoolName || 'Assigned School',
+            schoolLat,
+            schoolLng,
+            houseAddress: st?.house_address || 'Designated Home Residence',
+            houseLat,
+            houseLng,
+            houseLandmark: st?.house_landmark || null,
+            isHousePinned: Boolean(houseLat && houseLng),
+            distanceKm,
+            estimatedTransitMins,
+            directionsUrl,
+            parentPhone: st?.parent_phone || '—',
+            status: a.status,
+            assignmentType: a.assignment_type || 'standard',
+            assignedAt: a.created_at,
+          };
+        });
+
+        return {
+          ...app,
+          assignedStudentsCount: assignedStudents.length,
+          assignedStudents,
+        };
+      });
+    } else {
+      allApps = allApps.map((app) => ({
+        ...app,
+        assignedStudentsCount: 0,
+        assignedStudents: [],
+      }));
+    }
+  } catch (enrichErr) {
+    console.warn('[escort-db] escort_assignments enrichment notice:', enrichErr);
+    allApps = allApps.map((app) => ({
+      ...app,
+      assignedStudentsCount: (app as any).assignedStudentsCount || 0,
+      assignedStudents: (app as any).assignedStudents || [],
+    }));
   }
 
   return allApps;
@@ -562,6 +663,15 @@ export async function updateEscortApplicationStatus(
       if (extraData.isResubmitted !== undefined) (found as any).isResubmitted = extraData.isResubmitted;
       if (extraData.nin) (found as any).nin = extraData.nin;
       if (extraData.photo) (found as any).photo = extraData.photo;
+      if (extraData.schoolId) {
+        (found as any).schoolId = extraData.schoolId;
+        (found as any).createdBySchoolId = extraData.schoolId;
+        if (extraData.schoolName) {
+          (found as any).schoolName = extraData.schoolName;
+          (found as any).createdBySchoolName = extraData.schoolName;
+        }
+        (found as any).escortCategory = 'school_escort';
+      }
     }
     saveFileStore(fileRecords);
   }
@@ -577,6 +687,15 @@ export async function updateEscortApplicationStatus(
         };
       }
       if (extraData.isResubmitted !== undefined) (memoryFound as any).isResubmitted = extraData.isResubmitted;
+      if (extraData.schoolId) {
+        (memoryFound as any).schoolId = extraData.schoolId;
+        (memoryFound as any).createdBySchoolId = extraData.schoolId;
+        if (extraData.schoolName) {
+          (memoryFound as any).schoolName = extraData.schoolName;
+          (memoryFound as any).createdBySchoolName = extraData.schoolName;
+        }
+        (memoryFound as any).escortCategory = 'school_escort';
+      }
     }
   }
 
@@ -616,6 +735,15 @@ export async function updateEscortApplicationStatus(
       }
       if (extraData.isResubmitted !== undefined) appDataObj.isResubmitted = extraData.isResubmitted;
       if (extraData.nin) appDataObj.nin = extraData.nin;
+      if (extraData.schoolId) {
+        appDataObj.schoolId = extraData.schoolId;
+        appDataObj.createdBySchoolId = extraData.schoolId;
+        if (extraData.schoolName) {
+          appDataObj.schoolName = extraData.schoolName;
+          appDataObj.createdBySchoolName = extraData.schoolName;
+        }
+        appDataObj.escortCategory = 'school_escort';
+      }
     }
 
     const updatePayload: Record<string, any> = {
@@ -625,6 +753,7 @@ export async function updateEscortApplicationStatus(
       application_data: JSON.stringify(appDataObj),
     };
     if (extraData?.nin) updatePayload.nin = extraData.nin;
+    if (extraData?.schoolId) updatePayload.school_id = extraData.schoolId;
 
     await supabase
       .from('escort_applications')
@@ -642,9 +771,13 @@ export async function updateEscortApplicationStatus(
           .maybeSingle();
 
         if (prof?.id) {
-          // Assign active 'driver' role
+          // Assign active 'driver' role linked to assigned school if present
+          const roleRecord: Record<string, any> = { user_id: prof.id, role: 'driver', is_active: true };
+          if (extraData?.schoolId) {
+            roleRecord.school_id = extraData.schoolId;
+          }
           await supabase.from('user_school_roles').upsert(
-            { user_id: prof.id, role: 'driver', is_active: true },
+            roleRecord,
             { onConflict: 'user_id,role' }
           );
 

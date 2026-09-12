@@ -174,6 +174,18 @@ export default function InteractiveRouteCorridorMap({
         if (activeFilter !== 'stops') {
           pinnedStudents.forEach((stu) => {
             if (stu.house_lat && stu.house_lng) {
+              const schLat = school?.gps_lat || 6.4474;
+              const schLng = school?.gps_lng || 3.4731;
+              const dLat = ((stu.house_lat - schLat) * Math.PI) / 180;
+              const dLon = ((stu.house_lng - schLng) * Math.PI) / 180;
+              const aDist =
+                Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+                Math.cos((schLat * Math.PI) / 180) * Math.cos((stu.house_lat * Math.PI) / 180) *
+                Math.sin(dLon / 2) * Math.sin(dLon / 2);
+              const cDist = 2 * Math.atan2(Math.sqrt(aDist), Math.sqrt(1 - aDist));
+              const distKm = Math.round(6371 * cDist * 100) / 100;
+              const estMins = Math.max(5, Math.round((distKm / 25) * 60));
+
               const houseIcon = L.divIcon({
                 className: 'house-marker',
                 html: `<div style="background: linear-gradient(135deg, #0d9488, #0f766e); color: white; width: 34px; height: 34px; border-radius: 12px; display: flex; align-items: center; justify-content: center; box-shadow: 0 4px 12px rgba(13,148,136,0.4); border: 2px solid white;"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="m3 9 9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/></svg></div>`,
@@ -182,22 +194,25 @@ export default function InteractiveRouteCorridorMap({
               });
 
               const houseMarker = L.marker([stu.house_lat, stu.house_lng], { icon: houseIcon }).addTo(map);
-              const navLink = `https://www.google.com/maps/dir/?api=1&destination=${stu.house_lat},${stu.house_lng}`;
+              const navLink = `https://www.google.com/maps/dir/?api=1&origin=${schLat},${schLng}&destination=${stu.house_lat},${stu.house_lng}&travelmode=driving`;
 
               houseMarker.bindPopup(`
-                <div style="font-family: inherit; font-size: 12px; line-height: 1.4;">
+                <div style="font-family: inherit; font-size: 12px; line-height: 1.4; min-width: 220px;">
                   <strong style="color: #0f766e; font-size: 13px; display: block;">🏠 ${stu.name}</strong>
                   <span style="display: block; color: #64748b; font-size: 11px;">${stu.class || 'Student'}</span>
+                  <div style="margin: 4px 0; padding: 4px 8px; background: #f0fdf4; border: 1px solid #86efac; border-radius: 6px; display: inline-flex; align-items: center; gap: 4px; font-weight: 800; font-size: 11px; color: #15803d;">
+                    📏 ${distKm} km from School (⏱️ ~${estMins}m)
+                  </div>
                   <p style="margin: 3px 0 0 0; color: #334155;">📍 ${stu.house_address || 'Home Pickup'}</p>
                   ${stu.house_landmark ? `<p style="margin: 2px 0 0 0; color: #64748b; font-size: 11px;">Landmark: ${stu.house_landmark}</p>` : ''}
                   ${stu.parent_phone ? `<p style="margin: 2px 0 0 0; color: #047857; font-size: 11px; font-weight: 700;">📞 ${stu.parent_phone}</p>` : ''}
-                  <a href="${navLink}" target="_blank" rel="noopener noreferrer" style="display: inline-block; margin-top: 5px; padding: 4px 8px; background: #0f766e; color: white; border-radius: 6px; text-decoration: none; font-weight: 700; font-size: 10px;">
-                    🗺️ Open Navigation
+                  <a href="${navLink}" target="_blank" rel="noopener noreferrer" style="display: inline-flex; align-items: center; gap: 4px; margin-top: 6px; padding: 5px 10px; background: #0f766e; color: white; border-radius: 8px; text-decoration: none; font-weight: 800; font-size: 11px;">
+                    🗺️ Driving Route from School
                   </a>
                 </div>
               `);
               houseMarker.on('click', () => {
-                setSelectedPin({ type: 'student', data: stu });
+                setSelectedPin({ type: 'student', data: { ...stu, distance_km: distKm, estimated_transit_mins: estMins, directions_url: navLink } });
               });
               markersGroup.addLayer(houseMarker);
             }

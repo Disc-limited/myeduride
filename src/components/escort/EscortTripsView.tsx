@@ -47,6 +47,12 @@ export default function EscortTripsView({
   const earnings = liveDashboardData?.earnings_summary || {};
   const isReady = Boolean(escort?.ready_for_pickup);
 
+  const isSchoolEscort = Boolean(
+    escort?.is_school_escort ||
+    escort?.escort_category === 'school_escort' ||
+    escort?.role === 'school_escort'
+  );
+
   const studentsList = liveDashboardData?.students?.manifest || [];
   const stops = route.stops || [];
 
@@ -385,16 +391,28 @@ export default function EscortTripsView({
                     </div>
                   </div>
 
-                  {/* Pricing Badge */}
-                  <div className="text-right shrink-0">
-                    <span className="text-[9px] uppercase font-extrabold text-slate-400 block">CM Fare</span>
-                    <span className="font-black text-emerald-700 text-xs">
-                      {isMorning ? st.formatted_morning_fare || '₦1,750' : st.formatted_afternoon_fare || '₦1,750'}
-                    </span>
-                    <span className="text-[8px] text-slate-400 block">
-                      ({st.formatted_daily_fare || '₦3,500'}/day)
-                    </span>
-                  </div>
+                  {/* Pricing Badge for MyEduRide Escorts vs Direction Badge for School Escorts */}
+                  {!isSchoolEscort && st.show_price !== false ? (
+                    <div className="text-right shrink-0">
+                      <span className="text-[9px] uppercase font-extrabold text-slate-400 block">CM Fare</span>
+                      <span className="font-black text-emerald-700 text-xs">
+                        {isMorning ? st.formatted_morning_fare || '₦1,750' : st.formatted_afternoon_fare || '₦1,750'}
+                      </span>
+                      <span className="text-[8px] text-slate-400 block">
+                        ({st.formatted_daily_fare || '₦3,500'}/day)
+                      </span>
+                    </div>
+                  ) : (
+                    <div className="text-right shrink-0 bg-teal-50 px-2 py-1 rounded-lg border border-teal-100">
+                      <span className="text-[9px] uppercase font-extrabold text-teal-800 block">Direction</span>
+                      <span className="font-mono font-black text-teal-700 text-xs block">
+                        {st.distance_km != null ? `📏 ${st.distance_km} km` : 'Campus Route'}
+                      </span>
+                      <span className="text-[8px] text-slate-400 block">
+                        {st.estimated_transit_mins ? `~${st.estimated_transit_mins}m transit` : 'Doorstep'}
+                      </span>
+                    </div>
+                  )}
                 </div>
 
                 {/* Address & Doorstep Pin Navigation */}
@@ -409,15 +427,16 @@ export default function EscortTripsView({
                         <p className="text-[9px] text-slate-500 pl-4 truncate">Landmark: {st.house_landmark}</p>
                       )}
                     </div>
-                    {st.house_lat && st.house_lng && (
+                    {(st.driving_directions_url || (st.house_lat && st.house_lng)) && (
                       <a
-                        href={st.google_maps_nav_url || `https://www.google.com/maps/dir/?api=1&destination=${st.house_lat},${st.house_lng}`}
+                        href={st.driving_directions_url || st.google_maps_nav_url || `https://www.google.com/maps/dir/?api=1&destination=${st.house_lat},${st.house_lng}`}
                         target="_blank"
                         rel="noopener noreferrer"
                         className="px-2 py-1 rounded-lg bg-teal-700 hover:bg-teal-800 text-white font-extrabold text-[9px] flex items-center gap-1 shrink-0 shadow-2xs"
+                        title={isSchoolEscort ? 'Open Driving Directions from Campus' : 'Open Navigation'}
                       >
                         <Navigation size={10} />
-                        <span>Navigate</span>
+                        <span>{isSchoolEscort ? 'Route' : 'Nav'}</span>
                       </a>
                     )}
                   </div>
