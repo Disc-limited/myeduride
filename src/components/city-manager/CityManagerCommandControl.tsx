@@ -64,6 +64,7 @@ import {
   Smartphone,
   Tag,
   BadgePercent,
+  Compass,
 } from 'lucide-react';
 import { toast } from 'sonner';
 import StudentAvatar from '@/components/shared/StudentAvatar';
