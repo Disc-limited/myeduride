@@ -24,12 +24,14 @@ import {
   X,
   Navigation,
   MessageSquare,
+  QrCode,
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { photoSrc } from '@/lib/photo';
 import MyEduRideEscortView from '@/components/escort/MyEduRideEscortView';
 import PickupVerificationModal from '@/components/escort/PickupVerificationModal';
 import IncidentReportModal from '@/components/escort/IncidentReportModal';
+import EscortIdCardModal from '@/components/escort/EscortIdCardModal';
 
 export default function MyEduRideEscortDashboardPage() {
   const router = useRouter();
@@ -47,6 +49,7 @@ export default function MyEduRideEscortDashboardPage() {
   const [incidentModalOpen, setIncidentModalOpen] = useState(false);
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [showAccountModal, setShowAccountModal] = useState(false);
+  const [showIdCardModal, setShowIdCardModal] = useState(false);
 
   const [escortData, setEscortData] = useState<any>(null);
   const [liveDashboardData, setLiveDashboardData] = useState<any>(null);
@@ -399,6 +402,14 @@ export default function MyEduRideEscortDashboardPage() {
                 <FileText size={14} />
               </button>
             </div>
+            <button
+              type="button"
+              onClick={() => { setShowIdCardModal(true); setSidebarOpen(false); }}
+              className="w-full mt-2 py-1.5 px-2.5 rounded-xl bg-emerald-500/20 hover:bg-emerald-500/30 border border-emerald-500/30 text-emerald-300 hover:text-white text-[10px] font-extrabold flex items-center justify-center gap-1.5 transition-all cursor-pointer shadow-xs"
+            >
+              <QrCode size={13} className="text-emerald-400" />
+              <span>Show Gate QR Pass</span>
+            </button>
           </div>
 
           {/* City Dispatch Support */}
@@ -455,6 +466,17 @@ export default function MyEduRideEscortDashboardPage() {
               <span className="w-2 h-2 rounded-full bg-white animate-pulse" />
               <span>ON DUTY</span>
             </span>
+
+            {/* Digital Escort Gate Pass Modal Trigger */}
+            <button
+              type="button"
+              onClick={() => setShowIdCardModal(true)}
+              className="px-2.5 py-1.5 rounded-xl bg-[#0A1128] hover:bg-slate-800 text-white border border-emerald-500/30 text-xs font-black flex items-center gap-1.5 cursor-pointer transition-colors shadow-xs"
+              title="Display Digital Escort Gate Pass with Scannable QR"
+            >
+              <QrCode size={14} className="text-emerald-400" />
+              <span className="hidden xs:inline">Gate Pass</span>
+            </button>
 
             {/* Quick Emergency SOS Incident Modal Trigger */}
             <button
@@ -539,6 +561,7 @@ export default function MyEduRideEscortDashboardPage() {
             liveDashboardData={liveDashboardData}
             onOpenVerificationModal={handleOpenVerification}
             onOpenIncidentModal={() => setIncidentModalOpen(true)}
+            onOpenIdCardModal={() => setShowIdCardModal(true)}
             activeNav={activeNav}
             onNavChange={setActiveNav}
           />
@@ -653,6 +676,21 @@ export default function MyEduRideEscortDashboardPage() {
           onClose={() => setShowAccountModal(false)}
         />
       )}
+
+      {/* DIGITAL ON-SCREEN ESCORT GATE PASS MODAL */}
+      <EscortIdCardModal
+        isOpen={showIdCardModal}
+        onClose={() => setShowIdCardModal(false)}
+        escortData={{
+          id: liveDashboardData?.escort?.id || escortData?.id || session?.user_id,
+          escort_code: escortCode,
+          name: escortName,
+          photo: liveDashboardData?.escort?.photo || escortData?.photo || session?.avatar_url,
+          vehicle_plate: liveDashboardData?.escort?.vehicle_plate || escortData?.regNumber || escortData?.vehicle?.regNumber,
+          vehicle_name: liveDashboardData?.escort?.vehicle_name || escortData?.vehicleType || escortData?.vehicle?.type,
+          operating_area: liveDashboardData?.escort?.operating_area || escortData?.operating_area || escortData?.city,
+        }}
+      />
     </div>
   );
 }

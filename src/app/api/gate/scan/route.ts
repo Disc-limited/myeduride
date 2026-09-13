@@ -409,7 +409,32 @@ export async function POST(request: NextRequest) {
         (depRes.data || []).forEach((d: any) => departuresMap.set(d.student_id, d));
       }
 
-      const studentsManifest = rawStudents.map((st: any) => {
+      const currentHour = new Date().getHours();
+      const suggestedMode = currentHour < 12 ? 'arrival' : 'departure';
+
+      // Query today's doorstep pickup status from escort_student_daily_trips
+      const morningPickedUpStudentIds = new Set<string>();
+      if (studentIds.length > 0) {
+        const day = todayInLagos();
+        const escortIdTokens = [escortRecord.id, escortRecord.user_id].filter(Boolean);
+        const { data: tripRecords } = await supabase
+          .from('escort_student_daily_trips')
+          .select('student_id, morning_picked_up, morning_picked_up_at')
+          .eq('trip_date', day)
+          .in('escort_id', escortIdTokens)
+          .eq('morning_picked_up', true);
+
+        if (tripRecords && tripRecords.length > 0) {
+          tripRecords.forEach((t: any) => morningPickedUpStudentIds.add(t.student_id));
+        }
+      }
+
+      // In morning arrival, ONLY students who were actually picked up by this escort from their residences are shown
+      const activeStudentsSource = (suggestedMode === 'arrival' && morningPickedUpStudentIds.size > 0)
+        ? rawStudents.filter((st: any) => morningPickedUpStudentIds.has(st.id))
+        : rawStudents;
+
+      const studentsManifest = activeStudentsSource.map((st: any) => {
         const arr = arrivalsMap.get(st.id);
         const dep = departuresMap.get(st.id);
         const cls = Array.isArray(st.class) ? st.class[0]?.name : (st.class?.name || 'Class');
@@ -421,6 +446,7 @@ export async function POST(request: NextRequest) {
           photo_url: st.photo_url || null,
           class_name: cls,
           pickup_address: st.house_address || st.pickup_address || 'Designated Stop',
+          was_picked_up_by_escort: morningPickedUpStudentIds.has(st.id),
           today_status: {
             has_arrival: Boolean(arr),
             arrival_time: arr?.timestamp ? new Date(arr.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : null,
@@ -433,8 +459,6 @@ export async function POST(request: NextRequest) {
       const alreadyArrived = studentsManifest.filter((s) => s.today_status.has_arrival).length;
       const alreadyDeparted = studentsManifest.filter((s) => s.today_status.has_departure).length;
       const totalCount = studentsManifest.length;
-      const currentHour = new Date().getHours();
-      const suggestedMode = currentHour < 12 ? 'arrival' : 'departure';
 
       return NextResponse.json({
         type: 'escort_batch',

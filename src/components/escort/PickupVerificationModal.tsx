@@ -2,7 +2,18 @@
 'use client';
 
 import { useState } from 'react';
-import { ShieldCheck, QrCode, KeyRound, UserCheck, X, CheckCircle2, AlertCircle, Phone, MapPin } from 'lucide-react';
+import {
+  ShieldCheck,
+  QrCode,
+  KeyRound,
+  UserCheck,
+  X,
+  CheckCircle2,
+  AlertCircle,
+  Phone,
+  MapPin,
+  Check
+} from 'lucide-react';
 import { toast } from 'sonner';
 
 interface PickupVerificationModalProps {
@@ -20,7 +31,7 @@ export default function PickupVerificationModal({
 }: PickupVerificationModalProps) {
   const [pinCode, setPinCode] = useState('');
   const [verifying, setVerifying] = useState(false);
-  const [verificationMode, setVerificationMode] = useState<'pin' | 'qr'>('pin');
+  const [verificationMode, setVerificationMode] = useState<'pin' | 'quick'>('pin');
 
   if (!isOpen) return null;
 
@@ -35,28 +46,57 @@ export default function PickupVerificationModal({
     photo: '/images/landing/student_avatar.png',
   };
 
+  const isAfternoonDropoff =
+    sampleStudent?.action === 'afternoon_dropoff' ||
+    sampleStudent?.afternoon_status === 'PICKED_UP_FROM_GATE' ||
+    sampleStudent?.status === 'ON_BOARD';
+
+  const actionType = isAfternoonDropoff ? 'afternoon_dropoff' : 'morning_pickup';
+
+  const executeVerification = async (pin?: string) => {
+    setVerifying(true);
+    try {
+      const res = await fetch('/api/escorts/pickup-verify', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          student_id: sampleStudent.id,
+          school_id: sampleStudent.school_id,
+          action: actionType,
+          pin_code: pin || pinCode || undefined,
+        }),
+      });
+
+      const json = await res.json();
+      if (!res.ok || !json.success) {
+        throw new Error(json.error || 'Failed to verify student');
+      }
+
+      toast.success(
+        json.message ||
+          (actionType === 'morning_pickup'
+            ? `Pickup verified! ${sampleStudent.name} is on board for morning transit.`
+            : `Safe arrival! ${sampleStudent.name} doorstep drop-off recorded.`)
+      );
+
+      if (onVerificationComplete) {
+        onVerificationComplete(json);
+      }
+      onClose();
+    } catch (err: any) {
+      toast.error(err.message || 'Verification error');
+    } finally {
+      setVerifying(false);
+    }
+  };
+
   const handleVerifyPin = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!pinCode || pinCode.length < 4) {
       toast.error('Please enter a valid 4-digit verification PIN');
       return;
     }
-
-    setVerifying(true);
-    setTimeout(() => {
-      setVerifying(false);
-      toast.success(`Verification Successful! Student pickup confirmed for ${sampleStudent.name}.`);
-      if (onVerificationComplete) {
-        onVerificationComplete({
-          studentId: sampleStudent.id,
-          studentName: sampleStudent.name,
-          guardianName: sampleStudent.guardianName,
-          timestamp: new Date().toLocaleTimeString('en-NG', { hour: '2-digit', minute: '2-digit' }),
-          status: 'verified',
-        });
-      }
-      onClose();
-    }, 600);
+    await executeVerification(pinCode);
   };
 
   return (
@@ -65,7 +105,7 @@ export default function PickupVerificationModal({
         {/* Close Button */}
         <button
           onClick={onClose}
-          className="absolute top-4 right-4 text-slate-400 hover:text-slate-600 p-1.5 rounded-full hover:bg-slate-100 transition-all"
+          className="absolute top-4 right-4 text-slate-400 hover:text-slate-600 p-1.5 rounded-full hover:bg-slate-100 transition-all cursor-pointer"
         >
           <X size={18} />
         </button>
@@ -77,50 +117,53 @@ export default function PickupVerificationModal({
           </div>
           <div>
             <h3 className="font-extrabold text-base text-slate-900 leading-tight">
-              Student Pickup Verification
+              {actionType === 'morning_pickup' ? 'Student Morning Pickup' : 'Afternoon Doorstep Drop-off'}
             </h3>
-            <p className="text-xs text-slate-500">Security PIN & Guardian Handover Check</p>
+            <p className="text-xs text-slate-500">
+              {actionType === 'morning_pickup'
+                ? 'Boarding Confirmation & Parent Security PIN'
+                : 'Safe Home Delivery & Guardian Handover'}
+            </p>
           </div>
         </div>
 
         {/* Student Card Info */}
         <div className="bg-slate-50 border border-slate-200/80 rounded-2xl p-4 flex items-start gap-3">
           <div className="w-12 h-12 rounded-xl bg-[#0A1128] text-white flex items-center justify-center font-bold text-lg shrink-0 shadow-sm">
-            {sampleStudent.name.charAt(0)}
+            {sampleStudent.name?.charAt(0) || 'S'}
           </div>
           <div className="min-w-0 flex-1 text-xs">
             <div className="flex items-center justify-between">
               <h4 className="font-extrabold text-sm text-slate-900 truncate">{sampleStudent.name}</h4>
               <span className="bg-emerald-100 text-emerald-800 text-[10px] font-bold px-2 py-0.5 rounded-full border border-emerald-200">
-                {sampleStudent.class}
+                {sampleStudent.class || sampleStudent.class_name || 'Passenger'}
               </span>
             </div>
-            <p className="text-slate-500 font-medium mt-0.5">{sampleStudent.school}</p>
+            <p className="text-slate-500 font-medium mt-0.5">{sampleStudent.school || sampleStudent.school_name || 'Destination Campus'}</p>
             <div className="mt-2 pt-2 border-t border-slate-200/60 space-y-1 text-slate-600 text-[11px]">
               <div className="flex items-center gap-1.5">
-                <UserCheck size={13} className="text-slate-400" />
-                <span>Guardian: <strong className="text-slate-800">{sampleStudent.guardianName}</strong></span>
+                <MapPin size={13} className="text-slate-400 shrink-0" />
+                <span className="truncate">{sampleStudent.pickupPoint || sampleStudent.pickup_address || 'Designated Home Residence'}</span>
               </div>
               <div className="flex items-center gap-1.5">
-                <Phone size={13} className="text-slate-400" />
-                <span>Contact: <strong className="text-slate-800">{sampleStudent.guardianPhone}</strong></span>
-              </div>
-              <div className="flex items-center gap-1.5">
-                <MapPin size={13} className="text-slate-400" />
-                <span>Stop: <strong className="text-slate-800">{sampleStudent.pickupPoint}</strong></span>
+                <Phone size={13} className="text-slate-400 shrink-0" />
+                <span>{sampleStudent.guardianName || sampleStudent.parent_name || 'Guardian'}</span>
+                {sampleStudent.guardianPhone || sampleStudent.parent_phone ? (
+                  <span className="text-slate-400">({sampleStudent.guardianPhone || sampleStudent.parent_phone})</span>
+                ) : null}
               </div>
             </div>
           </div>
         </div>
 
-        {/* Verification Mode Toggle */}
-        <div className="grid grid-cols-2 gap-1 bg-slate-100 p-1 rounded-xl text-xs font-bold">
+        {/* Mode Selector Tabs */}
+        <div className="grid grid-cols-2 p-1 bg-slate-100 rounded-xl text-xs font-semibold text-slate-600">
           <button
             type="button"
             onClick={() => setVerificationMode('pin')}
-            className={`py-2 rounded-lg flex items-center justify-center gap-1.5 transition-all ${
+            className={`py-2 rounded-lg flex items-center justify-center gap-1.5 transition-all cursor-pointer ${
               verificationMode === 'pin'
-                ? 'bg-white text-slate-900 shadow-sm'
+                ? 'bg-white text-slate-900 shadow-sm font-bold'
                 : 'text-slate-600 hover:text-slate-900'
             }`}
           >
@@ -129,15 +172,15 @@ export default function PickupVerificationModal({
           </button>
           <button
             type="button"
-            onClick={() => setVerificationMode('qr')}
-            className={`py-2 rounded-lg flex items-center justify-center gap-1.5 transition-all ${
-              verificationMode === 'qr'
-                ? 'bg-white text-slate-900 shadow-sm'
+            onClick={() => setVerificationMode('quick')}
+            className={`py-2 rounded-lg flex items-center justify-center gap-1.5 transition-all cursor-pointer ${
+              verificationMode === 'quick'
+                ? 'bg-white text-slate-900 shadow-sm font-bold'
                 : 'text-slate-600 hover:text-slate-900'
             }`}
           >
-            <QrCode size={15} />
-            <span>Scan QR Pass</span>
+            <UserCheck size={15} />
+            <span>1-Tap Confirm</span>
           </button>
         </div>
 
@@ -156,44 +199,56 @@ export default function PickupVerificationModal({
                 placeholder="• • • •"
                 className="w-full text-center text-2xl font-mono tracking-widest px-4 py-3 bg-slate-50 border border-slate-200 rounded-2xl outline-none focus:ring-2 focus:ring-emerald-400 focus:bg-white text-slate-900"
               />
-              <p className="text-[10px] text-slate-400">PIN is available on parent's MyEduRide Pass app.</p>
+              <p className="text-[10px] text-slate-400">PIN is available on parent's MyEduRide pass.</p>
             </div>
 
             <button
               type="submit"
               disabled={verifying || pinCode.length < 4}
-              className="w-full bg-emerald-500 hover:bg-emerald-600 text-white font-bold text-xs py-3 px-4 rounded-xl shadow-md shadow-emerald-500/20 disabled:opacity-50 transition-all flex items-center justify-center gap-2"
+              className="w-full bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs py-3 px-4 rounded-xl shadow-md disabled:opacity-50 transition-all flex items-center justify-center gap-2 cursor-pointer"
             >
               {verifying ? (
                 <>
                   <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
-                  <span>Verifying PIN...</span>
+                  <span>Recording in Database...</span>
                 </>
               ) : (
                 <>
                   <CheckCircle2 size={16} />
-                  <span>Confirm Student Boarding & Release</span>
+                  <span>{actionType === 'morning_pickup' ? 'Confirm Student Boarded' : 'Confirm Safe Doorstep Drop-off'}</span>
                 </>
               )}
             </button>
           </form>
         ) : (
           <div className="space-y-4 text-center">
-            <div className="p-6 border-2 border-dashed border-slate-300 rounded-2xl flex flex-col items-center justify-center bg-slate-50 space-y-2">
-              <QrCode size={48} className="text-emerald-600 animate-pulse" />
-              <p className="text-xs font-bold text-slate-800">Align QR Code within Scanner Frame</p>
-              <p className="text-[11px] text-slate-500">Scanning parent's authorized digital pickup pass...</p>
+            <div className="p-4 border border-emerald-200 rounded-2xl flex flex-col items-center justify-center bg-emerald-50/60 space-y-1.5">
+              <CheckCircle2 size={32} className="text-emerald-600" />
+              <p className="text-xs font-bold text-slate-800">Direct Handover Verification</p>
+              <p className="text-[11px] text-slate-600">
+                {actionType === 'morning_pickup'
+                  ? 'Confirm that the student is physically aboard the escort bus. This automatically schedules them for gate sign-in at the school.'
+                  : 'Confirm that the student has safely reached their doorstep and been received by the parent.'}
+              </p>
             </div>
 
             <button
               type="button"
-              onClick={() => {
-                toast.success('QR Code Scanned Successfully!');
-                onClose();
-              }}
-              className="w-full bg-[#0A1128] hover:bg-[#121E42] text-white font-bold text-xs py-3 px-4 rounded-xl transition-all shadow-md"
+              disabled={verifying}
+              onClick={() => executeVerification()}
+              className="w-full bg-[#0A1128] hover:bg-slate-800 text-white font-bold text-xs py-3 px-4 rounded-xl transition-all shadow-md flex items-center justify-center gap-2 cursor-pointer disabled:opacity-50"
             >
-              Simulate Camera Scan Match
+              {verifying ? (
+                <>
+                  <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                  <span>Recording in Database...</span>
+                </>
+              ) : (
+                <>
+                  <Check size={16} className="text-emerald-400" />
+                  <span>{actionType === 'morning_pickup' ? '1-Tap Confirm Boarded' : '1-Tap Confirm Dropped Off'}</span>
+                </>
+              )}
             </button>
           </div>
         )}

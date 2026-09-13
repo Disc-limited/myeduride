@@ -40,6 +40,7 @@ interface MyEduRideEscortViewProps {
   onRefreshData?: () => void;
   onOpenVerificationModal: (student?: any) => void;
   onOpenIncidentModal: () => void;
+  onOpenIdCardModal?: () => void;
   activeNav?: string;
   onNavChange?: (tab: string) => void;
 }
@@ -49,6 +50,7 @@ export default function MyEduRideEscortView({
   onRefreshData = () => {},
   onOpenVerificationModal,
   onOpenIncidentModal,
+  onOpenIdCardModal,
   activeNav,
   onNavChange,
 }: MyEduRideEscortViewProps) {
@@ -566,17 +568,30 @@ export default function MyEduRideEscortView({
             <div>
               <h3 className="font-black text-base sm:text-lg text-slate-900">Assigned Students Manifest</h3>
               <p className="text-xs text-slate-500">
-                School-assigned passengers approved by City Manager with pricing and pinned house locations.
+                School-assigned passengers with verified morning doorstep pickups and afternoon gate releases.
               </p>
             </div>
-            <button
-              type="button"
-              onClick={() => onOpenVerificationModal()}
-              className="min-h-[44px] bg-emerald-600 hover:bg-emerald-700 text-white font-black text-xs py-2.5 px-4 rounded-xl shadow-xs flex items-center justify-center gap-1.5 cursor-pointer"
-            >
-              <QrCode size={16} />
-              <span>Verify Passenger PIN</span>
-            </button>
+            <div className="flex items-center gap-2 flex-wrap">
+              {onOpenIdCardModal && (
+                <button
+                  type="button"
+                  onClick={onOpenIdCardModal}
+                  className="min-h-[44px] bg-[#0A1128] hover:bg-slate-800 text-white font-black text-xs py-2.5 px-4 rounded-xl shadow-xs flex items-center justify-center gap-1.5 cursor-pointer border border-emerald-500/30"
+                  title="Display Digital Escort Gate Pass for Gate Officer Scanner"
+                >
+                  <QrCode size={16} className="text-emerald-400" />
+                  <span>Show Gate Pass</span>
+                </button>
+              )}
+              <button
+                type="button"
+                onClick={() => onOpenVerificationModal()}
+                className="min-h-[44px] bg-emerald-600 hover:bg-emerald-700 text-white font-black text-xs py-2.5 px-4 rounded-xl shadow-xs flex items-center justify-center gap-1.5 cursor-pointer"
+              >
+                <ShieldCheck size={16} />
+                <span>Verify Pickup / Drop-off</span>
+              </button>
+            </div>
           </div>
 
           {/* DESKTOP VIEW (>= md): Structured Data Table */}
@@ -662,17 +677,31 @@ export default function MyEduRideEscortView({
                         </td>
 
                         <td className="py-3.5 px-3">
-                          <span
-                            className={`text-[10px] font-black px-2 py-0.5 rounded-full uppercase ${
-                              st.status === 'ON_BOARD'
-                                ? 'bg-blue-100 text-blue-800'
-                                : st.status === 'DROPPED_OFF'
-                                ? 'bg-emerald-100 text-emerald-800'
-                                : 'bg-slate-100 text-slate-700'
-                            }`}
-                          >
-                            {st.status || 'SCHEDULED'}
-                          </span>
+                          {st.morning_status === 'DROPPED_OFF_AT_SCHOOL' ? (
+                            <span className="text-[10px] font-black px-2 py-0.5 rounded-full uppercase bg-emerald-100 text-emerald-800 flex items-center gap-1 w-fit border border-emerald-200">
+                              <CheckCircle2 size={11} className="text-emerald-700" />
+                              <span>Dropped Off (Gate)</span>
+                            </span>
+                          ) : st.morning_status === 'PICKED_UP_FROM_HOME' ? (
+                            <span className="text-[10px] font-black px-2 py-0.5 rounded-full uppercase bg-blue-100 text-blue-800 flex items-center gap-1 w-fit border border-blue-200">
+                              <Car size={11} className="text-blue-700" />
+                              <span>On Board (Picked Up)</span>
+                            </span>
+                          ) : st.afternoon_status === 'SAFE_AT_HOME' ? (
+                            <span className="text-[10px] font-black px-2 py-0.5 rounded-full uppercase bg-emerald-100 text-emerald-800 flex items-center gap-1 w-fit border border-emerald-200">
+                              <CheckCircle2 size={11} className="text-emerald-700" />
+                              <span>Safe at Home</span>
+                            </span>
+                          ) : st.afternoon_status === 'PICKED_UP_FROM_GATE' ? (
+                            <span className="text-[10px] font-black px-2 py-0.5 rounded-full uppercase bg-indigo-100 text-indigo-800 flex items-center gap-1 w-fit border border-indigo-200">
+                              <Car size={11} className="text-indigo-700" />
+                              <span>On Board (Released)</span>
+                            </span>
+                          ) : (
+                            <span className="text-[10px] font-black px-2 py-0.5 rounded-full uppercase bg-slate-100 text-slate-700">
+                              Scheduled
+                            </span>
+                          )}
                         </td>
 
                         <td className="py-3.5 px-3 text-center">
@@ -697,13 +726,36 @@ export default function MyEduRideEscortView({
                                 <Phone size={13} />
                               </a>
                             )}
-                            <button
-                              type="button"
-                              onClick={() => onOpenVerificationModal(st)}
-                              className="px-2.5 py-1 rounded-lg bg-emerald-50 hover:bg-emerald-100 text-emerald-800 font-bold text-[11px] cursor-pointer"
-                            >
-                              Verify
-                            </button>
+                            {st.morning_status === 'DROPPED_OFF_AT_SCHOOL' && st.afternoon_status !== 'PICKED_UP_FROM_GATE' ? (
+                              <span className="px-2 py-1 rounded-lg bg-emerald-50 text-emerald-700 font-bold text-[10px] border border-emerald-200">
+                                In School
+                              </span>
+                            ) : st.afternoon_status === 'PICKED_UP_FROM_GATE' ? (
+                              <button
+                                type="button"
+                                onClick={() => onOpenVerificationModal({ ...st, action: 'afternoon_dropoff' })}
+                                className="px-2.5 py-1 rounded-lg bg-indigo-600 hover:bg-indigo-700 text-white font-bold text-[11px] cursor-pointer shadow-xs"
+                                title="Confirm student delivered to doorstep"
+                              >
+                                Drop-off
+                              </button>
+                            ) : st.afternoon_status === 'SAFE_AT_HOME' ? (
+                              <span className="px-2 py-1 rounded-lg bg-emerald-50 text-emerald-700 font-bold text-[10px] border border-emerald-200">
+                                Completed
+                              </span>
+                            ) : (
+                              <button
+                                type="button"
+                                onClick={() => onOpenVerificationModal(st)}
+                                className={`px-2.5 py-1 rounded-lg font-bold text-[11px] cursor-pointer shadow-xs ${
+                                  st.morning_status === 'PICKED_UP_FROM_HOME'
+                                    ? 'bg-blue-100 hover:bg-blue-200 text-blue-900 border border-blue-200'
+                                    : 'bg-emerald-600 hover:bg-emerald-700 text-white'
+                                }`}
+                              >
+                                {st.morning_status === 'PICKED_UP_FROM_HOME' ? 'Boarded' : 'Verify'}
+                              </button>
+                            )}
                           </div>
                         </td>
                       </tr>
@@ -867,15 +919,34 @@ export default function MyEduRideEscortView({
                         </button>
                       )}
 
-                      {/* 4. Verify PIN */}
-                      <button
-                        type="button"
-                        onClick={() => onOpenVerificationModal(st)}
-                        className="min-h-[42px] px-1.5 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white font-black text-xs flex items-center justify-center gap-1 transition-colors shadow-xs cursor-pointer"
-                      >
-                        <QrCode size={14} />
-                        <span>Verify</span>
-                      </button>
+                      {/* 4. Verify / Action Button */}
+                      {st.morning_status === 'DROPPED_OFF_AT_SCHOOL' && st.afternoon_status !== 'PICKED_UP_FROM_GATE' ? (
+                        <div className="min-h-[42px] px-1.5 py-2 rounded-xl bg-emerald-50 text-emerald-700 font-bold text-[10px] flex items-center justify-center border border-emerald-200">
+                          In School
+                        </div>
+                      ) : st.afternoon_status === 'PICKED_UP_FROM_GATE' ? (
+                        <button
+                          type="button"
+                          onClick={() => onOpenVerificationModal({ ...st, action: 'afternoon_dropoff' })}
+                          className="min-h-[42px] px-1.5 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white font-black text-xs flex items-center justify-center gap-1 transition-colors shadow-xs cursor-pointer"
+                        >
+                          <ShieldCheck size={14} />
+                          <span>Drop-off</span>
+                        </button>
+                      ) : (
+                        <button
+                          type="button"
+                          onClick={() => onOpenVerificationModal(st)}
+                          className={`min-h-[42px] px-1.5 py-2 rounded-xl font-black text-xs flex items-center justify-center gap-1 transition-colors shadow-xs cursor-pointer ${
+                            st.morning_status === 'PICKED_UP_FROM_HOME'
+                              ? 'bg-blue-100 text-blue-900 border border-blue-300'
+                              : 'bg-emerald-600 hover:bg-emerald-500 text-white'
+                          }`}
+                        >
+                          <QrCode size={14} />
+                          <span>{st.morning_status === 'PICKED_UP_FROM_HOME' ? 'Boarded' : 'Verify'}</span>
+                        </button>
+                      )}
                     </div>
                   </div>
                 );

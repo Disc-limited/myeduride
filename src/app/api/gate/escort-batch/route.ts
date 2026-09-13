@@ -268,8 +268,32 @@ export async function GET(request: NextRequest) {
       (depRes.data || []).forEach((d) => departuresMap.set(d.student_id, d));
     }
 
+    const currentHour = new Date().getHours();
+    const suggestedMode = currentHour < 12 ? 'arrival' : 'departure';
+
+    // Query today's doorstep pickup status from escort_student_daily_trips
+    const morningPickedUpStudentIds = new Set<string>();
+    if (studentIds.length > 0) {
+      const escortIdTokens = [escortRecord.id, escortRecord.user_id].filter(Boolean);
+      const { data: tripRecords } = await supabase
+        .from('escort_student_daily_trips')
+        .select('student_id, morning_picked_up, morning_picked_up_at')
+        .eq('trip_date', today)
+        .in('escort_id', escortIdTokens)
+        .eq('morning_picked_up', true);
+
+      if (tripRecords && tripRecords.length > 0) {
+        tripRecords.forEach((t: any) => morningPickedUpStudentIds.add(t.student_id));
+      }
+    }
+
+    // In morning arrival mode, ONLY display students who were actually picked up by the escort from home
+    const activeStudentsSource = (suggestedMode === 'arrival' && morningPickedUpStudentIds.size > 0)
+      ? rawStudents.filter((st: any) => morningPickedUpStudentIds.has(st.id))
+      : rawStudents;
+
     // 6. Build Manifest with Status
-    const studentsManifest = rawStudents.map((st) => {
+    const studentsManifest = activeStudentsSource.map((st) => {
       const arr = arrivalsMap.get(st.id);
       const dep = departuresMap.get(st.id);
       const cls = Array.isArray(st.class) ? st.class[0]?.name : (st.class?.name || 'Class');
@@ -281,6 +305,7 @@ export async function GET(request: NextRequest) {
         photo_url: st.photo_url || null,
         class_name: cls,
         pickup_address: st.house_address || st.pickup_address || 'Designated Stop',
+        was_picked_up_by_escort: morningPickedUpStudentIds.has(st.id),
         today_status: {
           has_arrival: Boolean(arr),
           arrival_time: arr?.timestamp ? new Date(arr.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : null,
@@ -293,10 +318,6 @@ export async function GET(request: NextRequest) {
     const alreadyArrived = studentsManifest.filter((s) => s.today_status.has_arrival).length;
     const alreadyDeparted = studentsManifest.filter((s) => s.today_status.has_departure).length;
     const totalCount = studentsManifest.length;
-
-    // Suggest mode: if less than half checked in, suggest morning arrival; else afternoon departure
-    const currentHour = new Date().getHours();
-    const suggestedMode = currentHour < 12 ? 'arrival' : 'departure';
 
     return NextResponse.json({
       success: true,
@@ -381,6 +402,48 @@ export async function POST(request: NextRequest) {
     if (insertErr) {
       console.error('[gate/escort-batch POST] attendance insert error:', insertErr);
       return NextResponse.json({ error: insertErr.message }, { status: 500 });
+    }
+
+    const todayDate = todayInLagos();
+
+    // If afternoon departure, immediately convert students to PICKED UP for the escort
+    if (mode === 'departure' && escort_id) {
+      try {
+        for (const sId of student_ids) {
+          const { data: existingTrip } = await supabase
+            .from('escort_student_daily_trips')
+            .select('id')
+            .eq('trip_date', todayDate)
+            .eq('escort_id', escort_id)
+            .eq('student_id', sId)
+            .maybeSingle();
+
+          if (existingTrip) {
+            await supabase
+              .from('escort_student_daily_trips')
+              .update({
+                afternoon_picked_up: true,
+                afternoon_picked_up_at: timestamp,
+                updated_at: timestamp,
+              })
+              .eq('id', existingTrip.id);
+          } else {
+            await supabase
+              .from('escort_student_daily_trips')
+              .insert({
+                trip_date: todayDate,
+                escort_id,
+                student_id: sId,
+                school_id,
+                afternoon_picked_up: true,
+                afternoon_picked_up_at: timestamp,
+                updated_at: timestamp,
+              });
+          }
+        }
+      } catch (tripErr) {
+        console.warn('[gate/escort-batch] update daily trips notice:', tripErr);
+      }
     }
 
     // Log gate activity

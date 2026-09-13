@@ -336,15 +336,54 @@ export async function GET(request: NextRequest) {
       return Math.round(R * c * 100) / 100;
     };
 
+    // Query today's doorstep pickup & dropoff status for this escort
+    let todayDailyTrips: any[] = [];
+    try {
+      if (escortIdentifiers.length > 0) {
+        const { data: dTrips } = await supabase
+          .from('escort_student_daily_trips')
+          .select('*')
+          .eq('trip_date', today)
+          .in('escort_id', escortIdentifiers);
+
+        if (dTrips) todayDailyTrips = dTrips;
+      }
+    } catch (err) {
+      console.warn('[dashboard-live] daily trips fetch notice:', err);
+    }
+
     // Map students into rich manifest with City Manager approval, location, directions, and conditional pricing
     const studentManifest = assignedStudents.map((st, idx) => {
       const arrival = attendanceToday.find((a) => a.student_id === st.id && a.type === 'arrival');
       const departure = attendanceToday.find((a) => a.student_id === st.id && a.type === 'departure');
+      const trip = todayDailyTrips.find((t) => t.student_id === st.id);
+
+      // Morning status lifecycle:
+      // 1. PENDING_HOME_PICKUP (Scheduled for pickup at home)
+      // 2. PICKED_UP_FROM_HOME (Escort confirmed home doorstep pickup -> ON_BOARD)
+      // 3. DROPPED_OFF_AT_SCHOOL (Gate officer signed arrival -> DROPPED_OFF at school)
+      let morning_status = 'PENDING_HOME_PICKUP';
+      if (arrival) {
+        morning_status = 'DROPPED_OFF_AT_SCHOOL';
+      } else if (trip?.morning_picked_up) {
+        morning_status = 'PICKED_UP_FROM_HOME';
+      }
+
+      // Afternoon status lifecycle:
+      // 1. PENDING_SCHOOL_PICKUP (Waiting for gate release)
+      // 2. PICKED_UP_FROM_GATE (Gate officer signed departure or released -> ON_BOARD Picked Up)
+      // 3. SAFE_AT_HOME (Escort completed home dropoff -> DROPPED_OFF)
+      let afternoon_status = 'PENDING_SCHOOL_PICKUP';
+      if (trip?.afternoon_dropped_off) {
+        afternoon_status = 'SAFE_AT_HOME';
+      } else if (departure || trip?.afternoon_picked_up) {
+        afternoon_status = 'PICKED_UP_FROM_GATE';
+      }
 
       let status = 'SCHEDULED';
-      if (departure) {
+      if (morning_status === 'DROPPED_OFF_AT_SCHOOL') {
         status = 'DROPPED_OFF';
-      } else if (arrival) {
+      } else if (morning_status === 'PICKED_UP_FROM_HOME') {
         status = 'ON_BOARD';
       }
 
@@ -420,8 +459,11 @@ export async function GET(request: NextRequest) {
         driving_directions_url: directionsUrl,
         google_maps_nav_url: navUrl,
         status,
-        morning_status: arrival ? 'DROPPED_OFF_AT_SCHOOL' : (status === 'ON_BOARD' ? 'PICKED_UP_FROM_HOME' : 'PENDING_HOME_PICKUP'),
-        afternoon_status: departure ? 'SAFE_AT_HOME' : 'PENDING_SCHOOL_PICKUP',
+        morning_status,
+        afternoon_status,
+        morning_picked_up_at: trip?.morning_picked_up_at || null,
+        afternoon_picked_up_at: trip?.afternoon_picked_up_at || null,
+        afternoon_dropped_off_at: trip?.afternoon_dropped_off_at || null,
         pickup_time: st.pickup_time || routeStops[idx % Math.max(routeStops.length, 1)]?.pickup_time || '07:15 AM',
         parent_phone: st.parent_phone || '0803 456 7890',
         parent_name: st.parent_name || 'Parent / Guardian',
