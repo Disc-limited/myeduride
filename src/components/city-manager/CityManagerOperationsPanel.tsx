@@ -228,13 +228,23 @@ export function CityManagerOperationsPanel() {
   };
 
   const [approvingBatch, setApprovingBatch] = useState(false);
+  const batchApproving = approvingBatch;
+  const setBatchApproving = setApprovingBatch;
+
   const handleBatchApprove = async () => {
     setApprovingBatch(true);
     try {
+      const pendingSchoolBookings = (data.parent_requests || [])
+        .filter((r: any) => r.status !== 'CONFIRMED' && r.source === 'school')
+        .map((r: any) => r.booking_id);
+
       const r = await fetch('/api/city-manager/operations', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ action: 'batch_approve_school_assignments' }),
+        body: JSON.stringify({
+          action: 'batch_approve_school_assignments',
+          booking_ids: pendingSchoolBookings,
+        }),
       });
       const d = await r.json();
       if (!r.ok) throw new Error(d.error || 'Batch approval failed');
