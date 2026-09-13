@@ -197,101 +197,102 @@ export default function PickupVerificationModal({
         )}
 
         {hasStudent && (
-        <div className="grid grid-cols-2 p-1 bg-slate-100 rounded-xl text-xs font-semibold text-slate-600">
-          <button
-            type="button"
-            onClick={() => setVerificationMode('pin')}
-            className={`py-2 rounded-lg flex items-center justify-center gap-1.5 transition-all cursor-pointer ${
-              verificationMode === 'pin'
-                ? 'bg-white text-slate-900 shadow-sm font-bold'
-                : 'text-slate-600 hover:text-slate-900'
-            }`}
-          >
-            <KeyRound size={15} />
-            <span>Guardian PIN</span>
-          </button>
-          <button
-            type="button"
-            onClick={() => setVerificationMode('quick')}
-            className={`py-2 rounded-lg flex items-center justify-center gap-1.5 transition-all cursor-pointer ${
-              verificationMode === 'quick'
-                ? 'bg-white text-slate-900 shadow-sm font-bold'
-                : 'text-slate-600 hover:text-slate-900'
-            }`}
-          >
-            <UserCheck size={15} />
-            <span>1-Tap Confirm</span>
-          </button>
-        </div>
-
-        {/* Verification Body */}
-        {verificationMode === 'pin' ? (
-          <form onSubmit={handleVerifyPin} className="space-y-4">
-            <div className="space-y-1.5 text-center">
-              <label className="text-xs font-semibold text-slate-700 block">
-                Enter Guardian Security Verification PIN
-              </label>
-              <input
-                type="text"
-                maxLength={6}
-                value={pinCode}
-                onChange={(e) => setPinCode(e.target.value.replace(/\D/g, ''))}
-                placeholder="• • • •"
-                className="w-full text-center text-2xl font-mono tracking-widest px-4 py-3 bg-slate-50 border border-slate-200 rounded-2xl outline-none focus:ring-2 focus:ring-emerald-400 focus:bg-white text-slate-900"
-              />
-              <p className="text-[10px] text-slate-400">PIN is available on parent's MyEduRide pass.</p>
+          <>
+            <div className="grid grid-cols-2 p-1 bg-slate-100 rounded-xl text-xs font-semibold text-slate-600">
+              <button
+                type="button"
+                onClick={() => setVerificationMode('pin')}
+                className={`py-2 rounded-lg flex items-center justify-center gap-1.5 transition-all cursor-pointer ${
+                  verificationMode === 'pin'
+                    ? 'bg-white text-slate-900 shadow-sm font-bold'
+                    : 'text-slate-600 hover:text-slate-900'
+                }`}
+              >
+                <KeyRound size={15} />
+                <span>Guardian PIN</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => setVerificationMode('quick')}
+                className={`py-2 rounded-lg flex items-center justify-center gap-1.5 transition-all cursor-pointer ${
+                  verificationMode === 'quick'
+                    ? 'bg-white text-slate-900 shadow-sm font-bold'
+                    : 'text-slate-600 hover:text-slate-900'
+                }`}
+              >
+                <UserCheck size={15} />
+                <span>1-Tap Confirm</span>
+              </button>
             </div>
 
-            <button
-              type="submit"
-              disabled={verifying || pinCode.length < 4}
-              className="w-full bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs py-3 px-4 rounded-xl shadow-md disabled:opacity-50 transition-all flex items-center justify-center gap-2 cursor-pointer"
-            >
-              {verifying ? (
-                <>
-                  <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
-                  <span>Recording in Database...</span>
-                </>
-              ) : (
-                <>
-                  <CheckCircle2 size={16} />
-                  <span>{actionType === 'morning_pickup' ? 'Confirm Student Boarded' : 'Confirm Safe Doorstep Drop-off'}</span>
-                </>
-              )}
-            </button>
-          </form>
-        ) : (
-          <div className="space-y-4 text-center">
-            <div className="p-4 border border-emerald-200 rounded-2xl flex flex-col items-center justify-center bg-emerald-50/60 space-y-1.5">
-              <CheckCircle2 size={32} className="text-emerald-600" />
-              <p className="text-xs font-bold text-slate-800">Direct Handover Verification</p>
-              <p className="text-[11px] text-slate-600">
-                {actionType === 'morning_pickup'
-                  ? 'Confirm that the student is physically aboard the escort bus. This automatically schedules them for gate sign-in at the school.'
-                  : 'Confirm that the student has safely reached their doorstep and been received by the parent.'}
-              </p>
-            </div>
+            {verificationMode === 'pin' ? (
+              <form onSubmit={handleVerifyPin} className="space-y-4">
+                <div className="space-y-1.5 text-center">
+                  <label className="text-xs font-semibold text-slate-700 block">
+                    Enter Guardian Security Verification PIN
+                  </label>
+                  <input
+                    type="text"
+                    maxLength={6}
+                    value={pinCode}
+                    onChange={(e) => setPinCode(e.target.value.replace(/\D/g, ''))}
+                    placeholder="• • • •"
+                    className="w-full text-center text-2xl font-mono tracking-widest px-4 py-3 bg-slate-50 border border-slate-200 rounded-2xl outline-none focus:ring-2 focus:ring-emerald-400 focus:bg-white text-slate-900"
+                  />
+                  <p className="text-[10px] text-slate-400">PIN is available on parent&apos;s MyEduRide pass.</p>
+                </div>
 
-            <button
-              type="button"
-              disabled={verifying}
-              onClick={() => executeVerification()}
-              className="w-full bg-[#0A1128] hover:bg-slate-800 text-white font-bold text-xs py-3 px-4 rounded-xl transition-all shadow-md flex items-center justify-center gap-2 cursor-pointer disabled:opacity-50"
-            >
-              {verifying ? (
-                <>
-                  <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
-                  <span>Recording in Database...</span>
-                </>
-              ) : (
-                <>
-                  <Check size={16} className="text-emerald-400" />
-                  <span>{actionType === 'morning_pickup' ? '1-Tap Confirm Boarded' : '1-Tap Confirm Dropped Off'}</span>
-                </>
-              )}
-            </button>
-          </div>
-        )}
+                <button
+                  type="submit"
+                  disabled={verifying || pinCode.length < 4}
+                  className="w-full bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs py-3 px-4 rounded-xl shadow-md disabled:opacity-50 transition-all flex items-center justify-center gap-2 cursor-pointer"
+                >
+                  {verifying ? (
+                    <>
+                      <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                      <span>Recording in Database...</span>
+                    </>
+                  ) : (
+                    <>
+                      <CheckCircle2 size={16} />
+                      <span>{actionType === 'morning_pickup' ? 'Confirm Student Boarded' : 'Confirm Safe Doorstep Drop-off'}</span>
+                    </>
+                  )}
+                </button>
+              </form>
+            ) : (
+              <div className="space-y-4 text-center">
+                <div className="p-4 border border-emerald-200 rounded-2xl flex flex-col items-center justify-center bg-emerald-50/60 space-y-1.5">
+                  <CheckCircle2 size={32} className="text-emerald-600" />
+                  <p className="text-xs font-bold text-slate-800">Direct Handover Verification</p>
+                  <p className="text-[11px] text-slate-600">
+                    {actionType === 'morning_pickup'
+                      ? 'Confirm that the student is physically aboard the escort bus. This automatically schedules them for gate sign-in at the school.'
+                      : 'Confirm that the student has safely reached their doorstep and been received by the parent.'}
+                  </p>
+                </div>
+
+                <button
+                  type="button"
+                  disabled={verifying}
+                  onClick={() => executeVerification()}
+                  className="w-full bg-[#0A1128] hover:bg-slate-800 text-white font-bold text-xs py-3 px-4 rounded-xl transition-all shadow-md flex items-center justify-center gap-2 cursor-pointer disabled:opacity-50"
+                >
+                  {verifying ? (
+                    <>
+                      <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                      <span>Recording in Database...</span>
+                    </>
+                  ) : (
+                    <>
+                      <Check size={16} className="text-emerald-400" />
+                      <span>{actionType === 'morning_pickup' ? '1-Tap Confirm Boarded' : '1-Tap Confirm Dropped Off'}</span>
+                    </>
+                  )}
+                </button>
+              </div>
+            )}
+          </>
         )}
       </div>
     </div>
