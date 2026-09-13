@@ -45,7 +45,7 @@ export default function AssignStudentToEscortModal({
   // Escort type selection
   const [escortType, setEscortType] = useState<'school_escort' | 'myeduride_escort'>(defaultEscortType);
   const [selectedEscortId, setSelectedEscortId] = useState<string>(defaultEscortId);
-  const [selectedStudentId, setSelectedStudentId] = useState<string>(defaultStudentId);
+  const [selectedStudentIds, setSelectedStudentIds] = useState<string[]>(defaultStudentId ? [defaultStudentId] : []);
 
   // Form options from backend
   const [pinnedStudents, setPinnedStudents] = useState<any[]>([]);
@@ -77,7 +77,7 @@ export default function AssignStudentToEscortModal({
   }, [defaultEscortId]);
 
   useEffect(() => {
-    if (defaultStudentId) setSelectedStudentId(defaultStudentId);
+    if (defaultStudentId) setSelectedStudentIds([defaultStudentId]);
   }, [defaultStudentId]);
 
   // Load data on open
@@ -110,9 +110,8 @@ export default function AssignStudentToEscortModal({
             }
           }
 
-          // If no student selected and pinned students exist, select the first pinned student
-          if (!selectedStudentId && data.pinned_students?.length > 0) {
-            setSelectedStudentId(data.pinned_students[0].id);
+          if (selectedStudentIds.length === 0 && data.pinned_students?.length > 0 && defaultStudentId) {
+            setSelectedStudentIds([defaultStudentId]);
           }
         }
       })
@@ -143,14 +142,27 @@ export default function AssignStudentToEscortModal({
   }, [escortType, schoolEscorts, myedurideEscorts]);
 
   // Selected student details
-  const selectedStudent = useMemo(() => {
-    return pinnedStudents.find((s) => s.id === selectedStudentId);
-  }, [pinnedStudents, selectedStudentId]);
+  const selectedStudents = useMemo(() => {
+    return pinnedStudents.filter((s) => selectedStudentIds.includes(s.id));
+  }, [pinnedStudents, selectedStudentIds]);
+
+  const selectedStudent = selectedStudents[0];
+
+  const escortDisplayName = (esc: any) =>
+    esc?.full_name || esc?.fullName || esc?.name || 'Escort';
+
+  const toggleStudent = (id: string) => {
+    setSelectedStudentIds((prev) =>
+      prev.includes(id) ? prev.filter((sid) => sid !== id) : [...prev, id]
+    );
+  };
 
   // Calculate fare breakdown
   const fareEstimates = useMemo(() => {
-    if (!selectedStudent) return { distance: 3.5, morning: 1525, afternoon: 1525, total: 3050 };
-    const distance = Number(selectedStudent.estimated_distance_km) || 3.5;
+    if (!selectedStudents.length) return { distance: 3.5, morning: 1525, afternoon: 1525, total: 3050 };
+    const distance =
+      selectedStudents.reduce((sum, s) => sum + (Number(s.estimated_distance_km) || 3.5), 0) /
+      selectedStudents.length;
     const baseFare = 1000;
     const perKmRate = 150;
     const morning = Math.round(baseFare + distance * perKmRate);
@@ -164,7 +176,7 @@ export default function AssignStudentToEscortModal({
       afternoon,
       total,
     };
-  }, [selectedStudent, tripType]);
+  }, [selectedStudents, tripType]);
 
   // Selected escort details
   const selectedEscort = useMemo(() => {
@@ -175,13 +187,13 @@ export default function AssignStudentToEscortModal({
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
 
-    if (!selectedStudentId) {
-      return toast.error('Please select an eligible student.');
+    if (!selectedStudentIds.length) {
+      return toast.error('Please select one or more students with pinned addresses.');
     }
 
-    if (!selectedStudent) {
+    if (!selectedStudents.length) {
       return toast.error(
-        'The selected student has not pinned their house address yet. Only students with pinned addresses can be assigned.'
+        'Selected students must have a pinned house address. Only pinned addresses can be assigned.'
       );
     }
 
@@ -191,29 +203,43 @@ export default function AssignStudentToEscortModal({
 
     setSubmitting(true);
     try {
-      const res = await fetch('/api/school-admin/escort/assign-student', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          student_id: selectedStudentId,
-          escort_id: selectedEscortId,
-          escort_type: escortType,
-          trip_type: tripType,
-          pickup_time: pickupTime,
-          dropoff_time: dropoffTime,
-          start_date: startDate,
-          notes: notes.trim() || undefined,
-        }),
-      });
+      const failures: string[] = [];
+      let assigned = 0;
+      for (const studentId of selectedStudentIds) {
+        const res = await fetch('/api/school-admin/escort/assign-student', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            student_id: studentId,
+            escort_id: selectedEscortId,
+            escort_type: escortType,
+            trip_type: tripType === 'two_way' ? 'both' : tripType,
+            pickup_time: pickupTime,
+            dropoff_time: dropoffTime,
+            start_date: startDate,
+            notes: notes.trim() || undefined,
+          }),
+        });
+        const data = await res.json();
+        if (!res.ok || !data.success) {
+          failures.push(data.error || 'Assignment failed');
+        } else {
+          assigned += 1;
+        }
+      }
 
-      const data = await res.json();
-      if (!res.ok || !data.success) {
-        throw new Error(data.error || 'Failed to complete assignment');
+      if (!assigned) {
+        throw new Error(failures[0] || 'Failed to complete assignment');
       }
 
       toast.success(
-        data.message || 'Student assigned to escort! City Manager notified for immediate clearance.'
+        assigned === 1
+          ? 'Student assigned. City Manager notified for clearance.'
+          : `${assigned} students assigned. City Manager notified for clearance.`
       );
+      if (failures.length) {
+        toast.warning(`${failures.length} student(s) could not be assigned.`);
+      }
       onSuccess();
       onClose();
     } catch (err: any) {
@@ -349,7 +375,7 @@ export default function AssignStudentToEscortModal({
                     schoolEscorts.length > 0 ? (
                       schoolEscorts.map((esc) => (
                         <option key={esc.id} value={esc.id}>
-                          {esc.full_name} · 📞 {esc.phone} · 🚌 {esc.vehicle_plate || 'Bus Assigned'} ({esc.status})
+                          {escortDisplayName(esc)} · 📞 {esc.phone} · 🚌 {esc.vehicle_plate || esc.assignedVehicle || 'Bus Assigned'} ({esc.status})
                         </option>
                       ))
                     ) : (
@@ -359,7 +385,7 @@ export default function AssignStudentToEscortModal({
                     myedurideEscorts.length > 0 ? (
                       myedurideEscorts.map((esc) => (
                         <option key={esc.id} value={esc.id}>
-                          {esc.full_name} · ⭐ {esc.rating} · 📍 {esc.operating_area || 'Zone Verified'} · 📞 {esc.phone}
+                          {escortDisplayName(esc)} · ⭐ {esc.rating || '4.8'} · 📍 {esc.operating_area || esc.operatingArea || 'Zone Verified'} · 📞 {esc.phone}
                         </option>
                       ))
                     ) : (
@@ -372,7 +398,7 @@ export default function AssignStudentToEscortModal({
               {selectedEscort && (
                 <div className="px-3 py-2 rounded-xl bg-slate-100 border border-slate-200 text-[11px] text-slate-600 flex items-center justify-between">
                   <span>
-                    Escort: <strong className="text-slate-900">{selectedEscort.full_name}</strong> · Phone: <strong className="text-slate-900">{selectedEscort.phone}</strong>
+                    Escort: <strong className="text-slate-900">{escortDisplayName(selectedEscort)}</strong> · Phone: <strong className="text-slate-900">{selectedEscort.phone}</strong>
                   </span>
                   <span className="font-mono text-[10px] text-emerald-700 font-bold bg-emerald-100 px-2 py-0.5 rounded">
                     {selectedEscort.status || 'Active'}
@@ -385,7 +411,7 @@ export default function AssignStudentToEscortModal({
             <div className="space-y-1.5">
               <div className="flex items-center justify-between">
                 <label className="text-xs font-black text-slate-800 uppercase tracking-wider block">
-                  3. Select Student (Pinned Address Only)
+                  3. Select Students with Pinned Addresses
                 </label>
                 <span className="text-[10px] font-bold text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded-full border border-emerald-200">
                   {pinnedStudents.length} Eligible · {unpinnedStudents.length} Address Not Pinned
@@ -403,31 +429,34 @@ export default function AssignStudentToEscortModal({
                   </p>
                 </div>
               ) : (
-                <div className="relative">
-                  <select
-                    value={selectedStudentId}
-                    onChange={(e) => setSelectedStudentId(e.target.value)}
-                    className="w-full px-4 py-2.5 bg-slate-50 border border-slate-300 rounded-2xl text-xs font-bold text-slate-900 focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:bg-white transition-all appearance-none cursor-pointer"
-                  >
-                    <optgroup label="✅ Eligible Students (Parents Pinned House Address)">
-                      {pinnedStudents.map((s) => (
-                        <option key={s.id} value={s.id}>
-                          {s.name} ({s.class_name || 'Student'}) — 📍 {s.house_address} ({s.estimated_distance_km} km)
-                        </option>
-                      ))}
-                    </optgroup>
-
-                    {unpinnedStudents.length > 0 && (
-                      <optgroup label="⛔ Ineligible (Parent has NOT pinned address yet)" disabled>
-                        {unpinnedStudents.map((s) => (
-                          <option key={s.id} value={s.id} disabled>
-                            {s.name} ({s.class_name || 'Student'}) — [Address Not Pinned]
-                          </option>
-                        ))}
-                      </optgroup>
-                    )}
-                  </select>
-                  <ChevronDown size={16} className="absolute right-4 top-3.5 text-slate-400 pointer-events-none" />
+                <div className="max-h-52 overflow-y-auto space-y-1.5 p-2 rounded-2xl border border-slate-200 bg-slate-50">
+                  {pinnedStudents.map((s) => {
+                    const checked = selectedStudentIds.includes(s.id);
+                    return (
+                      <label
+                        key={s.id}
+                        className={`flex items-start gap-2.5 p-2.5 rounded-xl border cursor-pointer transition-all ${
+                          checked
+                            ? 'bg-emerald-50 border-emerald-300'
+                            : 'bg-white border-slate-200 hover:border-emerald-200'
+                        }`}
+                      >
+                        <input
+                          type="checkbox"
+                          checked={checked}
+                          onChange={() => toggleStudent(s.id)}
+                          className="mt-0.5 rounded border-slate-300 text-emerald-600 focus:ring-emerald-500"
+                        />
+                        <span className="min-w-0">
+                          <span className="block text-xs font-black text-slate-900">{s.name}</span>
+                          <span className="block text-[10px] text-slate-500 font-medium">
+                            {s.class_name || 'Student'} · 📍 {s.house_address}
+                            {s.estimated_distance_km != null ? ` · ${s.estimated_distance_km} km` : ''}
+                          </span>
+                        </span>
+                      </label>
+                    );
+                  })}
                 </div>
               )}
 
@@ -437,7 +466,11 @@ export default function AssignStudentToEscortModal({
                   <div className="flex items-center justify-between">
                     <div className="flex items-center gap-2">
                       <span className="w-2 h-2 rounded-full bg-emerald-600 animate-pulse" />
-                      <strong className="text-emerald-950 font-black text-sm">{selectedStudent.name}</strong>
+                      <strong className="text-emerald-950 font-black text-sm">
+                        {selectedStudents.length === 1
+                          ? selectedStudent.name
+                          : `${selectedStudents.length} students selected`}
+                      </strong>
                       <span className="text-[10px] text-emerald-800 bg-emerald-200/60 px-2 py-0.5 rounded-md font-bold">
                         {selectedStudent.class_name}
                       </span>
@@ -596,7 +629,7 @@ export default function AssignStudentToEscortModal({
               </button>
               <button
                 type="submit"
-                disabled={submitting || !selectedStudentId || pinnedStudents.length === 0}
+                disabled={submitting || !selectedStudentIds.length || pinnedStudents.length === 0}
                 className="px-5 py-2.5 rounded-xl bg-gradient-to-r from-emerald-600 to-teal-700 hover:from-emerald-500 hover:to-teal-600 text-white font-black text-xs transition-all shadow-md flex items-center gap-2 cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
               >
                 {submitting ? (

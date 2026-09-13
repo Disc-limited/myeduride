@@ -165,8 +165,20 @@ export function CityManagerCommandControl({
       .then((data) => {
         if (data && !data.error) {
           if (Array.isArray(data.schools)) {
+            const seenSchoolIds = new Set<string>();
+            const seenSchoolNames = new Set<string>();
+            const uniqueSchools = data.schools.filter((s: any) => {
+              const id = String(s.id || '');
+              const name = String(s.name || '').trim().toLowerCase();
+              if (!id || seenSchoolIds.has(id)) return false;
+              if (name === 'myeduride platform' || id === '00000000-0000-0000-0000-000000000001') return false;
+              if (name && seenSchoolNames.has(name)) return false;
+              seenSchoolIds.add(id);
+              if (name) seenSchoolNames.add(name);
+              return true;
+            });
             setSchools(
-              data.schools.map((s: any) => ({
+              uniqueSchools.map((s: any) => ({
                 id: s.id,
                 name: s.name || 'School Campus',
                 area: s.address || selectedCity,

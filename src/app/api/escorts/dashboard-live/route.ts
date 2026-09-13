@@ -244,7 +244,8 @@ export async function GET(request: NextRequest) {
       }
     }
 
-    const cmStudentIds = liveAssignments.map((a) => a.student_id).filter(Boolean);
+    const approvedAssignments = liveAssignments.filter((a) => a.status === 'active' || a.status === 'completed');
+    const cmStudentIds = approvedAssignments.map((a) => a.student_id).filter(Boolean);
     const bookingStudentIds = liveBookings.map((b) => b.student_id || b.student?.id).filter(Boolean);
     const allTargetStudentIds = Array.from(new Set([...routeStudentIds, ...cmStudentIds, ...bookingStudentIds]));
 
@@ -552,7 +553,8 @@ export async function GET(request: NextRequest) {
           pending_students_count: studentManifest.length - approvedStudentsCount,
         };
 
-    const morningStudents = studentManifest.map((s) => ({
+    const operationalManifest = studentManifest.filter((s) => s.city_manager_approved);
+    const morningStudents = operationalManifest.map((s) => ({
       ...s,
       status: s.morning_status === 'DROPPED_OFF_AT_SCHOOL' ? 'DROPPED_OFF' : (s.morning_status === 'PICKED_UP_FROM_HOME' ? 'ON_BOARD' : 'SCHEDULED'),
       address: s.house_address || s.pickup_address,
@@ -560,7 +562,7 @@ export async function GET(request: NextRequest) {
       avatar: s.photo_url,
     }));
 
-    const afternoonStudents = studentManifest.map((s) => ({
+    const afternoonStudents = operationalManifest.map((s) => ({
       ...s,
       status: s.afternoon_status === 'SAFE_AT_HOME' ? 'DROPPED_OFF' : (s.afternoon_status === 'PICKED_UP_FROM_GATE' ? 'ON_BOARD' : 'SCHEDULED'),
       note: `Pick from ${s.school_name} Gate`,
@@ -1050,26 +1052,20 @@ export async function POST(request: NextRequest) {
         return NextResponse.json({ error: 'student_id required' }, { status: 400 });
       }
 
-      let attendanceType = 'arrival';
       let resolvedStatus = status || action;
 
-      if (action === 'morning_home_pickup') {
-        attendanceType = 'arrival';
+      if (action === 'morning_home_pickup' || action === 'update_student_status') {
         resolvedStatus = 'PICKED_UP_FROM_HOME';
-      } else if (action === 'morning_school_dropoff') {
-        attendanceType = 'arrival';
-        resolvedStatus = 'DROPPED_OFF_AT_SCHOOL';
-      } else if (action === 'afternoon_school_pickup') {
-        attendanceType = 'departure';
-        resolvedStatus = 'PICKED_UP_FROM_GATE';
       } else if (action === 'afternoon_home_dropoff') {
-        attendanceType = 'departure';
         resolvedStatus = 'SAFE_AT_HOME';
+      } else if (action === 'morning_school_dropoff' || action === 'afternoon_school_pickup') {
+        return NextResponse.json({
+          error: 'School sign-in and sign-out are completed by the Gate Officer after scanning the escort ID card.',
+        }, { status: 400 });
       } else {
-        attendanceType = status === 'PICKED_UP' || status === 'ON_BOARD' ? 'arrival' : 'departure';
+        resolvedStatus = status || action;
       }
 
-      // Resolve school ID fallback
       let targetSchoolId = primarySchoolId;
       if (!targetSchoolId) {
         const { data: stRec } = await supabase.from('students').select('school_id').eq('id', student_id).maybeSingle();
@@ -1080,26 +1076,33 @@ export async function POST(request: NextRequest) {
         targetSchoolId = assignRec?.school_id;
       }
 
-      if (targetSchoolId) {
-        // Record in attendance_records
-        await supabase.from('attendance_records').insert({
-          school_id: targetSchoolId,
-          student_id,
-          type: attendanceType,
-          verified_by_user_id: session?.user_id || null,
-          verification_method: 'escort_onboard',
-          timestamp: nowUtcIso(),
-        });
+      const { data: escortApp } = session?.user_id
+        ? await supabase.from('escort_applications').select('id, user_id').eq('user_id', session.user_id).maybeSingle()
+        : { data: null };
+      const escortTripId = escortApp?.id || session?.user_id;
+      const todayDate = todayInLagos();
+      const stamp = nowUtcIso();
+      const { data: existingTrip } = await supabase
+        .from('escort_student_daily_trips')
+        .select('id')
+        .eq('trip_date', todayDate)
+        .eq('student_id', student_id)
+        .in('escort_id', [escortTripId, escortApp?.user_id, session?.user_id].filter(Boolean))
+        .maybeSingle();
 
-        // Write to audit log
-        const { writeAuditLog } = await import('@/lib/audit/log');
-        await writeAuditLog(supabase, {
-          school_id: targetSchoolId,
-          actor_user_id: session?.user_id || 'system',
+      const tripPatch = action === 'afternoon_home_dropoff'
+        ? { afternoon_dropped_off: true, afternoon_dropped_off_at: stamp, afternoon_picked_up: true, updated_at: stamp }
+        : { morning_picked_up: true, morning_picked_up_at: stamp, updated_at: stamp };
+
+      if (existingTrip) {
+        await supabase.from('escort_student_daily_trips').update(tripPatch).eq('id', existingTrip.id);
+      } else if (targetSchoolId && escortTripId) {
+        await supabase.from('escort_student_daily_trips').insert({
+          trip_date: todayDate,
+          escort_id: escortTripId,
           student_id,
-          action: `escort_custody_${resolvedStatus.toLowerCase()}`,
-          entity_type: 'students',
-          details: { status: resolvedStatus, action, timestamp: nowUtcIso() },
+          school_id: targetSchoolId,
+          ...tripPatch,
         });
       }
 

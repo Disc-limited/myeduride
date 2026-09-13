@@ -122,10 +122,16 @@ export default function EscortTripsView({
   // Dedicated custody sign in/out transitions
   const handleCustodyAction = async (studentId: string, actionName: string, label: string) => {
     try {
-      const res = await fetch('/api/escorts/dashboard-live', {
+      if (actionName === 'morning_school_dropoff' || actionName === 'afternoon_school_pickup') {
+        toast.info('The gate officer completes this step by scanning your escort ID card.');
+        return;
+      }
+
+      const tripAction = actionName === 'afternoon_home_dropoff' ? 'afternoon_dropoff' : 'morning_pickup';
+      const res = await fetch('/api/escorts/pickup-verify', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ action: actionName, student_id: studentId }),
+        body: JSON.stringify({ action: tripAction, student_id: studentId }),
       });
       const data = await res.json();
       if (res.ok) {

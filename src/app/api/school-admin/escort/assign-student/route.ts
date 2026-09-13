@@ -5,6 +5,7 @@ import { getAdminClient } from '@/lib/supabase/admin';
 import { getEscortApplications } from '@/lib/escort/escort-db';
 import { nowUtcIso, todayInLagos } from '@/lib/utils/time';
 import { calculateSchoolToHomeDistance, calculateEscortFare } from '@/lib/escort/escort-pricing';
+import { normalizeEscortTripType } from '@/lib/escort/normalize-trip-type';
 import { notifyEscortAssignmentCreated } from '@/lib/notifications/escort-workflow-notify';
 import { checkSchoolTimingClash, validateEscortSchoolLimit } from '@/lib/escort/escort-scheduler';
 
@@ -80,6 +81,13 @@ export async function GET(request: NextRequest) {
         !isNaN(Number(s.house_lng)) &&
         Boolean(s.house_address && s.house_address.trim());
 
+      const distance = isPinned
+        ? calculateSchoolToHomeDistance(
+            { gps_lat: school?.gps_lat, gps_lng: school?.gps_lng, address: school?.address },
+            { house_lat: s.house_lat, house_lng: s.house_lng, house_address: s.house_address }
+          )
+        : null;
+
       return {
         id: s.id,
         name: `${s.first_name} ${s.last_name}`.trim(),
@@ -95,6 +103,7 @@ export async function GET(request: NextRequest) {
         house_notes: s.house_notes || '',
         house_pinned_at: s.house_pinned_at || null,
         is_house_pinned: isPinned,
+        estimated_distance_km: distance?.distanceKm ?? null,
       };
     });
 
@@ -114,11 +123,14 @@ export async function GET(request: NextRequest) {
       .map((e) => ({
         id: e.id,
         fullName: e.fullName || e.name || 'School Escort',
+        full_name: e.fullName || e.name || 'School Escort',
         name: e.fullName || e.name || 'School Escort',
         phone: e.phone || '',
         escort_type: 'school_escort',
         operatingArea: e.operatingArea || 'School Bus Route',
+        operating_area: e.operatingArea || 'School Bus Route',
         assignedVehicle: e.regNumber || e.assignedVehicle || 'School Fleet Bus',
+        vehicle_plate: e.regNumber || e.assignedVehicle || 'School Fleet Bus',
         status: e.status || 'ACTIVE',
       }));
 
@@ -132,11 +144,15 @@ export async function GET(request: NextRequest) {
       .map((e) => ({
         id: e.id,
         fullName: e.fullName || e.name || 'MyEduRide Escort',
+        full_name: e.fullName || e.name || 'MyEduRide Escort',
         name: e.fullName || e.name || 'MyEduRide Escort',
         phone: e.phone || '',
         escort_type: 'myeduride_escort',
         operatingArea: e.operatingArea || e.city || 'Lagos Metropolis',
+        operating_area: e.operatingArea || e.city || 'Lagos Metropolis',
         assignedVehicle: e.regNumber || 'Verified Vehicle',
+        vehicle_plate: e.regNumber || 'Verified Vehicle',
+        rating: e.rating || '4.8',
         status: e.status,
       }));
 
@@ -185,15 +201,21 @@ export async function POST(request: NextRequest) {
 
     const body = await request.json();
     const {
-      student_id,
       escort_id,
       escort_type = 'myeduride_escort',
       school_id,
-      trip_type = 'both',
       pickup_time = '07:00',
       dropoff_time = '15:30',
+      start_date,
       notes = '',
     } = body;
+    const trip_type = normalizeEscortTripType(body.trip_type);
+    const studentIds: string[] = Array.isArray(body.student_ids) && body.student_ids.length
+      ? body.student_ids.filter(Boolean)
+      : body.student_id
+        ? [body.student_id]
+        : [];
+    const student_id = studentIds[0];
 
     const primarySchoolId =
       school_id ||
@@ -208,8 +230,8 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Access denied: School Admin role required' }, { status: 403 });
     }
 
-    if (!student_id || !escort_id) {
-      return NextResponse.json({ error: 'Please select both a student and an escort' }, { status: 400 });
+    if (!studentIds.length || !escort_id) {
+      return NextResponse.json({ error: 'Please select at least one pinned student and an escort' }, { status: 400 });
     }
 
     const supabase = getAdminClient();
@@ -310,7 +332,8 @@ export async function POST(request: NextRequest) {
 
     const today = todayInLagos();
     const nowIso = nowUtcIso();
-    const requestedPickupIso = `${today}T${pickup_time.includes(':') ? pickup_time.slice(0, 5) : '07:00'}:00Z`;
+    const pickupDate = /^\d{4}-\d{2}-\d{2}$/.test(String(start_date || '')) ? start_date : today;
+    const requestedPickupIso = `${pickupDate}T${pickup_time.includes(':') ? pickup_time.slice(0, 5) : '07:00'}:00Z`;
 
     // 3. Booking Metadata structure
     const bookingMetadata = {
@@ -333,6 +356,7 @@ export async function POST(request: NextRequest) {
       assigned_escort_name: escortName,
       assigned_escort_phone: escortPhone,
       school_notes: notes || '',
+      start_date: pickupDate,
       approval_status: 'PENDING_CITY_MANAGER_APPROVAL',
       created_at: nowIso,
     };

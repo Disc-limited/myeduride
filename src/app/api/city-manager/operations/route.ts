@@ -7,6 +7,7 @@ import {
   notifyEscortAssignmentApproved,
   notifyEscortEmergencyReassigned,
 } from '@/lib/notifications/escort-workflow-notify';
+import { getPlatformSchoolId } from '@/lib/auth/super-admin';
 
 export const dynamic = 'force-dynamic';
 
@@ -553,19 +554,37 @@ export async function GET(request: NextRequest) {
       }
     }
 
-    const enrichedSchoolsList = (schoolsRes || []).map((s: any) => {
-      const schStudents = schoolStudentsMap[s.id] || [];
-      const schOfficers = (gateOfficersRes || []).filter((g: any) => g.school_id === s.id);
-      return {
-        ...s,
-        students: schStudents,
-        studentsCount: schStudents.length,
-        gateOfficersCount: schOfficers.length,
-        escortsCount: enrichedEscortsList.filter((e: any) => e.school_id === s.id).length,
-        complianceScore: 100,
-        status: 'ONLINE',
-      };
-    });
+    const platformSchoolId = getPlatformSchoolId();
+    const enrichedSchoolsList = (schoolsRes || [])
+      .filter((s: any) => {
+        if (!s?.id || s.id === platformSchoolId) return false;
+        const name = String(s.name || '').trim().toLowerCase();
+        return name && name !== 'myeduride platform';
+      })
+      .map((s: any) => {
+        const schStudents = schoolStudentsMap[s.id] || [];
+        const schOfficers = (gateOfficersRes || []).filter((g: any) => g.school_id === s.id);
+        return {
+          ...s,
+          students: schStudents,
+          studentsCount: schStudents.length,
+          gateOfficersCount: schOfficers.length,
+          escortsCount: enrichedEscortsList.filter((e: any) => e.school_id === s.id).length,
+          complianceScore: 100,
+          status: 'ONLINE',
+        };
+      });
+
+    // Collapse accidental duplicate campus rows (same name, different ids)
+    const uniqueSchoolsByName = new Map<string, any>();
+    for (const s of enrichedSchoolsList) {
+      const key = String(s.name || '').trim().toLowerCase();
+      const existing = uniqueSchoolsByName.get(key);
+      if (!existing || (s.studentsCount || 0) > (existing.studentsCount || 0)) {
+        uniqueSchoolsByName.set(key, s);
+      }
+    }
+    const uniqueSchoolsList = Array.from(uniqueSchoolsByName.values());
 
     // 7. Gate Officer Monitoring Deployment Roster & Live Stream (Requirement 1)
     const formattedGateOfficers = (gateOfficersRes || []).map((g: any, idx: number) => {
@@ -614,14 +633,27 @@ export async function GET(request: NextRequest) {
       };
     });
 
+    const uniqueParentRequests: any[] = [];
+    const seenRequestKeys = new Set<string>();
+    for (const req of parentRequests) {
+      const keys = [
+        req.assignment_id ? `assign:${req.assignment_id}` : '',
+        req.booking_id ? `book:${req.booking_id}` : '',
+        req.child_id ? `student:${req.child_id}:${req.school_id || ''}` : '',
+      ].filter(Boolean);
+      if (keys.some((k) => seenRequestKeys.has(k))) continue;
+      keys.forEach((k) => seenRequestKeys.add(k));
+      uniqueParentRequests.push(req);
+    }
+
     return NextResponse.json({
-      schools: enrichedSchoolsList,
+      schools: uniqueSchoolsList,
       escorts: enrichedEscortsList,
       gate_officers: formattedGateOfficers,
       gate_activities: formattedGateActivities,
       vehicles: rawVehicles,
       bookings: rawBookings,
-      parent_requests: parentRequests,
+      parent_requests: uniqueParentRequests,
       assignments: formattedAssignments,
       walk_home_records: formattedWalkHomeRecords,
       pinned_parent_addresses: formattedPinnedAddresses,

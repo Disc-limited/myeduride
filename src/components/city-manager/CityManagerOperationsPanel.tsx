@@ -41,6 +41,7 @@ export function CityManagerOperationsPanel() {
   // Selected Escort Assignment Map for Parent Requests
   const [selectedEscortsForParentBookings, setSelectedEscortsForParentBookings] = useState<Record<string, string>>({});
   const [processingBookingId, setProcessingBookingId] = useState<string | null>(null);
+  const [batchApproving, setBatchApproving] = useState(false);
 
   // Escort Rosters Filters & In-Place Reassignment Modal State
   const [rosterSchoolFilter, setRosterSchoolFilter] = useState('all');
@@ -227,12 +228,8 @@ export function CityManagerOperationsPanel() {
     }
   };
 
-  const [approvingBatch, setApprovingBatch] = useState(false);
-  const batchApproving = approvingBatch;
-  const setBatchApproving = setApprovingBatch;
-
   const handleBatchApprove = async () => {
-    setApprovingBatch(true);
+    setBatchApproving(true);
     try {
       const pendingSchoolBookings = (data.parent_requests || [])
         .filter((r: any) => r.status !== 'CONFIRMED' && r.source === 'school')
@@ -253,7 +250,7 @@ export function CityManagerOperationsPanel() {
     } catch (err: any) {
       toast.error(err.message || 'Batch approval error');
     } finally {
-      setApprovingBatch(false);
+      setBatchApproving(false);
     }
   };
 
@@ -652,9 +649,9 @@ export function CityManagerOperationsPanel() {
                       {req.escort_type === 'school_escort' ? '🏫 School Escort' : '✨ MyEduRide Escort'}
                     </span>
                   )}
-                  {req.lat != null && req.lng != null ? (
+                  {(req.house_lat ?? req.lat) != null && (req.house_lng ?? req.lng) != null ? (
                     <span className="px-2 py-0.5 rounded-md text-[10px] font-bold bg-emerald-500/20 text-emerald-300 border border-emerald-500/30">
-                      📍 Pinned ({Number(req.lat).toFixed(4)}, {Number(req.lng).toFixed(4)})
+                      📍 Pinned ({Number(req.house_lat ?? req.lat).toFixed(4)}, {Number(req.house_lng ?? req.lng).toFixed(4)})
                     </span>
                   ) : (
                     <span className="px-2 py-0.5 rounded-md text-[10px] font-bold bg-amber-500/20 text-amber-300 border border-amber-500/30">

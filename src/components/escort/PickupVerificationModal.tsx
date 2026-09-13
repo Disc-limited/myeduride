@@ -15,11 +15,13 @@ import {
   Check
 } from 'lucide-react';
 import { toast } from 'sonner';
+import GateIdCardScanner from '@/components/gate/GateIdCardScanner';
 
 interface PickupVerificationModalProps {
   isOpen: boolean;
   onClose: () => void;
   student?: any;
+  defaultAction?: 'morning_pickup' | 'afternoon_dropoff';
   onVerificationComplete?: (record: any) => void;
 }
 
@@ -27,43 +29,47 @@ export default function PickupVerificationModal({
   isOpen,
   onClose,
   student,
+  defaultAction,
   onVerificationComplete,
 }: PickupVerificationModalProps) {
   const [pinCode, setPinCode] = useState('');
+  const [manualId, setManualId] = useState('');
   const [verifying, setVerifying] = useState(false);
-  const [verificationMode, setVerificationMode] = useState<'pin' | 'quick'>('pin');
+  const [verificationMode, setVerificationMode] = useState<'scan' | 'pin' | 'quick'>('scan');
 
   if (!isOpen) return null;
 
-  const sampleStudent = student || {
-    id: 'STU-9921',
-    name: 'Kiki Isaac',
-    class: 'Basic 4 Green',
-    school: 'Fortune Springs Montessori',
-    guardianName: 'Mrs. Adeaze Isaac',
-    guardianPhone: '+234 803 123 4567',
-    pickupPoint: 'Main Gate Terminal - Stop #4',
-    photo: '/images/landing/student_avatar.png',
-  };
+  const hasStudent = Boolean(student?.id);
+  const sampleStudent = student || {};
 
+  const afternoonByTime = typeof window !== 'undefined' ? new Date().getHours() >= 12 : false;
   const isAfternoonDropoff =
+    defaultAction === 'afternoon_dropoff' ||
     sampleStudent?.action === 'afternoon_dropoff' ||
     sampleStudent?.afternoon_status === 'PICKED_UP_FROM_GATE' ||
-    sampleStudent?.status === 'ON_BOARD';
+    (!hasStudent && defaultAction !== 'morning_pickup' && afternoonByTime);
 
   const actionType = isAfternoonDropoff ? 'afternoon_dropoff' : 'morning_pickup';
 
-  const executeVerification = async (pin?: string) => {
+  const executeVerification = async (opts?: { pin?: string; scanData?: string; studentId?: string }) => {
+    const scanData = (opts?.scanData || manualId || '').trim();
+    const studentId = opts?.studentId || sampleStudent.id;
+    if (!studentId && !scanData) {
+      toast.error('Scan the student ID card or enter the student ID number');
+      return;
+    }
+
     setVerifying(true);
     try {
       const res = await fetch('/api/escorts/pickup-verify', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          student_id: sampleStudent.id,
+          student_id: studentId || undefined,
+          scan_data: scanData || undefined,
           school_id: sampleStudent.school_id,
           action: actionType,
-          pin_code: pin || pinCode || undefined,
+          pin_code: opts?.pin || pinCode || undefined,
         }),
       });
 
@@ -75,8 +81,8 @@ export default function PickupVerificationModal({
       toast.success(
         json.message ||
           (actionType === 'morning_pickup'
-            ? `Pickup verified! ${sampleStudent.name} is on board for morning transit.`
-            : `Safe arrival! ${sampleStudent.name} doorstep drop-off recorded.`)
+            ? `Pickup verified! ${json.student_name || sampleStudent.name || 'Student'} is on the pickup list.`
+            : `Safe arrival! ${json.student_name || sampleStudent.name || 'Student'} signed out of the vehicle.`)
       );
 
       if (onVerificationComplete) {
@@ -96,7 +102,7 @@ export default function PickupVerificationModal({
       toast.error('Please enter a valid 4-digit verification PIN');
       return;
     }
-    await executeVerification(pinCode);
+    await executeVerification({ pin: pinCode });
   };
 
   return (
@@ -121,13 +127,46 @@ export default function PickupVerificationModal({
             </h3>
             <p className="text-xs text-slate-500">
               {actionType === 'morning_pickup'
-                ? 'Boarding Confirmation & Parent Security PIN'
-                : 'Safe Home Delivery & Guardian Handover'}
+                ? 'Scan or enter the student ID to move them onto the bus pickup list'
+                : 'Scan or enter the student ID to sign them out of the vehicle'}
             </p>
           </div>
         </div>
 
-        {/* Student Card Info */}
+        <GateIdCardScanner
+          active={isOpen}
+          busy={verifying}
+          onDetected={(code) => {
+            setManualId(code);
+            executeVerification({ scanData: code });
+          }}
+          hint="Scan the student ID card barcode or QR. You can also type the ID below."
+        />
+
+        <form
+          onSubmit={(e) => {
+            e.preventDefault();
+            executeVerification({ scanData: manualId });
+          }}
+          className="flex items-center gap-2"
+        >
+          <input
+            type="text"
+            value={manualId}
+            onChange={(e) => setManualId(e.target.value)}
+            placeholder="Enter student ID number..."
+            className="flex-1 px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs font-mono text-slate-900 focus:outline-none focus:ring-2 focus:ring-emerald-400"
+          />
+          <button
+            type="submit"
+            disabled={verifying || !manualId.trim()}
+            className="px-3 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-extrabold disabled:opacity-50 cursor-pointer"
+          >
+            {verifying ? 'Saving…' : 'Add to list'}
+          </button>
+        </form>
+
+        {hasStudent && (
         <div className="bg-slate-50 border border-slate-200/80 rounded-2xl p-4 flex items-start gap-3">
           <div className="w-12 h-12 rounded-xl bg-[#0A1128] text-white flex items-center justify-center font-bold text-lg shrink-0 shadow-sm">
             {sampleStudent.name?.charAt(0) || 'S'}
@@ -155,8 +194,9 @@ export default function PickupVerificationModal({
             </div>
           </div>
         </div>
+        )}
 
-        {/* Mode Selector Tabs */}
+        {hasStudent && (
         <div className="grid grid-cols-2 p-1 bg-slate-100 rounded-xl text-xs font-semibold text-slate-600">
           <button
             type="button"
@@ -251,6 +291,7 @@ export default function PickupVerificationModal({
               )}
             </button>
           </div>
+        )}
         )}
       </div>
     </div>

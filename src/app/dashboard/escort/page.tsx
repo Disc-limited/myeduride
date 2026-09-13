@@ -606,6 +606,7 @@ export default function SchoolEscortDashboardPage() {
       <PickupVerificationModal
         isOpen={verificationModal.open}
         student={verificationModal.student}
+        defaultAction={tripMode === 'afternoon' ? 'afternoon_dropoff' : 'morning_pickup'}
         onClose={() => setVerificationModal({ open: false, student: null })}
         onVerificationComplete={() => {
           fetchLiveData();

@@ -115,28 +115,25 @@ export default function SchoolEscortView({
   const handleBoardStudent = async (studentId: string, name: string) => {
     try {
       toast.loading(`Boarding ${name}...`);
-      const res = await fetch('/api/escorts/dashboard-live', {
+      const res = await fetch('/api/escorts/pickup-verify', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          action: 'update_student_status',
+          action: tripType === 'afternoon' ? 'afternoon_dropoff' : 'morning_pickup',
           student_id: studentId,
-          status: 'ON_BOARD',
         }),
       });
       const data = await res.json();
       toast.dismiss();
       if (res.ok && data.success) {
-        toast.success(`${name} verified and boarded successfully!`);
+        toast.success(data.message || `${name} verified and boarded successfully!`);
         fetchDashboardData();
       } else {
-        toast.success(`${name} verified and boarded!`);
-        fetchDashboardData();
+        toast.error(data.error || `Could not board ${name}`);
       }
     } catch {
       toast.dismiss();
-      toast.success(`${name} verified and boarded!`);
-      fetchDashboardData();
+      toast.error(`Could not board ${name}`);
     }
   };
 

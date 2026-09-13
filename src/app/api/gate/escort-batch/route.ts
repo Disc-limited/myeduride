@@ -6,6 +6,7 @@ import { canAccessGateOperations } from '@/lib/gate/access';
 import { todayInLagos } from '@/lib/timezone';
 import { nowUtcIso } from '@/lib/utils/time';
 import { logGateActivity } from '@/lib/gate/activity-log';
+import { notifyParentsOfAttendance } from '@/lib/notifications/parent-notify';
 
 export const dynamic = 'force-dynamic';
 
@@ -288,10 +289,10 @@ export async function GET(request: NextRequest) {
       }
     }
 
-    // In morning arrival mode, ONLY display students who were actually picked up by the escort from home
-    const activeStudentsSource = (suggestedMode === 'arrival' && morningPickedUpStudentIds.size > 0)
+    // Morning: only students already boarded at home. Afternoon: students this escort brought to school.
+    const activeStudentsSource = suggestedMode === 'arrival'
       ? rawStudents.filter((st: any) => morningPickedUpStudentIds.has(st.id))
-      : rawStudents;
+      : rawStudents.filter((st: any) => arrivalsMap.has(st.id) || morningPickedUpStudentIds.has(st.id));
 
     // 6. Build Manifest with Status
     const studentsManifest = activeStudentsSource.map((st) => {
@@ -383,29 +384,57 @@ export async function POST(request: NextRequest) {
     const supabase = getAdminClient();
     const timestamp = nowUtcIso();
     const verificationMethod = is_override ? 'manual' : 'id_card_scan';
+    const todayDate = todayInLagos();
 
-    // Prepare batch rows for attendance_records
-    const attendanceRows = student_ids.map((sId: string) => ({
-      school_id,
-      student_id: sId,
-      type: mode,
-      verified_by_user_id: session.user_id,
-      verification_method: verificationMethod,
-      status: 'present',
-      timestamp,
-    }));
-
-    // Insert batch attendance
-    const { error: insertErr } = await supabase
+    const { data: existingToday } = await supabase
       .from('attendance_records')
-      .insert(attendanceRows);
+      .select('student_id')
+      .eq('school_id', school_id)
+      .eq('type', mode)
+      .in('student_id', student_ids)
+      .gte('timestamp', `${todayDate}T00:00:00.000Z`)
+      .lte('timestamp', `${todayDate}T23:59:59.999Z`);
 
-    if (insertErr) {
-      console.error('[gate/escort-batch POST] attendance insert error:', insertErr);
-      return NextResponse.json({ error: insertErr.message }, { status: 500 });
+    const alreadyRecorded = new Set((existingToday || []).map((r: any) => r.student_id));
+    const newStudentIds = student_ids.filter((sId: string) => !alreadyRecorded.has(sId));
+
+    let insertedRecords: any[] = [];
+    if (newStudentIds.length > 0) {
+      const attendanceRows = newStudentIds.map((sId: string) => ({
+        school_id,
+        student_id: sId,
+        type: mode,
+        verified_by_user_id: session.user_id,
+        verification_method: verificationMethod,
+        status: 'present',
+        timestamp,
+      }));
+
+      const { data: inserted, error: insertErr } = await supabase
+        .from('attendance_records')
+        .insert(attendanceRows)
+        .select('id, student_id');
+
+      if (insertErr) {
+        console.error('[gate/escort-batch POST] attendance insert error:', insertErr);
+        return NextResponse.json({ error: insertErr.message }, { status: 500 });
+      }
+      insertedRecords = inserted || [];
     }
 
-    const todayDate = todayInLagos();
+    for (const rec of insertedRecords) {
+      try {
+        await notifyParentsOfAttendance({
+          student_id: rec.student_id,
+          attendance_record_id: rec.id,
+          type: mode,
+          via: 'escort',
+          escort_name: escort_name || 'Assigned Escort',
+        });
+      } catch (notifyErr) {
+        console.warn('[gate/escort-batch] parent notify notice:', notifyErr);
+      }
+    }
 
     // If afternoon departure, immediately convert students to PICKED UP for the escort
     if (mode === 'departure' && escort_id) {

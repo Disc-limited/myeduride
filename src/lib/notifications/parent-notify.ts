@@ -7,8 +7,10 @@ export async function notifyParentsOfAttendance(params: {
   student_id: string;
   attendance_record_id: string;
   type: 'arrival' | 'departure';
+  via?: 'escort' | 'standard';
+  escort_name?: string;
 }): Promise<{ notified: number; skipped?: string }> {
-  const { student_id, attendance_record_id, type } = params;
+  const { student_id, attendance_record_id, type, via, escort_name } = params;
   const supabase = getAdminClient();
 
   const { data: student, error: studentErr } = await supabase
@@ -72,6 +74,12 @@ export async function notifyParentsOfAttendance(params: {
   if (notifType === 'late') {
     title = `${student.first_name} arrived late${isIdForgottenOverride ? ' (ID Override)' : ''}`;
     shortMessage = `${student.first_name} arrived late at ${schoolName} at ${timeStr}${isIdForgottenOverride ? ' (Gate Officer override — ID card forgotten)' : ''}`;
+  } else if (via === 'escort' && type === 'arrival') {
+    title = `${student.first_name} dropped off at school`;
+    shortMessage = `${student.first_name} was dropped off at ${schoolName} by escort${escort_name ? ` ${escort_name}` : ''} at ${timeStr} and is marked present.`;
+  } else if (via === 'escort' && type === 'departure') {
+    title = `${student.first_name} left school with escort`;
+    shortMessage = `${student.first_name} left ${schoolName} with escort${escort_name ? ` ${escort_name}` : ''} at ${timeStr}.`;
   } else if (type === 'arrival') {
     title = `${student.first_name} arrived at school${isIdForgottenOverride ? ' (ID Override)' : ''}`;
     shortMessage = `${student.first_name} arrived at ${schoolName} at ${timeStr}${isIdForgottenOverride ? ' (Gate Officer override — ID card forgotten)' : ''}`;
