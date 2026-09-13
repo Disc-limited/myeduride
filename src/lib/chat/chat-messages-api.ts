@@ -288,6 +288,12 @@ export async function markThreadRead(params: {
 export async function getEduChartUnreadTotal(session: AppSession): Promise<number> {
   const supabase = getAdminClient();
   const isParent = session.roles.some((r) => r.role === 'parent');
+  const isEscort = session.roles.some((r) =>
+    r.role === 'myeduride_escort' ||
+    r.role === 'school_escort' ||
+    r.role === 'escort' ||
+    r.role === 'driver'
+  );
 
   if (isParent) {
     const { data: links } = await supabase
@@ -307,6 +313,57 @@ export async function getEduChartUnreadTotal(session: AppSession): Promise<numbe
 
     if (error) console.error('[chat] unread total parent error:', error.message);
     return count || 0;
+  } else if (isEscort) {
+    // Collect escort application IDs
+    const { data: apps } = await supabase
+      .from('escort_applications')
+      .select('id')
+      .or(`user_id.eq.${session.user_id},id.eq.${session.user_id}`);
+
+    const escortIds = (apps || []).map((a) => a.id);
+    escortIds.push(session.user_id);
+
+    // Get assigned student IDs
+    const [assignmentsRes, bookingsRes] = await Promise.all([
+      supabase
+        .from('escort_assignments')
+        .select('student_id')
+        .in('escort_application_id', escortIds),
+      supabase
+        .from('transport_bookings')
+        .select('student_id')
+        .in('assigned_escort_id', escortIds)
+        .not('student_id', 'is', null),
+    ]);
+
+    const studentIds = Array.from(
+      new Set([
+        ...(assignmentsRes.data || []).map((a) => a.student_id),
+        ...(bookingsRes.data || []).map((b) => b.student_id),
+      ].filter(Boolean))
+    );
+
+    let count = 0;
+    if (studentIds.length > 0) {
+      const { count: sCount } = await supabase
+        .from('chat_messages')
+        .select('id', { count: 'exact', head: true })
+        .in('student_id', studentIds)
+        .eq('is_read', false)
+        .neq('sender_id', session.user_id);
+      count += sCount || 0;
+    }
+
+    // Also count unread direct escort messages (from City Manager or Gate Officers)
+    const { count: dCount } = await supabase
+      .from('chat_messages')
+      .select('id', { count: 'exact', head: true })
+      .in('recipient_type', ['escort', 'myeduride_escort', 'school_escort'])
+      .eq('is_read', false)
+      .neq('sender_id', session.user_id);
+    count += dCount || 0;
+
+    return count;
   } else {
     const { data: roles } = await supabase
       .from('user_school_roles')
@@ -418,4 +475,64 @@ export async function verifyTeacherStudentAssignment(
 
   return !!(directClassRes.data || assignmentRes.data);
 }
+
+/**
+ * Verify whether an escort is authorized to chat regarding a student (assigned or on active route).
+ */
+export async function verifyEscortStudentAssignment(
+  escortUserId: string,
+  studentId: string
+): Promise<boolean> {
+  const supabase = getAdminClient();
+
+  // 1. Check escort applications for this user
+  const { data: apps } = await supabase
+    .from('escort_applications')
+    .select('id')
+    .or(`user_id.eq.${escortUserId},id.eq.${escortUserId}`);
+
+  const appIds = (apps || []).map((a) => a.id);
+  appIds.push(escortUserId);
+
+  // 2. Check escort_assignments
+  const { data: assignments } = await supabase
+    .from('escort_assignments')
+    .select('id')
+    .eq('student_id', studentId)
+    .in('escort_application_id', appIds)
+    .limit(1);
+
+  if (assignments && assignments.length > 0) return true;
+
+  // 3. Check transport_bookings
+  const { data: bookings } = await supabase
+    .from('transport_bookings')
+    .select('id')
+    .eq('student_id', studentId)
+    .in('assigned_escort_id', appIds)
+    .limit(1);
+
+  if (bookings && bookings.length > 0) return true;
+
+  // 4. Check student_route_assignments
+  const { data: routes } = await supabase
+    .from('transport_routes')
+    .select('id')
+    .in('assigned_escort_user_id', appIds);
+
+  if (routes && routes.length > 0) {
+    const routeIds = routes.map((r) => r.id);
+    const { data: routeAssignments } = await supabase
+      .from('student_route_assignments')
+      .select('id')
+      .eq('student_id', studentId)
+      .in('route_id', routeIds)
+      .limit(1);
+
+    if (routeAssignments && routeAssignments.length > 0) return true;
+  }
+
+  return false;
+}
+
 

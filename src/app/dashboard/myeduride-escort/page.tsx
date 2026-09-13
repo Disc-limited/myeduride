@@ -23,6 +23,7 @@ import {
   Users,
   X,
   Navigation,
+  MessageSquare,
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { photoSrc } from '@/lib/photo';
@@ -49,6 +50,18 @@ export default function MyEduRideEscortDashboardPage() {
 
   const [escortData, setEscortData] = useState<any>(null);
   const [liveDashboardData, setLiveDashboardData] = useState<any>(null);
+  const [chatUnreadTotal, setChatUnreadTotal] = useState<number>(0);
+
+  const fetchChatUnread = () => {
+    fetch('/api/escorts/chat')
+      .then((res) => res.json())
+      .then((data) => {
+        if (data?.unread_totals?.total !== undefined) {
+          setChatUnreadTotal(data.unread_totals.total);
+        }
+      })
+      .catch((err) => console.warn('[myeduride-escort] Chat unread fetch notice:', err));
+  };
 
   const fetchLiveData = () => {
     fetch('/api/escorts/dashboard-live')
@@ -59,6 +72,7 @@ export default function MyEduRideEscortDashboardPage() {
         }
       })
       .catch((err) => console.warn('[myeduride-escort] Live DB fetch notice:', err));
+    fetchChatUnread();
   };
 
   useEffect(() => {
@@ -89,11 +103,26 @@ export default function MyEduRideEscortDashboardPage() {
       })
       .catch((err) => console.warn('[myeduride-escort] Load application error:', err));
 
+    // Check if deep linked to #chat or ?tab=chat
+    if (typeof window !== 'undefined') {
+      const params = new URLSearchParams(window.location.search);
+      if (params.get('tab') === 'chat' || window.location.hash === '#chat') {
+        setActiveNav('chat');
+      }
+    }
+
     setCurrentTime(new Date());
     const timer = setInterval(() => {
       setCurrentTime(new Date());
     }, 1000);
-    return () => clearInterval(timer);
+
+    // Poll chat unread count every 15 seconds
+    const chatTimer = setInterval(fetchChatUnread, 15000);
+
+    return () => {
+      clearInterval(timer);
+      clearInterval(chatTimer);
+    };
   }, []);
 
   const clockDisplay = useMemo(() => {
@@ -248,6 +277,31 @@ export default function MyEduRideEscortDashboardPage() {
               {(liveDashboardData?.students?.manifest?.length || 0) > 0 && (
                 <span className="px-2 py-0.5 rounded-full bg-emerald-500 text-slate-950 font-black text-[10px]">
                   {liveDashboardData?.students?.manifest?.length}
+                </span>
+              )}
+            </button>
+
+            {/* 4. EduChat Direct Communications Hub */}
+            <button
+              type="button"
+              onClick={() => { setActiveNav('chat'); setSidebarOpen(false); }}
+              className={`w-full flex items-center justify-between px-3.5 py-2.5 rounded-xl transition-all cursor-pointer ${
+                activeNav === 'chat'
+                  ? 'bg-emerald-600 text-white shadow-md font-extrabold'
+                  : 'text-slate-300 hover:bg-white/10 hover:text-white'
+              }`}
+            >
+              <div className="flex items-center gap-3">
+                <MessageSquare size={17} className={activeNav === 'chat' ? 'text-white' : 'text-emerald-400'} />
+                <span>EduChat & Messages</span>
+              </div>
+              {chatUnreadTotal > 0 ? (
+                <span className="px-2 py-0.5 rounded-full bg-rose-500 text-white font-black text-[10px] animate-pulse shadow-xs">
+                  {chatUnreadTotal}
+                </span>
+              ) : (
+                <span className="px-1.5 py-0.5 rounded-md bg-emerald-500/20 text-emerald-300 text-[9px] font-extrabold">
+                  Live
                 </span>
               )}
             </button>
@@ -413,6 +467,25 @@ export default function MyEduRideEscortDashboardPage() {
               <span className="hidden xs:inline">SOS</span>
             </button>
 
+            {/* EduChat Quick Header Shortcut */}
+            <button
+              type="button"
+              onClick={() => setActiveNav('chat')}
+              className={`p-2 rounded-xl border relative transition-all cursor-pointer ${
+                activeNav === 'chat'
+                  ? 'bg-emerald-600 text-white border-emerald-600 shadow-sm'
+                  : 'bg-slate-50 hover:bg-slate-100 text-slate-700 border-slate-200'
+              }`}
+              title="Open EduChat Communications Hub"
+            >
+              <MessageSquare size={16} />
+              {chatUnreadTotal > 0 && (
+                <span className="absolute -top-1 -right-1 w-4 h-4 rounded-full bg-rose-500 text-white text-[9px] font-black flex items-center justify-center animate-pulse">
+                  {chatUnreadTotal}
+                </span>
+              )}
+            </button>
+
             {/* Live Clock Display (Hidden on very small screens) */}
             <div className="hidden md:flex items-center gap-2 px-2.5 py-1 rounded-xl bg-slate-50 border border-slate-200">
               <Clock size={13} className="text-emerald-600" />
@@ -503,7 +576,24 @@ export default function MyEduRideEscortDashboardPage() {
           )}
         </button>
 
-        {/* 3. Route Navigation */}
+        {/* 3. EduChat */}
+        <button
+          type="button"
+          onClick={() => { setActiveNav('chat'); setSidebarOpen(false); }}
+          className={`flex flex-col items-center gap-0.5 py-1 px-2.5 rounded-xl transition-all cursor-pointer relative ${
+            activeNav === 'chat' ? 'text-emerald-400 font-black' : 'text-slate-400 hover:text-slate-200'
+          }`}
+        >
+          <MessageSquare size={19} className={activeNav === 'chat' ? 'stroke-[2.5]' : 'stroke-2'} />
+          <span className="text-[10px]">Chat</span>
+          {chatUnreadTotal > 0 && (
+            <span className="absolute -top-0.5 right-1.5 w-4 h-4 rounded-full bg-rose-500 text-[9px] font-black text-white flex items-center justify-center animate-pulse shadow-xs">
+              {chatUnreadTotal}
+            </span>
+          )}
+        </button>
+
+        {/* 4. Route Navigation */}
         <button
           type="button"
           onClick={() => { setActiveNav('optimisation'); setSidebarOpen(false); }}
@@ -515,7 +605,7 @@ export default function MyEduRideEscortDashboardPage() {
           <span className="text-[10px]">Navigate</span>
         </button>
 
-        {/* 4. Daily Earnings */}
+        {/* 5. Daily Earnings */}
         <button
           type="button"
           onClick={() => { setActiveNav('earnings'); setSidebarOpen(false); }}

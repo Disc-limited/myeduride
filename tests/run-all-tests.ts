@@ -32,6 +32,7 @@ import { visitorsReportSuite } from './unit/visitors-report.test';
 import { cityManagerEscortApprovalSuite } from './unit/city-manager-escort-approval.test';
 import { parentSchoolRouteDistanceSuite } from './unit/parent-school-route-distance.test';
 import { escortStudentVisibilitySuite } from './unit/escort-student-visibility.test';
+import { escortEduChatCommunicationSuite } from './unit/escort-educhat-communication.test';
 import { pickupControlApiSuite } from './integration/pickup-control-api.test';
 import { escortApisSuite } from './integration/escort-apis.test';
 import { routesVehiclesApiSuite } from './integration/routes-vehicles-api.test';
@@ -94,6 +95,7 @@ async function runAllTests() {
     cityManagerEscortApprovalSuite,
     parentSchoolRouteDistanceSuite,
     escortStudentVisibilitySuite,
+    escortEduChatCommunicationSuite,
     pickupControlApiSuite,
     escortApisSuite,
     routesVehiclesApiSuite,

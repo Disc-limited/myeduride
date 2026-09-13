@@ -28,10 +28,12 @@ import {
   Compass,
   AlertCircle,
   Zap,
-  Car
+  Car,
+  MessageSquare
 } from 'lucide-react';
 import { toast } from 'sonner';
 import SchoolNoticeBanner from '@/components/shared/SchoolNoticeBanner';
+import EscortEduChatView from '@/components/escort/EscortEduChatView';
 
 interface MyEduRideEscortViewProps {
   liveDashboardData?: any;
@@ -51,8 +53,12 @@ export default function MyEduRideEscortView({
   onNavChange,
 }: MyEduRideEscortViewProps) {
   const [internalTab, setInternalTab] = useState<
-    'operations' | 'assignments' | 'vehicle' | 'optimisation' | 'journey' | 'attendance' | 'earnings' | 'incidents' | 'analytics'
+    'operations' | 'assignments' | 'vehicle' | 'optimisation' | 'journey' | 'attendance' | 'earnings' | 'incidents' | 'analytics' | 'chat'
   >('operations');
+
+  // Direct student targeting for EduChat
+  const [selectedStudentForChat, setSelectedStudentForChat] = useState<string | null>(null);
+  const [chatUnreadTotal, setChatUnreadTotal] = useState<number>(0);
 
   // Synchronize with activeNav if provided by dashboard shell
   const activeTab = useMemo(() => {
@@ -118,6 +124,16 @@ export default function MyEduRideEscortView({
             house_lat: data.house_lat,
             house_lng: data.house_lng,
           });
+        }
+      })
+      .catch(() => {});
+
+    // Load unread chat notifications
+    fetch('/api/escorts/chat')
+      .then((res) => res.json())
+      .then((data) => {
+        if (data?.unread_totals?.total !== undefined) {
+          setChatUnreadTotal(data.unread_totals.total);
         }
       })
       .catch(() => {});
@@ -494,6 +510,24 @@ export default function MyEduRideEscortView({
           <DollarSign size={15} />
           <span>Earnings Breakdown</span>
         </button>
+
+        <button
+          type="button"
+          onClick={() => setActiveTab('chat')}
+          className={`shrink-0 flex items-center gap-2 px-3.5 py-2 rounded-xl transition-all cursor-pointer relative ${
+            activeTab === 'chat' ? 'bg-[#0A1128] text-white shadow-xs font-bold' : 'text-slate-600 hover:bg-slate-100'
+          }`}
+        >
+          <MessageSquare size={15} className="text-blue-500" />
+          <span>EduChat</span>
+          {chatUnreadTotal > 0 ? (
+            <span className="px-1.5 py-0.5 rounded-full text-[10px] font-black bg-rose-500 text-white animate-pulse">
+              {chatUnreadTotal}
+            </span>
+          ) : (
+            <span className="w-2 h-2 rounded-full bg-emerald-500"></span>
+          )}
+        </button>
       </div>
 
       {/* TAB 1: OPERATIONS */}
@@ -643,6 +677,17 @@ export default function MyEduRideEscortView({
 
                         <td className="py-3.5 px-3 text-center">
                           <div className="flex items-center justify-center gap-1.5">
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setSelectedStudentForChat(st.id);
+                                setActiveTab('chat');
+                              }}
+                              className="p-1.5 rounded-lg bg-blue-50 hover:bg-blue-100 text-blue-700 cursor-pointer"
+                              title="Chat with Parent / Gate / CM"
+                            >
+                              <MessageSquare size={13} />
+                            </button>
                             {st.parent_phone && (
                               <a
                                 href={`tel:${st.parent_phone}`}
@@ -765,12 +810,26 @@ export default function MyEduRideEscortView({
                     </div>
 
                     {/* Touch-Friendly Action Buttons Row (min 42px height) */}
-                    <div className="grid grid-cols-3 gap-2 pt-1">
-                      {/* 1. Call Parent */}
+                    <div className="grid grid-cols-4 gap-1.5 pt-1">
+                      {/* 1. Chat Parent / CM */}
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setSelectedStudentForChat(st.id);
+                          setActiveTab('chat');
+                        }}
+                        className="min-h-[42px] px-1.5 py-2 rounded-xl bg-blue-50 hover:bg-blue-100 text-blue-700 font-bold text-xs flex items-center justify-center gap-1 transition-colors border border-blue-200 shadow-xs cursor-pointer"
+                        title="Chat with Parent / Gate / CM"
+                      >
+                        <MessageSquare size={14} className="text-blue-600" />
+                        <span>Chat</span>
+                      </button>
+
+                      {/* 2. Call Parent */}
                       {parentPhone ? (
                         <a
                           href={`tel:${parentPhone}`}
-                          className="min-h-[42px] px-2 py-2 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-800 font-bold text-xs flex items-center justify-center gap-1.5 transition-colors border border-slate-200 shadow-xs"
+                          className="min-h-[42px] px-1.5 py-2 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-800 font-bold text-xs flex items-center justify-center gap-1 transition-colors border border-slate-200 shadow-xs"
                         >
                           <Phone size={14} className="text-emerald-600" />
                           <span>Call</span>
@@ -779,20 +838,20 @@ export default function MyEduRideEscortView({
                         <button
                           type="button"
                           disabled
-                          className="min-h-[42px] px-2 py-2 rounded-xl bg-slate-100 text-slate-400 font-medium text-xs flex items-center justify-center gap-1 cursor-not-allowed border border-slate-200 opacity-60"
+                          className="min-h-[42px] px-1.5 py-2 rounded-xl bg-slate-100 text-slate-400 font-medium text-xs flex items-center justify-center gap-1 cursor-not-allowed border border-slate-200 opacity-60"
                         >
                           <Phone size={14} />
                           <span>No Tel</span>
                         </button>
                       )}
 
-                      {/* 2. GPS Navigation */}
+                      {/* 3. GPS Navigation */}
                       {hasHousePin ? (
                         <a
                           href={st.google_maps_nav_url || `https://www.google.com/maps?q=${st.house_lat},${st.house_lng}`}
                           target="_blank"
                           rel="noreferrer"
-                          className="min-h-[42px] px-2 py-2 rounded-xl bg-purple-50 hover:bg-purple-100 text-purple-700 font-bold text-xs flex items-center justify-center gap-1.5 transition-colors border border-purple-200 shadow-xs"
+                          className="min-h-[42px] px-1.5 py-2 rounded-xl bg-purple-50 hover:bg-purple-100 text-purple-700 font-bold text-xs flex items-center justify-center gap-1 transition-colors border border-purple-200 shadow-xs"
                         >
                           <Navigation size={14} className="text-purple-600" />
                           <span>GPS</span>
@@ -801,18 +860,18 @@ export default function MyEduRideEscortView({
                         <button
                           type="button"
                           disabled
-                          className="min-h-[42px] px-2 py-2 rounded-xl bg-slate-100 text-slate-400 font-medium text-xs flex items-center justify-center gap-1 cursor-not-allowed border border-slate-200 opacity-60"
+                          className="min-h-[42px] px-1.5 py-2 rounded-xl bg-slate-100 text-slate-400 font-medium text-xs flex items-center justify-center gap-1 cursor-not-allowed border border-slate-200 opacity-60"
                         >
                           <Navigation size={14} />
                           <span>No GPS</span>
                         </button>
                       )}
 
-                      {/* 3. Verify PIN */}
+                      {/* 4. Verify PIN */}
                       <button
                         type="button"
                         onClick={() => onOpenVerificationModal(st)}
-                        className="min-h-[42px] px-2 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white font-black text-xs flex items-center justify-center gap-1.5 transition-colors shadow-xs cursor-pointer"
+                        className="min-h-[42px] px-1.5 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white font-black text-xs flex items-center justify-center gap-1 transition-colors shadow-xs cursor-pointer"
                       >
                         <QrCode size={14} />
                         <span>Verify</span>
@@ -967,6 +1026,14 @@ export default function MyEduRideEscortView({
             )}
           </div>
         </div>
+      )}
+
+      {/* TAB 6: EDUCHAT (PARENTS, GATE OFFICERS, CITY MANAGER) */}
+      {activeTab === 'chat' && (
+        <EscortEduChatView
+          initialStudentId={selectedStudentForChat}
+          onBackToRoster={() => setActiveTab('assignments')}
+        />
       )}
 
       {/* DECLINE TODAY TRIP MODAL */}
