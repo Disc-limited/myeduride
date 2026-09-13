@@ -6,6 +6,7 @@ import { getEscortApplications } from '@/lib/escort/escort-db';
 import { nowUtcIso, todayInLagos } from '@/lib/utils/time';
 import { calculateSchoolToHomeDistance, calculateEscortFare } from '@/lib/escort/escort-pricing';
 import { notifyEscortAssignmentCreated } from '@/lib/notifications/escort-workflow-notify';
+import { checkSchoolTimingClash, validateEscortSchoolLimit } from '@/lib/escort/escort-scheduler';
 
 export const dynamic = 'force-dynamic';
 
@@ -263,6 +264,36 @@ export async function POST(request: NextRequest) {
       );
     }
 
+    // 1.5 Dual School Assignment & Timing Clash Verification
+    const limitCheck = await validateEscortSchoolLimit(supabase, escort_id, primarySchoolId);
+    if (!limitCheck.allowed) {
+      return NextResponse.json({ error: limitCheck.error }, { status: 400 });
+    }
+
+    // If escort already serves another school, verify no schedule/bell clash exists
+    const otherSchoolId = limitCheck.currentSchoolIds.find((id) => id !== primarySchoolId);
+    if (otherSchoolId) {
+      const { data: otherSchool } = await supabase
+        .from('schools')
+        .select('id, name, student_gate_start, school_start_time, student_gate_end, dismissal_start_time')
+        .eq('id', otherSchoolId)
+        .maybeSingle();
+
+      if (otherSchool && school) {
+        const clashResult = checkSchoolTimingClash(school, otherSchool, 45);
+        if (clashResult.hasClash) {
+          return NextResponse.json(
+            {
+              error: `Dual-school timing clash detected: ${clashResult.reason}`,
+              timing_clash: true,
+              clash_details: clashResult,
+            },
+            { status: 400 }
+          );
+        }
+      }
+    }
+
     const escortName = escort?.full_name || 'Assigned Escort';
     const escortPhone = escort?.phone || '';
 
@@ -346,6 +377,23 @@ export async function POST(request: NextRequest) {
       .single();
 
     if (assignErr) throw assignErr;
+
+    // 5.5 Link primary or secondary school on escort application
+    try {
+      if (escort?.primary_school_id && escort.primary_school_id !== primarySchoolId) {
+        await supabase
+          .from('escort_applications')
+          .update({ secondary_school_id: primarySchoolId, updated_at: nowIso })
+          .eq('id', escort_id);
+      } else if (!escort?.primary_school_id) {
+        await supabase
+          .from('escort_applications')
+          .update({ primary_school_id: primarySchoolId, updated_at: nowIso })
+          .eq('id', escort_id);
+      }
+    } catch (eErr) {
+      console.warn('[assign-student] escort school link note:', eErr);
+    }
 
     // 6. If School Escort, link to student route if route exists
     if (escort_type === 'school_escort') {

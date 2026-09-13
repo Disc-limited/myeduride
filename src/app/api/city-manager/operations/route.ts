@@ -73,8 +73,8 @@ export async function GET(request: NextRequest) {
     const [schoolsRes, escortsRes, bookingsRes, assignmentsRes, auditRes, deputisingRes, vehiclesRes, routesRes, walkHomeRes, pinnedParentsRes, gateOfficersRes, gateActivitiesRes, allSchoolStudentsRes] = await Promise.all([
       db.from('schools').select('id, name, address, gps_lat, gps_lng, location_address, location_landmark, location_pinned_at').order('name').then((r: any) => r.data || [], () => []),
       db.from('escort_applications').select('id,full_name,email,phone,operating_area,status,availability_status,emergency_pool_enabled,last_available_at,application_data,user_id,residential_address,closest_landmark,lga,house_lat,house_lng,location_pinned_at,today_trip_status,today_trip_declined_reason,ready_for_pickup').in('status', ['CITY_MANAGER_APPROVED', 'ACTIVE']).then((r: any) => r.data || [], () => []),
-      db.from('transport_bookings').select('*, school:schools(name), student:students(first_name,last_name,student_id_number,class_id,house_address,house_lat,house_lng,house_landmark,house_notes,house_pinned_at,parent_phone)').order('created_at', { ascending: false }).limit(100).then((r: any) => r.data || [], () => []),
-      db.from('escort_assignments').select('*, escort:escort_applications(id,full_name,phone,operating_area,status), school:schools(id,name,address,gps_lat,gps_lng), student:students(id,first_name,last_name,student_id_number,photo_url,class:school_classes(name),house_address,house_lat,house_lng,house_landmark,house_notes,house_pinned_at,parent_phone)').order('created_at', { ascending: false }).limit(100).then((r: any) => r.data || [], () => []),
+      db.from('transport_bookings').select('*, school:schools(name), student:students(first_name,last_name,student_id_number,class_id,house_address,house_lat,house_lng,house_landmark,house_notes,house_pinned_at,custom_fields), parent:user_profiles!parent_user_id(full_name, phone)').order('created_at', { ascending: false }).limit(100).then((r: any) => r.data || [], () => []),
+      db.from('escort_assignments').select('*, escort:escort_applications(id,full_name,phone,operating_area,status), school:schools(id,name,address,gps_lat,gps_lng), student:students(id,first_name,last_name,student_id_number,photo_url,class:school_classes(name),house_address,house_lat,house_lng,house_landmark,house_notes,house_pinned_at,custom_fields)').order('created_at', { ascending: false }).limit(100).then((r: any) => r.data || [], () => []),
       db.from('city_manager_audit_log').select('*').order('created_at', { ascending: false }).limit(100).then((r: any) => r.data || [], () => []),
       db.from('emergency_deputising').select('*').order('created_at', { ascending: false }).limit(100).then((r: any) => r.data || [], () => []),
       db.from('school_vehicles').select('*').order('created_at', { ascending: false }).limit(100).then((r: any) => r.data || [], () => []),
@@ -82,8 +82,8 @@ export async function GET(request: NextRequest) {
       db.from('attendance_records').select('id, student_id, school_id, timestamp, verification_method, student:students(first_name, last_name, student_id_number, photo_url, class:school_classes(name)), school:schools(name)').eq('type', 'departure').ilike('verification_method', '%walk_home%').order('timestamp', { ascending: false }).limit(50).then((r: any) => r.data || [], () => []),
       db.from('students').select('id, first_name, last_name, student_id_number, photo_url, school_id, school:schools(id, name, address, gps_lat, gps_lng, location_address), class:school_classes(name), house_address, house_lat, house_lng, house_landmark, house_notes, house_pinned_at, house_pinned_by').not('house_lat', 'is', null).order('house_pinned_at', { ascending: false }).limit(200).then((r: any) => r.data || [], () => []),
       db.from('user_school_roles').select('id, user_id, school_id, role, is_active, created_at, user:user_profiles(id, full_name, email, phone, avatar_url), school:schools(id, name, address)').eq('role', 'gate_officer').then((r: any) => r.data || [], () => []),
-      db.from('attendance_records').select('id, student_id, school_id, timestamp, type, verification_method, gate_officer_user_id, student:students(first_name, last_name, student_id_number, photo_url, class:school_classes(name)), school:schools(name)').order('timestamp', { ascending: false }).limit(60).then((r: any) => r.data || [], () => []),
-      db.from('students').select('id, first_name, last_name, student_id_number, photo_url, school_id, status, is_active, parent_phone, house_address, house_lat, house_lng, house_landmark, class:school_classes(name)').order('first_name').limit(500).then((r: any) => r.data || [], () => []),
+      db.from('attendance_records').select('id, student_id, school_id, timestamp, type, verification_method, verified_by_user_id, student:students(first_name, last_name, student_id_number, photo_url, class:school_classes(name)), school:schools(name)').order('timestamp', { ascending: false }).limit(60).then((r: any) => r.data || [], () => []),
+      db.from('students').select('id, first_name, last_name, student_id_number, photo_url, school_id, is_active, custom_fields, house_address, house_lat, house_lng, house_landmark, class:school_classes(name)').order('first_name').limit(500).then((r: any) => r.data || [], () => []),
     ]);
 
     let students: any[] = [];
@@ -95,6 +95,8 @@ export async function GET(request: NextRequest) {
 
     // Format parent requests from database bookings
     const rawBookings = bookingsRes;
+    const matchedAssignmentIds = new Set<string>();
+
     const parentRequests = rawBookings.map((b: any) => {
       const stu = Array.isArray(b.student) ? b.student[0] : b.student;
       const sch = Array.isArray(b.school) ? b.school[0] : b.school;
@@ -108,7 +110,14 @@ export async function GET(request: NextRequest) {
         meta = {};
       }
 
-      const matchedAssignment = (assignmentsRes || []).find((a: any) => a.booking_id === b.id);
+      const matchedAssignment = (assignmentsRes || []).find((a: any) => 
+        (a.booking_id && a.booking_id === b.id) || 
+        (b.student_id && a.student_id === b.student_id)
+      );
+      if (matchedAssignment?.id) {
+        matchedAssignmentIds.add(matchedAssignment.id);
+      }
+
       const rawEscort = matchedAssignment?.escort;
       const escort = Array.isArray(rawEscort) ? rawEscort[0] : rawEscort;
 
@@ -138,18 +147,22 @@ export async function GET(request: NextRequest) {
 
       const isConfirmed = b.status === 'assigned' || matchedAssignment?.status === 'active';
 
-      const preferredEscortId = meta.assigned_escort_id || meta.escort_id || null;
-      const preferredEscortName = meta.assigned_escort_name || meta.escort_name || null;
+      const preferredEscortId = meta.assigned_escort_id || meta.escort_id || matchedAssignment?.escort_application_id || null;
+      const preferredEscortName = meta.assigned_escort_name || meta.escort_name || escort?.full_name || null;
       const isPinned = Boolean(stu?.house_lat && stu?.house_lng);
+
+      const parentProfile = Array.isArray(b.parent) ? b.parent[0] : b.parent;
+      const parentName = parentProfile?.full_name || stu?.custom_fields?.parent_name || meta.parent_name || (stu ? `${(stu.first_name || '').trim()}'s Guardian`.trim() : 'Parent Guardian');
+      const parentPhone = parentProfile?.phone || stu?.custom_fields?.parent_phone || meta.parent_phone || b.parent_phone || '—';
 
       return {
         booking_id: b.id,
         assignment_id: matchedAssignment?.id || null,
         child_id: b.student_id,
-        child_name: stu ? `${stu.first_name} ${stu.last_name}` : 'Student',
+        child_name: stu ? `${(stu.first_name || '').trim()} ${(stu.last_name || '').trim()}`.trim() : 'Student',
         parent_user_id: b.parent_user_id,
-        parent_name: meta.parent_name || (stu ? `${stu.first_name || ''}'s Guardian`.trim() : 'Parent Guardian'),
-        parent_phone: stu?.parent_phone || meta.parent_phone || b.parent_phone || '—',
+        parent_name: parentName,
+        parent_phone: parentPhone,
         school_id: b.school_id,
         school_name: sch?.name || 'School Campus',
         source: b.source || 'school',
@@ -163,7 +176,7 @@ export async function GET(request: NextRequest) {
         accountant_approval_ref: discountDetails?.accountantApprovalRef || null,
         accountant_name: discountDetails?.accountantName || null,
         trip_type: tripType,
-        escort_type: meta.escort_type || 'myeduride_escort',
+        escort_type: meta.escort_type || (matchedAssignment?.assignment_type === 'school_escort' ? 'school_escort' : 'myeduride_escort'),
         preferred_escort_id: preferredEscortId,
         escort_id: escort?.id || preferredEscortId || null,
         escort_name: escort?.full_name || preferredEscortName || (isConfirmed ? 'Assigned Escort' : 'Awaiting City Manager Assignment'),
@@ -179,7 +192,7 @@ export async function GET(request: NextRequest) {
         house_lng: stu?.house_lng ? Number(stu.house_lng) : (b.pickup_lng ? Number(b.pickup_lng) : null),
         house_landmark: stu?.house_landmark || null,
         is_house_pinned: isPinned,
-        reason: meta.notes || b.notes || 'School Escort Assignment',
+        reason: meta.notes || b.notes || matchedAssignment?.notes || 'School Escort Assignment',
         security_pin: securityPin,
         stage: isConfirmed ? 5 : 2,
         stage_label: isConfirmed ? 'Escort Assigned & Dispatched' : 'Under City Manager Review',
@@ -187,6 +200,63 @@ export async function GET(request: NextRequest) {
         created_at: b.created_at,
       };
     });
+
+    // Also include any standalone or unlinked escort assignments so nothing assigned by School Admin is dropped
+    const unlinkedAssignments = (assignmentsRes || []).filter((a: any) => !matchedAssignmentIds.has(a.id));
+    for (const a of unlinkedAssignments) {
+      const stu = Array.isArray(a.student) ? a.student[0] : a.student;
+      const sch = Array.isArray(a.school) ? a.school[0] : a.school;
+      const rawEscort = a.escort;
+      const escort = Array.isArray(rawEscort) ? rawEscort[0] : rawEscort;
+
+      const isConfirmed = a.status === 'active' || a.status === 'completed';
+      const isPinned = Boolean(stu?.house_lat && stu?.house_lng);
+
+      parentRequests.push({
+        booking_id: a.booking_id || a.id,
+        assignment_id: a.id,
+        child_id: a.student_id,
+        child_name: stu ? `${(stu.first_name || '').trim()} ${(stu.last_name || '').trim()}`.trim() : 'Student',
+        parent_user_id: null,
+        parent_name: stu?.custom_fields?.parent_name || (stu ? `${(stu.first_name || '').trim()}'s Guardian`.trim() : 'Parent Guardian'),
+        parent_phone: stu?.custom_fields?.parent_phone || '—',
+        school_id: a.school_id,
+        school_name: sch?.name || 'School Campus',
+        source: 'school',
+        distance_km: 4.2,
+        morning_fare: 1000,
+        afternoon_fare: 1000,
+        daily_fare: 2000,
+        actual_amount_collected: 2000,
+        discount_details: null,
+        is_discounted: false,
+        accountant_approval_ref: null,
+        accountant_name: null,
+        trip_type: 'both',
+        escort_type: 'myeduride_escort',
+        preferred_escort_id: a.escort_application_id,
+        escort_id: escort?.id || a.escort_application_id || null,
+        escort_name: escort?.full_name || (isConfirmed ? 'Assigned Escort' : 'Awaiting City Manager Assignment'),
+        escort_phone: escort?.phone || null,
+        vehicle_plate: escort?.vehicle_plate || null,
+        operating_area: escort?.operating_area || 'Lagos Metropolis',
+        pickup_date: 'Today',
+        pickup_time: '07:00',
+        dropoff_time: '15:30',
+        pickup_location: stu?.house_address || 'Designated Doorstep',
+        house_address: stu?.house_address || '',
+        house_lat: stu?.house_lat ? Number(stu.house_lat) : null,
+        house_lng: stu?.house_lng ? Number(stu.house_lng) : null,
+        house_landmark: stu?.house_landmark || null,
+        is_house_pinned: isPinned,
+        reason: a.notes || 'School Escort Assignment',
+        security_pin: null,
+        stage: isConfirmed ? 5 : 2,
+        stage_label: isConfirmed ? 'Escort Assigned & Dispatched' : 'Under City Manager Review',
+        status: isConfirmed ? 'CONFIRMED' : 'PENDING_CM_REVIEW',
+        created_at: a.created_at,
+      });
+    }
 
     const schoolsList = schoolsRes;
     const routesList = routesRes;
@@ -421,7 +491,7 @@ export async function GET(request: NextRequest) {
           distance_km: studentDistKm,
           estimated_transit_mins: studentEstMins,
           directions_url: directionsUrl,
-          parent_phone: a.student?.parent_phone || '—',
+          parent_phone: a.student?.custom_fields?.parent_phone || a.student?.parent_phone || '—',
           status: a.status,
           assignment_type: a.assignment_type || 'standard',
           assigned_at: a.created_at,
@@ -472,13 +542,13 @@ export async function GET(request: NextRequest) {
           student_id_number: st.student_id_number || 'N/A',
           photo_url: st.photo_url || null,
           class_name: Array.isArray(st.class) ? st.class[0]?.name : (st.class?.name || 'Class N/A'),
-          parent_phone: st.parent_phone || '—',
+          parent_phone: st.custom_fields?.parent_phone || st.parent_phone || '—',
           house_address: st.house_address || 'Designated Home Residence',
           house_lat: st.house_lat,
           house_lng: st.house_lng,
           house_landmark: st.house_landmark,
           is_house_pinned: Boolean(st.house_lat && st.house_lng),
-          status: st.is_active ? 'ACTIVE' : (st.status || 'ENROLLED'),
+          status: st.is_active ? 'ACTIVE' : 'ENROLLED',
         });
       }
     }
@@ -501,7 +571,7 @@ export async function GET(request: NextRequest) {
     const formattedGateOfficers = (gateOfficersRes || []).map((g: any, idx: number) => {
       const u = Array.isArray(g.user) ? g.user[0] : g.user;
       const sch = Array.isArray(g.school) ? g.school[0] : g.school;
-      const officerScans = (gateActivitiesRes || []).filter((act: any) => act.gate_officer_user_id === g.user_id || act.school_id === g.school_id);
+      const officerScans = (gateActivitiesRes || []).filter((act: any) => act.verified_by_user_id === g.user_id || act.gate_officer_user_id === g.user_id || act.school_id === g.school_id);
       const manualOverrides = officerScans.filter((act: any) => String(act.verification_method).toLowerCase().includes('override') || String(act.verification_method).toLowerCase().includes('manual')).length;
 
       return {
@@ -849,58 +919,120 @@ export async function POST(request: NextRequest) {
       const escortName = escort?.full_name || 'Assigned Escort';
       const securityPin = Math.floor(1000 + Math.random() * 9000).toString();
 
-      const { data: updatedBooking, error: updateErr } = await db
+      // Check transport_bookings
+      const { data: currentBooking } = await db
         .from('transport_bookings')
-        .update({
-          status: 'assigned',
-          notes: notes ? `CM Notes: ${notes} | PIN: ${securityPin}` : `PIN: ${securityPin}`,
-          updated_at: nowUtcIso(),
-        })
+        .select('*')
         .eq('id', booking_id)
-        .select()
-        .single();
-
-      if (updateErr) throw updateErr;
-
-      // Check if existing assignment exists for booking_id
-      const { data: existingAssignment } = await db
-        .from('escort_assignments')
-        .select('id')
-        .eq('booking_id', booking_id)
         .maybeSingle();
 
+      let updatedBooking: any = null;
       let newAssignment: any = null;
-      if (existingAssignment) {
-        const { data: updatedA } = await db
-          .from('escort_assignments')
+
+      if (currentBooking) {
+        let mergedNotes = notes ? `CM Notes: ${notes} | PIN: ${securityPin}` : `PIN: ${securityPin}`;
+        if (currentBooking.notes && currentBooking.notes.startsWith('{')) {
+          try {
+            const parsed = JSON.parse(currentBooking.notes);
+            parsed.security_pin = securityPin;
+            parsed.approval_status = 'CITY_MANAGER_APPROVED';
+            parsed.assigned_escort_id = escort_id;
+            parsed.assigned_escort_name = escortName;
+            if (notes) parsed.cm_notes = notes;
+            mergedNotes = JSON.stringify(parsed);
+          } catch {
+            // Keep mergedNotes fallback
+          }
+        }
+
+        const { data: uB, error: updateErr } = await db
+          .from('transport_bookings')
           .update({
-            escort_application_id: escort_id,
-            status: 'active',
-            notes: notes || 'Assigned & Approved by City Manager',
+            status: 'assigned',
+            notes: mergedNotes,
             updated_at: nowUtcIso(),
           })
-          .eq('id', existingAssignment.id)
+          .eq('id', booking_id)
           .select()
           .single();
-        newAssignment = updatedA;
+
+        if (updateErr) throw updateErr;
+        updatedBooking = uB;
+
+        // Check if existing assignment exists for booking_id or student_id
+        let assignQuery = db.from('escort_assignments').select('*').eq('booking_id', booking_id);
+        const { data: byBooking } = await assignQuery.maybeSingle();
+
+        let existingAssignment = byBooking;
+        if (!existingAssignment && currentBooking.student_id) {
+          const { data: byStudent } = await db
+            .from('escort_assignments')
+            .select('*')
+            .eq('student_id', currentBooking.student_id)
+            .order('created_at', { ascending: false })
+            .limit(1)
+            .maybeSingle();
+          existingAssignment = byStudent;
+        }
+
+        if (existingAssignment) {
+          const { data: updatedA } = await db
+            .from('escort_assignments')
+            .update({
+              booking_id: booking_id,
+              escort_application_id: escort_id,
+              status: 'active',
+              confirmed_at: nowUtcIso(),
+              notes: notes || existingAssignment.notes || 'Assigned & Approved by City Manager',
+              updated_at: nowUtcIso(),
+            })
+            .eq('id', existingAssignment.id)
+            .select()
+            .single();
+          newAssignment = updatedA;
+        } else {
+          const { data: createdA } = await db
+            .from('escort_assignments')
+            .insert({
+              booking_id: booking_id,
+              escort_application_id: escort_id,
+              school_id: updatedBooking?.school_id || null,
+              student_id: updatedBooking?.student_id || null,
+              assignment_type: 'standard',
+              assigned_by: session.user_id,
+              notes: notes || 'Assigned & Approved by City Manager',
+              status: 'active',
+              confirmed_at: nowUtcIso(),
+              created_at: nowUtcIso(),
+              updated_at: nowUtcIso(),
+            })
+            .select()
+            .maybeSingle();
+          newAssignment = createdA;
+        }
       } else {
-        const { data: createdA } = await db
+        // booking_id might be the assignment id directly
+        const { data: existingA } = await db
           .from('escort_assignments')
-          .insert({
-            booking_id: booking_id,
-            escort_application_id: escort_id,
-            school_id: updatedBooking?.school_id || null,
-            student_id: updatedBooking?.student_id || null,
-            assignment_type: 'standard',
-            assigned_by: session.user_id,
-            notes: notes || 'Assigned & Approved by City Manager',
-            status: 'active',
-            created_at: nowUtcIso(),
-            updated_at: nowUtcIso(),
-          })
-          .select()
+          .select('*')
+          .eq('id', booking_id)
           .maybeSingle();
-        newAssignment = createdA;
+
+        if (existingA) {
+          const { data: updatedA } = await db
+            .from('escort_assignments')
+            .update({
+              escort_application_id: escort_id,
+              status: 'active',
+              confirmed_at: nowUtcIso(),
+              notes: notes || existingA.notes || 'Assigned & Approved by City Manager',
+              updated_at: nowUtcIso(),
+            })
+            .eq('id', existingA.id)
+            .select()
+            .single();
+          newAssignment = updatedA;
+        }
       }
 
       if (newAssignment) {
@@ -911,30 +1043,17 @@ export async function POST(request: NextRequest) {
         }
       }
 
-      // Fetch student, school, parent details for immediate multi-party notification
+      // Multi-party notification
       try {
-        let studentName = 'Student';
-        let schoolName = 'School Campus';
-
-        if (updatedBooking?.student_id) {
-          const { data: student } = await db
-            .from('students')
-            .select('first_name, last_name, school_id, school:schools(name)')
-            .eq('id', updatedBooking.student_id)
-            .maybeSingle();
-          if (student) {
-            studentName = `${student.first_name} ${student.last_name}`;
-            const schObj: any = Array.isArray(student.school) ? student.school[0] : student.school;
-            if (schObj?.name) schoolName = schObj.name;
-          }
-        }
+        const studentId = updatedBooking?.student_id || newAssignment?.student_id;
+        const schoolId = updatedBooking?.school_id || newAssignment?.school_id;
 
         await notifyEscortAssignmentApproved({
           bookingId: booking_id,
           escortId: escort_id,
           securityPin,
-          schoolId: updatedBooking?.school_id || undefined,
-          studentId: updatedBooking?.student_id || undefined,
+          schoolId: schoolId || undefined,
+          studentId: studentId || undefined,
         });
       } catch (notifyErr) {
         console.warn('[city-manager operations] notifyEscortAssignmentApproved warning:', notifyErr);
@@ -973,16 +1092,38 @@ export async function POST(request: NextRequest) {
           meta = {};
         }
 
-        const escortId = meta.assigned_escort_id || meta.escort_id;
+        let escortId = meta.assigned_escort_id || meta.escort_id;
+        if (!escortId) {
+          const { data: matchedA } = await db
+            .from('escort_assignments')
+            .select('escort_application_id')
+            .or(`booking_id.eq.${b.id}${b.student_id ? `,student_id.eq.${b.student_id}` : ''}`)
+            .order('created_at', { ascending: false })
+            .limit(1)
+            .maybeSingle();
+          escortId = matchedA?.escort_application_id;
+        }
         if (!escortId) continue;
 
         const securityPin = Math.floor(1000 + Math.random() * 9000).toString();
+
+        let updatedNotes = b.notes ? `${b.notes} | PIN: ${securityPin}` : `PIN: ${securityPin}`;
+        if (b.notes && b.notes.startsWith('{')) {
+          try {
+            meta.security_pin = securityPin;
+            meta.approval_status = 'CITY_MANAGER_APPROVED';
+            meta.assigned_escort_id = escortId;
+            updatedNotes = JSON.stringify(meta);
+          } catch {
+            // Keep fallback
+          }
+        }
 
         await db
           .from('transport_bookings')
           .update({
             status: 'assigned',
-            notes: b.notes ? `${b.notes} | PIN: ${securityPin}` : `PIN: ${securityPin}`,
+            notes: updatedNotes,
             updated_at: nowUtcIso(),
           })
           .eq('id', b.id);
@@ -994,7 +1135,7 @@ export async function POST(request: NextRequest) {
             confirmed_at: nowUtcIso(),
             updated_at: nowUtcIso(),
           })
-          .eq('booking_id', b.id);
+          .or(`booking_id.eq.${b.id}${b.student_id ? `,student_id.eq.${b.student_id}` : ''}`);
 
         try {
           await notifyEscortAssignmentApproved({
@@ -1009,6 +1150,32 @@ export async function POST(request: NextRequest) {
         }
 
         approvedCount++;
+      }
+
+      // Also activate any standalone pending escort_assignments
+      try {
+        const { data: pendingAssignments } = await db
+          .from('escort_assignments')
+          .select('id, booking_id, escort_application_id, school_id, student_id')
+          .eq('status', 'pending_confirmation');
+
+        for (const pa of (pendingAssignments || [])) {
+          // If already counted via booking, skip
+          if (pendingBookings?.some((pb: any) => pb.id === pa.booking_id)) continue;
+
+          await db
+            .from('escort_assignments')
+            .update({
+              status: 'active',
+              confirmed_at: nowUtcIso(),
+              updated_at: nowUtcIso(),
+            })
+            .eq('id', pa.id);
+
+          approvedCount++;
+        }
+      } catch (pErr) {
+        console.warn('[batch_approve_school_assignments] pendingAssignments update notice:', pErr);
       }
 
       await audit(db, session.user_id, 'BATCH_SCHOOL_ASSIGNMENTS_APPROVED', 'transport_bookings', 'batch', {

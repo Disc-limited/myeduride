@@ -4,6 +4,7 @@ import { getSessionFromRequest } from '@/lib/session';
 import { todayInLagos, lagosDayBounds } from '@/lib/timezone';
 import { getEscortApplications } from '@/lib/escort/escort-db';
 import { nowUtcIso } from '@/lib/utils/time';
+import { checkSchoolTimingClash } from '@/lib/escort/escort-scheduler';
 
 export const dynamic = 'force-dynamic';
 
@@ -164,6 +165,51 @@ export async function GET(request: NextRequest) {
       console.warn('[dashboard-live] escort_assignments query notice:', err);
     }
 
+    // 4.1 Resolve all assigned schools (supporting dual-school assignments)
+    const distinctSchoolIds = new Set<string>();
+    if (escortProfile?.primary_school_id) distinctSchoolIds.add(escortProfile.primary_school_id);
+    if (escortProfile?.secondary_school_id) distinctSchoolIds.add(escortProfile.secondary_school_id);
+    if (escortProfile?.school_id) distinctSchoolIds.add(escortProfile.school_id);
+    if (schoolId) distinctSchoolIds.add(schoolId);
+    for (const a of liveAssignments) {
+      if (a.school_id) distinctSchoolIds.add(a.school_id);
+    }
+
+    let assignedSchools: any[] = [];
+    let dualSchoolSchedule: any = null;
+    if (distinctSchoolIds.size > 0) {
+      try {
+        const { data: sList } = await supabase
+          .from('schools')
+          .select('id, name, address, gps_lat, gps_lng, student_gate_start, school_start_time, student_gate_end, dismissal_start_time')
+          .in('id', Array.from(distinctSchoolIds));
+        if (sList && sList.length > 0) {
+          assignedSchools = sList;
+          if (!schoolData || !schoolData.id) {
+            schoolData = sList[0];
+          }
+        }
+
+        if (assignedSchools.length >= 2) {
+          const clash = checkSchoolTimingClash(assignedSchools[0], assignedSchools[1], 45);
+          dualSchoolSchedule = {
+            is_dual_school: true,
+            school_a: assignedSchools[0],
+            school_b: assignedSchools[1],
+            clash_detected: clash.hasClash,
+            clash_reason: clash.reason || null,
+            morning_gap_mins: clash.morningGapMins,
+            afternoon_gap_mins: clash.afternoonGapMins,
+            school_a_times: clash.schoolATimes,
+            school_b_times: clash.schoolBTimes,
+            status_label: !clash.hasClash ? 'Dual-School Non-Clashing Schedule' : 'Schedule Clashing Alert',
+          };
+        }
+      } catch (sErr) {
+        console.warn('[dashboard-live] assigned schools query notice:', sErr);
+      }
+    }
+
     // 4.2 Fetch linked transport_bookings
     const assignmentBookingIds = liveAssignments.map((a) => a.booking_id).filter(Boolean);
     let liveBookings: any[] = [];
@@ -173,7 +219,7 @@ export async function GET(request: NextRequest) {
         .select(`
           *,
           student:students(id, first_name, last_name, photo_url, student_id_number, school_classes(name)),
-          parent:user_profiles!user_id(full_name, phone)
+          parent:user_profiles!parent_user_id(full_name, phone)
         `);
 
       if (assignmentBookingIds.length > 0) {
@@ -464,6 +510,10 @@ export async function GET(request: NextRequest) {
         morning_picked_up_at: trip?.morning_picked_up_at || null,
         afternoon_picked_up_at: trip?.afternoon_picked_up_at || null,
         afternoon_dropped_off_at: trip?.afternoon_dropped_off_at || null,
+        morning_proximity_notified_at: trip?.morning_proximity_notified_at || null,
+        afternoon_proximity_notified_at: trip?.afternoon_proximity_notified_at || null,
+        is_morning_proximity_notified: Boolean(trip?.morning_proximity_notified_at),
+        is_afternoon_proximity_notified: Boolean(trip?.afternoon_proximity_notified_at),
         pickup_time: st.pickup_time || routeStops[idx % Math.max(routeStops.length, 1)]?.pickup_time || '07:15 AM',
         parent_phone: st.parent_phone || '0803 456 7890',
         parent_name: st.parent_name || 'Parent / Guardian',
@@ -647,6 +697,8 @@ export async function GET(request: NextRequest) {
         is_pinned: schoolData?.gps_lat != null && schoolData?.gps_lng != null,
         logo_url: schoolData?.logo_url || '/dashboard/logo.png',
       },
+      assigned_schools: assignedSchools,
+      dual_school_schedule: dualSchoolSchedule,
       driver: driverData,
       vehicle: {
         id: assignedVehicle.id || 'veh-01',

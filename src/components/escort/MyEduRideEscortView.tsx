@@ -29,11 +29,13 @@ import {
   AlertCircle,
   Zap,
   Car,
-  MessageSquare
+  MessageSquare,
+  BellRing
 } from 'lucide-react';
 import { toast } from 'sonner';
 import SchoolNoticeBanner from '@/components/shared/SchoolNoticeBanner';
 import EscortEduChatView from '@/components/escort/EscortEduChatView';
+import LiveHouseNavigationModal from '@/components/escort/LiveHouseNavigationModal';
 
 interface MyEduRideEscortViewProps {
   liveDashboardData?: any;
@@ -100,6 +102,9 @@ export default function MyEduRideEscortView({
     house_lat: null as number | null,
     house_lng: null as number | null,
   });
+
+  // Live House Navigation Modal
+  const [navModalStudent, setNavModalStudent] = useState<any | null>(null);
 
   const reloadData = () => {
     fetch('/api/escorts/dashboard-live')
@@ -451,6 +456,59 @@ export default function MyEduRideEscortView({
       {/* OFFICIAL SCHOOL NOTICES */}
       <SchoolNoticeBanner role="escorts" schoolId={liveDashboardData?.escort?.school_id || liveDashboardData?.escort?.primary_school_id} />
 
+      {/* DUAL-SCHOOL ASSIGNMENT & SCHEDULE STATUS */}
+      {liveDashboardData?.dual_school_schedule && (
+        <div className="bg-white rounded-3xl p-4 sm:p-5 border border-purple-200/80 shadow-xs space-y-3 bg-gradient-to-br from-purple-50/50 to-white">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-purple-100 pb-3">
+            <div className="flex items-center gap-2.5">
+              <div className="w-8 h-8 rounded-xl bg-purple-100 text-purple-800 flex items-center justify-center font-black shrink-0">
+                <Compass size={18} />
+              </div>
+              <div>
+                <div className="flex items-center gap-2 flex-wrap">
+                  <h3 className="font-black text-slate-900 text-sm sm:text-base">Dual-School Transit Coverage</h3>
+                  <span className={`px-2 py-0.5 rounded-full text-[10px] font-black uppercase ${
+                    liveDashboardData.dual_school_schedule.clash_detected
+                      ? 'bg-rose-100 text-rose-800'
+                      : 'bg-emerald-100 text-emerald-800'
+                  }`}>
+                    {liveDashboardData.dual_school_schedule.clash_detected ? 'Schedule Clash Warning' : 'Verified Non-Clashing'}
+                  </span>
+                </div>
+                <p className="text-[11px] text-slate-500 font-medium">
+                  Assigned to 2 schools with non-overlapping morning and afternoon bell schedules.
+                </p>
+              </div>
+            </div>
+          </div>
+
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5 text-xs">
+            <div className="p-3 rounded-2xl bg-white border border-purple-100 space-y-1">
+              <span className="text-[10px] uppercase font-bold text-slate-400 block">School 1 (Campus A)</span>
+              <span className="font-bold text-slate-900 text-xs sm:text-sm block">{liveDashboardData.dual_school_schedule.school_a?.name}</span>
+              <div className="flex items-center gap-3 text-[11px] text-slate-600 pt-0.5">
+                <span>Morning: <b className="text-slate-800">{liveDashboardData.dual_school_schedule.school_a_times?.morning || '07:30'}</b></span>
+                <span>Dismissal: <b className="text-slate-800">{liveDashboardData.dual_school_schedule.school_a_times?.afternoon || '14:00'}</b></span>
+              </div>
+            </div>
+
+            <div className="p-3 rounded-2xl bg-white border border-purple-100 space-y-1">
+              <span className="text-[10px] uppercase font-bold text-slate-400 block">School 2 (Campus B)</span>
+              <span className="font-bold text-slate-900 text-xs sm:text-sm block">{liveDashboardData.dual_school_schedule.school_b?.name}</span>
+              <div className="flex items-center gap-3 text-[11px] text-slate-600 pt-0.5">
+                <span>Morning: <b className="text-slate-800">{liveDashboardData.dual_school_schedule.school_b_times?.morning || '08:30'}</b></span>
+                <span>Dismissal: <b className="text-slate-800">{liveDashboardData.dual_school_schedule.school_b_times?.afternoon || '15:30'}</b></span>
+              </div>
+            </div>
+          </div>
+
+          <div className="px-3 py-2 rounded-xl bg-purple-50 text-[11px] text-purple-900 flex flex-wrap items-center justify-between gap-2 font-medium">
+            <span>Morning arrival gap: <b>{liveDashboardData.dual_school_schedule.morning_gap_mins} mins</b></span>
+            <span>Afternoon release gap: <b>{liveDashboardData.dual_school_schedule.afternoon_gap_mins} mins</b></span>
+          </div>
+        </div>
+      )}
+
       {/* SECTION TABS HEADER - Smooth Horizontal Scroll on Mobile */}
       <div className="bg-white rounded-2xl border border-slate-200/80 p-1.5 shadow-xs flex items-center gap-1.5 overflow-x-auto no-scrollbar scroll-smooth whitespace-nowrap text-xs font-semibold">
         <button
@@ -663,15 +721,22 @@ export default function MyEduRideEscortView({
                               <span className="text-[10px] text-slate-400 block">Near: {st.house_landmark}</span>
                             )}
                             {hasHousePin && (
-                              <a
-                                href={st.google_maps_nav_url || `https://www.google.com/maps?q=${st.house_lat},${st.house_lng}`}
-                                target="_blank"
-                                rel="noreferrer"
-                                className="inline-flex items-center gap-1 text-[10px] font-bold text-purple-700 hover:underline mt-0.5"
-                              >
-                                <Navigation size={10} />
-                                <span>Navigate GPS</span>
-                              </a>
+                              <div className="flex items-center gap-1.5 flex-wrap mt-0.5">
+                                <button
+                                  type="button"
+                                  onClick={() => setNavModalStudent(st)}
+                                  className="inline-flex items-center gap-1 text-[10px] font-bold text-purple-700 hover:text-purple-900 hover:underline cursor-pointer"
+                                >
+                                  <Navigation size={10} />
+                                  <span>Live Direction</span>
+                                </button>
+                                {(st.is_morning_proximity_notified || st.is_afternoon_proximity_notified) && (
+                                  <span className="inline-flex items-center gap-1 text-[9px] font-bold text-emerald-700 bg-emerald-50 px-1.5 py-0.5 rounded-md border border-emerald-200">
+                                    <BellRing size={9} />
+                                    <span>Parent Notified</span>
+                                  </span>
+                                )}
+                              </div>
                             )}
                           </div>
                         </td>
@@ -706,6 +771,16 @@ export default function MyEduRideEscortView({
 
                         <td className="py-3.5 px-3 text-center">
                           <div className="flex items-center justify-center gap-1.5">
+                            {hasHousePin && (
+                              <button
+                                type="button"
+                                onClick={() => setNavModalStudent(st)}
+                                className="p-1.5 rounded-lg bg-purple-50 hover:bg-purple-100 text-purple-700 cursor-pointer"
+                                title="Live Turn & Doorstep Direction"
+                              >
+                                <Navigation size={13} />
+                              </button>
+                            )}
                             <button
                               type="button"
                               onClick={() => {
@@ -897,17 +972,17 @@ export default function MyEduRideEscortView({
                         </button>
                       )}
 
-                      {/* 3. GPS Navigation */}
+                      {/* 3. Live Direction & GPS Navigation */}
                       {hasHousePin ? (
-                        <a
-                          href={st.google_maps_nav_url || `https://www.google.com/maps?q=${st.house_lat},${st.house_lng}`}
-                          target="_blank"
-                          rel="noreferrer"
-                          className="min-h-[42px] px-1.5 py-2 rounded-xl bg-purple-50 hover:bg-purple-100 text-purple-700 font-bold text-xs flex items-center justify-center gap-1 transition-colors border border-purple-200 shadow-xs"
+                        <button
+                          type="button"
+                          onClick={() => setNavModalStudent(st)}
+                          className="min-h-[42px] px-1.5 py-2 rounded-xl bg-purple-50 hover:bg-purple-100 text-purple-700 font-bold text-xs flex items-center justify-center gap-1 transition-colors border border-purple-200 shadow-xs cursor-pointer"
+                          title="Open Live Guidance and Proximity Radar"
                         >
                           <Navigation size={14} className="text-purple-600" />
-                          <span>GPS</span>
-                        </a>
+                          <span>Direct</span>
+                        </button>
                       ) : (
                         <button
                           type="button"
@@ -1249,6 +1324,18 @@ export default function MyEduRideEscortView({
           </div>
         </div>
       )}
+      {/* Live House Navigation Modal */}
+      <LiveHouseNavigationModal
+        isOpen={Boolean(navModalStudent)}
+        onClose={() => setNavModalStudent(null)}
+        student={navModalStudent}
+        escortId={liveDashboardData?.escort?.id}
+        tripPhase={navModalStudent?.afternoon_status === 'PICKED_UP_FROM_GATE' ? 'afternoon_dropoff' : 'morning_pickup'}
+        onArrived={(st) => {
+          setNavModalStudent(null);
+          onOpenVerificationModal(st);
+        }}
+      />
     </div>
   );
 }
