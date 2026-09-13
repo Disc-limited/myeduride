@@ -102,6 +102,7 @@ export async function GET(request: NextRequest) {
     if (cleanQuery.toUpperCase().startsWith('MYEDURIDE:ESCORT:')) {
       cleanQuery = cleanQuery.slice('MYEDURIDE:ESCORT:'.length).trim();
     }
+    cleanQuery = cleanQuery.replace(/[,()]/g, '').trim();
 
     const isUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(cleanQuery);
 
@@ -142,11 +143,11 @@ export async function GET(request: NextRequest) {
         }
       }
     } else {
-      // Search by phone, email, full_name, or nin in escort_applications
+      // Search by card id / escort_code (printed barcode), phone, email, name, or NIN
       const { data: bySearch } = await supabase
         .from('escort_applications')
         .select('*')
-        .or(`phone.ilike.%${cleanQuery}%,email.ilike.%${cleanQuery}%,full_name.ilike.%${cleanQuery}%,nin.eq.${cleanQuery}`)
+        .or(`id.eq.${cleanQuery},escort_code.eq.${cleanQuery},phone.ilike.%${cleanQuery}%,email.ilike.%${cleanQuery}%,full_name.ilike.%${cleanQuery}%,nin.eq.${cleanQuery}`)
         .limit(1)
         .maybeSingle();
 

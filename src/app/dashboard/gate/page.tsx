@@ -55,6 +55,7 @@ import AttendanceSignLog from '@/components/attendance/AttendanceSignLog';
 import ReadyForPickupList from '@/components/gate/ReadyForPickupList';
 import DigitalVisitorPassModal from '@/components/gate/DigitalVisitorPassModal';
 import EscortBatchReceptionModal from '@/components/gate/EscortBatchReceptionModal';
+import GateIdCardScanner from '@/components/gate/GateIdCardScanner';
 import UnderDevelopment from '@/components/super-admin/UnderDevelopment';
 import { toast } from 'sonner';
 import { photoSrc } from '@/lib/photo';
@@ -166,6 +167,7 @@ export default function GateOfficerDashboard() {
   const [loadingEscorts, setLoadingEscorts] = useState(false);
   const [selectedEscortBatch, setSelectedEscortBatch] = useState<any | null>(null);
   const [escortLookupInput, setEscortLookupInput] = useState('');
+  const [lookingUpEscort, setLookingUpEscort] = useState(false);
 
   // Staff Directory for Visitor Registration Host Selection
   const [staffDirectory, setStaffDirectory] = useState<any[]>([]);
@@ -290,7 +292,7 @@ export default function GateOfficerDashboard() {
   const handleLookupEscort = async (query: string) => {
     if (!query.trim() || !schoolId) return;
     try {
-      setLoadingEscorts(true);
+      setLookingUpEscort(true);
       const res = await fetch(`/api/gate/escort-batch?school_id=${schoolId}&query=${encodeURIComponent(query.trim())}`);
       const json = await res.json();
       if (!res.ok || !json.success) {
@@ -300,7 +302,7 @@ export default function GateOfficerDashboard() {
     } catch (err: any) {
       toast.error(err.message || 'Escort lookup failed');
     } finally {
-      setLoadingEscorts(false);
+      setLookingUpEscort(false);
     }
   };
 
@@ -2550,12 +2552,26 @@ export default function GateOfficerDashboard() {
               </div>
               <button
                 type="button"
-                onClick={() => setShowEscortBatchModal(false)}
+                onClick={() => {
+                  setShowEscortBatchModal(false);
+                  setEscortLookupInput('');
+                }}
                 className="text-slate-400 hover:text-slate-600 cursor-pointer"
               >
                 <X size={20} />
               </button>
             </div>
+
+            <GateIdCardScanner
+              active={showEscortBatchModal && !selectedEscortBatch}
+              busy={lookingUpEscort}
+              onDetected={(code) => {
+                setEscortLookupInput(code);
+                toast.success('Escort ID card scanned');
+                handleLookupEscort(code);
+              }}
+              hint="Scan the barcode or QR on the escort ID card. You can still type the ID below."
+            />
 
             {/* Quick Code / ID Lookup */}
             <form
@@ -2565,7 +2581,7 @@ export default function GateOfficerDashboard() {
               }}
               className="space-y-2"
             >
-              <label className="block text-slate-700 text-xs font-extrabold">Scan or Enter Escort ID / Phone</label>
+              <label className="block text-slate-700 text-xs font-extrabold">Or enter Escort ID / Phone</label>
               <div className="flex items-center gap-2">
                 <div className="relative flex-1">
                   <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
@@ -2573,17 +2589,16 @@ export default function GateOfficerDashboard() {
                     type="text"
                     value={escortLookupInput}
                     onChange={(e) => setEscortLookupInput(e.target.value)}
-                    placeholder="Scan barcode, enter Escort ID, phone, or name..."
+                    placeholder="Escort ID, phone, or name..."
                     className="w-full bg-slate-50 border border-slate-200 rounded-xl pl-9 pr-3 py-2 text-xs text-slate-900 focus:outline-none focus:ring-2 focus:ring-teal-500/20 focus:border-teal-500"
-                    autoFocus
                   />
                 </div>
                 <button
                   type="submit"
-                  disabled={loadingEscorts || !escortLookupInput.trim()}
+                  disabled={lookingUpEscort || !escortLookupInput.trim()}
                   className="px-4 py-2 rounded-xl bg-teal-700 hover:bg-teal-800 text-white font-extrabold text-xs shadow-xs cursor-pointer disabled:opacity-50 flex items-center gap-1 shrink-0"
                 >
-                  {loadingEscorts ? <RefreshCw size={13} className="animate-spin" /> : 'Find Bus'}
+                  {lookingUpEscort ? <RefreshCw size={13} className="animate-spin" /> : 'Find Bus'}
                 </button>
               </div>
             </form>

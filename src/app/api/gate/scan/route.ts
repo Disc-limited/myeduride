@@ -281,6 +281,7 @@ export async function POST(request: NextRequest) {
     if (escortSearch.toUpperCase().startsWith('MYEDURIDE:ESCORT:')) {
       escortSearch = escortSearch.slice('MYEDURIDE:ESCORT:'.length).trim();
     }
+    escortSearch = escortSearch.replace(/[,()]/g, '').trim();
 
     const isEscortUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(escortSearch);
     let escortRecord: any = null;
@@ -321,7 +322,7 @@ export async function POST(request: NextRequest) {
       const { data: bySearch } = await supabase
         .from('escort_applications')
         .select('*')
-        .or(`phone.ilike.%${escortSearch}%,email.ilike.%${escortSearch}%,full_name.ilike.%${escortSearch}%,nin.eq.${escortSearch}`)
+        .or(`id.eq.${escortSearch},escort_code.eq.${escortSearch},phone.ilike.%${escortSearch}%,email.ilike.%${escortSearch}%,full_name.ilike.%${escortSearch}%,nin.eq.${escortSearch}`)
         .limit(1)
         .maybeSingle();
 
