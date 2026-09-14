@@ -14,6 +14,7 @@ import { fetchStudentPickupContext } from '@/lib/gate/student-pickup-context';
 import { getGateDayStatus } from '@/lib/gate/school-day-gate';
 import { sessionHasRole } from '@/lib/session';
 import { todayInLagos } from '@/lib/timezone';
+import { ensureAutoReadyForPickup } from '@/lib/gate/auto-ready-pickup';
 
 export const dynamic = 'force-dynamic';
 
@@ -36,6 +37,7 @@ export async function POST(request: NextRequest) {
     }
 
     const supabase = getAdminClient();
+    await ensureAutoReadyForPickup(supabase, school_id);
     const scan = String(scan_data).trim();
 
     const gateDay = sessionHasRole(session, 'super_admin')

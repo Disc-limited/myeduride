@@ -36,6 +36,10 @@ import { toast } from 'sonner';
 import SchoolNoticeBanner from '@/components/shared/SchoolNoticeBanner';
 import EscortEduChatView from '@/components/escort/EscortEduChatView';
 import LiveHouseNavigationModal from '@/components/escort/LiveHouseNavigationModal';
+import SharedEscortDashboard from '@/components/escort/SharedEscortDashboard';
+import EscortTripsView from '@/components/escort/EscortTripsView';
+import EscortStudentsView from '@/components/escort/EscortStudentsView';
+import EscortWalletView from '@/components/escort/EscortWalletView';
 
 interface MyEduRideEscortViewProps {
   liveDashboardData?: any;
@@ -67,7 +71,9 @@ export default function MyEduRideEscortView({
   // Synchronize with activeNav if provided by dashboard shell
   const activeTab = useMemo(() => {
     if (activeNav) {
-      if (activeNav === 'roster') return 'assignments';
+      if (activeNav === 'roster' || activeNav === 'schedule') return 'assignments';
+      if (activeNav === 'dispatch') return 'trips';
+      if (activeNav === 'communications') return 'chat';
       return activeNav as any;
     }
     return internalTab;
@@ -149,12 +155,12 @@ export default function MyEduRideEscortView({
   const manifestStudents = liveDashboardData?.students?.manifest || [];
   const displayRoster = manifestStudents.length > 0 ? manifestStudents : discAssignments;
   const earningsSummary = liveDashboardData?.earnings_summary || {
-    total_daily_earnings: displayRoster.reduce((sum, s) => sum + (s.daily_fare || 3500), 0),
-    formatted_total_daily_earnings: `₦${displayRoster.reduce((sum, s) => sum + (s.daily_fare || 3500), 0).toLocaleString()}`,
-    morning_projected: Math.round(displayRoster.reduce((sum, s) => sum + (s.daily_fare || 3500), 0) / 2),
-    formatted_morning_projected: `₦${Math.round(displayRoster.reduce((sum, s) => sum + (s.daily_fare || 3500), 0) / 2).toLocaleString()}`,
-    afternoon_projected: Math.round(displayRoster.reduce((sum, s) => sum + (s.daily_fare || 3500), 0) / 2),
-    formatted_afternoon_projected: `₦${Math.round(displayRoster.reduce((sum, s) => sum + (s.daily_fare || 3500), 0) / 2).toLocaleString()}`,
+    total_daily_earnings: displayRoster.reduce((sum, s) => sum + Number(s.daily_fare || 0), 0),
+    formatted_total_daily_earnings: `₦${displayRoster.reduce((sum, s) => sum + Number(s.daily_fare || 0), 0).toLocaleString()}`,
+    morning_projected: Math.round(displayRoster.reduce((sum, s) => sum + Number(s.daily_fare || 0), 0) / 2),
+    formatted_morning_projected: `₦${Math.round(displayRoster.reduce((sum, s) => sum + Number(s.daily_fare || 0), 0) / 2).toLocaleString()}`,
+    afternoon_projected: Math.round(displayRoster.reduce((sum, s) => sum + Number(s.daily_fare || 0), 0) / 2),
+    formatted_afternoon_projected: `₦${Math.round(displayRoster.reduce((sum, s) => sum + Number(s.daily_fare || 0), 0) / 2).toLocaleString()}`,
     approved_students_count: displayRoster.filter((s) => s.city_manager_approved !== false).length,
   };
 
@@ -163,6 +169,8 @@ export default function MyEduRideEscortView({
   const isTripDeclined = escort?.today_trip_status === 'declined';
   const isTripPending = !isTripAccepted && !isTripDeclined;
   const isReadyForPickup = escort?.ready_for_pickup === true;
+  const autoReadyFromGate = escort?.auto_ready_from_gate === true;
+  const dismissalClock = String(liveDashboardData?.school?.dismissal_start_time || '').slice(0, 5);
 
   // Handle Trip Commitment (Accept)
   const handleAcceptTrips = async () => {
@@ -290,18 +298,9 @@ export default function MyEduRideEscortView({
     }
   };
 
-  // Operational metrics
-  const operationsMetrics = {
-    fleetStatus: 'Active & Verified',
-    totalPassengers: displayRoster.length,
-    routeOptimisationScore: '100% Optimal',
-    speedAlerts: 0,
-    discSupervisor: 'City Manager Operations',
-  };
-
   return (
     <div className="space-y-5 sm:space-y-6">
-      {/* 1. DISC BRAND BANNER */}
+      {activeTab !== 'operations' && (
       <div className="bg-gradient-to-r from-[#0A1128] via-[#121E42] to-[#0A1128] rounded-3xl p-4 sm:p-5 text-white shadow-lg border border-white/10 flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-4">
         <div className="flex items-center gap-3.5">
           <div className="w-11 h-11 sm:w-12 sm:h-12 rounded-2xl bg-emerald-500/20 border border-emerald-400/40 flex items-center justify-center text-emerald-400 shrink-0 shadow-inner">
@@ -321,7 +320,7 @@ export default function MyEduRideEscortView({
         </div>
 
         <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2.5 w-full sm:w-auto shrink-0">
-          {/* READY FOR PICKUP BUTTON (WCAG Touch-friendly 46px height) */}
+          <div className="flex flex-col items-stretch sm:items-end gap-1 w-full sm:w-auto">
           <button
             type="button"
             onClick={handleToggleReady}
@@ -334,6 +333,12 @@ export default function MyEduRideEscortView({
             <Zap size={16} className={isReadyForPickup ? 'text-slate-950 fill-slate-950' : 'text-amber-300'} />
             <span>{isReadyForPickup ? '✓ READY FOR PICKUP (ACTIVE)' : 'I AM READY FOR PICK UP'}</span>
           </button>
+          {autoReadyFromGate && dismissalClock ? (
+            <p className="text-[10px] text-emerald-300 font-semibold text-center sm:text-right">
+              Auto-ready at school dismissal {dismissalClock}
+            </p>
+          ) : null}
+        </div>
 
           {/* PIN HOUSE LOCATION BUTTON */}
           <button
@@ -346,6 +351,7 @@ export default function MyEduRideEscortView({
           </button>
         </div>
       </div>
+      )}
 
       {/* 2. DAILY TRIP COMMITMENT BANNER */}
       {isTripPending && (
@@ -407,7 +413,7 @@ export default function MyEduRideEscortView({
         </div>
       )}
 
-      {/* 3. APPROVED PRICING & DAILY EARNINGS SUMMARY CARD */}
+      {activeTab !== 'operations' && (
       <div className="bg-white rounded-3xl p-4 sm:p-6 border border-slate-200 shadow-xs space-y-4">
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-slate-100 pb-3">
           <div className="flex items-center gap-2.5">
@@ -447,14 +453,16 @@ export default function MyEduRideEscortView({
 
           <div className="p-3.5 sm:p-4 rounded-2xl bg-slate-50 border border-slate-200 text-center">
             <span className="text-[9px] sm:text-[10px] font-black uppercase text-slate-600 tracking-wider">Wallet Balance</span>
-            <p className="text-xl sm:text-2xl font-black text-slate-900 mt-1">₦{(escort.wallet_balance || 25000).toLocaleString()}</p>
+            <p className="text-xl sm:text-2xl font-black text-slate-900 mt-1">₦{Number(liveDashboardData?.wallet?.balance ?? escort.wallet_balance ?? 0).toLocaleString()}</p>
             <span className="text-[10px] text-slate-500 mt-0.5 block font-medium">Available Payout</span>
           </div>
         </div>
       </div>
+      )}
 
-      {/* OFFICIAL SCHOOL NOTICES */}
+      {activeTab !== 'operations' && (
       <SchoolNoticeBanner role="escorts" schoolId={liveDashboardData?.escort?.school_id || liveDashboardData?.escort?.primary_school_id} />
+      )}
 
       {/* DUAL-SCHOOL ASSIGNMENT & SCHEDULE STATUS */}
       {liveDashboardData?.dual_school_schedule && (
@@ -468,15 +476,21 @@ export default function MyEduRideEscortView({
                 <div className="flex items-center gap-2 flex-wrap">
                   <h3 className="font-black text-slate-900 text-sm sm:text-base">Dual-School Transit Coverage</h3>
                   <span className={`px-2 py-0.5 rounded-full text-[10px] font-black uppercase ${
-                    liveDashboardData.dual_school_schedule.clash_detected
-                      ? 'bg-rose-100 text-rose-800'
-                      : 'bg-emerald-100 text-emerald-800'
+                    liveDashboardData.dual_school_schedule.same_time_pickup_allowed
+                      ? 'bg-emerald-100 text-emerald-800'
+                      : liveDashboardData.dual_school_schedule.clash_detected
+                        ? 'bg-rose-100 text-rose-800'
+                        : 'bg-emerald-100 text-emerald-800'
                   }`}>
-                    {liveDashboardData.dual_school_schedule.clash_detected ? 'Schedule Clash Warning' : 'Verified Non-Clashing'}
+                    {liveDashboardData.dual_school_schedule.same_time_pickup_allowed
+                      ? (liveDashboardData.dual_school_schedule.clash_detected ? 'Same-time pickup' : 'Dual-school coverage')
+                      : (liveDashboardData.dual_school_schedule.clash_detected ? 'Schedule Clash Warning' : 'Verified Non-Clashing')}
                   </span>
                 </div>
                 <p className="text-[11px] text-slate-500 font-medium">
-                  Assigned to 2 schools with non-overlapping morning and afternoon bell schedules.
+                  {liveDashboardData.dual_school_schedule.same_time_pickup_allowed
+                    ? 'Assigned to 2 schools. Students from both campuses appear on your pickup list and can be released in the same dismissal window.'
+                    : 'Assigned to 2 schools with non-overlapping morning and afternoon bell schedules.'}
                 </p>
               </div>
             </div>
@@ -509,7 +523,7 @@ export default function MyEduRideEscortView({
         </div>
       )}
 
-      {/* SECTION TABS HEADER - Smooth Horizontal Scroll on Mobile */}
+      {!activeNav && (
       <div className="bg-white rounded-2xl border border-slate-200/80 p-1.5 shadow-xs flex items-center gap-1.5 overflow-x-auto no-scrollbar scroll-smooth whitespace-nowrap text-xs font-semibold">
         <button
           type="button"
@@ -589,31 +603,116 @@ export default function MyEduRideEscortView({
           )}
         </button>
       </div>
+      )}
 
-      {/* TAB 1: OPERATIONS */}
+      {/* TAB 1: OPERATIONS — portal design home, backed by escort_assignments / daily trips / wallets */}
       {activeTab === 'operations' && (
-        <div className="space-y-5">
+        <SharedEscortDashboard
+          liveDashboardData={liveDashboardData}
+          onRefreshData={onRefreshData}
+          onOpenVerificationModal={onOpenVerificationModal}
+          onOpenIncidentModal={onOpenIncidentModal}
+          onOpenIdCardModal={onOpenIdCardModal}
+          onNavigateStudent={(student) => setNavModalStudent(student)}
+          onNavChange={setActiveTab}
+          isAvailableForOtherSchools={Boolean(escort?.availableForOtherSchools)}
+          onToggleAvailableForOtherSchools={async () => {
+            try {
+              const next = !Boolean(escort?.availableForOtherSchools);
+              const res = await fetch('/api/escorts/dashboard-live', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                  action: 'toggle_availability',
+                  availableForOtherSchools: next,
+                  appId: escort?.id,
+                }),
+              });
+              const data = await res.json();
+              if (!res.ok) throw new Error(data.error || 'Could not update availability');
+              toast.success(data.message || (next ? 'Available for other schools' : 'Primary school only'));
+              reloadData();
+            } catch (err: any) {
+              toast.error(err.message || 'Failed to update availability');
+            }
+          }}
+        />
+      )}
+
+      {activeTab === 'trips' && (
+        <EscortTripsView
+          liveDashboardData={liveDashboardData}
+          onRefreshData={onRefreshData}
+          onOpenVerificationModal={onOpenVerificationModal}
+          onOpenIncidentModal={onOpenIncidentModal}
+        />
+      )}
+
+      {activeTab === 'students' && (
+        <EscortStudentsView
+          liveDashboardData={liveDashboardData}
+          onOpenVerificationModal={onOpenVerificationModal}
+        />
+      )}
+
+      {(activeTab === 'wallet' || activeTab === 'edusave' || activeTab === 'eduinsured') && (
+        <EscortWalletView
+          liveDashboardData={liveDashboardData}
+          onRefreshData={onRefreshData}
+        />
+      )}
+
+      {activeTab === 'shared' && (
+        <div className="bg-white rounded-3xl border border-slate-200 p-4 sm:p-6 shadow-xs space-y-3">
+          <h3 className="font-black text-base text-slate-900">Shared Ride</h3>
+          <p className="text-xs text-slate-500">
+            Cross-school shared ride availability is controlled from your dashboard toggle and stored on your escort application. Assigned school students remain on Trips and Students.
+          </p>
+          <p className="text-sm font-bold text-slate-800">
+            Status: {escort?.availableForOtherSchools ? 'Available for other schools' : 'Primary school only'}
+          </p>
+        </div>
+      )}
+
+      {activeTab === 'city-manager' && (
+        <div className="space-y-4">
+          <SchoolNoticeBanner role="escorts" schoolId={liveDashboardData?.escort?.school_id || liveDashboardData?.escort?.primary_school_id} />
+          <div className="bg-white rounded-3xl border border-slate-200 p-4 sm:p-6 shadow-xs space-y-3">
+            <h3 className="font-black text-base text-slate-900">City Manager</h3>
+            <p className="text-xs text-slate-500">Official notices and assignment updates from your City Manager.</p>
+            {(liveDashboardData?.announcements || []).length === 0 ? (
+              <p className="text-xs text-slate-400">No City Manager or school notices yet.</p>
+            ) : (
+              (liveDashboardData.announcements || []).map((n: any) => (
+                <div key={n.id} className="p-3 rounded-xl bg-slate-50 border border-slate-100">
+                  <p className="font-bold text-sm text-slate-900">{n.title}</p>
+                  <p className="text-xs text-slate-600 mt-1">{n.body}</p>
+                </div>
+              ))
+            )}
+          </div>
+        </div>
+      )}
+
+      {activeTab === 'reports' && (
+        <div className="bg-white rounded-3xl border border-slate-200 p-4 sm:p-6 shadow-xs space-y-4">
+          <h3 className="font-black text-base text-slate-900">Today&apos;s Report</h3>
           <div className="grid grid-cols-2 md:grid-cols-4 gap-3 text-xs">
-            <div className="p-3.5 sm:p-4 bg-emerald-50 border border-emerald-200 rounded-2xl space-y-1">
-              <span className="text-emerald-800 font-bold uppercase text-[10px]">FLEET STATUS</span>
-              <span className="font-black text-sm sm:text-base text-emerald-950 block">{operationsMetrics.fleetStatus}</span>
+            <div className="p-3 rounded-2xl bg-slate-50 border border-slate-100">
+              <span className="text-slate-500 font-bold uppercase text-[10px]">Trips planned</span>
+              <p className="font-black text-lg">{liveDashboardData?.stats?.totalTrips ?? 0}</p>
             </div>
-
-            <div className="p-3.5 sm:p-4 bg-blue-50 border border-blue-200 rounded-2xl space-y-1">
-              <span className="text-blue-800 font-bold uppercase text-[10px]">PASSENGERS</span>
-              <span className="font-black text-sm sm:text-base text-blue-950 block">{operationsMetrics.totalPassengers} Students</span>
+            <div className="p-3 rounded-2xl bg-slate-50 border border-slate-100">
+              <span className="text-slate-500 font-bold uppercase text-[10px]">Students</span>
+              <p className="font-black text-lg">{liveDashboardData?.stats?.totalStudents ?? 0}</p>
             </div>
-
-            <div className="p-3.5 sm:p-4 bg-purple-50 border border-purple-200 rounded-2xl space-y-1">
-              <span className="text-purple-800 font-bold uppercase text-[10px]">DAILY APPROVED</span>
-              <span className="font-black text-sm sm:text-base text-purple-950 block">{earningsSummary.formatted_total_daily_earnings}</span>
+            <div className="p-3 rounded-2xl bg-slate-50 border border-slate-100">
+              <span className="text-slate-500 font-bold uppercase text-[10px]">Distance</span>
+              <p className="font-black text-lg">{liveDashboardData?.stats?.totalDistance || '0 km'}</p>
             </div>
-
-            <div className="p-3.5 sm:p-4 bg-slate-50 border border-slate-200 rounded-2xl space-y-1">
-              <span className="text-slate-500 font-bold uppercase text-[10px]">ESCORT LOCATION</span>
-              <span className="font-bold text-slate-800 block text-xs truncate">
-                {locationForm.residential_address ? `${locationForm.residential_address} (Pinned)` : 'Not Pinned Yet'}
-              </span>
+            <div className="p-3 rounded-2xl bg-slate-50 border border-slate-100">
+              <span className="text-slate-500 font-bold uppercase text-[10px]">Completed legs</span>
+              <p className="font-black text-lg">{liveDashboardData?.stats?.tripsCompletedToday ?? 0}</p>
             </div>
           </div>
         </div>
@@ -708,7 +807,7 @@ export default function MyEduRideEscortView({
                         </td>
 
                         <td className="py-3.5 px-3 font-mono font-bold text-emerald-900">
-                          {st.formatted_daily_fare || `₦${(st.daily_fare || 3500).toLocaleString()}`}
+                          {st.formatted_daily_fare || (st.daily_fare != null ? `₦${Number(st.daily_fare).toLocaleString()}` : '—')}
                           <span className="block text-[10px] text-slate-400 font-sans font-normal">/ day</span>
                         </td>
 
@@ -916,7 +1015,7 @@ export default function MyEduRideEscortView({
                         <div className="text-right shrink-0">
                           <span className="text-[10px] text-slate-400 block uppercase font-bold">Fare</span>
                           <span className="font-mono font-black text-emerald-900 text-xs">
-                            {st.formatted_daily_fare || `₦${(st.daily_fare || 3500).toLocaleString()}`}
+                            {st.formatted_daily_fare || (st.daily_fare != null ? `₦${Number(st.daily_fare).toLocaleString()}` : '—')}
                           </span>
                         </div>
                       </div>
@@ -1161,10 +1260,10 @@ export default function MyEduRideEscortView({
                   </div>
                   <div className="text-right shrink-0">
                     <span className="font-mono font-black text-emerald-800 text-sm block">
-                      {s.formatted_daily_fare || `₦${(s.daily_fare || 3500).toLocaleString()}`}
+                      {s.formatted_daily_fare || (s.daily_fare != null ? `₦${Number(s.daily_fare).toLocaleString()}` : '—')}
                     </span>
                     <span className="text-[10px] text-slate-400 block">
-                      ₦{Math.round((s.daily_fare || 3500) / 2).toLocaleString()} morning + ₦{Math.round((s.daily_fare || 3500) / 2).toLocaleString()} afternoon
+                      {s.morning_fare != null ? `₦${Number(s.morning_fare).toLocaleString()} morning` : '—'} + {s.afternoon_fare != null ? `₦${Number(s.afternoon_fare).toLocaleString()} afternoon` : '—'}
                     </span>
                   </div>
                 </div>

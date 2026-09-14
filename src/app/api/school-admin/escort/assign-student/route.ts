@@ -7,7 +7,7 @@ import { nowUtcIso, todayInLagos } from '@/lib/utils/time';
 import { calculateSchoolToHomeDistance, calculateEscortFare } from '@/lib/escort/escort-pricing';
 import { normalizeEscortTripType } from '@/lib/escort/normalize-trip-type';
 import { notifyEscortAssignmentCreated } from '@/lib/notifications/escort-workflow-notify';
-import { checkSchoolTimingClash, validateEscortSchoolLimit } from '@/lib/escort/escort-scheduler';
+import { checkSchoolTimingClash, escortAllowsOverlappingPickup, validateEscortSchoolLimit } from '@/lib/escort/escort-scheduler';
 import { isApprovedMyEduRideEscort, resolveEscortCategory } from '@/lib/escort/escort-category';
 import { generateHandoverPin } from '@/lib/escort/handover-pin';
 
@@ -243,12 +243,12 @@ export async function POST(request: NextRequest) {
         .maybeSingle(),
       supabase
         .from('schools')
-        .select('id, name, address, gps_lat, gps_lng')
+        .select('id, name, address, gps_lat, gps_lng, student_gate_start, school_start_time, student_gate_end, dismissal_start_time')
         .eq('id', primarySchoolId)
         .maybeSingle(),
       supabase
         .from('escort_applications')
-        .select('id, full_name, phone, email, status, escort_type')
+        .select('id, full_name, phone, email, status, escort_type, primary_school_id, secondary_school_id, application_data')
         .eq('id', escort_id)
         .maybeSingle(),
       supabase
@@ -258,8 +258,17 @@ export async function POST(request: NextRequest) {
     ]);
 
     const student = studentRes.data;
-    const school = schoolRes.data;
+    let school = schoolRes.data;
     const escort = escortRes.data;
+
+    if (!school && schoolRes.error) {
+      const fallbackSchool = await supabase
+        .from('schools')
+        .select('id, name, address, gps_lat, gps_lng')
+        .eq('id', primarySchoolId)
+        .maybeSingle();
+      school = fallbackSchool.data;
+    }
 
     if (!student || student.school_id !== primarySchoolId) {
       return NextResponse.json({ error: 'Student not found or does not belong to your school' }, { status: 404 });
@@ -274,6 +283,7 @@ export async function POST(request: NextRequest) {
       Boolean(student.house_address && student.house_address.trim());
 
     if (!isPinned) {
+      console.warn('[assign-student] 400 unpinned', student.id);
       return NextResponse.json(
         {
           error:
@@ -284,14 +294,48 @@ export async function POST(request: NextRequest) {
       );
     }
 
+    const { data: existingAssignment } = await supabase
+      .from('escort_assignments')
+      .select('id, status, escort_application_id')
+      .eq('school_id', primarySchoolId)
+      .eq('student_id', student.id)
+      .in('status', ['active', 'pending_confirmation', 'pending'])
+      .limit(1)
+      .maybeSingle();
+
+    if (existingAssignment) {
+      if (existingAssignment.escort_application_id === escort_id) {
+        return NextResponse.json({
+          success: true,
+          already_assigned: true,
+          message: `${student.first_name} ${student.last_name} is already assigned to this escort.`,
+          assignment: existingAssignment,
+        });
+      }
+      console.warn('[assign-student] 400 already assigned to another escort', student.id);
+      return NextResponse.json(
+        {
+          error: `${student.first_name} ${student.last_name} is already assigned to another escort. Unassign that student first.`,
+          already_assigned: true,
+        },
+        { status: 400 }
+      );
+    }
+
     // 1.5 Dual School Assignment & Timing Clash Verification
     const limitCheck = await validateEscortSchoolLimit(supabase, escort_id, primarySchoolId);
     if (!limitCheck.allowed) {
+      console.warn('[assign-student] 400 school limit', limitCheck.error);
       return NextResponse.json({ error: limitCheck.error }, { status: 400 });
     }
 
-    // If escort already serves another school, verify no schedule/bell clash exists
+    const resolvedEscortType =
+      (escort ? resolveEscortCategory(escort) : null) || escort_type || 'myeduride_escort';
+    const allowsSameTimePickup = escortAllowsOverlappingPickup(resolvedEscortType) || escortAllowsOverlappingPickup(escort_type);
+
+    // Second school: school escorts still need a travel buffer. MyEduRide escorts may pick both at the same time.
     const otherSchoolId = limitCheck.currentSchoolIds.find((id) => id !== primarySchoolId);
+    let dualSchoolClash: ReturnType<typeof checkSchoolTimingClash> | null = null;
     if (otherSchoolId) {
       const { data: otherSchool } = await supabase
         .from('schools')
@@ -302,14 +346,17 @@ export async function POST(request: NextRequest) {
       if (otherSchool && school) {
         const clashResult = checkSchoolTimingClash(school, otherSchool, 45);
         if (clashResult.hasClash) {
-          return NextResponse.json(
-            {
-              error: `Dual-school timing clash detected: ${clashResult.reason}`,
-              timing_clash: true,
-              clash_details: clashResult,
-            },
-            { status: 400 }
-          );
+          if (!allowsSameTimePickup) {
+            return NextResponse.json(
+              {
+                error: `Dual-school timing clash detected: ${clashResult.reason}`,
+                timing_clash: true,
+                clash_details: clashResult,
+              },
+              { status: 400 }
+            );
+          }
+          dualSchoolClash = clashResult;
         }
       }
     }
@@ -485,7 +532,7 @@ export async function POST(request: NextRequest) {
         formattedDailyFare: fareResult.formattedDailyFare,
         formattedMorningFare: fareResult.formattedMorningFare,
         formattedAfternoonFare: fareResult.formattedAfternoonFare,
-        tripType,
+        tripType: trip_type,
         escortName,
         studentName: `${student.first_name} ${student.last_name}`,
         schoolName: school?.name || 'School Campus',
@@ -502,6 +549,9 @@ export async function POST(request: NextRequest) {
       distance_km: distanceResult.distanceKm,
       fare: fareResult,
       pinned_address: student.house_address,
+      dual_school: Boolean(otherSchoolId),
+      same_time_pickup: Boolean(otherSchoolId) && allowsSameTimePickup,
+      timing_notice: dualSchoolClash,
     });
   } catch (err: any) {
     console.error('[assign-student POST] Error:', err);

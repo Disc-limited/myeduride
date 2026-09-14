@@ -38,7 +38,7 @@ export default function EscortWalletView({
   const [isSubmitting, setIsSubmitting] = useState(false);
 
   const wallet = liveDashboardData?.wallet || {};
-  const balance = Number(wallet.balance ?? 25000.0);
+  const balance = Number(wallet.balance ?? 0);
 
   const handleFundWallet = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -155,7 +155,7 @@ export default function EscortWalletView({
               <span className="px-2 py-0.5 rounded-full bg-amber-100 text-amber-800 text-[10px] font-extrabold">Active Goal</span>
             </div>
             <p className="text-2xl font-black text-slate-900 font-mono">
-              ₦{Number(wallet.eduSave ?? 35000.0).toLocaleString('en-NG', { minimumFractionDigits: 2 })}
+              ₦{Number(wallet.eduSave ?? 0).toLocaleString('en-NG', { minimumFractionDigits: 2 })}
             </p>
             <p className="text-[11px] text-slate-500">Auto-saving 10% of weekly transit earnings.</p>
           </div>
@@ -165,10 +165,14 @@ export default function EscortWalletView({
               <span className="text-[10px] font-extrabold text-slate-400 uppercase tracking-widest flex items-center gap-1.5">
                 <ShieldCheck size={14} className="text-blue-500" /> EduInsuRed Status
               </span>
-              <span className="px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-800 text-[10px] font-extrabold">Covered</span>
+              <span className={`px-2 py-0.5 rounded-full text-[10px] font-extrabold ${wallet.eduInsuRedActive ? 'bg-emerald-100 text-emerald-800' : 'bg-slate-100 text-slate-600'}`}>
+                {wallet.eduInsuRedActive ? 'Covered' : 'Not enrolled'}
+              </span>
             </div>
-            <p className="text-sm font-extrabold text-slate-900">Comprehensive Transit &amp; Medical Cover</p>
-            <p className="text-[11px] text-slate-500">Policy active for all scheduled route passengers.</p>
+            <p className="text-sm font-extrabold text-slate-900">{wallet.eduInsuRedPlan || 'EduInsuRed transit cover'}</p>
+            <p className="text-[11px] text-slate-500">
+              {wallet.eduInsuRedActive ? 'Policy linked to this escort application.' : 'No insured plan is recorded on this escort application yet.'}
+            </p>
           </div>
         </div>
       </div>
@@ -181,27 +185,30 @@ export default function EscortWalletView({
         </div>
 
         <div className="divide-y divide-slate-100 text-xs">
-          {[
-            { title: 'Morning Route Pickup Completion Bonus', time: 'Today, 08:30 AM', amount: '+₦4,500.00', type: 'credit', status: 'Completed' },
-            { title: 'Afternoon Drop-off Transit Earnings', time: 'Yesterday, 03:45 PM', amount: '+₦4,000.00', type: 'credit', status: 'Completed' },
-            { title: 'Weekly Wallet Bank Withdrawal Payout', time: '24 Aug 2026', amount: '-₦20,000.00', type: 'debit', status: 'Settled' },
-            { title: 'Fuel & Maintenance Subsidy Reimbursement', time: '22 Aug 2026', amount: '+₦12,500.00', type: 'credit', status: 'Completed' },
-          ].map((tx, i) => (
-            <div key={i} className="py-3.5 flex items-center justify-between gap-3">
+          {(wallet.transactions || []).length === 0 ? (
+            <p className="py-6 text-center text-slate-400">No wallet ledger rows yet for this escort.</p>
+          ) : (
+            (wallet.transactions || []).map((tx: any) => {
+              const amount = Number(tx.amount || 0);
+              const type = tx.type || (amount >= 0 ? 'credit' : 'debit');
+              return (
+            <div key={tx.id} className="py-3.5 flex items-center justify-between gap-3">
               <div className="flex items-center gap-3">
-                <div className={`w-9 h-9 rounded-2xl flex items-center justify-center ${tx.type === 'credit' ? 'bg-emerald-50 text-emerald-600' : 'bg-blue-50 text-blue-600'}`}>
-                  {tx.type === 'credit' ? <ArrowDownLeft size={16} /> : <ArrowUpRight size={16} />}
+                <div className={`w-9 h-9 rounded-2xl flex items-center justify-center ${type === 'credit' ? 'bg-emerald-50 text-emerald-600' : 'bg-blue-50 text-blue-600'}`}>
+                  {type === 'credit' ? <ArrowDownLeft size={16} /> : <ArrowUpRight size={16} />}
                 </div>
                 <div>
-                  <p className="font-extrabold text-slate-900">{tx.title}</p>
-                  <p className="text-[10px] text-slate-400">{tx.time} • Status: {tx.status}</p>
+                  <p className="font-extrabold text-slate-900">{tx.title || tx.description || 'Wallet movement'}</p>
+                  <p className="text-[10px] text-slate-400">{tx.created_at ? new Date(tx.created_at).toLocaleString('en-NG') : ''} {tx.status ? `• ${tx.status}` : ''}</p>
                 </div>
               </div>
-              <span className={`font-mono font-black text-sm ${tx.type === 'credit' ? 'text-emerald-600' : 'text-slate-900'}`}>
-                {tx.amount}
+              <span className={`font-mono font-black text-sm ${type === 'credit' ? 'text-emerald-600' : 'text-slate-900'}`}>
+                {amount >= 0 ? '+' : ''}₦{Math.abs(amount).toLocaleString('en-NG', { minimumFractionDigits: 2 })}
               </span>
             </div>
-          ))}
+              );
+            })
+          )}
         </div>
       </div>
 

@@ -63,6 +63,9 @@ interface SharedEscortDashboardProps {
   onOpenVerificationModal?: (student?: any) => void;
   onOpenIncidentModal?: () => void;
   onOpenAccountModal?: () => void;
+  onOpenIdCardModal?: () => void;
+  onNavigateStudent?: (student: any) => void;
+  onNavChange?: (tab: string) => void;
   isAvailableForOtherSchools?: boolean;
   onToggleAvailableForOtherSchools?: () => void;
 }
@@ -75,7 +78,10 @@ export default function SharedEscortDashboard({
   onOpenVerificationModal,
   onOpenIncidentModal,
   onOpenAccountModal,
-  isAvailableForOtherSchools = true,
+  onOpenIdCardModal,
+  onNavigateStudent,
+  onNavChange,
+  isAvailableForOtherSchools = false,
   onToggleAvailableForOtherSchools,
 }: SharedEscortDashboardProps) {
   const [showWalletBalance, setShowWalletBalance] = useState(true);
@@ -94,19 +100,52 @@ export default function SharedEscortDashboard({
 
   // Dynamic Live Database Bindings
   const escortName = liveDashboardData?.escort?.name || escortData?.name || escortData?.fullName || session?.full_name || 'Escort';
-  const escortCode = liveDashboardData?.escort?.code || escortData?.escort_code || escortData?.id || (session?.user_id ? `ESC-${session.user_id.substring(0, 6).toUpperCase()}` : 'ESC-ID');
-  const schoolName = liveDashboardData?.school?.name || (escortData?.createdBySchoolName || 'Assigned School');
-  const walletBal = Number(liveDashboardData?.wallet?.balance ?? 0.0);
+  const escortCode = liveDashboardData?.escort?.code || escortData?.escort_code || escortData?.id || null;
+  const assignedSchools = liveDashboardData?.assigned_schools || [];
+  const assignedSchoolNames = Array.from(new Set(assignedSchools.map((s: any) => s?.name).filter(Boolean)));
+  const schoolName =
+    assignedSchoolNames.length > 0
+      ? assignedSchoolNames.join(' · ')
+      : liveDashboardData?.school?.name || escortData?.createdBySchoolName || 'Assigned School';
+  const walletBal = Number(liveDashboardData?.wallet?.balance ?? 0);
   const totalTrips = liveDashboardData?.stats?.totalTrips ?? 0;
-  const totalStudents = liveDashboardData?.stats?.totalStudents ?? 0;
+  const totalStudents = liveDashboardData?.stats?.totalStudents ?? liveDashboardData?.students?.manifest?.length ?? 0;
   const totalDistance = liveDashboardData?.stats?.totalDistance ?? '0 km';
 
   // Live Pickup List Data from Supabase DB
   const morningList = liveDashboardData?.students?.morning || [];
   const afternoonList = liveDashboardData?.students?.afternoon || [];
+  const droppedOffList = liveDashboardData?.students?.dropped_off || morningList.filter((s: any) => s.dropped || s.status === 'DROPPED_OFF' || s.morning_status === 'DROPPED_OFF_AT_SCHOOL');
+  const isPicked = (s: any) => Boolean(s?.picked || s?.status === 'PICKED' || s?.status === 'ON_BOARD' || s?.status === 'DROPPED_OFF' || s?.morning_status === 'PICKED_UP_FROM_HOME' || s?.morning_status === 'DROPPED_OFF_AT_SCHOOL');
+  const morningPickedCount = morningList.filter(isPicked).length;
+  const nextPickup = morningList.find((s: any) => !isPicked(s)) || null;
+  const tripStatus = liveDashboardData?.escort?.today_trip_status;
+  const morningTripActive = tripStatus === 'in_progress';
+  const afternoonReleased = afternoonList.filter((s: any) => s.picked || s.afternoon_status === 'PICKED_UP_FROM_GATE' || s.afternoon_status === 'SAFE_AT_HOME').length;
+  const allHome = afternoonList.length > 0 && afternoonList.every((s: any) => s.dropped || s.afternoon_status === 'SAFE_AT_HOME');
+  const schoolLat = liveDashboardData?.school?.gps_lat;
+  const schoolLng = liveDashboardData?.school?.gps_lng;
+  const mapPins = morningList.filter((s: any) => s.house_lat && s.house_lng);
+  const mapEmbedUrl = schoolLat != null && schoolLng != null
+    ? `https://www.openstreetmap.org/export/embed.html?bbox=${Number(schoolLng) - 0.04},${Number(schoolLat) - 0.04},${Number(schoolLng) + 0.04},${Number(schoolLat) + 0.04}&layer=mapnik&marker=${schoolLat},${schoolLng}`
+    : mapPins[0]
+      ? `https://www.openstreetmap.org/export/embed.html?bbox=${Number(mapPins[0].house_lng) - 0.04},${Number(mapPins[0].house_lat) - 0.04},${Number(mapPins[0].house_lng) + 0.04},${Number(mapPins[0].house_lat) + 0.04}&layer=mapnik&marker=${mapPins[0].house_lat},${mapPins[0].house_lng}`
+      : null;
+  const dismissalClocks = assignedSchools
+    .map((s: any) => {
+      const clock = String(s?.dismissal_start_time || s?.student_gate_end || '').slice(0, 5);
+      return clock ? { name: s.name, clock } : null;
+    })
+    .filter(Boolean) as Array<{ name: string; clock: string }>;
+  const dismissalLabel = liveDashboardData?.school?.dismissal_start_time || liveDashboardData?.route?.afternoon_time || null;
+  const dismissalClock = dismissalLabel ? String(dismissalLabel).slice(0, 5) : null;
+  const announcements = liveDashboardData?.announcements || [];
+  const lastSync = liveDashboardData?.last_sync
+    ? new Date(liveDashboardData.last_sync).toLocaleTimeString('en-NG', { timeZone: 'Africa/Lagos', hour: '2-digit', minute: '2-digit', second: '2-digit' })
+    : null;
 
   // Active Trip & Real-Time Telemetry Broadcaster
-  const isTripActive = morningTripStarted || afternoonTripStarted;
+  const isTripActive = morningTripStarted || afternoonTripStarted || morningTripActive;
   const currentTripSessionId = liveDashboardData?.activeSession?.id || `trip-${escortCode}-${new Date().toISOString().slice(0, 10)}`;
 
   const handleTelemetryError = (err: string, code?: number) => {
@@ -134,17 +173,29 @@ export default function SharedEscortDashboard({
   });
 
   // Handle Morning Trip Start / Stop Action
-  const handleStartMorningTrip = () => {
-    if (!morningTripStarted) {
-      if (morningList.length === 0) {
-        toast.info('No morning student pickups scheduled.');
-      }
-      setMorningTripStarted(true);
-      toast.success('Morning trip started! Live GPS telemetry broadcasting to parents & gate.');
-    } else {
-      setMorningTripStarted(false);
-      setIsManualMode(false);
-      toast.success('Morning trip completed! Safe arrival logged.');
+  const handleStartMorningTrip = async () => {
+    if (morningList.length === 0) {
+      toast.info('No morning student pickups scheduled.');
+      return;
+    }
+    try {
+      const completing = morningTripStarted || morningTripActive;
+      const res = await fetch('/api/escorts/dashboard-live', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          action: completing ? 'complete_trip' : 'start_trip',
+          trip_type: 'morning',
+          school_id: liveDashboardData?.school?.id || liveDashboardData?.escort?.school_id,
+        }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || 'Could not update trip');
+      setMorningTripStarted(!completing);
+      toast.success(data.message || (completing ? 'Morning trip completed.' : 'Morning trip started. Live tracking enabled.'));
+      onRefreshData?.();
+    } catch (err: any) {
+      toast.error(err.message || 'Failed to update morning trip');
     }
   };
 
@@ -154,18 +205,32 @@ export default function SharedEscortDashboard({
   };
 
   // Handle Afternoon Trip Start / Stop
-  const handleStartAfternoonTrip = () => {
+  const handleStartAfternoonTrip = async () => {
     if (!afternoonTripStarted) {
       if (!checklist.seatStudents || !checklist.ensureSeatbelts || !checklist.checkBelongings) {
         toast.error('Please complete all safety checks before starting the trip.');
         return;
       }
-      setAfternoonTripStarted(true);
-      toast.success('Afternoon trip started safely! Live tracking broadcasting.');
-    } else {
-      setAfternoonTripStarted(false);
-      setIsManualMode(false);
-      toast.success('Afternoon trip completed! All dropoffs logged.');
+    }
+    try {
+      const completing = afternoonTripStarted;
+      const res = await fetch('/api/escorts/dashboard-live', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          action: completing ? 'complete_trip' : 'start_trip',
+          trip_type: 'afternoon',
+          school_id: liveDashboardData?.school?.id || liveDashboardData?.escort?.school_id,
+        }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || 'Could not update trip');
+      setAfternoonTripStarted(!completing);
+      if (completing) setIsManualMode(false);
+      toast.success(data.message || (completing ? 'Afternoon trip completed.' : 'Afternoon trip started. Live tracking enabled.'));
+      onRefreshData?.();
+    } catch (err: any) {
+      toast.error(err.message || 'Failed to update afternoon trip');
     }
   };
 
@@ -320,14 +385,14 @@ export default function SharedEscortDashboard({
                   MIGO AI
                 </span>
                 <h3 className="font-extrabold text-slate-900 text-sm md:text-base tracking-tight truncate">
-                  Good day, {escortName.split(' ')[0]}! 👋
+                  {liveDashboardData?.migo?.greeting || `Good day, ${escortName.split(' ')[0]}!`}
                 </h3>
               </div>
               <p className="text-slate-600 text-xs font-medium truncate">
                 {morningList.length > 0 ? (
-                  <>You have <strong className="text-slate-900 font-bold">{morningList.length} student pickups</strong> scheduled for today.</>
+                  <>You have <strong className="text-slate-900 font-bold">{totalTrips || morningList.length} trip{Number(totalTrips) === 1 ? '' : 's'}</strong> today. {nextPickup ? `${nextPickup.name} is next.` : 'Morning pickups are in progress.'}</>
                 ) : (
-                  <>Your schedule is ready. Real-time student assignments from {schoolName} will stream here.</>
+                  <>No students are assigned to you yet. City Manager approved assignments will appear here.</>
                 )}
               </p>
 
@@ -380,7 +445,7 @@ export default function SharedEscortDashboard({
             </h4>
             <button
               type="button"
-              onClick={() => toast.info('Viewing all scheduled trips')}
+              onClick={() => onNavChange?.('trips')}
               className="text-[11px] font-bold text-emerald-600 hover:underline"
             >
               View All
@@ -417,36 +482,51 @@ export default function SharedEscortDashboard({
               NEXT PICKUP
             </span>
             <span className="px-2.5 py-0.5 rounded-full bg-emerald-100 text-emerald-700 text-[10px] font-extrabold">
-              {morningList[0]?.time ? `At ${morningList[0].time}` : 'Standby'}
+              {nextPickup?.time || nextPickup?.estimated_transit_mins != null ? `${nextPickup.estimated_transit_mins} min` : (nextPickup ? 'Queued' : 'Standby')}
             </span>
           </div>
 
-          {morningList.length > 0 ? (
+          {nextPickup ? (
             <div className="flex items-start gap-3 bg-slate-50 p-3 rounded-xl border border-slate-100">
-              <div className="w-10 h-10 rounded-full bg-purple-600 text-white font-extrabold flex items-center justify-center text-sm shadow-sm shrink-0">
-                {morningList[0]?.avatar || morningList[0]?.name?.substring(0, 2)?.toUpperCase() || 'ST'}
+              <div className="w-10 h-10 rounded-full bg-purple-600 text-white font-extrabold flex items-center justify-center text-sm shadow-sm shrink-0 overflow-hidden">
+                {nextPickup.photo_url || nextPickup.avatar ? (
+                  <img src={nextPickup.photo_url || nextPickup.avatar} alt="" className="w-full h-full object-cover" />
+                ) : (
+                  nextPickup.name?.substring(0, 2)?.toUpperCase() || 'ST'
+                )}
               </div>
               <div className="min-w-0 space-y-0.5">
                 <span className="text-[10px] font-medium text-slate-400 block uppercase">First Pickup</span>
-                <h4 className="font-extrabold text-slate-900 text-sm truncate">{morningList[0]?.name}</h4>
+                <h4 className="font-extrabold text-slate-900 text-sm truncate">{nextPickup.name}</h4>
                 <p className="text-[11px] text-slate-600 font-medium flex items-center gap-1 leading-snug">
                   <MapPin className="w-3.5 h-3.5 text-emerald-600 shrink-0" />
-                  <span className="truncate">{morningList[0]?.address}</span>
+                  <span className="truncate">{nextPickup.address || nextPickup.house_address || 'Home address on file'}</span>
                 </p>
               </div>
+            </div>
+          ) : morningList.length > 0 ? (
+            <div className="p-5 text-center bg-emerald-50 rounded-xl border border-emerald-100 space-y-1">
+              <CheckCircle2 className="w-6 h-6 text-emerald-600 mx-auto mb-1" />
+              <p className="text-emerald-800 font-bold text-xs">All morning pickups complete</p>
+              <p className="text-emerald-700 text-[10px]">Start the trip to school when you are ready.</p>
             </div>
           ) : (
             <div className="p-5 text-center bg-slate-50 rounded-xl border border-slate-100 space-y-1">
               <Clock className="w-6 h-6 text-slate-400 mx-auto mb-1" />
               <p className="text-slate-700 font-bold text-xs">No Pickups Scheduled</p>
-              <p className="text-slate-400 text-[10px]">Active student requests will appear here once assigned.</p>
+              <p className="text-slate-400 text-[10px]">Assigned students appear here after City Manager approval.</p>
             </div>
           )}
 
           <button
             type="button"
-            disabled={morningList.length === 0}
-            onClick={() => morningList.length > 0 ? toast.success(`Starting navigation to ${morningList[0]?.name}...`) : toast.info('No pickup scheduled')}
+            disabled={!nextPickup && morningList.length === 0}
+            onClick={() => {
+              const target = nextPickup || morningList[0];
+              if (!target) return;
+              if (onNavigateStudent) onNavigateStudent(target);
+              else if (target.google_maps_nav_url) window.open(target.google_maps_nav_url, '_blank');
+            }}
             className="w-full py-2.5 px-4 rounded-xl bg-[#00A859] hover:bg-emerald-600 disabled:opacity-50 text-white font-extrabold text-xs transition-all shadow-md shadow-emerald-600/20 flex items-center justify-center gap-2 cursor-pointer"
           >
             <span>Navigate</span>
@@ -463,42 +543,22 @@ export default function SharedEscortDashboard({
             <span className="text-[10px] text-slate-400 font-medium">Real-time Route</span>
           </div>
 
-          {/* Interactive Simulated Route Graphic */}
-          <div className="relative w-full h-36 rounded-xl bg-slate-100 border border-slate-200 overflow-hidden shadow-inner flex flex-col justify-between p-3">
-            {/* Map Road Path SVG */}
-            <svg className="absolute inset-0 w-full h-full text-slate-300 pointer-events-none" xmlns="http://www.w3.org/2000/svg">
-              <path d="M 30 100 Q 120 20 220 80 T 360 30" fill="none" stroke="#CBD5E1" strokeWidth="12" strokeLinecap="round" />
-              <path d="M 30 100 Q 120 20 220 80 T 360 30" fill="none" stroke="#00A859" strokeWidth="4" strokeDasharray="6,4" strokeLinecap="round" />
-            </svg>
-
-            {/* Map Town Labels */}
-            <div className="relative z-10 flex justify-between text-[9px] font-bold text-slate-400 uppercase tracking-wider pointer-events-none">
-              <span>Depot</span>
-              <span>Pickup</span>
-              <span>En-route</span>
-              <span>Arrival</span>
-              <span>School</span>
-            </div>
-
-            {/* Route Pins */}
-            <div className="relative z-10 flex items-center justify-between px-6 pointer-events-none">
-              {morningList.length > 0 ? (
-                morningList.slice(0, 2).map((stu, i) => (
-                  <div key={stu.id || i} className={`w-6 h-6 rounded-full ${i === 0 ? 'bg-purple-600' : 'bg-amber-500'} text-white font-extrabold text-[10px] flex items-center justify-center shadow-lg ring-4 ring-purple-100`}>
-                    {i + 1}
-                  </div>
-                ))
-              ) : (
-                <div className="w-6 h-6 rounded-full bg-slate-400 text-white font-extrabold text-[10px] flex items-center justify-center shadow-lg">
-                  📍
-                </div>
-              )}
-
-              {/* Pin School */}
-              <div className="w-7 h-7 rounded-full bg-emerald-600 text-white font-extrabold text-xs flex items-center justify-center shadow-lg ring-4 ring-emerald-100">
-                🏫
+          {/* Live map from school / house GPS when pinned */}
+          <div className="relative w-full h-36 rounded-xl bg-slate-100 border border-slate-200 overflow-hidden shadow-inner">
+            {mapEmbedUrl ? (
+              <iframe
+                title="Live route map"
+                src={mapEmbedUrl}
+                className="absolute inset-0 w-full h-full border-0"
+                loading="lazy"
+              />
+            ) : (
+              <div className="absolute inset-0 flex flex-col items-center justify-center text-slate-400 p-4 text-center">
+                <MapPinOff className="w-6 h-6 mb-1" />
+                <p className="text-[11px] font-semibold">Route GPS is not pinned yet</p>
+                <p className="text-[10px]">School campus or student house coordinates will draw the live map.</p>
               </div>
-            </div>
+            )}
           </div>
 
           {/* Map Legend Pills */}
@@ -529,34 +589,30 @@ export default function SharedEscortDashboard({
           </h4>
 
           <div className="space-y-3 relative pl-4 border-l-2 border-slate-200 text-xs">
-            {/* Step 1 */}
             <div className="relative">
-              <span className="absolute -left-[21px] top-0.5 w-3.5 h-3.5 rounded-full bg-blue-600 text-white flex items-center justify-center text-[8px] font-bold">1</span>
+              <span className={`absolute -left-[21px] top-0.5 w-3.5 h-3.5 rounded-full ${morningPickedCount > 0 ? 'bg-blue-600 text-white' : 'bg-slate-300 text-slate-600'} flex items-center justify-center text-[8px] font-bold`}>1</span>
               <h5 className="font-extrabold text-blue-900 text-xs">Pickup in Progress</h5>
               <p className="text-[10px] text-blue-700 font-medium">
-                {morningList.filter((s: any) => s.status === 'PICKED').length} of {morningList.length} Completed
+                {morningPickedCount} of {morningList.length} Completed
               </p>
             </div>
 
-            {/* Step 2 */}
             <div className="relative">
-              <span className="absolute -left-[21px] top-0.5 w-3.5 h-3.5 rounded-full bg-amber-500 text-white flex items-center justify-center text-[8px] font-bold">2</span>
+              <span className={`absolute -left-[21px] top-0.5 w-3.5 h-3.5 rounded-full ${droppedOffList.length > 0 ? 'bg-amber-500 text-white' : 'bg-slate-300 text-slate-600'} flex items-center justify-center text-[8px] font-bold`}>2</span>
               <h5 className="font-bold text-slate-700 text-xs">Drop-off to School</h5>
-              <p className="text-[10px] text-slate-400">Pending</p>
+              <p className="text-[10px] text-slate-500">{droppedOffList.length > 0 ? `${droppedOffList.length} of ${morningList.length} at school` : 'Pending'}</p>
             </div>
 
-            {/* Step 3 */}
             <div className="relative">
-              <span className="absolute -left-[21px] top-0.5 w-3.5 h-3.5 rounded-full bg-purple-600 text-white flex items-center justify-center text-[8px] font-bold">3</span>
+              <span className={`absolute -left-[21px] top-0.5 w-3.5 h-3.5 rounded-full ${afternoonReleased > 0 ? 'bg-purple-600 text-white' : 'bg-slate-300 text-slate-600'} flex items-center justify-center text-[8px] font-bold`}>3</span>
               <h5 className="font-bold text-slate-700 text-xs">Afternoon Pickup</h5>
-              <p className="text-[10px] text-slate-400">Pending</p>
+              <p className="text-[10px] text-slate-500">{afternoonReleased > 0 ? `${afternoonReleased} released` : 'Pending'}</p>
             </div>
 
-            {/* Step 4 */}
             <div className="relative">
-              <span className="absolute -left-[21px] top-0.5 w-3.5 h-3.5 rounded-full bg-slate-300 text-slate-600 flex items-center justify-center text-[8px] font-bold">4</span>
-              <h5 className="font-medium text-slate-400 text-xs">Return Trip</h5>
-              <p className="text-[10px] text-slate-400">Pending</p>
+              <span className={`absolute -left-[21px] top-0.5 w-3.5 h-3.5 rounded-full ${allHome ? 'bg-emerald-600 text-white' : 'bg-slate-300 text-slate-600'} flex items-center justify-center text-[8px] font-bold`}>4</span>
+              <h5 className={`font-medium text-xs ${allHome ? 'text-emerald-800' : 'text-slate-400'}`}>Return Trip</h5>
+              <p className="text-[10px] text-slate-400">{allHome ? 'Completed' : 'Pending'}</p>
             </div>
           </div>
         </div>
@@ -575,7 +631,7 @@ export default function SharedEscortDashboard({
               MORNING PICKUP LIST
             </h4>
             <span className="text-[10px] text-emerald-700 font-bold">
-              {morningList.filter((s: any) => s.status === 'PICKED').length} of {morningList.length} Picked
+              {morningPickedCount} of {morningList.length} Picked
             </span>
           </div>
 
@@ -601,8 +657,8 @@ export default function SharedEscortDashboard({
                       <p className="text-[10px] text-slate-500 truncate">{stu.address}</p>
                     </div>
                   </div>
-                  <span className={`px-2 py-0.5 rounded ${stu.status === 'PICKED' ? 'bg-emerald-100 text-emerald-800' : 'bg-amber-100 text-amber-800'} font-extrabold text-[9px] shrink-0 flex items-center gap-1`}>
-                    {stu.status === 'PICKED' ? `PICKED ${stu.time || ''} ✓` : `NEXT ${stu.time || ''}`}
+                  <span className={`px-2 py-0.5 rounded ${isPicked(stu) ? 'bg-emerald-100 text-emerald-800' : 'bg-amber-100 text-amber-800'} font-extrabold text-[9px] shrink-0 flex items-center gap-1`}>
+                    {isPicked(stu) ? `PICKED ${stu.time || ''} ✓` : `NEXT ${stu.time || ''}`.trim()}
                   </span>
                 </div>
               ))
@@ -615,15 +671,15 @@ export default function SharedEscortDashboard({
             </p>
             <button
               type="button"
-              disabled={morningList.length === 0 && !morningTripStarted}
+              disabled={morningList.length === 0 && !morningTripStarted && !morningTripActive}
               onClick={handleStartMorningTrip}
               className={`w-full py-2.5 px-4 rounded-xl ${
-                morningTripStarted
+                morningTripStarted || morningTripActive
                   ? 'bg-rose-600 hover:bg-rose-700 shadow-rose-600/20'
                   : 'bg-[#00A859] hover:bg-emerald-600 shadow-emerald-600/20'
               } disabled:opacity-50 text-white font-extrabold text-xs transition-all shadow-md flex items-center justify-center gap-2 cursor-pointer`}
             >
-              <span>{morningTripStarted ? '■ Complete Morning Trip' : '▶ Start Trip to School'}</span>
+              <span>{morningTripStarted || morningTripActive ? '■ Complete Morning Trip' : '▶ Start Trip to School'}</span>
             </button>
           </div>
         </div>
@@ -634,27 +690,51 @@ export default function SharedEscortDashboard({
             <h4 className="font-extrabold text-slate-900 text-xs uppercase tracking-wider">
               DROPPED OFF LIST
             </h4>
-            <span className="text-[10px] text-slate-400 font-medium">0 of {morningList.length} Dropped</span>
+            <span className="text-[10px] text-slate-400 font-medium">{droppedOffList.length} of {morningList.length} Dropped</span>
           </div>
 
-          {/* Empty State Illustration */}
+          {droppedOffList.length === 0 ? (
           <div className="py-6 px-4 text-center space-y-2 flex flex-col items-center justify-center">
             <div className="w-16 h-16 rounded-2xl bg-slate-50 text-slate-300 flex items-center justify-center border border-slate-100">
               <Building className="w-9 h-9" />
             </div>
             <p className="text-xs text-slate-600 font-semibold max-w-[200px] leading-snug">
-              No students dropped off yet. Once you drop off at school, this list will appear.
+              No students dropped off yet. Once the gate officer scans your arrival, this list will appear.
             </p>
           </div>
+          ) : (
+            <div className="space-y-2.5">
+              {droppedOffList.map((stu: any, index: number) => (
+                <div key={stu.id || index} className="p-2.5 rounded-xl bg-emerald-50 border border-emerald-100 flex items-center gap-2.5">
+                  <div className="w-7 h-7 rounded-full bg-emerald-600 text-white font-bold flex items-center justify-center text-xs shrink-0">
+                    {stu.name?.substring(0, 2)?.toUpperCase() || 'ST'}
+                  </div>
+                  <div className="min-w-0">
+                    <h5 className="font-extrabold text-slate-900 text-xs truncate">{stu.name}</h5>
+                    <p className="text-[10px] text-emerald-800 truncate">{stu.school_name || schoolName}</p>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
         </div>
 
         {/* Card 3: AFTERNOON PICKUP LIST (AT SCHOOL) (4 Cols) */}
         <div className="lg:col-span-4 bg-white rounded-2xl p-4 shadow-sm border border-slate-200/90 space-y-3 flex flex-col justify-between">
           <div className="flex items-center justify-between">
             <h4 className="font-extrabold text-slate-900 text-xs uppercase tracking-wider">
-              AFTERNOON PICKUP LIST <span className="text-[10px] text-slate-400 font-normal">(At {schoolName})</span>
+              AFTERNOON PICKUP LIST{' '}
+              <span className="text-[10px] text-slate-400 font-normal">
+                ({assignedSchoolNames.length > 1 ? 'All assigned schools' : `At ${schoolName}`})
+              </span>
             </h4>
-            <span className="text-[10px] text-emerald-700 font-bold">Scheduled</span>
+            <span className="text-[10px] text-emerald-700 font-bold text-right">
+              {dismissalClocks.length > 1
+                ? dismissalClocks.map((d) => `${String(d.name).split(' ')[0]} ${d.clock}`).join(' · ')
+                : dismissalClock
+                  ? `Starts at ${dismissalClock}`
+                  : 'Scheduled'}
+            </span>
           </div>
 
           <div className="space-y-2">
@@ -711,9 +791,23 @@ export default function SharedEscortDashboard({
             </p>
           </div>
 
-          <div className="flex items-center justify-center gap-1.5 p-2 rounded-xl bg-amber-50 border border-amber-200 text-amber-900 font-extrabold text-xs">
-            <span>⏳ Gate Verification Ready</span>
+          <div className={`flex items-center justify-center gap-1.5 p-2 rounded-xl border font-extrabold text-xs ${
+            afternoonReleased > 0
+              ? 'bg-emerald-50 border-emerald-200 text-emerald-800'
+              : 'bg-amber-50 border-amber-200 text-amber-900'
+          }`}>
+            <span>{afternoonReleased > 0 ? `${afternoonReleased} student${afternoonReleased === 1 ? '' : 's'} released` : 'Pending release'}</span>
           </div>
+          {onOpenIdCardModal && (
+            <button
+              type="button"
+              onClick={onOpenIdCardModal}
+              className="w-full py-2 rounded-xl bg-[#0A1128] text-white font-extrabold text-xs flex items-center justify-center gap-1.5"
+            >
+              <QrCode className="w-3.5 h-3.5 text-emerald-400" />
+              Show Gate Pass
+            </button>
+          )}
         </div>
 
         {/* Card 2: TRIP CONTROL (4 Cols) */}
@@ -832,7 +926,7 @@ export default function SharedEscortDashboard({
             </h4>
             <button
               type="button"
-              onClick={() => toast.info('Navigating to full Wallet...')}
+              onClick={() => onNavChange?.('wallet')}
               className="text-[11px] font-bold text-emerald-600 hover:underline"
             >
               View All
@@ -850,7 +944,7 @@ export default function SharedEscortDashboard({
               </div>
               <button
                 type="button"
-                onClick={() => toast.info('Opening Fund Wallet Modal')}
+                onClick={() => onNavChange?.('wallet')}
                 className="px-3.5 py-1.5 rounded-full bg-white text-slate-900 font-extrabold text-xs hover:bg-slate-100 transition-all shadow-sm cursor-pointer"
               >
                 Fund Wallet
@@ -877,7 +971,7 @@ export default function SharedEscortDashboard({
           <div className="grid grid-cols-4 gap-2 text-center text-[10px] font-semibold text-slate-700 pt-1">
             <button
               type="button"
-              onClick={() => toast.info('Viewing Wallet Transactions')}
+              onClick={() => onNavChange?.('wallet')}
               className="p-2 rounded-xl bg-slate-50 hover:bg-slate-100 border border-slate-200 flex flex-col items-center gap-1 transition-all"
             >
               <DollarSign className="w-4 h-4 text-emerald-600" />
@@ -886,7 +980,7 @@ export default function SharedEscortDashboard({
 
             <button
               type="button"
-              onClick={() => toast.info('Withdraw Earnings')}
+              onClick={() => onNavChange?.('wallet')}
               className="p-2 rounded-xl bg-slate-50 hover:bg-slate-100 border border-slate-200 flex flex-col items-center gap-1 transition-all"
             >
               <CreditCard className="w-4 h-4 text-emerald-600" />
@@ -895,7 +989,7 @@ export default function SharedEscortDashboard({
 
             <button
               type="button"
-              onClick={() => toast.info('Transfer Funds')}
+              onClick={() => onNavChange?.('wallet')}
               className="p-2 rounded-xl bg-slate-50 hover:bg-slate-100 border border-slate-200 flex flex-col items-center gap-1 transition-all"
             >
               <RotateCcw className="w-4 h-4 text-emerald-600" />
@@ -904,7 +998,7 @@ export default function SharedEscortDashboard({
 
             <button
               type="button"
-              onClick={() => toast.info('Download Statements')}
+              onClick={() => onNavChange?.('wallet')}
               className="p-2 rounded-xl bg-slate-50 hover:bg-slate-100 border border-slate-200 flex flex-col items-center gap-1 transition-all"
             >
               <Wallet className="w-4 h-4 text-emerald-600" />
@@ -931,7 +1025,7 @@ export default function SharedEscortDashboard({
                   <p className="text-[10px] text-slate-500">Savings: <strong className="text-slate-900 font-bold font-mono">₦{(liveDashboardData?.wallet?.eduSave ?? 0.0).toLocaleString('en-NG', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</strong></p>
                 </div>
               </div>
-              <button type="button" onClick={() => toast.info('Opening EduSave')} className="text-[11px] font-bold text-emerald-600 hover:underline">View</button>
+              <button type="button" onClick={() => onNavChange?.('edusave')} className="text-[11px] font-bold text-emerald-600 hover:underline">View</button>
             </div>
 
             {/* EduInsuRed */}
@@ -945,7 +1039,7 @@ export default function SharedEscortDashboard({
                   <p className="text-[10px] text-slate-500">{liveDashboardData?.wallet?.eduInsuRedActive ? 'Active Plan' : 'Plan Inactive'}</p>
                 </div>
               </div>
-              <button type="button" onClick={() => toast.info('Opening EduInsuRed Policy')} className="text-[11px] font-bold text-emerald-600 hover:underline">View</button>
+              <button type="button" onClick={() => onNavChange?.('eduinsured')} className="text-[11px] font-bold text-emerald-600 hover:underline">View</button>
             </div>
 
             {/* SafetyConnect */}
@@ -959,7 +1053,7 @@ export default function SharedEscortDashboard({
                   <p className="text-[10px] text-slate-500">Emergency support for you</p>
                 </div>
               </div>
-              <button type="button" onClick={() => toast.info('SafetyConnect Emergency Active')} className="text-[11px] font-bold text-emerald-600 hover:underline">View</button>
+              <button type="button" onClick={() => onOpenIncidentModal?.()} className="text-[11px] font-bold text-emerald-600 hover:underline">View</button>
             </div>
           </div>
         </div>
@@ -970,13 +1064,13 @@ export default function SharedEscortDashboard({
             <h4 className="font-extrabold text-slate-900 text-xs uppercase tracking-wider">
               QUICK STATISTICS
             </h4>
-            <button type="button" onClick={() => toast.info('Viewing Full Stats')} className="text-[11px] font-bold text-emerald-600 hover:underline">View All</button>
+            <button type="button" onClick={() => onNavChange?.('reports')} className="text-[11px] font-bold text-emerald-600 hover:underline">View All</button>
           </div>
 
           <div className="space-y-2 text-xs">
             <div className="flex items-center justify-between py-1 border-b border-slate-100">
               <span className="text-slate-600 flex items-center gap-1.5"><Car className="w-3.5 h-3.5 text-emerald-600" /> Trips Completed <span className="text-[10px] text-slate-400">(Today)</span></span>
-              <strong className="font-black text-slate-900 text-xs">{totalTrips}</strong>
+              <strong className="font-black text-slate-900 text-xs">{liveDashboardData?.stats?.tripsCompletedToday ?? 0}</strong>
             </div>
 
             <div className="flex items-center justify-between py-1 border-b border-slate-100">
@@ -991,16 +1085,16 @@ export default function SharedEscortDashboard({
 
             <div className="flex items-center justify-between py-1 border-b border-slate-100">
               <span className="text-slate-600 flex items-center gap-1.5"><Star className="w-3.5 h-3.5 text-amber-500 fill-amber-500" /> Average Rating</span>
-              <strong className="font-black text-amber-600 text-xs">⭐ {liveDashboardData?.stats?.averageRating ?? 5.0}</strong>
+              <strong className="font-black text-amber-600 text-xs">⭐ {liveDashboardData?.stats?.averageRating != null ? liveDashboardData.stats.averageRating : '—'}</strong>
             </div>
 
             <div className="space-y-1 pt-1">
               <div className="flex items-center justify-between text-xs">
                 <span className="text-slate-600 font-semibold">On-Time Performance</span>
-                <strong className="font-extrabold text-emerald-600 text-xs">{liveDashboardData?.stats?.onTimePerformance ?? 100}%</strong>
+                <strong className="font-extrabold text-emerald-600 text-xs">{liveDashboardData?.stats?.onTimePerformance != null ? `${liveDashboardData.stats.onTimePerformance}%` : '—'}</strong>
               </div>
               <div className="w-full h-2 rounded-full bg-slate-100 overflow-hidden">
-                <div className="h-full bg-emerald-500 rounded-full" style={{ width: `${liveDashboardData?.stats?.onTimePerformance ?? 100}%` }} />
+                <div className="h-full bg-emerald-500 rounded-full" style={{ width: `${liveDashboardData?.stats?.onTimePerformance ?? 0}%` }} />
               </div>
             </div>
           </div>
@@ -1019,7 +1113,7 @@ export default function SharedEscortDashboard({
             <h4 className="font-extrabold text-slate-900 text-xs uppercase tracking-wider">
               COMMUNICATIONS
             </h4>
-            <button type="button" onClick={() => toast.info('Viewing all chats')} className="text-[11px] font-bold text-emerald-600 hover:underline">View All</button>
+            <button type="button" onClick={() => onNavChange?.('chat')} className="text-[11px] font-bold text-emerald-600 hover:underline">View All</button>
           </div>
 
           {/* Filter Tabs */}
@@ -1073,35 +1167,33 @@ export default function SharedEscortDashboard({
             <h4 className="font-extrabold text-slate-900 text-xs uppercase tracking-wider">
               ANNOUNCEMENTS
             </h4>
-            <button type="button" onClick={() => toast.info('Viewing all announcements')} className="text-[11px] font-bold text-emerald-600 hover:underline">View All</button>
+            <button type="button" onClick={() => onNavChange?.('city-manager')} className="text-[11px] font-bold text-emerald-600 hover:underline">View All</button>
           </div>
 
           <div className="space-y-2.5 text-xs">
-            <div className="p-2.5 rounded-xl bg-slate-50 border border-slate-200 flex items-start gap-2.5">
-              <div className="w-6 h-6 rounded-md bg-emerald-100 text-emerald-700 flex items-center justify-center shrink-0 mt-0.5">
-                <ShieldCheck className="w-3.5 h-3.5" />
-              </div>
-              <div className="flex-1 min-w-0">
-                <div className="flex items-center justify-between">
-                  <h5 className="font-extrabold text-slate-900 text-xs">Safety Protocol</h5>
-                  <span className="text-[9px] text-slate-400 font-mono">Notice</span>
+            {announcements.length > 0 ? (
+              announcements.slice(0, 3).map((notice: any) => (
+                <div key={notice.id} className="p-2.5 rounded-xl bg-slate-50 border border-slate-200 flex items-start gap-2.5">
+                  <div className="w-6 h-6 rounded-md bg-emerald-100 text-emerald-700 flex items-center justify-center shrink-0 mt-0.5">
+                    <ShieldCheck className="w-3.5 h-3.5" />
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-center justify-between gap-2">
+                      <h5 className="font-extrabold text-slate-900 text-xs truncate">{notice.title}</h5>
+                      <span className="text-[9px] text-slate-400 font-mono shrink-0">
+                        {notice.created_at ? new Date(notice.created_at).toLocaleDateString('en-NG', { day: 'numeric', month: 'short' }) : ''}
+                      </span>
+                    </div>
+                    <p className="text-[10px] text-slate-500 line-clamp-2">{notice.body}</p>
+                  </div>
                 </div>
-                <p className="text-[10px] text-slate-500">Always verify digital QR identification before releasing students.</p>
+              ))
+            ) : (
+              <div className="p-6 text-center text-slate-400 bg-slate-50 rounded-xl border border-slate-100">
+                <p className="font-semibold text-slate-600 text-xs">No announcements</p>
+                <p className="text-[10px]">School and City Manager notices for your assigned campus will appear here.</p>
               </div>
-            </div>
-
-            <div className="p-2.5 rounded-xl bg-slate-50 border border-slate-200 flex items-start gap-2.5">
-              <div className="w-6 h-6 rounded-md bg-blue-100 text-blue-700 flex items-center justify-center shrink-0 mt-0.5">
-                <Sparkles className="w-3.5 h-3.5" />
-              </div>
-              <div className="flex-1 min-w-0">
-                <div className="flex items-center justify-between">
-                  <h5 className="font-extrabold text-slate-900 text-xs">Platform Connectivity</h5>
-                  <span className="text-[9px] text-slate-400 font-mono">Live</span>
-                </div>
-                <p className="text-[10px] text-slate-500">GPS location broadcasting is enabled for safety oversight.</p>
-              </div>
-            </div>
+            )}
           </div>
         </div>
 
@@ -1111,7 +1203,7 @@ export default function SharedEscortDashboard({
             <h4 className="font-extrabold text-slate-900 text-xs uppercase tracking-wider">
               TODAY'S DESTINATIONS
             </h4>
-            <button type="button" onClick={() => toast.info('Viewing complete route map')} className="text-[11px] font-bold text-emerald-600 hover:underline">View Route</button>
+            <button type="button" onClick={() => onNavChange?.('trips')} className="text-[11px] font-bold text-emerald-600 hover:underline">View Route</button>
           </div>
 
           <div className="space-y-2.5 relative pl-4 border-l-2 border-emerald-500 text-xs">
@@ -1209,7 +1301,7 @@ export default function SharedEscortDashboard({
           </span>
 
           <span className="text-slate-400">
-            Live Stream: <strong className="text-slate-700 font-mono">Synchronized</strong>
+            Last Sync: <strong className="text-slate-700 font-mono">{lastSync || '—'}</strong>
           </span>
         </div>
 

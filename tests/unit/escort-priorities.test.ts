@@ -1,4 +1,5 @@
 import { TestSuite, expect } from '../utils/test-harness';
+import { checkSchoolTimingClash, escortAllowsOverlappingPickup } from '../../src/lib/escort/escort-scheduler';
 
 export const escortPrioritiesSuite = new TestSuite('MyEduRide Escort Field Operational Priorities Suite', 'UNIT');
 
@@ -181,6 +182,34 @@ escortPrioritiesSuite.test('Priority 6: Escort House Address and GPS Coordinate 
   expect(validateHousePin(validPin)).toBeTruthy();
   expect(validateHousePin(invalidCoords)).toBeFalsy();
   expect(validateHousePin(missingAddress)).toBeFalsy();
+});
+
+escortPrioritiesSuite.test('MyEduRide escort can cover two schools and pick both at the same dismissal time', () => {
+  const schoolA = { id: 'SCH-A', name: 'Grace International', dismissal_start_time: '14:00', student_gate_start: '07:30' };
+  const schoolB = { id: 'SCH-B', name: 'St Saviour Academy', dismissal_start_time: '14:00', student_gate_start: '07:30' };
+  const clash = checkSchoolTimingClash(schoolA, schoolB, 45);
+
+  expect(clash.hasClash).toBeTruthy();
+  expect(escortAllowsOverlappingPickup('myeduride_escort')).toBeTruthy();
+  expect(escortAllowsOverlappingPickup('school_escort')).toBeFalsy();
+
+  const canAssignSecondSchool = (escortType: string, currentSchoolIds: string[], targetSchoolId: string) => {
+    if (currentSchoolIds.includes(targetSchoolId)) return true;
+    if (currentSchoolIds.length >= 2) return false;
+    if (clash.hasClash && !escortAllowsOverlappingPickup(escortType)) return false;
+    return true;
+  };
+
+  expect(canAssignSecondSchool('myeduride_escort', ['SCH-A'], 'SCH-B')).toBeTruthy();
+  expect(canAssignSecondSchool('school_escort', ['SCH-A'], 'SCH-B')).toBeFalsy();
+
+  const roster = [
+    { id: 'STU-1', school_id: 'SCH-A', school_name: 'Grace International' },
+    { id: 'STU-2', school_id: 'SCH-B', school_name: 'St Saviour Academy' },
+  ];
+  const afternoonList = roster.map((s) => ({ ...s, note: `Pick from ${s.school_name} Gate` }));
+  expect(afternoonList.length).toBe(2);
+  expect(afternoonList.map((s) => s.school_id)).toEqual(['SCH-A', 'SCH-B']);
 });
 
 // Run directly if executed via CLI

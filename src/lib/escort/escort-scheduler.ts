@@ -100,46 +100,50 @@ export function checkSchoolTimingClash(
   };
 }
 
+/** MyEduRide escorts may pick up students from two schools in the same window. School escorts still need a travel buffer. */
+export function escortAllowsOverlappingPickup(escortType?: string | null): boolean {
+  const t = String(escortType || '').toLowerCase();
+  return t !== 'school_escort';
+}
+
 /**
  * Enforces the maximum assignment limit of 2 schools per escort.
+ * Counts real assignment campuses only — not leftover application school_id.
  */
 export async function validateEscortSchoolLimit(
   supabase: SupabaseClient,
   escortId: string,
   targetSchoolId: string
 ): Promise<{ allowed: boolean; error?: string; currentSchoolIds: string[] }> {
-  // 1. Check escort_applications
   const { data: escortApp } = await supabase
     .from('escort_applications')
-    .select('id, school_id, primary_school_id, secondary_school_id')
+    .select('id, user_id, school_id, primary_school_id, secondary_school_id')
     .or(`id.eq.${escortId},user_id.eq.${escortId}`)
+    .limit(1)
     .maybeSingle();
 
-  // 2. Check active assignments in escort_assignments
+  const escortKeys = Array.from(new Set([escortApp?.id, escortApp?.user_id, escortId].filter(Boolean)));
   const { data: assignments } = await supabase
     .from('escort_assignments')
     .select('school_id')
-    .eq('escort_application_id', escortApp?.id || escortId)
+    .in('escort_application_id', escortKeys)
     .in('status', ['active', 'pending_confirmation']);
 
   const schoolSet = new Set<string>();
-  if (escortApp?.school_id) schoolSet.add(escortApp.school_id);
   if (escortApp?.primary_school_id) schoolSet.add(escortApp.primary_school_id);
   if (escortApp?.secondary_school_id) schoolSet.add(escortApp.secondary_school_id);
   for (const a of assignments || []) {
     if (a.school_id) schoolSet.add(a.school_id);
   }
 
-  // If targetSchoolId is already in the set, assignment is allowed
   if (schoolSet.has(targetSchoolId)) {
     return { allowed: true, currentSchoolIds: Array.from(schoolSet) };
   }
 
-  // If already assigned to 2 or more distinct schools, reject
   if (schoolSet.size >= 2) {
     return {
       allowed: false,
-      error: `Escort is already assigned to the maximum limit of 2 schools. Simultaneous coverage is capped at 2 schools to ensure child transit safety.`,
+      error: `Escort is already assigned to the maximum of 2 schools. Assign a student from one of those schools, or pick another escort.`,
       currentSchoolIds: Array.from(schoolSet),
     };
   }

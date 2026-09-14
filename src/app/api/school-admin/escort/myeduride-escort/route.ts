@@ -7,6 +7,7 @@ import { nowUtcIso, todayInLagos } from '@/lib/utils/time';
 import { calculateSchoolToHomeDistance, calculateEscortFare } from '@/lib/escort/escort-pricing';
 import { notifyEscortAssignmentCreated } from '@/lib/notifications/escort-workflow-notify';
 import { isApprovedMyEduRideEscort } from '@/lib/escort/escort-category';
+import { validateEscortSchoolLimit } from '@/lib/escort/escort-scheduler';
 
 /**
  * GET /api/school-admin/escort/myeduride-escort
@@ -90,7 +91,10 @@ export async function GET(request: NextRequest) {
       house_address: s.house_address || 'Address on file',
       house_lat: s.house_lat ? Number(s.house_lat) : null,
       house_lng: s.house_lng ? Number(s.house_lng) : null,
-      is_house_pinned: s.house_lat != null && s.house_lng != null,
+      is_house_pinned:
+        s.house_lat != null &&
+        s.house_lng != null &&
+        Boolean(s.house_address && String(s.house_address).trim()),
     }));
 
     // 4. Fetch Connected Transport Bookings for this school
@@ -205,7 +209,7 @@ export async function POST(request: NextRequest) {
       const [schoolRes, studentRes, escortRes, parentLinksRes] = await Promise.all([
         supabase.from('schools').select('id, name, address, gps_lat, gps_lng').eq('id', primarySchoolId).maybeSingle(),
         supabase.from('students').select('id, first_name, last_name, student_id_number, house_address, house_lat, house_lng, school_id').eq('id', student_id).maybeSingle(),
-        supabase.from('escort_applications').select('id, full_name, phone, email, status').eq('id', escort_id).maybeSingle(),
+        supabase.from('escort_applications').select('id, full_name, phone, email, status, primary_school_id, secondary_school_id').eq('id', escort_id).maybeSingle(),
         supabase.from('student_parents').select('parent_user_id').eq('student_id', student_id),
       ]);
 
@@ -219,6 +223,11 @@ export async function POST(request: NextRequest) {
 
       if (!escort) {
         return NextResponse.json({ error: 'Selected MyEduRide escort not found' }, { status: 404 });
+      }
+
+      const limitCheck = await validateEscortSchoolLimit(supabase, escort.id, primarySchoolId);
+      if (!limitCheck.allowed) {
+        return NextResponse.json({ error: limitCheck.error }, { status: 400 });
       }
 
       // 2. Automatically Calculate Distance (School <-> Student Home)
@@ -305,6 +314,23 @@ export async function POST(request: NextRequest) {
         })
         .select()
         .maybeSingle();
+
+      try {
+        const nowIso = nowUtcIso();
+        if (escort.primary_school_id && escort.primary_school_id !== primarySchoolId && !escort.secondary_school_id) {
+          await supabase
+            .from('escort_applications')
+            .update({ secondary_school_id: primarySchoolId, updated_at: nowIso })
+            .eq('id', escort.id);
+        } else if (!escort.primary_school_id) {
+          await supabase
+            .from('escort_applications')
+            .update({ primary_school_id: primarySchoolId, updated_at: nowIso })
+            .eq('id', escort.id);
+        }
+      } catch (linkErr) {
+        console.warn('[myeduride-escort] dual-school link notice:', linkErr);
+      }
 
       // 8. Immediately Inform City Manager, Parents, and Assigned Escort
       await notifyEscortAssignmentCreated({

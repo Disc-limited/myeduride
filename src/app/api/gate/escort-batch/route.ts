@@ -7,6 +7,7 @@ import { todayInLagos } from '@/lib/timezone';
 import { nowUtcIso } from '@/lib/utils/time';
 import { logGateActivity } from '@/lib/gate/activity-log';
 import { notifyParentsOfAttendance } from '@/lib/notifications/parent-notify';
+import { ensureAutoReadyForPickup } from '@/lib/gate/auto-ready-pickup';
 
 export const dynamic = 'force-dynamic';
 
@@ -37,6 +38,7 @@ export async function GET(request: NextRequest) {
 
     const supabase = getAdminClient();
     const today = todayInLagos();
+    await ensureAutoReadyForPickup(supabase, schoolId);
 
     // 1. If listActive or query is empty, list all active escorts with assigned students at this school
     if (listActive || !query) {
@@ -385,6 +387,9 @@ export async function POST(request: NextRequest) {
     const timestamp = nowUtcIso();
     const verificationMethod = is_override ? 'manual' : 'id_card_scan';
     const todayDate = todayInLagos();
+    if (mode === 'departure') {
+      await ensureAutoReadyForPickup(supabase, school_id);
+    }
 
     const { data: existingToday } = await supabase
       .from('attendance_records')

@@ -77,7 +77,8 @@ export default function MyEduRideEscortManagementPage() {
         setConnectedBookings(json.connected_bookings || []);
         setMetrics(json.metrics || {});
         if (json.students?.length > 0 && !selectedStudentId) {
-          setSelectedStudentId(json.students[0].id);
+          const firstPinned = json.students.find((s: any) => s.is_house_pinned) || json.students[0];
+          setSelectedStudentId(firstPinned.id);
         }
         if (json.escorts?.length > 0 && !selectedAssignEscortId) {
           setSelectedAssignEscortId(json.escorts[0].id);

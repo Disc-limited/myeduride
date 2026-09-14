@@ -676,6 +676,9 @@ export async function updateEscortApplicationStatus(
     }
     if (notes !== undefined) (found as any).notes = notes;
     if (extraData) {
+      if (extraData.availableForOtherSchools !== undefined) {
+        (found as any).availableForOtherSchools = extraData.availableForOtherSchools;
+      }
       if (extraData.uploadedDocDetails) {
         (found as any).uploadedDocDetails = {
           ...((found as any).uploadedDocDetails || {}),
@@ -702,6 +705,9 @@ export async function updateEscortApplicationStatus(
   if (memoryFound) {
     memoryFound.status = status;
     if (extraData) {
+      if (extraData.availableForOtherSchools !== undefined) {
+        (memoryFound as any).availableForOtherSchools = extraData.availableForOtherSchools;
+      }
       if (extraData.uploadedDocDetails) {
         (memoryFound as any).uploadedDocDetails = {
           ...((memoryFound as any).uploadedDocDetails || {}),
@@ -749,6 +755,9 @@ export async function updateEscortApplicationStatus(
     appDataObj.status = status;
     if (notes !== undefined) appDataObj.notes = notes;
     if (extraData) {
+      if (extraData.availableForOtherSchools !== undefined) {
+        appDataObj.availableForOtherSchools = extraData.availableForOtherSchools;
+      }
       if (extraData.uploadedDocDetails) {
         appDataObj.uploadedDocDetails = {
           ...(appDataObj.uploadedDocDetails || {}),

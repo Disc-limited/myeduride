@@ -7,6 +7,7 @@ import { findEscortApplicationForSession, resolveEscortCategory } from '@/lib/es
 import { nowUtcIso } from '@/lib/utils/time';
 import { checkSchoolTimingClash } from '@/lib/escort/escort-scheduler';
 import { calculateEscortFare } from '@/lib/escort/escort-pricing';
+import { ensureAutoReadyForPickup, isDismissalWindowOpen } from '@/lib/gate/auto-ready-pickup';
 
 export const dynamic = 'force-dynamic';
 
@@ -152,12 +153,17 @@ export async function GET(request: NextRequest) {
     }
 
     if (!assignedVehicle) {
-      assignedVehicle = {
-        vehicle_name: escortProfile?.vehicle?.type || escortProfile?.vehicleType || 'Toyota HiAce Bus',
-        plate_number: escortProfile?.vehicle?.regNumber || escortProfile?.regNumber || 'LAG-104-ED',
-        vehicle_type: 'Van / Bus',
-        capacity: Number(escortProfile?.vehicle?.seatCapacity || escortProfile?.seatCapacity || 14),
-      };
+      const registeredName = escortProfile?.vehicle?.type || escortProfile?.vehicleType || escortProfile?.vehicle_type || null;
+      const registeredPlate = escortProfile?.vehicle?.regNumber || escortProfile?.regNumber || escortProfile?.reg_number || null;
+      const registeredCapacity = escortProfile?.vehicle?.seatCapacity || escortProfile?.seatCapacity || escortProfile?.seat_capacity || null;
+      if (registeredName || registeredPlate) {
+        assignedVehicle = {
+          vehicle_name: registeredName,
+          plate_number: registeredPlate,
+          vehicle_type: registeredName,
+          capacity: registeredCapacity != null ? Number(registeredCapacity) : null,
+        };
+      }
     }
 
     // 4. Query live City Manager escort_assignments across all escort identifiers
@@ -197,7 +203,7 @@ export async function GET(request: NextRequest) {
       try {
         const { data: sList } = await supabase
           .from('schools')
-          .select('id, name, address, gps_lat, gps_lng, student_gate_start, school_start_time, student_gate_end, dismissal_start_time')
+          .select('id, name, address, gps_lat, gps_lng, student_gate_start, school_start_time, student_gate_end, dismissal_start_time, dismissal_end_time')
           .in('id', Array.from(distinctSchoolIds));
         if (sList && sList.length > 0) {
           assignedSchools = sList;
@@ -226,6 +232,29 @@ export async function GET(request: NextRequest) {
         }
       } catch (sErr) {
         console.warn('[dashboard-live] assigned schools query notice:', sErr);
+      }
+    }
+
+    const assignmentSchoolIds = Array.from(
+      new Set(liveAssignments.map((a) => a.school_id).filter(Boolean))
+    );
+    for (const assignedSchoolId of assignmentSchoolIds) {
+      await ensureAutoReadyForPickup(supabase, assignedSchoolId);
+    }
+    if (escortProfile?.id && assignmentSchoolIds.length > 0) {
+      try {
+        const { data: refreshedReady } = await supabase
+          .from('escort_applications')
+          .select('ready_for_pickup, ready_for_pickup_at, operational_status')
+          .eq('id', escortProfile.id)
+          .maybeSingle();
+        if (refreshedReady) {
+          escortProfile.ready_for_pickup = refreshedReady.ready_for_pickup;
+          escortProfile.ready_for_pickup_at = refreshedReady.ready_for_pickup_at;
+          escortProfile.operational_status = refreshedReady.operational_status;
+        }
+      } catch (readyErr) {
+        console.warn('[dashboard-live] auto-ready refresh notice:', readyErr);
       }
     }
 
@@ -296,24 +325,25 @@ export async function GET(request: NextRequest) {
             id: b.student.id,
             first_name: b.student.first_name,
             last_name: b.student.last_name,
-            student_id_number: b.student.student_id_number || `BK-${b.id.substring(0, 6).toUpperCase()}`,
+            student_id_number: b.student.student_id_number || null,
             photo_url: b.student.photo_url || null,
             is_active: true,
             class: b.student.school_classes || b.student.class,
-            parent_name: b.parent?.full_name || 'Parent / Guardian',
-            parent_phone: b.parent?.phone || '0803 456 7890',
-            pickup_address: b.notes || 'Designated Home Pickup',
+            parent_name: b.parent?.full_name || null,
+            parent_phone: b.parent?.phone || null,
+            pickup_address: b.pickup_address || null,
           });
         }
       }
     }
 
-    // 5. Fetch Today's Attendance for status reconciliation
+    // 5. Fetch Today's Attendance for status reconciliation across all assigned schools
     let attendanceToday: any[] = [];
-    if (schoolId) {
+    if (allTargetStudentIds.length > 0) {
       const { data: att } = await supabase
         .from('attendance_records')
-        .select('student_id, type, timestamp')
+        .select('student_id, type, timestamp, school_id')
+        .in('student_id', allTargetStudentIds)
         .gte('timestamp', startIso)
         .lte('timestamp', endIso);
 
@@ -321,36 +351,51 @@ export async function GET(request: NextRequest) {
     }
 
     // Map students into rich manifest
-    // Helper to extract daily fare from booking / assignment metadata
-    const extractStudentFare = (stId: string): number => {
+    // Helper to extract daily fare from booking / assignment metadata — never invent a default distance.
+    const extractStoredFare = (stId: string): number | null => {
       const matchAssignment = liveAssignments.find((a) => a.student_id === stId);
       const matchBooking = liveBookings.find(
         (b) => b.student_id === stId || b.student?.id === stId || b.id === matchAssignment?.booking_id
       );
 
+      if (matchAssignment?.daily_fare && Number(matchAssignment.daily_fare) > 0) {
+        return Number(matchAssignment.daily_fare);
+      }
+      if (matchAssignment?.fare_amount && Number(matchAssignment.fare_amount) > 0) {
+        return Number(matchAssignment.fare_amount);
+      }
       if (matchBooking?.fare_amount && Number(matchBooking.fare_amount) > 0) {
         return Number(matchBooking.fare_amount);
       }
       if (matchBooking?.notes) {
         try {
           const parsed = typeof matchBooking.notes === 'string' ? JSON.parse(matchBooking.notes) : matchBooking.notes;
-          if (parsed?.distance_km != null) {
-            return calculateEscortFare(Number(parsed.distance_km), parsed.trip_type === 'morning_only' || parsed.trip_type === 'afternoon_only' ? parsed.trip_type : 'both').dailyFare;
-          }
           if (parsed?.fareResult?.dailyFare) return Number(parsed.fareResult.dailyFare);
           if (parsed?.dailyFare) return Number(parsed.dailyFare);
           if (parsed?.daily_fare) return Number(parsed.daily_fare);
           if (parsed?.fare_amount) return Number(parsed.fare_amount);
+          if (parsed?.distance_km != null) {
+            return calculateEscortFare(
+              Number(parsed.distance_km),
+              parsed.trip_type === 'morning_only' || parsed.trip_type === 'afternoon_only' ? parsed.trip_type : 'both'
+            ).dailyFare;
+          }
         } catch {}
       }
       if (matchAssignment?.notes) {
-        const m = String(matchAssignment.notes).match(/₦\s*([\d,]+)/);
-        if (m && m[1]) {
-          const num = Number(m[1].replace(/,/g, ''));
-          if (!isNaN(num) && num > 0) return num;
+        try {
+          const parsed = typeof matchAssignment.notes === 'string' ? JSON.parse(matchAssignment.notes) : matchAssignment.notes;
+          if (parsed?.fareResult?.dailyFare) return Number(parsed.fareResult.dailyFare);
+          if (parsed?.dailyFare) return Number(parsed.dailyFare);
+        } catch {
+          const m = String(matchAssignment.notes).match(/₦\s*([\d,]+)/);
+          if (m && m[1]) {
+            const num = Number(m[1].replace(/,/g, ''));
+            if (!isNaN(num) && num > 0) return num;
+          }
         }
       }
-      return calculateEscortFare(5).dailyFare;
+      return null;
     };
 
     const extractDiscountInfo = (stId: string): any => {
@@ -366,7 +411,7 @@ export async function GET(request: NextRequest) {
       }
       if (matchAssignment?.notes && String(matchAssignment.notes).includes('Accountant Discounted Fare')) {
         return {
-          discountedFare: extractStudentFare(stId),
+          discountedFare: extractStoredFare(stId),
           note: matchAssignment.notes,
         };
       }
@@ -380,6 +425,14 @@ export async function GET(request: NextRequest) {
         : session?.roles?.some((r: any) => r.role === 'school_escort')
     );
     const escortCategory = isSchoolEscort ? 'school_escort' : 'myeduride_escort';
+    if (dualSchoolSchedule) {
+      dualSchoolSchedule.same_time_pickup_allowed = !isSchoolEscort;
+      dualSchoolSchedule.status_label = !isSchoolEscort
+        ? dualSchoolSchedule.clash_detected
+          ? 'Dual-school same-time pickup'
+          : 'Dual-school coverage'
+        : dualSchoolSchedule.status_label;
+    }
 
     const computeHaversineDistanceKm = (lat1: number, lon1: number, lat2: number, lon2: number): number => {
       const R = 6371;
@@ -410,7 +463,7 @@ export async function GET(request: NextRequest) {
     }
 
     // Map students into rich manifest with City Manager approval, location, directions, and conditional pricing
-    const studentManifest = assignedStudents.map((st, idx) => {
+    const studentManifest = assignedStudents.map((st) => {
       const arrival = attendanceToday.find((a) => a.student_id === st.id && a.type === 'arrival');
       const departure = attendanceToday.find((a) => a.student_id === st.id && a.type === 'departure');
       const trip = todayDailyTrips.find((t) => t.student_id === st.id);
@@ -473,7 +526,11 @@ export async function GET(request: NextRequest) {
 
       // MyEduRide Escort: sees location, address, AND price
       // School Escort: DOES NOT see any price, but sees location, doorstep address, distance, and direction
-      const rawDailyFare = extractStudentFare(st.id);
+      const storedFare = extractStoredFare(st.id);
+      const gpsFare = !isSchoolEscort && storedFare == null && distanceKm != null
+        ? calculateEscortFare(distanceKm).dailyFare
+        : null;
+      const rawDailyFare = storedFare != null ? storedFare : gpsFare;
       const dailyFare = isSchoolEscort ? null : rawDailyFare;
       const morningFare = dailyFare != null ? Math.round(dailyFare / 2) : null;
       const afternoonFare = dailyFare != null ? Math.round(dailyFare / 2) : null;
@@ -489,14 +546,14 @@ export async function GET(request: NextRequest) {
       return {
         id: st.id,
         name: st.name || `${st.first_name || ''} ${st.last_name || ''}`.trim() || 'Assigned Student',
-        student_id_number: st.student_id_number || `2026-${1000 + idx}`,
+        student_id_number: st.student_id_number || null,
         class_name: cls,
         photo_url: st.photo_url || null,
         school_id: matchAssignment?.school_id || st.school_id || rowSchool?.id || null,
         school_name: assignedSchoolName,
         school_lat: schoolLat,
         school_lng: schoolLng,
-        school_address: rowSchool?.location_address || rowSchool?.address || schoolData?.location_address || schoolData?.address || 'School Campus Grounds',
+        school_address: rowSchool?.location_address || rowSchool?.address || schoolData?.location_address || schoolData?.address || null,
         city_manager_status: cmStatusLabel,
         city_manager_approved: isCmApproved,
         show_price: !isSchoolEscort,
@@ -510,7 +567,7 @@ export async function GET(request: NextRequest) {
         discount_amount: discountInfo?.variance || null,
         accountant_ref: discountInfo?.accountantApprovalRef || null,
         discount_note: discountInfo ? (discountInfo.discountReason || `Accountant Approved Concession (Ref: ${discountInfo.accountantApprovalRef || 'ACC'})`) : null,
-        pickup_address: st.house_address || st.pickup_address || routeStops[idx % Math.max(routeStops.length, 1)]?.stop_name || 'Designated Stop',
+        pickup_address: st.house_address || st.pickup_address || null,
         house_address: st.house_address || null,
         house_lat: houseLat,
         house_lng: houseLng,
@@ -532,9 +589,9 @@ export async function GET(request: NextRequest) {
         afternoon_proximity_notified_at: trip?.afternoon_proximity_notified_at || null,
         is_morning_proximity_notified: Boolean(trip?.morning_proximity_notified_at),
         is_afternoon_proximity_notified: Boolean(trip?.afternoon_proximity_notified_at),
-        pickup_time: st.pickup_time || routeStops[idx % Math.max(routeStops.length, 1)]?.pickup_time || '07:15 AM',
-        parent_phone: st.parent_phone || '0803 456 7890',
-        parent_name: st.parent_name || 'Parent / Guardian',
+        pickup_time: st.pickup_time || routeStops.find((r: any) => r.student_id === st.id)?.pickup_time || null,
+        parent_phone: st.parent_phone || null,
+        parent_name: st.parent_name || null,
       };
     });
 
@@ -574,15 +631,20 @@ export async function GET(request: NextRequest) {
     const morningStudents = operationalManifest.map((s) => ({
       ...s,
       status: s.morning_status === 'DROPPED_OFF_AT_SCHOOL' ? 'DROPPED_OFF' : (s.morning_status === 'PICKED_UP_FROM_HOME' ? 'ON_BOARD' : 'SCHEDULED'),
+      picked: s.morning_status === 'PICKED_UP_FROM_HOME' || s.morning_status === 'DROPPED_OFF_AT_SCHOOL',
+      dropped: s.morning_status === 'DROPPED_OFF_AT_SCHOOL',
       address: s.house_address || s.pickup_address,
       time: s.pickup_time,
       avatar: s.photo_url,
+      distance: s.distance_km != null ? `${s.distance_km} km` : null,
     }));
 
     const afternoonStudents = operationalManifest.map((s) => ({
       ...s,
       status: s.afternoon_status === 'SAFE_AT_HOME' ? 'DROPPED_OFF' : (s.afternoon_status === 'PICKED_UP_FROM_GATE' ? 'ON_BOARD' : 'SCHEDULED'),
-      note: `Pick from ${s.school_name} Gate`,
+      picked: s.afternoon_status === 'PICKED_UP_FROM_GATE' || s.afternoon_status === 'SAFE_AT_HOME',
+      dropped: s.afternoon_status === 'SAFE_AT_HOME',
+      note: s.school_name ? `Pick from ${s.school_name} Gate` : 'Pick from school gate',
       address: s.house_address || s.pickup_address,
       avatar: s.photo_url,
     }));
@@ -615,21 +677,57 @@ export async function GET(request: NextRequest) {
       unreadNotifCount = count || 0;
     }
 
-    // 8. Financial / Wallet Details
-    const walletBalance = Number(userProfile?.wallet_balance ?? escortProfile?.walletBalance ?? 25000.0);
+    let announcements: any[] = [];
+    const noticeSchoolIds = Array.from(distinctSchoolIds);
+    if (noticeSchoolIds.length > 0) {
+      try {
+        const { data: notices } = await supabase
+          .from('school_notices')
+          .select('*')
+          .in('school_id', noticeSchoolIds)
+          .order('created_at', { ascending: false })
+          .limit(8);
+        announcements = (notices || []).map((n: any) => ({
+          id: n.id,
+          title: n.title || n.heading || n.category || 'School Notice',
+          body: n.body || n.message || n.content || '',
+          created_at: n.created_at,
+        }));
+      } catch (err) {
+        console.warn('[dashboard-live] school_notices fetch notice:', err);
+      }
+    }
+
+    // 8. Financial / Wallet Details — wallets table first, then user_profiles. Never invent a balance.
+    let walletRow: any = null;
+    if (session?.user_id) {
+      try {
+        const { data: w } = await supabase
+          .from('wallets')
+          .select('*')
+          .eq('user_id', session.user_id)
+          .maybeSingle();
+        walletRow = w;
+      } catch (err) {
+        console.warn('[dashboard-live] wallets fetch notice:', err);
+      }
+    }
+
+    const walletBalance = Number(
+      walletRow?.balance ?? userProfile?.wallet_balance ?? escortProfile?.walletBalance ?? 0
+    );
+    const eduSaveBalance = Number(
+      walletRow?.edu_save ?? walletRow?.edusave ?? walletRow?.savings_balance ?? escortProfile?.eduSaveBalance ?? 0
+    );
+    const eduInsuRedActive = Boolean(
+      escortProfile?.selectedInsuredPlan || escortProfile?.eduInsuRedActive || walletRow?.edu_insured_active
+    );
 
     const displayName = userProfile?.full_name || escortProfile?.name || escortProfile?.fullName || session?.full_name || 'Escort Officer';
-    const escortCode = escortProfile?.escort_code || escortProfile?.id || (session?.user_id ? `ESC-${session.user_id.substring(0, 6).toUpperCase()}` : 'ESC-1024');
+    const escortCode = escortProfile?.escort_code || escortProfile?.escortIdCode || escortProfile?.id || null;
 
-    // 9. Resolve Driver Details
-    let driverData: any = {
-      id: 'drv-01',
-      name: 'Emeka Okoro',
-      phone: '0812 345 6789',
-      photo_url: null,
-      status: 'Active Shift',
-    };
-
+    // 9. Resolve Driver Details only from a real school driver role
+    let driverData: any = null;
     if (schoolId) {
       try {
         const { data: driverRole } = await supabase
@@ -646,8 +744,8 @@ export async function GET(request: NextRequest) {
           if (u) {
             driverData = {
               id: u.id,
-              name: u.full_name || 'Assigned Driver',
-              phone: u.phone || '0812 345 6789',
+              name: u.full_name || null,
+              phone: u.phone || null,
               photo_url: u.avatar_url || null,
               status: 'Active Shift',
             };
@@ -658,43 +756,122 @@ export async function GET(request: NextRequest) {
       }
     }
 
-    // 10. Compute live pickup & on-board queues
+    // 10. Compute live pickup & on-board queues from the real roster only
     const pickedCount = studentManifest.filter((s) => s.status === 'ON_BOARD' || s.status === 'DROPPED_OFF').length;
-    const totalCount = Math.max(studentManifest.length, 18);
+    const totalCount = studentManifest.length;
     const remainingCount = Math.max(0, totalCount - pickedCount);
-    const progressPct = Math.round((pickedCount / totalCount) * 100);
+    const progressPct = totalCount > 0 ? Math.round((pickedCount / totalCount) * 100) : 0;
 
-    const nextPendingStudent = morningStudents.find((s) => s.status !== 'PICKED') || morningStudents[0];
+    const nextPendingStudent = morningStudents.find((s) => !s.picked) || null;
+    const morningPickedCount = morningStudents.filter((s) => s.picked).length;
+    const morningDroppedCount = morningStudents.filter((s) => s.dropped).length;
+    const afternoonReleasedCount = afternoonStudents.filter((s) => s.picked).length;
+    const afternoonHomeCount = afternoonStudents.filter((s) => s.dropped).length;
 
-    // Live Activity Feed
-    const activityFeed = [
-      { id: 'act-1', text: `Parent confirmed ${nextPendingStudent?.name || 'student'} is ready for pickup.`, time: '07:31 AM', type: 'parent' },
-      { id: 'act-2', text: `${morningStudents.find((s) => s.status === 'PICKED')?.name || 'David James'} has been boarded successfully.`, time: '07:32 AM', type: 'boarding' },
-      { id: 'act-3', text: 'Gate Officer marked security gate open for school fleet.', time: '07:30 AM', type: 'gate' },
-      { id: 'act-4', text: `City Manager broadcast: Traffic along ${schoolData?.city || 'Lekki'} corridor is light.`, time: '07:28 AM', type: 'broadcast' },
-      { id: 'act-5', text: '2 students marked ready by parents via Parent App.', time: '07:25 AM', type: 'ready' },
+    const activityFeed = liveNotifications.map((n: any) => ({
+      id: n.id,
+      text: n.message || n.title || n.body || 'Notification',
+      time: n.created_at
+        ? new Date(n.created_at).toLocaleTimeString('en-NG', { timeZone: 'Africa/Lagos', hour: '2-digit', minute: '2-digit' })
+        : null,
+      type: n.type || n.category || 'system',
+    }));
+
+    const todayEarnings = isSchoolEscort
+      ? 0
+      : studentManifest.reduce((acc, s) => {
+          if (!s.city_manager_approved) return acc;
+          if (s.morning_status === 'PICKED_UP_FROM_HOME' || s.morning_status === 'DROPPED_OFF_AT_SCHOOL') {
+            acc += Number(s.morning_fare || 0);
+          }
+          if (s.afternoon_status === 'SAFE_AT_HOME') {
+            acc += Number(s.afternoon_fare || 0);
+          }
+          return acc;
+        }, 0);
+
+    let monthEarnings = todayEarnings;
+    const monthStart = `${today.slice(0, 7)}-01`;
+    try {
+      if (escortIdentifiers.length > 0) {
+        const { data: monthTrips } = await supabase
+          .from('escort_student_daily_trips')
+          .select('student_id, trip_date, morning_picked_up, afternoon_dropped_off')
+          .in('escort_id', escortIdentifiers)
+          .gte('trip_date', monthStart)
+          .lte('trip_date', today);
+
+        const fareByStudent = new Map(studentManifest.map((s) => [s.id, { morning: Number(s.morning_fare || 0), afternoon: Number(s.afternoon_fare || 0) }]));
+        monthEarnings = (monthTrips || []).reduce((acc: number, trip: any) => {
+          const fares = fareByStudent.get(trip.student_id);
+          if (!fares) return acc;
+          if (trip.morning_picked_up) acc += fares.morning;
+          if (trip.afternoon_dropped_off) acc += fares.afternoon;
+          return acc;
+        }, 0);
+      }
+    } catch (err) {
+      console.warn('[dashboard-live] month trips fetch notice:', err);
+    }
+
+    const oneWayKm = studentManifest.reduce((acc, s) => acc + (Number(s.distance_km) || 0), 0);
+    const plannedTrips = (morningStudents.length > 0 ? 1 : 0) + (afternoonStudents.length > 0 ? 1 : 0);
+    const completedTripLegs =
+      (morningDroppedCount === morningStudents.length && morningStudents.length > 0 ? 1 : 0) +
+      (afternoonHomeCount === afternoonStudents.length && afternoonStudents.length > 0 ? 1 : 0);
+    const totalDistanceKm = Math.round(oneWayKm * 10) / 10;
+
+    let walletTransactions: any[] = [];
+    if (session?.user_id) {
+      try {
+        const { data: txs } = await supabase
+          .from('wallet_transactions')
+          .select('id, title, description, amount, type, status, created_at')
+          .eq('user_id', session.user_id)
+          .order('created_at', { ascending: false })
+          .limit(12);
+        walletTransactions = txs || [];
+      } catch {
+        walletTransactions = [];
+      }
+    }
+
+    const vehicleSafe = assignedVehicle || {};
+    const firstName = displayName.split(' ')[0];
+    const migoHints = [
+      nextPendingStudent
+        ? `Next pickup: ${nextPendingStudent.name}${nextPendingStudent.address ? ` at ${nextPendingStudent.address}` : ''}.`
+        : (morningStudents.length > 0 ? 'All morning pickups on this roster are complete.' : 'No students are assigned to you yet.'),
+      'Scan the student ID card or enter the parent phone code before boarding.',
+      'Keep communication professional with parents, school, and City Manager.',
     ];
 
     return NextResponse.json({
       success: true,
+      last_sync: nowUtcIso(),
       earnings_summary: earningsSummary,
       escort: {
-        id: escortProfile?.id || session?.user_id || 'ESC-230081',
+        id: escortProfile?.id || session?.user_id || null,
         name: displayName,
         code: escortCode,
-        email: userProfile?.email || escortProfile?.email || session?.email || 'escort@myeduride.ng',
-        phone: userProfile?.phone || escortProfile?.phone || '0809 123 4567',
-        vehicleType: assignedVehicle.vehicle_name || 'Hiace Bus (18 Seater)',
-        regNumber: assignedVehicle.plate_number || 'KJA 123 XY',
+        email: userProfile?.email || escortProfile?.email || session?.email || null,
+        phone: userProfile?.phone || escortProfile?.phone || null,
+        vehicleType: vehicleSafe.vehicle_name || null,
+        regNumber: vehicleSafe.plate_number || null,
         photo: userProfile?.avatar_url || escortProfile?.photo || null,
-        availableForOtherSchools: escortProfile?.availableForOtherSchools ?? true,
-        status: escortProfile?.status || 'Online',
-        is_online: true,
+        availableForOtherSchools: Boolean(escortProfile?.availableForOtherSchools),
+        status: escortProfile?.status || null,
+        is_online: Boolean(escortProfile?.ready_for_pickup || escortProfile?.today_trip_status === 'accepted' || escortProfile?.today_trip_status === 'in_progress'),
         today_trip_status: escortProfile?.today_trip_status || 'pending',
         today_trip_declined_reason: escortProfile?.today_trip_declined_reason || null,
         today_trip_accepted_at: escortProfile?.today_trip_accepted_at || null,
         ready_for_pickup: Boolean(escortProfile?.ready_for_pickup),
         ready_for_pickup_at: escortProfile?.ready_for_pickup_at || null,
+        auto_ready_from_gate: Boolean(
+          escortProfile?.ready_for_pickup &&
+          escortProfile?.today_trip_status !== 'declined' &&
+          assignedSchools.some((s: any) => isDismissalWindowOpen(s))
+        ),
         house_lat: escortProfile?.house_lat ? Number(escortProfile.house_lat) : null,
         house_lng: escortProfile?.house_lng ? Number(escortProfile.house_lng) : null,
         residential_address: escortProfile?.residential_address || userProfile?.address || '',
@@ -703,6 +880,8 @@ export async function GET(request: NextRequest) {
         escort_category: escortCategory,
         is_school_escort: isSchoolEscort,
         is_myeduride_escort: !isSchoolEscort,
+        primary_school_id: escortProfile?.primary_school_id || schoolData?.id || null,
+        school_id: escortProfile?.school_id || escortProfile?.primary_school_id || schoolData?.id || null,
       },
       school: schoolData
         ? {
@@ -715,53 +894,40 @@ export async function GET(request: NextRequest) {
             gps_lng: schoolData.gps_lng != null ? Number(schoolData.gps_lng) : null,
             landmark: schoolData.location_landmark || '',
             is_pinned: schoolData.gps_lat != null && schoolData.gps_lng != null,
-            logo_url: schoolData.logo_url || '/dashboard/logo.png',
+            logo_url: schoolData.logo_url || null,
+            student_gate_start: schoolData.student_gate_start || schoolData.school_start_time || null,
+            dismissal_start_time: schoolData.dismissal_start_time || schoolData.student_gate_end || null,
+            dismissal_end_time: schoolData.dismissal_end_time || null,
           }
         : null,
       assigned_schools: assignedSchools,
       dual_school_schedule: dualSchoolSchedule,
       driver: driverData,
-      vehicle: {
-        id: assignedVehicle.id || 'veh-01',
-        plate_number: assignedVehicle.plate_number || 'KJA 123 XY',
-        vehicle_name: assignedVehicle.vehicle_name || 'Hiace Bus (18 Seater)',
-        type: assignedVehicle.vehicle_type || 'Hiace Bus (18 Seater)',
-        capacity: assignedVehicle.capacity || 18,
-        photo_url: assignedVehicle.photo_url || null,
-      },
+      vehicle: assignedVehicle
+        ? {
+            id: assignedVehicle.id || null,
+            plate_number: assignedVehicle.plate_number || null,
+            vehicle_name: assignedVehicle.vehicle_name || null,
+            type: assignedVehicle.vehicle_type || assignedVehicle.vehicle_name || null,
+            capacity: assignedVehicle.capacity || null,
+            photo_url: assignedVehicle.photo_url || null,
+          }
+        : null,
       route: assignedRoute
         ? {
-          id: assignedRoute.id,
-          name: assignedRoute.route_name,
-          code: assignedRoute.route_code || 'RT-01',
-          morning_time: assignedRoute.morning_pickup_time || '06:45 AM',
-          afternoon_time: assignedRoute.afternoon_dropoff_time || '02:30 PM',
-          stops: routeStops,
-        }
-        : {
-          id: 'route-default',
-          name: 'Main Campus Morning Route A',
-          code: 'RT-01',
-          morning_time: '06:45 AM',
-          afternoon_time: '02:30 PM',
-          departure_time: '06:45 AM',
-          est_completion: '08:15 AM',
-          stops: [
-            { id: 'st-1', stop_name: '21, Bluebell Drive, Silver Estate', stop_order: 1, pickup_time: '06:50 AM', distance: '300 m' },
-            { id: 'st-2', stop_name: '12, Lotus Close, Silver Estate', stop_order: 2, pickup_time: '07:00 AM', distance: '650 m' },
-            { id: 'st-3', stop_name: '9, Orchid Road, Silver Estate', stop_order: 3, pickup_time: '07:10 AM', distance: '1.1 km' },
-            { id: 'st-4', stop_name: '17, Palm Springs, Silver Estate', stop_order: 4, pickup_time: '07:20 AM', distance: '1.4 km' },
-            { id: 'st-5', stop_name: '25, Bluebell Drive, Silver Estate', stop_order: 5, pickup_time: '07:30 AM', distance: '1.6 km' },
-            { id: 'st-6', stop_name: '4, Lotus Close, Silver Estate', stop_order: 6, pickup_time: '07:40 AM', distance: '2.1 km' },
-          ],
-        },
+            id: assignedRoute.id,
+            name: assignedRoute.route_name,
+            code: assignedRoute.route_code || null,
+            morning_time: assignedRoute.morning_pickup_time || null,
+            afternoon_time: assignedRoute.afternoon_dropoff_time || null,
+            stops: routeStops,
+          }
+        : null,
       students: {
         manifest: studentManifest,
-        morning: morningStudents.map((s, idx) => ({
-          ...s,
-          distance: `${(0.3 + idx * 0.35).toFixed(1)} km`,
-        })),
+        morning: morningStudents,
         afternoon: afternoonStudents,
+        dropped_off: morningStudents.filter((s) => s.dropped),
         total: totalCount,
         picked: pickedCount,
         remaining: remainingCount,
@@ -772,49 +938,54 @@ export async function GET(request: NextRequest) {
         picked_up: pickedCount,
         remaining: remainingCount,
         progress_pct: progressPct,
-        departure_time: '06:45 AM',
-        est_completion: '08:15 AM',
-        departure_status: 'On Time',
-        completion_status: 'On Time',
+        morning_picked: morningPickedCount,
+        morning_dropped: morningDroppedCount,
+        afternoon_released: afternoonReleasedCount,
+        afternoon_home: afternoonHomeCount,
+        departure_time: assignedRoute?.morning_pickup_time || schoolData?.student_gate_start || null,
+        est_completion: schoolData?.school_start_time || null,
       },
       tracking: {
-        current_location: 'Moving',
-        speed: '32 km/h',
-        eta_next_stop: '2 min (0.3 km)',
-        eta_school: '12 min (5.4 km)',
-        traffic: 'Traffic ● Live',
-        next_stop: {
-          name: nextPendingStudent?.name || 'David James',
-          distance: '300 m ahead',
-          address: nextPendingStudent?.address || '21, Bluebell Drive, Silver Estate',
-        },
+        current_location: escortProfile?.today_trip_status === 'in_progress' ? 'In transit' : 'Standby',
+        next_stop: nextPendingStudent
+          ? {
+              name: nextPendingStudent.name,
+              address: nextPendingStudent.address || null,
+              distance: nextPendingStudent.distance || (nextPendingStudent.distance_km != null ? `${nextPendingStudent.distance_km} km` : null),
+            }
+          : null,
+        eta_school: nextPendingStudent?.estimated_transit_mins != null
+          ? `${nextPendingStudent.estimated_transit_mins} min`
+          : null,
       },
       migo: {
-        greeting: `Good morning, ${displayName.split(' ')[0]}! 👋`,
-        hints: [
-          `Next pickup: ${nextPendingStudent?.name || 'David James'} 300m ahead on your left.`,
-          'Parent has confirmed student is ready.',
-          'Light traffic ahead. You\'ll arrive on time.',
-          'Please scan Student ID before boarding.',
-        ],
+        greeting: `Good morning, ${firstName}!`,
+        first_name: firstName,
+        trip_count: plannedTrips,
+        hints: migoHints,
       },
       activity_feed: activityFeed,
+      announcements,
       wallet: {
         balance: walletBalance,
-        todayEarnings: 8500.0,
-        monthEarnings: 142000.0,
-        eduSave: 35000.0,
-        eduInsuRedActive: true,
+        todayEarnings,
+        monthEarnings,
+        eduSave: eduSaveBalance,
+        eduInsuRedActive,
+        eduInsuRedPlan: escortProfile?.selectedInsuredPlan || null,
+        transactions: walletTransactions,
       },
       emergencies: activeEmergencyDispatches,
       assignments: liveAssignments,
       bookings: liveBookings,
       stats: {
-        totalTrips: 184,
+        totalTrips: plannedTrips,
+        tripsCompletedToday: completedTripLegs,
         totalStudents: totalCount,
-        totalDistance: '24.8 km',
-        averageRating: 4.95,
-        onTimePerformance: 98,
+        totalDistance: totalDistanceKm > 0 ? `${totalDistanceKm} km` : '0 km',
+        totalDistanceKm,
+        averageRating: null,
+        onTimePerformance: null,
       },
       notifications: {
         unreadCount: unreadNotifCount,
@@ -840,15 +1011,43 @@ export async function POST(request: NextRequest) {
     const supabase = getAdminClient();
     const primarySchoolId = school_id || session?.roles?.find((r: any) => r.school_id)?.school_id;
 
-    // Action 1: Toggle Availability
+    // Action 1: Toggle Availability (do not change CM/application status)
     if (action === 'toggle_availability') {
-      const { availableForOtherSchools, appId } = body;
-      if (appId) {
+      const availableForOtherSchools = Boolean(body.availableForOtherSchools);
+      const appId = body.appId;
+      if (session?.user_id || appId) {
         try {
-          const { updateEscortApplicationStatus } = await import('@/lib/escort/escort-db');
-          await updateEscortApplicationStatus(appId, 'ACTIVATED', undefined, { availableForOtherSchools });
+          let target = appId
+            ? await supabase.from('escort_applications').select('id, status, application_data').eq('id', appId).maybeSingle()
+            : await supabase.from('escort_applications').select('id, status, application_data').eq('user_id', session?.user_id).maybeSingle();
+
+          if (!target.data && session?.user_id) {
+            target = await supabase.from('escort_applications').select('id, status, application_data').eq('user_id', session.user_id).maybeSingle();
+          }
+
+          if (target.data?.id) {
+            let appDataObj: any = {};
+            const raw = target.data.application_data;
+            if (typeof raw === 'string') {
+              try { appDataObj = JSON.parse(raw); } catch { appDataObj = {}; }
+            } else if (raw && typeof raw === 'object') {
+              appDataObj = raw;
+            }
+            appDataObj.availableForOtherSchools = availableForOtherSchools;
+            await supabase
+              .from('escort_applications')
+              .update({
+                application_data: JSON.stringify(appDataObj),
+                updated_at: nowUtcIso(),
+              })
+              .eq('id', target.data.id);
+
+            const { updateEscortApplicationStatus } = await import('@/lib/escort/escort-db');
+            const currentStatus = (target.data.status || 'CITY_MANAGER_APPROVED') as any;
+            await updateEscortApplicationStatus(target.data.id, currentStatus, undefined, { availableForOtherSchools });
+          }
         } catch (e) {
-          console.warn('[dashboard-live] updateEscortApplicationStatus notice:', e);
+          console.warn('[dashboard-live] toggle_availability notice:', e);
         }
       }
       return NextResponse.json({
@@ -997,8 +1196,8 @@ export async function POST(request: NextRequest) {
             .maybeSingle();
 
           const escortAppId = appRow?.id || session.user_id;
-          const initialLat = appRow?.house_lat ? Number(appRow.house_lat) : 6.4474;
-          const initialLng = appRow?.house_lng ? Number(appRow.house_lng) : 3.4731;
+          const initialLat = appRow?.house_lat != null ? Number(appRow.house_lat) : null;
+          const initialLng = appRow?.house_lng != null ? Number(appRow.house_lng) : null;
 
           await supabase.from('vehicle_active_sessions').insert({
             school_id: primarySchoolId,
@@ -1008,9 +1207,6 @@ export async function POST(request: NextRequest) {
             status: 'in_progress',
             current_lat: initialLat,
             current_lng: initialLng,
-            current_speed_kmh: 24,
-            current_heading: 45,
-            battery_level: 92,
             started_at: nowUtcIso(),
             last_ping_at: nowUtcIso(),
           });
@@ -1150,6 +1346,15 @@ export async function POST(request: NextRequest) {
           .update({ wallet_balance: newBal })
           .eq('id', session.user_id);
 
+        try {
+          const { data: w } = await supabase.from('wallets').select('id').eq('user_id', session.user_id).maybeSingle();
+          if (w?.id) {
+            await supabase.from('wallets').update({ balance: newBal }).eq('id', w.id);
+          }
+        } catch (err) {
+          console.warn('[dashboard-live] wallets fund sync notice:', err);
+        }
+
         return NextResponse.json({
           success: true,
           newBalance: newBal,
@@ -1177,6 +1382,15 @@ export async function POST(request: NextRequest) {
           .from('user_profiles')
           .update({ wallet_balance: newBal })
           .eq('id', session.user_id);
+
+        try {
+          const { data: w } = await supabase.from('wallets').select('id').eq('user_id', session.user_id).maybeSingle();
+          if (w?.id) {
+            await supabase.from('wallets').update({ balance: newBal }).eq('id', w.id);
+          }
+        } catch (err) {
+          console.warn('[dashboard-live] wallets withdraw sync notice:', err);
+        }
 
         return NextResponse.json({
           success: true,

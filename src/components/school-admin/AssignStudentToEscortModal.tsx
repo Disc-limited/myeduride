@@ -78,7 +78,14 @@ export default function AssignStudentToEscortModal({
   }, [defaultEscortId]);
 
   useEffect(() => {
-    if (defaultStudentId) setSelectedStudentIds([defaultStudentId]);
+    if (!defaultStudentId) return;
+    setSelectedStudentIds((prev) => {
+      if (prev.includes(defaultStudentId)) return prev;
+      if (pinnedStudents.length > 0 && !pinnedStudents.some((s) => s.id === defaultStudentId)) {
+        return prev;
+      }
+      return defaultStudentId ? [defaultStudentId] : prev;
+    });
   }, [defaultStudentId]);
 
   // Load data on open
@@ -96,11 +103,20 @@ export default function AssignStudentToEscortModal({
       .then((data) => {
         if (!isMounted) return;
         if (data.success) {
-          setPinnedStudents(data.pinned_students || []);
+          const pinned = data.pinned_students || [];
+          setPinnedStudents(pinned);
           setUnpinnedStudents(data.unpinned_students || []);
           setSchoolEscorts(data.school_escorts || []);
           setMyedurideEscorts(data.myeduride_escorts || []);
           setSchoolInfo(data.school || null);
+
+          const pinnedIds = new Set(pinned.map((s: any) => s.id));
+          setSelectedStudentIds((prev) => {
+            const kept = prev.filter((id) => pinnedIds.has(id));
+            if (kept.length > 0) return kept;
+            if (defaultStudentId && pinnedIds.has(defaultStudentId)) return [defaultStudentId];
+            return pinned[0]?.id ? [pinned[0].id] : [];
+          });
 
           // If no escort selected, select first available
           if (!selectedEscortId) {
@@ -109,10 +125,6 @@ export default function AssignStudentToEscortModal({
             } else if (escortType === 'myeduride_escort' && data.myeduride_escorts?.length > 0) {
               setSelectedEscortId(data.myeduride_escorts[0].id);
             }
-          }
-
-          if (selectedStudentIds.length === 0 && data.pinned_students?.length > 0 && defaultStudentId) {
-            setSelectedStudentIds([defaultStudentId]);
           }
         }
       })
@@ -205,9 +217,14 @@ export default function AssignStudentToEscortModal({
 
     setSubmitting(true);
     try {
+      const pinnedIds = selectedStudentIds.filter((id) => pinnedStudents.some((s) => s.id === id));
+      if (!pinnedIds.length) {
+        throw new Error('Select at least one student whose house address is pinned.');
+      }
+
       const failures: string[] = [];
       let assigned = 0;
-      for (const studentId of selectedStudentIds) {
+      for (const studentId of pinnedIds) {
         const res = await fetch('/api/school-admin/escort/assign-student', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
@@ -240,7 +257,7 @@ export default function AssignStudentToEscortModal({
           : `${assigned} students assigned. City Manager notified for clearance.`
       );
       if (failures.length) {
-        toast.warning(`${failures.length} student(s) could not be assigned.`);
+        toast.warning(failures[0] || `${failures.length} student(s) could not be assigned.`);
       }
       onSuccess();
       onClose();

@@ -46,6 +46,7 @@
     "createdAt": "2026-09-01T21:18:25.192Z",
     "registrationDate": "2026-09-01",
     "notes": "School Admin Correction Submitted",
-    "escortType": "myeduride_escort"
+    "escortType": "myeduride_escort",
+    "availableForOtherSchools": true
   }
 ]

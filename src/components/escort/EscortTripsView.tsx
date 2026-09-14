@@ -46,6 +46,8 @@ export default function EscortTripsView({
   const escort = liveDashboardData?.escort || {};
   const earnings = liveDashboardData?.earnings_summary || {};
   const isReady = Boolean(escort?.ready_for_pickup);
+  const autoReadyFromGate = escort?.auto_ready_from_gate === true;
+  const dismissalClock = String(liveDashboardData?.school?.dismissal_start_time || '').slice(0, 5);
 
   const isSchoolEscort = Boolean(
     escort?.is_school_escort ||
@@ -205,6 +207,11 @@ export default function EscortTripsView({
               <Sparkles size={14} />
               <span>{isReady ? '✓ READY FOR PICK UP' : 'I AM READY FOR PICK UP'}</span>
             </button>
+            {autoReadyFromGate && dismissalClock ? (
+              <span className="text-[10px] text-emerald-700 font-bold">
+                Auto-ready at {dismissalClock}
+              </span>
+            ) : null}
 
             <div className="bg-slate-100 p-1 rounded-2xl flex items-center gap-1 border border-slate-200">
               <button

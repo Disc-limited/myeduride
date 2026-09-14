@@ -4,6 +4,7 @@ import {
   loadPickupPersonsByStudents,
   type PickupPersonRow,
 } from '@/lib/gate/student-pickup-context';
+import { ensureAutoReadyForPickup } from '@/lib/gate/auto-ready-pickup';
 
 export type PickupPersonSummary = {
   pickup_person_name: string | null;
@@ -76,6 +77,7 @@ export async function fetchEnrichedPickupQueue(
   }
 ) {
   const today = opts?.today || todayInLagos();
+  await ensureAutoReadyForPickup(supabase, schoolId);
 
   let pickupQueueRaw: Array<{
     id: string;

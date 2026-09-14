@@ -1,4 +1,5 @@
 import { TestSuite, expect } from '../utils/test-harness';
+import { isDismissalWindowOpen, schoolTimeToMinutes } from '../../src/lib/gate/auto-ready-pickup';
 
 export const pickupInvariantsSuite = new TestSuite('Pickup List Business Invariants & Invariants Engine', 'UNIT');
 
@@ -82,4 +83,30 @@ pickupInvariantsSuite.test('Walk-Home Safety Consent: Prevents walk home release
 
   expect(canWalkHome('STU-1')).toBeTruthy();
   expect(canWalkHome('STU-2')).toBeFalsy();
+});
+
+pickupInvariantsSuite.test('Auto-ready uses school Gate Settings dismissal window in Lagos minutes', () => {
+  expect(schoolTimeToMinutes('14:00')).toBe(14 * 60);
+  expect(schoolTimeToMinutes('14:00:00')).toBe(14 * 60);
+  expect(schoolTimeToMinutes(null)).toBe(null);
+
+  const school = { dismissal_start_time: '14:00', dismissal_end_time: '16:00', student_gate_end: '16:30' };
+  expect(isDismissalWindowOpen(school, 13 * 60 + 59)).toBeFalsy();
+  expect(isDismissalWindowOpen(school, 14 * 60)).toBeTruthy();
+  expect(isDismissalWindowOpen(school, 15 * 60)).toBeTruthy();
+  expect(isDismissalWindowOpen(school, 16 * 60 + 1)).toBeFalsy();
+
+  const openEnded = { dismissal_start_time: '14:00', dismissal_end_time: null, student_gate_end: null };
+  expect(isDismissalWindowOpen(openEnded, 18 * 60)).toBeTruthy();
+
+  const fallbackEnd = { dismissal_start_time: null, dismissal_end_time: null, student_gate_end: '14:15' };
+  expect(isDismissalWindowOpen(fallbackEnd, 14 * 60)).toBeFalsy();
+  expect(isDismissalWindowOpen(fallbackEnd, 14 * 60 + 15)).toBeTruthy();
+
+  const unset = { dismissal_start_time: null, dismissal_end_time: null, student_gate_end: null };
+  expect(isDismissalWindowOpen(unset, 14 * 60)).toBeFalsy();
+
+  const startWithGateEnd = { dismissal_start_time: '14:00', dismissal_end_time: null, student_gate_end: '15:30' };
+  expect(isDismissalWindowOpen(startWithGateEnd, 15 * 60 + 30)).toBeTruthy();
+  expect(isDismissalWindowOpen(startWithGateEnd, 15 * 60 + 31)).toBeFalsy();
 });

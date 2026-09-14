@@ -8,6 +8,7 @@ import { nowUtcIso, todayInLagos } from '@/lib/timezone';
 import { getEscortApplications } from '@/lib/escort/escort-db';
 import { isApprovedMyEduRideEscort, resolveEscortCategory } from '@/lib/escort/escort-category';
 import { getGateDayStatus, assertGateDayOpen } from '@/lib/gate/school-day-gate';
+import { ensureAutoReadyForPickup } from '@/lib/gate/auto-ready-pickup';
 
 export const dynamic = 'force-dynamic';
 
@@ -52,6 +53,7 @@ export async function GET(request: NextRequest) {
 
     const supabase = getAdminClient();
     const today = todayInLagos();
+    await ensureAutoReadyForPickup(supabase, primarySchoolId);
 
     // 1. Fetch School Details
     const { data: school } = await supabase
