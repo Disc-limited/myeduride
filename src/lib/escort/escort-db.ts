@@ -48,6 +48,11 @@ export type EscortApplicationData = {
   createdBySchoolId?: string;
   createdBySchoolName?: string;
   createdRole?: string;
+  escortType?: string;
+  escortCategory?: string;
+  categoryLabel?: string;
+  schoolId?: string | null;
+  schoolName?: string | null;
   status?: string;
   createdAt?: string;
   name?: string;
