@@ -290,6 +290,8 @@ export function CityManagerOperationsPanel() {
   };
 
   const filteredAssignments = (data.assignments || []).filter((a: any) => {
+    const status = String(a.status || '').toLowerCase();
+    if (['cancelled', 'canceled', 'reassigned', 'completed', 'inactive'].includes(status)) return false;
     const schoolId = a.school_id || a.school?.id;
     const escortId = a.escort_application_id || a.escort?.id;
     const matchSchool = rosterSchoolFilter === 'all' || schoolId === rosterSchoolFilter;

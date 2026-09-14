@@ -12,6 +12,9 @@ import { resolveEscortCategory } from '@/lib/escort/escort-category';
 
 export const dynamic = 'force-dynamic';
 
+const LIVE_ASSIGNMENT_STATUSES = ['active', 'pending_confirmation', 'pending'];
+const DEAD_BOOKING_STATUSES = ['cancelled', 'canceled', 'rejected', 'reassigned'];
+
 const canOperate = (request: NextRequest) => {
   const session = getSessionFromRequest(request);
   if (!session) {
@@ -75,8 +78,8 @@ export async function GET(request: NextRequest) {
     const [schoolsRes, escortsRes, bookingsRes, assignmentsRes, auditRes, deputisingRes, vehiclesRes, routesRes, walkHomeRes, pinnedParentsRes, gateOfficersRes, gateActivitiesRes, allSchoolStudentsRes] = await Promise.all([
       db.from('schools').select('id, name, address, gps_lat, gps_lng, location_address, location_landmark, location_pinned_at').order('name').then((r: any) => r.data || [], () => []),
       db.from('escort_applications').select('id,full_name,email,phone,operating_area,status,availability_status,emergency_pool_enabled,last_available_at,application_data,user_id,residential_address,closest_landmark,lga,house_lat,house_lng,location_pinned_at,today_trip_status,today_trip_declined_reason,ready_for_pickup').in('status', ['CITY_MANAGER_APPROVED', 'ACTIVE']).then((r: any) => r.data || [], () => []),
-      db.from('transport_bookings').select('*, school:schools(name), student:students(first_name,last_name,student_id_number,class_id,house_address,house_lat,house_lng,house_landmark,house_notes,house_pinned_at,custom_fields), parent:user_profiles!parent_user_id(full_name, phone)').order('created_at', { ascending: false }).limit(100).then((r: any) => r.data || [], () => []),
-      db.from('escort_assignments').select('*, escort:escort_applications(id,full_name,phone,operating_area,status), school:schools(id,name,address,gps_lat,gps_lng), student:students(id,first_name,last_name,student_id_number,photo_url,class:school_classes(name),house_address,house_lat,house_lng,house_landmark,house_notes,house_pinned_at,custom_fields)').order('created_at', { ascending: false }).limit(100).then((r: any) => r.data || [], () => []),
+      db.from('transport_bookings').select('*, school:schools(name), student:students(first_name,last_name,student_id_number,class_id,house_address,house_lat,house_lng,house_landmark,house_notes,house_pinned_at,custom_fields), parent:user_profiles!parent_user_id(full_name, phone)').not('status', 'in', '(cancelled,canceled,rejected,reassigned)').order('created_at', { ascending: false }).limit(100).then((r: any) => r.data || [], () => []),
+      db.from('escort_assignments').select('*, escort:escort_applications(id,full_name,phone,operating_area,status), school:schools(id,name,address,gps_lat,gps_lng), student:students(id,first_name,last_name,student_id_number,photo_url,class:school_classes(name),house_address,house_lat,house_lng,house_landmark,house_notes,house_pinned_at,custom_fields)').in('status', LIVE_ASSIGNMENT_STATUSES).order('created_at', { ascending: false }).limit(200).then((r: any) => r.data || [], () => []),
       db.from('city_manager_audit_log').select('*').order('created_at', { ascending: false }).limit(100).then((r: any) => r.data || [], () => []),
       db.from('emergency_deputising').select('*').order('created_at', { ascending: false }).limit(100).then((r: any) => r.data || [], () => []),
       db.from('school_vehicles').select('*').order('created_at', { ascending: false }).limit(100).then((r: any) => r.data || [], () => []),
@@ -112,9 +115,14 @@ export async function GET(request: NextRequest) {
         meta = {};
       }
 
-      const matchedAssignment = (assignmentsRes || []).find((a: any) => 
-        (a.booking_id && a.booking_id === b.id) || 
-        (b.student_id && a.student_id === b.student_id)
+      if (DEAD_BOOKING_STATUSES.includes(String(b.status || '').toLowerCase())) {
+        return null;
+      }
+
+      const matchedAssignment = (assignmentsRes || []).find((a: any) =>
+        LIVE_ASSIGNMENT_STATUSES.includes(String(a.status || '').toLowerCase()) &&
+        ((a.booking_id && a.booking_id === b.id) ||
+          (b.student_id && a.student_id === b.student_id))
       );
       if (matchedAssignment?.id) {
         matchedAssignmentIds.add(matchedAssignment.id);
@@ -201,10 +209,13 @@ export async function GET(request: NextRequest) {
         status: isConfirmed ? 'CONFIRMED' : 'PENDING_CM_REVIEW',
         created_at: b.created_at,
       };
-    });
+    }).filter(Boolean);
 
     // Also include any standalone or unlinked escort assignments so nothing assigned by School Admin is dropped
-    const unlinkedAssignments = (assignmentsRes || []).filter((a: any) => !matchedAssignmentIds.has(a.id));
+    const unlinkedAssignments = (assignmentsRes || []).filter((a: any) =>
+      !matchedAssignmentIds.has(a.id) &&
+      LIVE_ASSIGNMENT_STATUSES.includes(String(a.status || '').toLowerCase())
+    );
     for (const a of unlinkedAssignments) {
       const stu = Array.isArray(a.student) ? a.student[0] : a.student;
       const sch = Array.isArray(a.school) ? a.school[0] : a.school;
@@ -335,7 +346,9 @@ export async function GET(request: NextRequest) {
       (a: any) => a.status === 'CORRECTION_PENDING' || !!a.proposed_correction
     );
 
-    const formattedAssignments = (assignmentsRes || []).map((a: any) => {
+    const formattedAssignments = (assignmentsRes || [])
+      .filter((a: any) => LIVE_ASSIGNMENT_STATUSES.includes(String(a.status || '').toLowerCase()))
+      .map((a: any) => {
       const student = Array.isArray(a.student) ? a.student[0] : a.student;
       const school = Array.isArray(a.school) ? a.school[0] : a.school;
       const escort = Array.isArray(a.escort) ? a.escort[0] : a.escort;
@@ -363,6 +376,19 @@ export async function GET(request: NextRequest) {
         } : null,
       };
     });
+
+    const uniqueAssignments: any[] = [];
+    const seenAssignmentKeys = new Set<string>();
+    for (const assignment of formattedAssignments) {
+      const studentKey = assignment.student_id || assignment.student?.id || assignment.id;
+      const escortKey = assignment.escort_application_id || assignment.escort?.id || 'none';
+      const key = `${studentKey}:${escortKey}`;
+      if (seenAssignmentKeys.has(key)) continue;
+      seenAssignmentKeys.add(key);
+      uniqueAssignments.push(assignment);
+    }
+    formattedAssignments.length = 0;
+    formattedAssignments.push(...uniqueAssignments);
 
     const formattedWalkHomeRecords = (walkHomeRes || []).map((w: any) => {
       const student = Array.isArray(w.student) ? w.student[0] : w.student;
@@ -675,6 +701,180 @@ export async function POST(request: NextRequest) {
   if (!session) return NextResponse.json({ error: 'City Manager access required' }, { status: 403 });
   try {
     const body = await request.json(); const db = getAdminClient();
+    if (body.action === 'unassign_escort_school') {
+      const escortAppId = String(body.escortApplicationId || body.appId || '').trim();
+      const escortEmail = String(body.escortEmail || '').trim().toLowerCase();
+      const escortName = String(body.escortName || '').trim();
+      const schoolId = String(body.schoolId || '').trim();
+      const schoolName = String(body.schoolName || 'MyEduRide Academy').trim();
+      const nowIso = nowUtcIso();
+
+      if (!escortAppId && !escortEmail && !escortName) {
+        return NextResponse.json({ error: 'Escort application id, email, or name is required' }, { status: 400 });
+      }
+
+      let escortQuery = db
+        .from('escort_applications')
+        .select('id, user_id, full_name, email, school_id, primary_school_id, secondary_school_id, application_data');
+
+      if (escortAppId) {
+        escortQuery = escortQuery.or(`id.eq.${escortAppId},user_id.eq.${escortAppId}`);
+      } else if (escortEmail) {
+        escortQuery = escortQuery.ilike('email', escortEmail);
+      } else {
+        escortQuery = escortQuery.ilike('full_name', `%${escortName}%`);
+      }
+
+      const { data: escortRows, error: escortErr } = await escortQuery.limit(10);
+      if (escortErr) throw escortErr;
+      const escorts = escortRows || [];
+      if (escorts.length === 0) {
+        return NextResponse.json({ error: 'Escort not found' }, { status: 404 });
+      }
+
+      const escortIds = Array.from(new Set(escorts.flatMap((e: any) => [e.id, e.user_id].filter(Boolean))));
+
+      let schoolIds: string[] = schoolId ? [schoolId] : [];
+      if (schoolIds.length === 0 && schoolName) {
+        const { data: schoolRows } = await db
+          .from('schools')
+          .select('id, name')
+          .ilike('name', `%${schoolName}%`);
+        schoolIds = (schoolRows || []).map((s: any) => s.id).filter(Boolean);
+      }
+      if (schoolIds.length === 0) {
+        return NextResponse.json({ error: `School not found: ${schoolName}` }, { status: 404 });
+      }
+
+      const { data: assignments, error: assignLookupErr } = await db
+        .from('escort_assignments')
+        .select('id, status, school_id, student_id, booking_id, escort_application_id, student:students(id, first_name, last_name, school_id), school:schools(id, name)')
+        .in('escort_application_id', escortIds)
+        .not('status', 'in', '(cancelled,canceled,reassigned)');
+      if (assignLookupErr) throw assignLookupErr;
+
+      const matching = (assignments || []).filter((row: any) => {
+        const student = Array.isArray(row.student) ? row.student[0] : row.student;
+        const school = Array.isArray(row.school) ? row.school[0] : row.school;
+        return (
+          schoolIds.includes(row.school_id) ||
+          schoolIds.includes(student?.school_id) ||
+          String(school?.name || '').toLowerCase().includes(schoolName.toLowerCase())
+        );
+      });
+
+      const assignmentIds = matching.map((row: any) => row.id);
+      const bookingIds = matching.map((row: any) => row.booking_id).filter(Boolean);
+      const releasedStudents = matching.map((row: any) => {
+        const student = Array.isArray(row.student) ? row.student[0] : row.student;
+        return {
+          assignment_id: row.id,
+          student_id: row.student_id,
+          name: `${student?.first_name || ''} ${student?.last_name || ''}`.trim() || 'Student',
+        };
+      });
+
+      if (assignmentIds.length > 0) {
+        const { error: assignUpdateErr } = await db
+          .from('escort_assignments')
+          .update({
+            status: 'cancelled',
+            notes: `Unassigned from ${schoolName} so escort can be reassigned to another school.`,
+            updated_at: nowIso,
+          })
+          .in('id', assignmentIds);
+        if (assignUpdateErr) throw assignUpdateErr;
+      }
+
+      if (bookingIds.length > 0) {
+        await db
+          .from('transport_bookings')
+          .update({ status: 'cancelled', updated_at: nowIso })
+          .in('id', bookingIds);
+      }
+
+      const releasedStudentIds = releasedStudents.map((st: any) => st.student_id).filter(Boolean);
+      const { data: leftoverBookings } = await db
+        .from('transport_bookings')
+        .select('id, notes, student_id, school_id, status')
+        .in('school_id', schoolIds)
+        .not('status', 'in', '(cancelled,canceled,rejected,reassigned)')
+        .limit(300);
+      const extraBookingIds = (leftoverBookings || [])
+        .filter((row: any) => {
+          if (bookingIds.includes(row.id)) return false;
+          const notes = String(row.notes || '');
+          const tiedToEscort = escortIds.some((id) => notes.includes(id)) || /ebor kingsley|eborodirikingsley/i.test(notes);
+          const tiedToReleasedStudent = releasedStudentIds.includes(row.student_id);
+          return tiedToEscort || tiedToReleasedStudent;
+        })
+        .map((row: any) => row.id);
+      if (extraBookingIds.length > 0) {
+        await db
+          .from('transport_bookings')
+          .update({ status: 'cancelled', updated_at: nowIso })
+          .in('id', extraBookingIds);
+      }
+
+      const escortPatch: Record<string, any> = { updated_at: nowIso };
+      for (const escort of escorts) {
+        const patch: Record<string, any> = { ...escortPatch };
+        if (schoolIds.includes(escort.school_id)) patch.school_id = null;
+        if (schoolIds.includes(escort.primary_school_id)) patch.primary_school_id = null;
+        if (schoolIds.includes(escort.secondary_school_id)) patch.secondary_school_id = null;
+
+        let appData = escort.application_data;
+        if (typeof appData === 'string') {
+          try { appData = JSON.parse(appData); } catch { appData = {}; }
+        }
+        if (appData && typeof appData === 'object') {
+          const createdSchoolId = appData.createdBySchoolId || appData.schoolId;
+          if (schoolIds.includes(createdSchoolId)) {
+            appData = {
+              ...appData,
+              createdBySchoolId: null,
+              createdBySchoolName: null,
+              schoolId: null,
+              schoolName: null,
+            };
+            patch.application_data = appData;
+          }
+        }
+
+        if (Object.keys(patch).length > 1) {
+          await db.from('escort_applications').update(patch).eq('id', escort.id);
+        }
+      }
+
+      await db
+        .from('transport_routes')
+        .update({ assigned_escort_id: null })
+        .in('assigned_escort_id', escortIds)
+        .in('school_id', schoolIds);
+      await db
+        .from('school_vehicles')
+        .update({ assigned_escort_id: null })
+        .in('assigned_escort_id', escortIds)
+        .in('school_id', schoolIds);
+
+      await audit(db, session.user_id, 'ESCORT_SCHOOL_STUDENTS_UNASSIGNED', 'escort_application', escorts[0].id, {
+        school_ids: schoolIds,
+        school_name: schoolName,
+        released_count: releasedStudents.length,
+        assignment_ids: assignmentIds,
+      });
+
+      return NextResponse.json({
+        success: true,
+        message: releasedStudents.length
+          ? `Unassigned ${releasedStudents.length} ${schoolName} student${releasedStudents.length === 1 ? '' : 's'} from ${escorts[0].full_name}.`
+          : `${escorts[0].full_name} had no active ${schoolName} students to unassign.`,
+        escort: { id: escorts[0].id, full_name: escorts[0].full_name },
+        school_ids: schoolIds,
+        released_count: releasedStudents.length,
+        released_students: releasedStudents,
+      });
+    }
     if (body.action === 'quick_approve_and_assign_school') {
       const escortAppId = body.escortApplicationId || body.appId;
       const schoolId = body.schoolId;

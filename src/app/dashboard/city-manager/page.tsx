@@ -46,6 +46,7 @@ import {
   Archive,
   Trash2,
   ClipboardList,
+  UserMinus,
 } from 'lucide-react';
 import { toast } from 'sonner';
 import StudentAvatar from '@/components/shared/StudentAvatar';
@@ -146,6 +147,7 @@ function CityManagerDashboardContent() {
     escort: null,
     students: [],
   });
+  const [unassigningSchool, setUnassigningSchool] = useState(false);
 
   // Fetch Live Schools from Backend
   useEffect(() => {
@@ -227,6 +229,59 @@ function CityManagerDashboardContent() {
     } catch (err: any) {
       toast.error(err.message || 'Could not complete quick approval and assignment');
       setQuickAssignModal((prev) => ({ ...prev, submitting: false }));
+    }
+  };
+
+  const handleUnassignSchoolStudents = async (app: any, schoolHint?: { schoolId?: string; schoolName?: string }) => {
+    if (!app?.id) return;
+    const students = Array.isArray(app.assignedStudents) ? app.assignedStudents : [];
+    const academyStudent = students.find((st: any) =>
+      String(st.schoolName || '').toLowerCase().includes('academy') ||
+      String(st.schoolName || '').toLowerCase().includes('myeduride')
+    );
+    const schoolId = schoolHint?.schoolId || academyStudent?.schoolId || '';
+    const schoolName = schoolHint?.schoolName || academyStudent?.schoolName || 'MyEduRide Academy';
+    setUnassigningSchool(true);
+    try {
+      const res = await fetch('/api/city-manager/operations', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          action: 'unassign_escort_school',
+          escortApplicationId: app.id,
+          escortEmail: app.email,
+          escortName: app.fullName || app.name,
+          schoolId: schoolId || undefined,
+          schoolName,
+        }),
+      });
+      const d = await res.json();
+      if (!res.ok) throw new Error(d.error || 'Failed to unassign students');
+
+      const releasedIds = new Set((d.released_students || []).map((st: any) => st.student_id || st.assignment_id));
+      setEscortApplications((prev) =>
+        prev.map((a) => {
+          if (a.id !== app.id) return a;
+          const remaining = (a.assignedStudents || []).filter(
+            (st: any) =>
+              !releasedIds.has(st.id) &&
+              !releasedIds.has(st.assignmentId) &&
+              String(st.schoolName || '').toLowerCase() !== String(schoolName).toLowerCase()
+          );
+          return {
+            ...a,
+            assignedStudents: remaining,
+            assignedStudentsCount: remaining.length,
+            schoolId: remaining[0]?.schoolId || null,
+            schoolName: remaining[0]?.schoolName || null,
+          };
+        })
+      );
+      toast.success(d.message || `Unassigned ${d.released_count || 0} student(s)`);
+    } catch (err: any) {
+      toast.error(err.message || 'Could not unassign students');
+    } finally {
+      setUnassigningSchool(false);
     }
   };
 
@@ -1089,6 +1144,17 @@ function CityManagerDashboardContent() {
                     </div>
 
                     <div className="flex items-center gap-2">
+                      {(selectedApp.assignedStudents?.length > 0) && (
+                        <button
+                          type="button"
+                          onClick={() => handleUnassignSchoolStudents(selectedApp)}
+                          disabled={unassigningSchool}
+                          className="px-2.5 py-1 rounded-lg bg-amber-500/20 hover:bg-amber-500/30 text-amber-200 text-[10px] font-bold flex items-center gap-1 border border-amber-500/30 disabled:opacity-50"
+                        >
+                          <UserMinus size={12} />
+                          {unassigningSchool ? 'Unassigning…' : 'Unassign Academy Students'}
+                        </button>
+                      )}
                       {(selectedApp.assignedStudents?.length > 0) && (
                         <button
                           type="button"
