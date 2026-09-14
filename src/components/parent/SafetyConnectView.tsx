@@ -137,7 +137,13 @@ export default function SafetyConnectView({
     class_name: 'Enrolled Class',
   };
 
-  const activeBooking = data?.active_bookings?.[0];
+  const childBookings = (data?.active_bookings || []).filter(
+    (b: any) => !selectedChildId || b.child_id === selectedChildId
+  );
+  const activeBooking =
+    childBookings.find((b: any) => b.status === 'CONFIRMED' && b.escort_name) ||
+    childBookings.find((b: any) => b.status === 'CONFIRMED') ||
+    childBookings[0];
 
   return (
     <div className="bg-white rounded-3xl border border-slate-200/90 shadow-xs overflow-hidden font-sans">
@@ -236,7 +242,7 @@ export default function SafetyConnectView({
             {activePillar === 'school_escort' && (
               <SchoolEscortView
                 childrenList={childrenList}
-                escortData={data?.school_escort}
+                escortData={data?.school_escort || null}
                 onSelectSafetyPillar={(p) => setActivePillar(p as SafetyPillarTab)}
               />
             )}
@@ -298,6 +304,20 @@ export default function SafetyConnectView({
               <div className={`bg-white p-5 rounded-3xl border shadow-2xs space-y-3.5 ${
                 activeBooking.status === 'CONFIRMED' ? 'border-emerald-300' : 'border-amber-300'
               }`}>
+                {activeBooking.security_pin ? (
+                  <div className="p-4 rounded-2xl bg-slate-900 text-white flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                    <div>
+                      <p className="text-[10px] font-black uppercase tracking-wider text-amber-400">Today&apos;s parent phone code</p>
+                      <p className="text-[11px] text-slate-300 mt-1">
+                        Show this to {activeBooking.escort_name || 'your assigned escort'} at the doorstep if there is no student ID card. Valid only today ({activeBooking.security_pin_date || 'today'}). A new code is issued tomorrow — yesterday&apos;s code will not work. Gate officers do not need this code in the afternoon.
+                      </p>
+                    </div>
+                    <div className="text-center shrink-0 px-4">
+                      <span className="text-3xl font-black font-mono tracking-[0.35em]">{activeBooking.security_pin}</span>
+                      <span className="block text-[9px] text-amber-400 font-bold mt-1 uppercase">Expires at midnight</span>
+                    </div>
+                  </div>
+                ) : null}
                 <div className="flex flex-wrap items-center justify-between gap-2">
                   <div className="flex items-center gap-2">
                     <span className={`px-2.5 py-0.5 rounded-full font-black text-[10px] uppercase tracking-wider flex items-center gap-1 ${
@@ -325,10 +345,12 @@ export default function SafetyConnectView({
                       />
                       <div>
                         <div className="flex items-center gap-2">
-                          <h4 className="font-black text-slate-900 text-sm">{activeBooking.escort_name}</h4>
-                          <span className="text-[10px] font-black text-emerald-700 bg-emerald-100 px-1.5 py-0.5 rounded">
-                            Verified Escort
-                          </span>
+                          <h4 className="font-black text-slate-900 text-sm">{activeBooking.escort_name || 'Awaiting escort assignment'}</h4>
+                          {activeBooking.escort_name ? (
+                            <span className="text-[10px] font-black text-emerald-700 bg-emerald-100 px-1.5 py-0.5 rounded">
+                              Your Assigned Escort
+                            </span>
+                          ) : null}
                         </div>
                         {activeBooking.escort_phone && (
                           <p className="text-slate-600 text-[11px] font-mono mt-0.5">
@@ -344,9 +366,9 @@ export default function SafetyConnectView({
                     {/* Handover Security PIN Box */}
                     {activeBooking.security_pin ? (
                       <div className="p-3 rounded-2xl bg-slate-900 text-white text-center min-w-[150px] shadow-sm border border-slate-800">
-                        <span className="text-[9px] font-bold uppercase text-amber-400 tracking-wider block">Security Handover PIN</span>
+                        <span className="text-[9px] font-bold uppercase text-amber-400 tracking-wider block">Today&apos;s code</span>
                         <span className="text-2xl font-black font-mono tracking-widest text-white">{activeBooking.security_pin}</span>
-                        <span className="text-[8px] text-slate-400 block mt-0.5">Verify with escort at pickup</span>
+                        <span className="text-[8px] text-slate-400 block mt-0.5">Valid {activeBooking.security_pin_date || 'today'} only. A new code is issued tomorrow.</span>
                       </div>
                     ) : (
                       <div className="p-2.5 rounded-xl bg-amber-100 border border-amber-200 text-amber-900 text-center min-w-[150px] text-[10px] font-bold">
@@ -372,22 +394,31 @@ export default function SafetyConnectView({
                       <div className="p-2 rounded-xl bg-slate-50 border border-slate-100">
                         <span className="text-[10px] text-slate-500 font-bold block">Morning Trip</span>
                         <span className="font-black text-slate-900 text-xs sm:text-sm">
-                          ₦{Number(activeBooking.morning_fare || 1000).toLocaleString()}
+                          ₦{Number(activeBooking.morning_fare || 0).toLocaleString()}
                         </span>
                       </div>
                       <div className="p-2 rounded-xl bg-slate-50 border border-slate-100">
                         <span className="text-[10px] text-slate-500 font-bold block">Afternoon Trip</span>
                         <span className="font-black text-slate-900 text-xs sm:text-sm">
-                          ₦{Number(activeBooking.afternoon_fare || 1000).toLocaleString()}
+                          ₦{Number(activeBooking.afternoon_fare || 0).toLocaleString()}
                         </span>
                       </div>
                       <div className="p-2 rounded-xl bg-emerald-600 text-white shadow-2xs">
                         <span className="text-[10px] text-emerald-100 font-bold block">Daily Total</span>
                         <span className="font-black text-white text-xs sm:text-sm">
-                          ₦{Number(activeBooking.daily_fare || 2000).toLocaleString()}
+                          ₦{Number(activeBooking.daily_fare || 0).toLocaleString()}
                         </span>
                       </div>
                     </div>
+                    <p className="text-[10px] text-slate-500 leading-relaxed">
+                      ₦300 / 0.5 km · ₦30 / extra 0.1 km
+                      {typeof activeBooking.service_charge === 'number' ? (
+                        <> · 6% service ₦{Number(activeBooking.service_charge).toLocaleString()} per trip</>
+                      ) : (
+                        <> · 6% service charge included</>
+                      )}
+                      . This is the amount payable for your child&apos;s escort.
+                    </p>
                   </div>
 
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 pt-2 border-t border-slate-200/60 text-[11px] text-slate-700">

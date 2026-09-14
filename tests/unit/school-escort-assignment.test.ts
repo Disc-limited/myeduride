@@ -1,4 +1,5 @@
 import { TestSuite, expect } from '../utils/test-harness';
+import { calculateEscortFare } from '../../src/lib/escort/escort-pricing';
 
 export const schoolEscortAssignmentSuite = new TestSuite(
   'School Escort Assignment & City Manager Immediate Clearance Suite',
@@ -93,19 +94,17 @@ schoolEscortAssignmentSuite.test('Invariant 2: Haversine distance and tiered far
   };
 
   const calculateTripFares = (distanceKm: number, tripType: 'two_way' | 'morning_only' | 'afternoon_only') => {
-    const baseFare = 1000;
-    const perKmRate = 150;
-    const singleTrip = Math.round(baseFare + distanceKm * perKmRate);
-
-    const morning = tripType === 'afternoon_only' ? 0 : singleTrip;
-    const afternoon = tripType === 'morning_only' ? 0 : singleTrip;
-    const dailyTotal = morning + afternoon;
-
+    const fare = calculateEscortFare(
+      distanceKm,
+      tripType === 'two_way' ? 'both' : tripType
+    );
     return {
       distanceKm,
-      morning,
-      afternoon,
-      dailyTotal,
+      morning: fare.morningFare,
+      afternoon: fare.afternoonFare,
+      dailyTotal: fare.dailyFare,
+      distanceCharge: fare.distanceCharge,
+      serviceCharge: fare.serviceCharge,
     };
   };
 
@@ -114,15 +113,22 @@ schoolEscortAssignmentSuite.test('Invariant 2: Haversine distance and tiered far
   expect(distance > 5 && distance < 8).toBe(true);
 
   const faresTwoWay = calculateTripFares(5.0, 'two_way');
-  // singleTrip = 1000 + 5.0 * 150 = 1750
-  expect(faresTwoWay.morning).toBe(1750);
-  expect(faresTwoWay.afternoon).toBe(1750);
-  expect(faresTwoWay.dailyTotal).toBe(3500);
+  // 5.0 km = 10 x ₦300 = ₦3,000 + 6% (₦180) = ₦3,180 per trip
+  expect(faresTwoWay.distanceCharge).toBe(3000);
+  expect(faresTwoWay.serviceCharge).toBe(180);
+  expect(faresTwoWay.morning).toBe(3180);
+  expect(faresTwoWay.afternoon).toBe(3180);
+  expect(faresTwoWay.dailyTotal).toBe(6360);
 
   const faresMorningOnly = calculateTripFares(5.0, 'morning_only');
-  expect(faresMorningOnly.morning).toBe(1750);
+  expect(faresMorningOnly.morning).toBe(3180);
   expect(faresMorningOnly.afternoon).toBe(0);
-  expect(faresMorningOnly.dailyTotal).toBe(1750);
+  expect(faresMorningOnly.dailyTotal).toBe(3180);
+
+  const faresPointSix = calculateTripFares(0.6, 'two_way');
+  // 0.5 km = ₦300, extra 0.1 km = ₦30 → ₦330 + 6% (₦20) = ₦350
+  expect(faresPointSix.distanceCharge).toBe(330);
+  expect(faresPointSix.morning).toBe(350);
 });
 
 // 3. School Admin Assignment Creation and Immediate CM Approval Flow

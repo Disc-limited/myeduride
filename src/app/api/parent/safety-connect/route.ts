@@ -3,6 +3,9 @@ import { NextRequest, NextResponse } from 'next/server';
 import { getSessionFromRequest } from '@/lib/auth/auth-server';
 import { getAdminClient } from '@/lib/supabase/admin';
 import { nowUtcIso } from '@/lib/utils/time';
+import { todayInLagos } from '@/lib/timezone';
+import { ensureDailyHandoverPin } from '@/lib/escort/handover-pin';
+import { calculateEscortFare } from '@/lib/escort/escort-pricing';
 
 export const dynamic = 'force-dynamic';
 
@@ -16,8 +19,11 @@ export async function GET(request: NextRequest) {
     const { searchParams } = new URL(request.url);
     const childId = searchParams.get('child_id');
     const supabase = getAdminClient();
+    const pinDay = todayInLagos();
+    const unwrapRel = (rel: any) => (Array.isArray(rel) ? rel[0] : rel);
+    const LIVE_ASSIGNMENT_STATUSES = ['active', 'pending_confirmation', 'pending'];
 
-    // 1. If childId provided, query real child and route/escort assignment from database
+    // 1. If childId provided, query real child and the escort actually assigned to them
     let schoolEscort: any = null;
     let childRecord: any = null;
 
@@ -31,52 +37,111 @@ export async function GET(request: NextRequest) {
       childRecord = student;
 
       if (student) {
-        // Query route assignment
-        const { data: assignment } = await supabase
-          .from('student_route_assignments')
-          .select('*, morning_route:transport_routes(id, name, code, departure_morning, departure_afternoon, directions_summary, vehicle:school_vehicles(id, reg_number, make, model, capacity, insurance_status, roadworthiness_expiry), escort:user_profiles(id, full_name, phone, email, avatar_url))')
+        const childSchoolName =
+          unwrapRel(student.school)?.name || 'School Campus';
+
+        const { data: liveAssignRows } = await supabase
+          .from('escort_assignments')
+          .select('*, escort:escort_applications(id, full_name, phone, email, photo, passport_photograph, escort_type, operating_area, application_data, status), school:schools(id, name)')
           .eq('student_id', childId)
-          .eq('status', 'active')
-          .maybeSingle();
+          .in('status', LIVE_ASSIGNMENT_STATUSES)
+          .order('updated_at', { ascending: false })
+          .limit(8);
 
-        if (assignment && assignment.morning_route) {
-          const route = Array.isArray(assignment.morning_route) ? assignment.morning_route[0] : assignment.morning_route;
-          const vehicle = Array.isArray(route?.vehicle) ? route.vehicle[0] : route?.vehicle;
-          const escortUser = Array.isArray(route?.escort) ? route.escort[0] : route?.escort;
+        const assignedRow =
+          (liveAssignRows || []).find((a: any) => a.status === 'active') ||
+          (liveAssignRows || [])[0] ||
+          null;
+        const assignedEscort = unwrapRel(assignedRow?.escort);
+        const assignedSchool = unwrapRel(assignedRow?.school);
 
-          if (escortUser) {
-            schoolEscort = {
-              id: escortUser.id,
-              full_name: escortUser.full_name,
-              phone: escortUser.phone || '',
-              email: escortUser.email || '',
-              avatar_url: escortUser.avatar_url || null,
-              driver_license: 'Verified on Record',
-              nin_verified: true,
-              escort_type: 'School Escort',
-              school_name: student.school?.name || 'School Campus',
-              operational_status: 'Active On Duty',
-              vehicle: vehicle ? {
-                id: vehicle.id,
-                reg_number: vehicle.reg_number,
-                make_model: `${vehicle.make} ${vehicle.model}`,
-                capacity: vehicle.capacity,
-                roadworthiness_expiry: vehicle.roadworthiness_expiry || 'Active',
-                insurance_status: vehicle.insurance_status || 'Active',
-              } : null,
-              route: {
-                code: route.code,
-                name: route.name,
-                departure_morning: route.departure_morning || '06:45 AM',
-                departure_afternoon: route.departure_afternoon || '03:15 PM',
-                child_designated_stop: 'Designated Corridor Stop',
-                total_stops: 4,
-              },
-              approval: {
-                status: 'CITY_MANAGER_APPROVED',
-                badge: 'Verified School Staff Escort',
-              },
-            };
+        if (assignedEscort?.full_name) {
+          let appData = assignedEscort.application_data || {};
+          if (typeof appData === 'string') {
+            try { appData = JSON.parse(appData); } catch { appData = {}; }
+          }
+          schoolEscort = {
+            id: assignedEscort.id,
+            full_name: assignedEscort.full_name,
+            phone: assignedEscort.phone || '',
+            email: assignedEscort.email || '',
+            avatar_url: assignedEscort.photo || assignedEscort.passport_photograph || null,
+            driver_license: 'Verified on Record',
+            nin_verified: true,
+            escort_type: assignedEscort.escort_type === 'school_escort' ? 'School Escort' : 'MyEduRide Escort',
+            school_name: assignedSchool?.name || childSchoolName,
+            operational_status: assignedRow.status === 'active' ? 'Active On Duty' : 'Assigned — Awaiting Clearance',
+            vehicle: {
+              id: null,
+              reg_number: appData.assignedVehicle || appData.regNumber || appData.vehicle_plate || 'Certified Escort Vehicle',
+              make_model: appData.vehicleMakeModel || appData.vehicle || 'Certified Escort Fleet',
+              capacity: appData.capacity || null,
+              roadworthiness_expiry: 'Active',
+              insurance_status: 'Active',
+            },
+            route: {
+              code: appData.routeCode || 'RT',
+              name: assignedEscort.operating_area || 'Assigned Corridor',
+              departure_morning: '06:45 AM',
+              departure_afternoon: '03:15 PM',
+              child_designated_stop: 'Designated Home Doorstep',
+              total_stops: 4,
+            },
+            approval: {
+              status: assignedRow.status === 'active' ? 'CITY_MANAGER_APPROVED' : 'PENDING_CITY_MANAGER_APPROVAL',
+              badge: assignedRow.status === 'active' ? 'Verified Assigned Escort' : 'Assigned — City Manager Review',
+            },
+          };
+        }
+
+        // Keep route-staff escort as a fallback when no CM/school assignment row exists
+        if (!schoolEscort) {
+          const { data: assignment } = await supabase
+            .from('student_route_assignments')
+            .select('*, morning_route:transport_routes(id, name, code, departure_morning, departure_afternoon, directions_summary, vehicle:school_vehicles(id, reg_number, make, model, capacity, insurance_status, roadworthiness_expiry), escort:user_profiles(id, full_name, phone, email, avatar_url))')
+            .eq('student_id', childId)
+            .eq('status', 'active')
+            .maybeSingle();
+
+          if (assignment && assignment.morning_route) {
+            const route = unwrapRel(assignment.morning_route);
+            const vehicle = unwrapRel(route?.vehicle);
+            const escortUser = unwrapRel(route?.escort);
+
+            if (escortUser) {
+              schoolEscort = {
+                id: escortUser.id,
+                full_name: escortUser.full_name,
+                phone: escortUser.phone || '',
+                email: escortUser.email || '',
+                avatar_url: escortUser.avatar_url || null,
+                driver_license: 'Verified on Record',
+                nin_verified: true,
+                escort_type: 'School Escort',
+                school_name: childSchoolName,
+                operational_status: 'Active On Duty',
+                vehicle: vehicle ? {
+                  id: vehicle.id,
+                  reg_number: vehicle.reg_number,
+                  make_model: `${vehicle.make} ${vehicle.model}`,
+                  capacity: vehicle.capacity,
+                  roadworthiness_expiry: vehicle.roadworthiness_expiry || 'Active',
+                  insurance_status: vehicle.insurance_status || 'Active',
+                } : null,
+                route: {
+                  code: route.code,
+                  name: route.name,
+                  departure_morning: route.departure_morning || '06:45 AM',
+                  departure_afternoon: route.departure_afternoon || '03:15 PM',
+                  child_designated_stop: 'Designated Corridor Stop',
+                  total_stops: 4,
+                },
+                approval: {
+                  status: 'CITY_MANAGER_APPROVED',
+                  badge: 'Verified School Staff Escort',
+                },
+              };
+            }
           }
         }
       }
@@ -102,13 +167,11 @@ export async function GET(request: NextRequest) {
       approval_badge: 'City Manager Vetted & Certified',
     }));
 
-    // 3. Pillar 3: Query real active transport bookings
+    // 3. Pillar 3: Query this child's live transport bookings (not a sibling's)
     let activeChildBookings: any[] = [];
     try {
-      let bookingQuery = supabase.from('transport_bookings').select('*');
-      if (childId && session.user_id) {
-        bookingQuery = bookingQuery.or(`student_id.eq.${childId},parent_user_id.eq.${session.user_id}`);
-      } else if (childId) {
+      let bookingQuery = supabase.from('transport_bookings').select('*, school:schools(id, name)');
+      if (childId) {
         bookingQuery = bookingQuery.eq('student_id', childId);
       } else if (session.user_id) {
         bookingQuery = bookingQuery.eq('parent_user_id', session.user_id);
@@ -117,12 +180,29 @@ export async function GET(request: NextRequest) {
 
       if (bookings && bookings.length > 0) {
         const bookingIds = bookings.map((b) => b.id);
-        const { data: assignments } = await supabase
+        const studentIds = Array.from(new Set(bookings.map((b) => b.student_id).filter(Boolean)));
+        let assignments: any[] = [];
+        const { data: byBooking } = await supabase
           .from('escort_assignments')
-          .select('*, escort:escort_applications(id, full_name, phone, photo, operating_area, application_data)')
+          .select('*, escort:escort_applications(id, full_name, phone, photo, passport_photograph, operating_area, application_data, escort_type)')
           .in('booking_id', bookingIds);
+        if (byBooking) assignments = assignments.concat(byBooking);
+        if (studentIds.length > 0) {
+          const { data: byStudent } = await supabase
+            .from('escort_assignments')
+            .select('*, escort:escort_applications(id, full_name, phone, photo, passport_photograph, operating_area, application_data, escort_type)')
+            .in('student_id', studentIds)
+            .in('status', LIVE_ASSIGNMENT_STATUSES);
+          for (const row of byStudent || []) {
+            if (!assignments.some((a) => a.id === row.id)) assignments.push(row);
+          }
+        }
 
-        activeChildBookings = bookings.map((b) => {
+        const mapped = [];
+        for (const b of bookings) {
+          const dead = ['cancelled', 'canceled', 'rejected', 'reassigned'].includes(String(b.status || '').toLowerCase());
+          if (dead) continue;
+
           let meta: any = {};
           try {
             if (b.notes && b.notes.startsWith('{')) {
@@ -132,59 +212,93 @@ export async function GET(request: NextRequest) {
             meta = {};
           }
 
-          const matchedAssignment = assignments?.find((a) => a.booking_id === b.id);
-          const rawEscort = matchedAssignment?.escort;
-          const escort = Array.isArray(rawEscort) ? rawEscort[0] : rawEscort;
-
-          // Extract PIN from booking notes or assignment
-          let securityPin = null;
-          if (b.notes && typeof b.notes === 'string') {
-            const pinMatch = b.notes.match(/PIN:\s*(\d{4})/i);
-            if (pinMatch) securityPin = pinMatch[1];
+          const matchedAssignment =
+            assignments.find((a) => a.booking_id === b.id && LIVE_ASSIGNMENT_STATUSES.includes(a.status)) ||
+            assignments.find((a) => a.booking_id === b.id) ||
+            assignments.find((a) => a.student_id === b.student_id && a.status === 'active') ||
+            assignments.find((a) => a.student_id === b.student_id && LIVE_ASSIGNMENT_STATUSES.includes(a.status));
+          const escort = unwrapRel(matchedAssignment?.escort);
+          let escortAppData = escort?.application_data || {};
+          if (typeof escortAppData === 'string') {
+            try { escortAppData = JSON.parse(escortAppData); } catch { escortAppData = {}; }
           }
-          if (!securityPin && meta.security_pin) {
-            securityPin = meta.security_pin;
+
+          const ensured = ensureDailyHandoverPin(b.notes, pinDay);
+          if (ensured.rotated) {
+            const { error: pinErr } = await supabase
+              .from('transport_bookings')
+              .update({ notes: ensured.notes })
+              .eq('id', b.id);
+            if (pinErr) console.warn('[safety-connect] daily PIN persist notice:', pinErr);
           }
 
           const distanceKm = meta.distance_km || 4.5;
-          const morningFare = meta.morning_fare || (meta.trip_type === 'afternoon' ? 0 : 1500);
-          const afternoonFare = meta.afternoon_fare || (meta.trip_type === 'morning' ? 0 : 1500);
-          const dailyFare = meta.daily_fare || (morningFare + afternoonFare);
-          const tripType = meta.trip_type || 'both';
+          const tripType = meta.trip_type === 'afternoon' || meta.trip_type === 'afternoon_only'
+            ? 'afternoon_only'
+            : meta.trip_type === 'morning' || meta.trip_type === 'morning_only'
+              ? 'morning_only'
+              : 'both';
+          const fareResult = calculateEscortFare(distanceKm, tripType);
+          const morningFare = fareResult.morningFare;
+          const afternoonFare = fareResult.afternoonFare;
+          const dailyFare = fareResult.dailyFare;
 
           const isConfirmed = b.status === 'assigned' || matchedAssignment?.status === 'active';
 
-          return {
+          const bookingSchool = unwrapRel(b.school);
+          const childSchool = unwrapRel(childRecord?.school);
+          const rowSchoolName =
+            bookingSchool?.name ||
+            (b.student_id && childRecord?.id === b.student_id ? childSchool?.name : null) ||
+            childSchool?.name ||
+            'School Campus';
+
+          const childName =
+            childRecord && childRecord.id === b.student_id
+              ? `${childRecord.first_name} ${childRecord.last_name}`
+              : childRecord
+                ? `${childRecord.first_name} ${childRecord.last_name}`
+                : 'Student';
+
+          mapped.push({
             booking_id: b.id,
             child_id: b.student_id,
-            child_name: childRecord ? `${childRecord.first_name} ${childRecord.last_name}` : 'Student',
+            child_name: childName,
             parent_user_id: b.parent_user_id,
             source: b.source || 'school',
-            school_name: childRecord?.school?.name || 'School Campus',
+            school_name: rowSchoolName,
             pickup_date: b.requested_pickup_at ? b.requested_pickup_at.split('T')[0] : 'Today',
             pickup_time: meta.pickup_time || (b.requested_pickup_at ? b.requested_pickup_at.split('T')[1]?.slice(0, 5) : '07:00'),
             dropoff_time: meta.dropoff_time || '15:30',
             pickup_location: b.pickup_address || 'Designated Home Doorstep',
-            destination: childRecord?.school?.name || 'School Campus',
+            destination: rowSchoolName,
             distance_km: distanceKm,
             morning_fare: morningFare,
             afternoon_fare: afternoonFare,
             daily_fare: dailyFare,
             trip_type: tripType,
-            escort_id: escort?.id || null,
-            escort_name: escort?.full_name || 'MyEduRide Certified Escort',
-            escort_phone: escort?.phone || '+234 800 000 0000',
-            escort_photo: escort?.photo || null,
-            vehicle_plate: escort?.application_data?.assignedVehicle || 'Certified Escort Fleet Vehicle',
-            operating_area: escort?.operating_area || 'Metropolitan Safe Corridor',
-            security_pin: securityPin,
+            distance_charge: fareResult.distanceCharge,
+            service_charge: fareResult.serviceCharge,
+            service_charge_percent: fareResult.serviceChargePercent,
+            billable_km: fareResult.billableKm,
+            formatted_distance_charge: fareResult.formattedDistanceCharge,
+            formatted_service_charge: fareResult.formattedServiceCharge,
+            escort_id: escort?.id || meta.assigned_escort_id || null,
+            escort_name: escort?.full_name || meta.assigned_escort_name || null,
+            escort_phone: escort?.phone || meta.assigned_escort_phone || '',
+            escort_photo: escort?.photo || escort?.passport_photograph || null,
+            vehicle_plate: escortAppData.assignedVehicle || escortAppData.regNumber || escortAppData.vehicle_plate || 'Certified Escort Vehicle',
+            operating_area: escort?.operating_area || 'Assigned Corridor',
+            security_pin: ensured.pin,
+            security_pin_date: ensured.date,
             status: isConfirmed ? 'CONFIRMED' : 'PENDING_CM_REVIEW',
             stage: isConfirmed ? 5 : 2,
             stage_label: isConfirmed ? 'Escort Cleared & Dispatched' : 'Awaiting City Manager Clearance',
-            reason: meta.notes || b.notes || 'School Escort Assignment',
+            reason: meta.notes || (typeof b.notes === 'string' && !b.notes.startsWith('{') ? b.notes : 'School Escort Assignment'),
             created_at: b.created_at,
-          };
-        });
+          });
+        }
+        activeChildBookings = mapped;
       }
     } catch (bookingErr) {
       console.warn('[safety-connect GET] booking mapping notice:', bookingErr);
@@ -240,6 +354,51 @@ export async function GET(request: NextRequest) {
       child_boarding_event: null,
       corridor_waypoints: [],
     };
+
+    const childBooking =
+      (childId && activeChildBookings.find((b: any) => b.child_id === childId)) ||
+      activeChildBookings[0] ||
+      null;
+    if (schoolEscort) {
+      schoolEscort.security_pin = childBooking?.security_pin || schoolEscort.security_pin || null;
+      schoolEscort.security_pin_date = childBooking?.security_pin_date || pinDay;
+      if (childBooking?.escort_name && !schoolEscort.full_name) {
+        schoolEscort.full_name = childBooking.escort_name;
+      }
+    } else if (childBooking?.escort_name) {
+      schoolEscort = {
+        id: childBooking.escort_id,
+        full_name: childBooking.escort_name,
+        phone: childBooking.escort_phone || '',
+        email: '',
+        avatar_url: childBooking.escort_photo || null,
+        escort_type: 'Assigned Escort',
+        school_name: childBooking.school_name || 'School Campus',
+        operational_status: childBooking.status === 'CONFIRMED' ? 'Active On Duty' : 'Assigned — Awaiting Clearance',
+        vehicle: {
+          id: null,
+          reg_number: childBooking.vehicle_plate,
+          make_model: 'Certified Escort Fleet',
+          capacity: null,
+          roadworthiness_expiry: 'Active',
+          insurance_status: 'Active',
+        },
+        route: {
+          code: 'RT',
+          name: childBooking.operating_area,
+          departure_morning: childBooking.pickup_time,
+          departure_afternoon: childBooking.dropoff_time,
+          child_designated_stop: childBooking.pickup_location,
+          total_stops: 4,
+        },
+        approval: {
+          status: childBooking.status === 'CONFIRMED' ? 'CITY_MANAGER_APPROVED' : 'PENDING_CITY_MANAGER_APPROVAL',
+          badge: childBooking.status === 'CONFIRMED' ? 'Verified Assigned Escort' : 'Assigned — City Manager Review',
+        },
+        security_pin: childBooking.security_pin,
+        security_pin_date: childBooking.security_pin_date,
+      };
+    }
 
     return NextResponse.json({
       success: true,

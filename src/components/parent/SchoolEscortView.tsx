@@ -282,6 +282,31 @@ export default function SchoolEscortView({
       {/* ------------------------------------------------------------------------- */}
       {/* ROW 2: PRIMARY OPERATIONAL CONSOLE (3 COLUMNS OR EMPTY STATE) */}
       {/* ------------------------------------------------------------------------- */}
+      {escortData?.security_pin ? (
+        <div className="bg-slate-900 text-white rounded-3xl p-4 sm:p-5 border border-slate-800 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+          <div className="space-y-1">
+            <p className="text-[10px] font-black uppercase tracking-wider text-amber-400">Show this code on your phone</p>
+            <p className="text-[11px] text-slate-300 leading-relaxed">
+              Give this 4-digit code to {escortData.full_name || escortData.escort_name || 'your assigned escort'} at morning pickup if your child has no ID card yet. Valid only today{escortData.security_pin_date ? ` (${escortData.security_pin_date})` : ''}. Yesterday&apos;s code will not work. Gate officers do not need this code in the afternoon.
+            </p>
+          </div>
+          <div className="flex items-center gap-2 shrink-0">
+            <strong className="text-3xl font-black font-mono tracking-[0.3em]">{escortData.security_pin}</strong>
+            <button
+              type="button"
+              onClick={() => {
+                navigator.clipboard.writeText(String(escortData.security_pin));
+                toast.success('Parent phone code copied');
+              }}
+              className="p-1.5 rounded-lg bg-white/10 hover:bg-white/20 text-amber-300 cursor-pointer"
+              title="Copy parent phone code"
+            >
+              <Copy size={15} />
+            </button>
+          </div>
+        </div>
+      ) : null}
+
       {!hasEscort ? (
         <div className="bg-white rounded-3xl p-8 border border-slate-200/90 shadow-xs text-center space-y-4">
           <div className="w-14 h-14 rounded-2xl bg-slate-100 text-slate-400 flex items-center justify-center mx-auto border border-slate-200">
@@ -356,6 +381,33 @@ export default function SchoolEscortView({
                 <span>Use this ID to communicate securely with your escort.</span>
               </div>
             </div>
+
+            {escortData.security_pin ? (
+              <div className="bg-slate-900 text-white rounded-2xl p-4 space-y-2 border border-slate-800">
+                <span className="text-[9px] font-extrabold uppercase text-amber-400 tracking-wider block">
+                  Show this code on your phone
+                </span>
+                <div className="flex items-center justify-between gap-2">
+                  <strong className="text-2xl font-black font-mono tracking-[0.3em]">
+                    {escortData.security_pin}
+                  </strong>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      navigator.clipboard.writeText(String(escortData.security_pin));
+                      toast.success('Parent phone code copied');
+                    }}
+                    className="p-1.5 rounded-lg bg-white/10 hover:bg-white/20 text-amber-300 cursor-pointer"
+                    title="Copy parent phone code"
+                  >
+                    <Copy size={15} />
+                  </button>
+                </div>
+                <p className="text-[10px] text-slate-300 leading-relaxed">
+                  Give this 4-digit code to {escortData.full_name || 'your escort'} at morning pickup if your child has no ID card yet. Valid today only — a new code is issued tomorrow. Gate officers do not need this code in the afternoon.
+                </p>
+              </div>
+            ) : null}
 
             {/* School & Vehicle Info */}
             <div className="space-y-2.5 pt-1 text-xs text-slate-700">

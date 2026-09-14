@@ -236,6 +236,16 @@ export default function EscortBatchReceptionModal({
           </div>
         </div>
 
+        {mode === 'departure' ? (
+          <div className="px-5 py-2.5 bg-blue-50 border-b border-blue-200 text-[11px] text-blue-950 font-semibold leading-relaxed">
+            Afternoon release to escort does not need a parent phone code or student ID card. Confirm the roster and release. Scan and headcount override remain available.
+          </div>
+        ) : (
+          <div className="px-5 py-2.5 bg-emerald-50 border-b border-emerald-200 text-[11px] text-emerald-950 font-semibold leading-relaxed">
+            Morning sign-in can use ID scan or headcount override. Students without ID cards can still be received from the escort roster.
+          </div>
+        )}
+
         {/* 2. CONTROL TOOLBAR */}
         <div className="bg-slate-50 px-5 py-3 border-b border-slate-200 flex flex-wrap items-center justify-between gap-3">
           <div className="flex items-center gap-2">
@@ -422,7 +432,7 @@ export default function EscortBatchReceptionModal({
                   <span>
                     {mode === 'arrival'
                       ? `Sign In Selected (${selectedIds.size}) Students`
-                      : `Sign Out Selected (${selectedIds.size}) Students`}
+                      : `Release to Escort — No Code (${selectedIds.size})`}
                   </span>
                 </>
               )}

@@ -2,13 +2,15 @@ import { NextRequest, NextResponse } from 'next/server';
 import { getAdminClient } from '@/lib/supabase/admin';
 import { getSessionFromRequest, sessionHasRole } from '@/lib/session';
 import { sendEmail } from '@/lib/notifications/email-service';
-import { nowUtcIso } from '@/lib/utils/time';
+import { nowUtcIso, todayInLagos } from '@/lib/utils/time';
 import {
   notifyEscortAssignmentApproved,
   notifyEscortEmergencyReassigned,
 } from '@/lib/notifications/escort-workflow-notify';
 import { getPlatformSchoolId } from '@/lib/auth/super-admin';
 import { resolveEscortCategory } from '@/lib/escort/escort-category';
+import { extractHandoverPin, ensureDailyHandoverPin } from '@/lib/escort/handover-pin';
+import { calculateEscortFare } from '@/lib/escort/escort-pricing';
 
 export const dynamic = 'force-dynamic';
 
@@ -139,12 +141,20 @@ export async function GET(request: NextRequest) {
       if (!securityPin && meta.security_pin) {
         securityPin = meta.security_pin;
       }
+      if (!securityPin) {
+        securityPin = extractHandoverPin(b.notes);
+      }
 
       const distanceKm = meta.distance_km || 4.2;
-      const morningFare = meta.morning_fare || (meta.trip_type === 'afternoon' ? 0 : 1000);
-      const afternoonFare = meta.afternoon_fare || (meta.trip_type === 'morning' ? 0 : 1000);
-      const dailyFare = meta.daily_fare || (morningFare + afternoonFare);
-      const tripType = meta.trip_type || 'both';
+      const tripType = meta.trip_type === 'afternoon' || meta.trip_type === 'afternoon_only'
+        ? 'afternoon_only'
+        : meta.trip_type === 'morning' || meta.trip_type === 'morning_only'
+          ? 'morning_only'
+          : 'both';
+      const fareResult = calculateEscortFare(distanceKm, tripType);
+      const morningFare = fareResult.morningFare;
+      const afternoonFare = fareResult.afternoonFare;
+      const dailyFare = fareResult.dailyFare;
 
       let discountDetails: any = null;
       let actualCollected = b.fare_amount ? Number(b.fare_amount) : dailyFare;
@@ -180,6 +190,10 @@ export async function GET(request: NextRequest) {
         morning_fare: morningFare,
         afternoon_fare: afternoonFare,
         daily_fare: dailyFare,
+        distance_charge: fareResult.distanceCharge,
+        service_charge: fareResult.serviceCharge,
+        service_charge_percent: fareResult.serviceChargePercent,
+        billable_km: fareResult.billableKm,
         actual_amount_collected: actualCollected,
         discount_details: discountDetails,
         is_discounted: Boolean(discountDetails),
@@ -225,6 +239,7 @@ export async function GET(request: NextRequest) {
       const isConfirmed = a.status === 'active' || a.status === 'completed';
       const isPinned = Boolean(stu?.house_lat && stu?.house_lng);
 
+      const fallbackFare = calculateEscortFare(4.2, 'both');
       parentRequests.push({
         booking_id: a.booking_id || a.id,
         assignment_id: a.id,
@@ -237,10 +252,10 @@ export async function GET(request: NextRequest) {
         school_name: sch?.name || 'School Campus',
         source: 'school',
         distance_km: 4.2,
-        morning_fare: 1000,
-        afternoon_fare: 1000,
-        daily_fare: 2000,
-        actual_amount_collected: 2000,
+        morning_fare: fallbackFare.morningFare,
+        afternoon_fare: fallbackFare.afternoonFare,
+        daily_fare: fallbackFare.dailyFare,
+        actual_amount_collected: fallbackFare.dailyFare,
         discount_details: null,
         is_discounted: false,
         accountant_approval_ref: null,
@@ -1151,7 +1166,6 @@ export async function POST(request: NextRequest) {
         .maybeSingle();
 
       const escortName = escort?.full_name || 'Assigned Escort';
-      const securityPin = Math.floor(1000 + Math.random() * 9000).toString();
 
       // Check transport_bookings
       const { data: currentBooking } = await db
@@ -1160,15 +1174,20 @@ export async function POST(request: NextRequest) {
         .eq('id', booking_id)
         .maybeSingle();
 
+      const pinDay = todayInLagos();
+      const ensured = ensureDailyHandoverPin(currentBooking?.notes, pinDay);
+      const securityPin = ensured.pin || Math.floor(1000 + Math.random() * 9000).toString();
+
       let updatedBooking: any = null;
       let newAssignment: any = null;
 
       if (currentBooking) {
-        let mergedNotes = notes ? `CM Notes: ${notes} | PIN: ${securityPin}` : `PIN: ${securityPin}`;
+        let mergedNotes = notes ? `${ensured.notes} | CM Notes: ${notes}` : ensured.notes;
         if (currentBooking.notes && currentBooking.notes.startsWith('{')) {
           try {
-            const parsed = JSON.parse(currentBooking.notes);
+            const parsed = JSON.parse(ensured.notes);
             parsed.security_pin = securityPin;
+            parsed.security_pin_date = pinDay;
             parsed.approval_status = 'CITY_MANAGER_APPROVED';
             parsed.assigned_escort_id = escort_id;
             parsed.assigned_escort_name = escortName;
@@ -1199,10 +1218,15 @@ export async function POST(request: NextRequest) {
 
         let existingAssignment = byBooking;
         if (!existingAssignment && currentBooking.student_id) {
-          const { data: byStudent } = await db
+          let byStudentQuery = db
             .from('escort_assignments')
             .select('*')
             .eq('student_id', currentBooking.student_id)
+            .in('status', ['active', 'pending_confirmation', 'pending']);
+          if (currentBooking.school_id) {
+            byStudentQuery = byStudentQuery.eq('school_id', currentBooking.school_id);
+          }
+          const { data: byStudent } = await byStudentQuery
             .order('created_at', { ascending: false })
             .limit(1)
             .maybeSingle();
@@ -1339,15 +1363,19 @@ export async function POST(request: NextRequest) {
         }
         if (!escortId) continue;
 
-        const securityPin = Math.floor(1000 + Math.random() * 9000).toString();
+        const pinDay = todayInLagos();
+        const ensured = ensureDailyHandoverPin(b.notes, pinDay);
+        const securityPin = ensured.pin || Math.floor(1000 + Math.random() * 9000).toString();
 
-        let updatedNotes = b.notes ? `${b.notes} | PIN: ${securityPin}` : `PIN: ${securityPin}`;
-        if (b.notes && b.notes.startsWith('{')) {
+        let updatedNotes = ensured.notes;
+        if (ensured.notes.trim().startsWith('{')) {
           try {
-            meta.security_pin = securityPin;
-            meta.approval_status = 'CITY_MANAGER_APPROVED';
-            meta.assigned_escort_id = escortId;
-            updatedNotes = JSON.stringify(meta);
+            const parsed = JSON.parse(ensured.notes);
+            parsed.security_pin = securityPin;
+            parsed.security_pin_date = pinDay;
+            parsed.approval_status = 'CITY_MANAGER_APPROVED';
+            parsed.assigned_escort_id = escortId;
+            updatedNotes = JSON.stringify(parsed);
           } catch {
             // Keep fallback
           }

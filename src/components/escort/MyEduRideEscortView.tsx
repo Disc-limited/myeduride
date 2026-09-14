@@ -689,7 +689,7 @@ export default function MyEduRideEscortView({
                             <div>
                               <span className="font-black text-slate-900 block">{st.name}</span>
                               <span className="text-[10px] text-slate-400 block font-sans">
-                                {st.school_name || 'Kings College'} · {st.class_name || 'Class'}
+                                {st.school_name || 'Assigned School'} · {st.class_name || 'Class'}
                               </span>
                             </div>
                           </div>
@@ -874,7 +874,7 @@ export default function MyEduRideEscortView({
                             {st.name}
                           </h4>
                           <p className="text-[11px] text-slate-500 font-medium truncate">
-                            {st.school_name || 'Kings College'} • {st.class_name || 'Class'}
+                            {st.school_name || 'Assigned School'} • {st.class_name || 'Class'}
                           </p>
                           <span className="inline-block font-mono text-[10px] text-slate-400 mt-0.5">
                             ID: {st.student_id_number || st.id?.slice(0, 8)}

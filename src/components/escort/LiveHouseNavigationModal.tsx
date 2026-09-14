@@ -357,7 +357,7 @@ export default function LiveHouseNavigationModal({
               <div className="min-w-0">
                 <span className="font-black text-slate-900 block text-xs truncate">{studentName}</span>
                 <span className="text-[11px] text-slate-500 block truncate">
-                  {student.school_name || 'Kings College'} · {student.class_name || 'Assigned Student'}
+                  {student.school_name || 'Assigned School'} · {student.class_name || 'Assigned Student'}
                 </span>
               </div>
             </div>

@@ -1,4 +1,5 @@
 import { TestSuite, expect } from '../utils/test-harness';
+import { attachHandoverPin, ensureDailyHandoverPin, extractHandoverPin, isTodayHandoverPin, normalizePin } from '../../src/lib/escort/handover-pin';
 
 export const parentBookingWorkflowDomainSuite = new TestSuite('Parent Booking 5-Stage Workflow Domain Unit Suite', 'UNIT');
 
@@ -34,4 +35,36 @@ parentBookingWorkflowDomainSuite.test('Handover Security PIN: 4-digit code gener
 
   expect(pin.length).toBe(4);
   expect(typeof pin).toBe('string');
+});
+
+parentBookingWorkflowDomainSuite.test('Parent phone code: extract PIN from JSON notes and PIN: #### text without dropping other notes', () => {
+  expect(extractHandoverPin(JSON.stringify({ security_pin: '4821', school_notes: 'Keep me' }))).toBe('4821');
+  expect(extractHandoverPin('CM Notes: cleared | PIN: 9031')).toBe('9031');
+  expect(normalizePin('  12-34  ')).toBe('1234');
+
+  const attached = attachHandoverPin(JSON.stringify({ school_notes: 'Keep me' }), '7712');
+  const parsed = JSON.parse(attached);
+  expect(parsed.school_notes).toBe('Keep me');
+  expect(parsed.security_pin).toBe('7712');
+});
+
+parentBookingWorkflowDomainSuite.test('Daily parent phone code: rotates each day and yesterday\'s key cannot be reused', () => {
+  const dayOne = ensureDailyHandoverPin({ school_notes: 'Keep me' }, '2026-09-14');
+  expect(dayOne.pin.length).toBe(4);
+  expect(dayOne.rotated).toBe(true);
+  expect(isTodayHandoverPin(dayOne.notes, dayOne.pin, '2026-09-14')).toBe(true);
+
+  const sameDay = ensureDailyHandoverPin(JSON.parse(dayOne.notes), '2026-09-14');
+  expect(sameDay.pin).toBe(dayOne.pin);
+  expect(sameDay.rotated).toBe(false);
+
+  const dayTwo = ensureDailyHandoverPin(JSON.parse(dayOne.notes), '2026-09-15');
+  expect(dayTwo.rotated).toBe(true);
+  if (dayTwo.pin === dayOne.pin) {
+    throw new Error(`Expected a new daily pin, but ${dayTwo.pin} was reused`);
+  }
+  expect(isTodayHandoverPin(dayTwo.notes, dayOne.pin, '2026-09-15')).toBe(false);
+  expect(isTodayHandoverPin(dayTwo.notes, dayTwo.pin, '2026-09-15')).toBe(true);
+  expect(extractHandoverPin(dayTwo.notes)).toBe(dayTwo.pin);
+  expect(JSON.parse(dayTwo.notes).school_notes).toBe('Keep me');
 });

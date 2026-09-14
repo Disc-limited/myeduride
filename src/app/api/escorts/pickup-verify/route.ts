@@ -5,6 +5,7 @@ import { todayInLagos } from '@/lib/timezone';
 import { nowUtcIso } from '@/lib/utils/time';
 import { getEscortApplications } from '@/lib/escort/escort-db';
 import { resolveStudentIdAny } from '@/lib/attendance/resolve-student';
+import { extractHandoverPin, isTodayHandoverPin, normalizePin } from '@/lib/escort/handover-pin';
 
 export const dynamic = 'force-dynamic';
 
@@ -45,6 +46,9 @@ export async function POST(request: NextRequest) {
     const body = await request.json();
     const { school_id, action = 'morning_pickup', pin_code, scan_data, student_id_number } = body || {};
     let student_id = body?.student_id as string | undefined;
+    const enteredPin = normalizePin(pin_code);
+    const escortIdentifiers = [escortProfile?.id, escortProfile?.user_id, session?.user_id].filter(Boolean);
+    const today = todayInLagos();
 
     if (!student_id && (scan_data || student_id_number)) {
       const resolved = await resolveStudentIdAny(supabase, String(scan_data || student_id_number));
@@ -54,13 +58,53 @@ export async function POST(request: NextRequest) {
       student_id = resolved.id;
     }
 
-    if (!student_id) {
-      return NextResponse.json({ error: 'Scan a student ID card or enter the student ID number' }, { status: 400 });
+    // Students without ID cards: parent shows the 4-digit phone code; escort enters it to board them.
+    if (!student_id && enteredPin.length >= 4 && escortIdentifiers.length > 0) {
+      const { data: assignments } = await supabase
+        .from('escort_assignments')
+        .select('id, student_id, booking_id, school_id, status')
+        .in('escort_application_id', escortIdentifiers)
+        .in('status', ['active', 'completed', 'pending_confirmation', 'pending']);
+
+      const bookingIds = (assignments || []).map((a: any) => a.booking_id).filter(Boolean);
+      let pinBookings: any[] = [];
+      if (bookingIds.length > 0) {
+        const { data } = await supabase
+          .from('transport_bookings')
+          .select('id, student_id, notes, school_id, status')
+          .in('id', bookingIds);
+        pinBookings = data || [];
+      }
+
+      const pinMatches = pinBookings.filter((b: any) => isTodayHandoverPin(b.notes, enteredPin, today));
+      if (pinMatches.length > 1) {
+        return NextResponse.json(
+          { error: 'This parent phone code matches more than one student. Scan the ID or select the student from your list.' },
+          { status: 409 }
+        );
+      }
+      if (pinMatches.length === 1) {
+        student_id = pinMatches[0].student_id;
+      } else if (pinBookings.some((b: any) => extractHandoverPin(b.notes) === enteredPin)) {
+        return NextResponse.json(
+          { error: 'This code expired at midnight. Ask the parent to open Safety Connect and show today\'s code.' },
+          { status: 403 }
+        );
+      }
     }
 
-    const today = todayInLagos();
+    if (!student_id) {
+      return NextResponse.json(
+        {
+          error: enteredPin.length >= 4
+            ? 'Parent phone code not recognized for your assigned students. Ask the parent to open Safety Connect and show the 4-digit code.'
+            : 'Scan a student ID card, enter the student ID number, or enter the parent phone code',
+        },
+        { status: 400 }
+      );
+    }
+
     const timestamp = nowUtcIso();
-    const escortIdentifiers = [escortProfile?.id, escortProfile?.user_id, session?.user_id].filter(Boolean);
 
     // Fetch student for school_id and name
     const { data: student } = await supabase
@@ -80,7 +124,7 @@ export async function POST(request: NextRequest) {
         .select('id, status')
         .in('escort_application_id', escortIdentifiers)
         .eq('student_id', student_id)
-        .in('status', ['active', 'completed'])
+        .in('status', ['active', 'completed', 'pending_confirmation', 'pending'])
         .limit(1)
         .maybeSingle();
 
@@ -116,6 +160,55 @@ export async function POST(request: NextRequest) {
       if (!onEscortRoute) {
         return NextResponse.json(
           { error: 'This student is not on your City Manager-approved schedule' },
+          { status: 403 }
+        );
+      }
+    }
+
+    if (enteredPin.length >= 4) {
+      const { data: pinAssignment } = await supabase
+        .from('escort_assignments')
+        .select('booking_id')
+        .in('escort_application_id', escortIdentifiers.length ? escortIdentifiers : [escortId])
+        .eq('student_id', student_id)
+        .in('status', ['active', 'completed', 'pending_confirmation', 'pending'])
+        .order('created_at', { ascending: false })
+        .limit(1)
+        .maybeSingle();
+
+      let pinNotes: unknown = null;
+      if (pinAssignment?.booking_id) {
+        const { data: pinBooking } = await supabase
+          .from('transport_bookings')
+          .select('notes')
+          .eq('id', pinAssignment.booking_id)
+          .maybeSingle();
+        pinNotes = pinBooking?.notes;
+      }
+      if (!pinNotes) {
+        const { data: studentBookings } = await supabase
+          .from('transport_bookings')
+          .select('notes')
+          .eq('student_id', student_id)
+          .order('created_at', { ascending: false })
+          .limit(8);
+        pinNotes = (studentBookings || []).find((b: any) => extractHandoverPin(b.notes))?.notes || null;
+      }
+      if (!extractHandoverPin(pinNotes)) {
+        return NextResponse.json(
+          { error: 'No parent phone code is on file for this student. Use scan, student ID, or 1-tap confirm.' },
+          { status: 400 }
+        );
+      }
+      if (!isTodayHandoverPin(pinNotes, enteredPin, today)) {
+        const stored = extractHandoverPin(pinNotes);
+        return NextResponse.json(
+          {
+            error:
+              stored === enteredPin
+                ? 'This code expired at midnight. Ask the parent to open Safety Connect and show today\'s code.'
+                : 'Parent phone code does not match this student. Ask the parent to show today\'s code on their phone.',
+          },
           { status: 403 }
         );
       }

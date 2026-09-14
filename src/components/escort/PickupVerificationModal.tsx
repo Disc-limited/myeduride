@@ -52,10 +52,11 @@ export default function PickupVerificationModal({
   const actionType = isAfternoonDropoff ? 'afternoon_dropoff' : 'morning_pickup';
 
   const executeVerification = async (opts?: { pin?: string; scanData?: string; studentId?: string }) => {
-    const scanData = (opts?.scanData || manualId || '').trim();
+    const scanData = (opts?.scanData || (opts?.pin ? '' : manualId) || '').trim();
     const studentId = opts?.studentId || sampleStudent.id;
-    if (!studentId && !scanData) {
-      toast.error('Scan the student ID card or enter the student ID number');
+    const pin = opts?.pin;
+    if (!studentId && !scanData && !(pin && String(pin).replace(/\D/g, '').length >= 4)) {
+      toast.error('Scan the student ID, enter the ID number, or enter the parent phone code');
       return;
     }
 
@@ -69,7 +70,7 @@ export default function PickupVerificationModal({
           scan_data: scanData || undefined,
           school_id: sampleStudent.school_id,
           action: actionType,
-          pin_code: opts?.pin || pinCode || undefined,
+          pin_code: pin || undefined,
         }),
       });
 
@@ -99,7 +100,7 @@ export default function PickupVerificationModal({
   const handleVerifyPin = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!pinCode || pinCode.length < 4) {
-      toast.error('Please enter a valid 4-digit verification PIN');
+      toast.error('Please enter the 4-digit parent phone code');
       return;
     }
     await executeVerification({ pin: pinCode });
@@ -127,8 +128,8 @@ export default function PickupVerificationModal({
             </h3>
             <p className="text-xs text-slate-500">
               {actionType === 'morning_pickup'
-                ? 'Scan or enter the student ID to move them onto the bus pickup list'
-                : 'Scan or enter the student ID to sign them out of the vehicle'}
+                ? 'Scan the student ID if they have one. No ID card yet? Enter the 4-digit code from the parent\'s phone.'
+                : 'Scan or enter the student ID to sign them out of the vehicle. Gate officers do not need this parent code at school.'}
             </p>
           </div>
         </div>
@@ -140,7 +141,7 @@ export default function PickupVerificationModal({
             setManualId(code);
             executeVerification({ scanData: code });
           }}
-          hint="Scan the student ID card barcode or QR. You can also type the ID below."
+          hint="Scan the student ID card barcode or QR. You can also type the ID below, or use the parent phone code if they have no card yet."
         />
 
         <form
@@ -164,6 +165,33 @@ export default function PickupVerificationModal({
           >
             {verifying ? 'Saving…' : 'Add to list'}
           </button>
+        </form>
+
+        <form onSubmit={handleVerifyPin} className="rounded-2xl border border-amber-200 bg-amber-50/70 p-3 space-y-2">
+          <p className="text-[11px] font-extrabold text-amber-950">
+            No student ID card? Use the parent phone code
+          </p>
+          <p className="text-[10px] text-amber-800 leading-relaxed">
+            Ask the parent to open MyEduRide on their phone and show <strong>today&apos;s</strong> 4-digit code. Yesterday&apos;s code will not work. Gate officers do not need this code when releasing students to you at school in the afternoon.
+          </p>
+          <div className="flex items-center gap-2">
+            <input
+              type="text"
+              inputMode="numeric"
+              maxLength={6}
+              value={pinCode}
+              onChange={(e) => setPinCode(e.target.value.replace(/\D/g, ''))}
+              placeholder="Parent code"
+              className="flex-1 px-3 py-2 bg-white border border-amber-200 rounded-xl text-center text-sm font-mono tracking-widest text-slate-900 focus:outline-none focus:ring-2 focus:ring-amber-400"
+            />
+            <button
+              type="submit"
+              disabled={verifying || pinCode.length < 4}
+              className="px-3 py-2 rounded-xl bg-slate-900 hover:bg-slate-800 text-white text-xs font-extrabold disabled:opacity-50 cursor-pointer"
+            >
+              {verifying ? 'Saving…' : 'Confirm code'}
+            </button>
+          </div>
         </form>
 
         {hasStudent && (
@@ -229,7 +257,7 @@ export default function PickupVerificationModal({
               <form onSubmit={handleVerifyPin} className="space-y-4">
                 <div className="space-y-1.5 text-center">
                   <label className="text-xs font-semibold text-slate-700 block">
-                    Enter Guardian Security Verification PIN
+                    Guardian PIN / Parent Phone Code
                   </label>
                   <input
                     type="text"
@@ -239,7 +267,7 @@ export default function PickupVerificationModal({
                     placeholder="• • • •"
                     className="w-full text-center text-2xl font-mono tracking-widest px-4 py-3 bg-slate-50 border border-slate-200 rounded-2xl outline-none focus:ring-2 focus:ring-emerald-400 focus:bg-white text-slate-900"
                   />
-                  <p className="text-[10px] text-slate-400">PIN is available on parent&apos;s MyEduRide pass.</p>
+                  <p className="text-[10px] text-slate-400">Use today&apos;s code from the parent&apos;s MyEduRide pass. Yesterday&apos;s code will not work.</p>
                 </div>
 
                 <button

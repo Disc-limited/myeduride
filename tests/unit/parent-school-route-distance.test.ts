@@ -1,4 +1,5 @@
 import { TestSuite, expect } from '../utils/test-harness';
+import { calculateEscortFare } from '../../src/lib/escort/escort-pricing';
 
 export const parentSchoolRouteDistanceSuite = new TestSuite(
   'City Manager Parent Pinned House to School Route & Distance Engine Suite',
@@ -147,4 +148,24 @@ parentSchoolRouteDistanceSuite.test('Invariant 5: Filter and sort parent pinned 
   const sortedAll = filterAndSortByDistance(dataset, undefined, true);
   expect(sortedAll[0].distanceKm).toBe(2.1);
   expect(sortedAll[3].distanceKm).toBe(14.2);
+});
+
+parentSchoolRouteDistanceSuite.test('Invariant 6: Parent fare is ₦300 per 0.5 km, ₦30 per extra 0.1 km, plus 6% service charge', () => {
+  const halfKm = calculateEscortFare(0.5, 'both');
+  expect(halfKm.distanceCharge).toBe(300);
+  expect(halfKm.serviceCharge).toBe(18);
+  expect(halfKm.morningFare).toBe(318);
+  expect(halfKm.dailyFare).toBe(636);
+
+  const extraTenth = calculateEscortFare(0.6, 'morning_only');
+  expect(extraTenth.distanceCharge).toBe(330);
+  expect(extraTenth.serviceCharge).toBe(20);
+  expect(extraTenth.morningFare).toBe(350);
+  expect(extraTenth.afternoonFare).toBe(0);
+
+  const fourPointTwo = calculateEscortFare(4.2, 'both');
+  expect(fourPointTwo.distanceCharge).toBe(2460);
+  expect(fourPointTwo.serviceCharge).toBe(148);
+  expect(fourPointTwo.morningFare).toBe(2608);
+  expect(fourPointTwo.dailyFare).toBe(5216);
 });

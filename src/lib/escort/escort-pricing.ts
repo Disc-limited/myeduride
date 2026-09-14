@@ -19,6 +19,16 @@ export interface EscortFareBreakdown {
   formattedDailyFare: string;
   ratePerKm: number;
   baseFarePerTrip: number;
+  billableKm: number;
+  halfKmBlocks: number;
+  remainderTenths: number;
+  distanceCharge: number;
+  serviceCharge: number;
+  serviceChargePercent: number;
+  ratePerHalfKm: number;
+  ratePerTenthKm: number;
+  formattedDistanceCharge: string;
+  formattedServiceCharge: string;
 }
 
 /**
@@ -66,31 +76,64 @@ export function calculateSchoolToHomeDistance(
   };
 }
 
+export const RATE_PER_HALF_KM = 300;
+export const RATE_PER_TENTH_KM = 30;
+export const SERVICE_CHARGE_PERCENT = 6;
+
+export function billableDistanceKm(distanceKm: number): number {
+  const raw = Number(distanceKm);
+  const km = Number.isFinite(raw) && raw > 0 ? raw : 0.5;
+  const tenths = Math.ceil(km * 10 - 1e-9) / 10;
+  return Math.max(0.5, Number(tenths.toFixed(1)));
+}
+
+function formatNgn(val: number): string {
+  return `₦${val.toLocaleString('en-NG')}`;
+}
+
+/**
+ * Distance charge for one trip:
+ * - ₦300 for every complete 0.5 km
+ * - ₦30 for every extra 0.1 km
+ * Then 6% service charge is added for the parent-facing total.
+ */
+export function calculateDistanceCharge(distanceKm: number): {
+  billableKm: number;
+  halfKmBlocks: number;
+  remainderTenths: number;
+  distanceCharge: number;
+} {
+  const billableKm = billableDistanceKm(distanceKm);
+  const halfKmBlocks = Math.floor(billableKm / 0.5 + 1e-9);
+  const remainderKm = Number((billableKm - halfKmBlocks * 0.5).toFixed(1));
+  const remainderTenths = Math.round(remainderKm * 10);
+  const distanceCharge = halfKmBlocks * RATE_PER_HALF_KM + remainderTenths * RATE_PER_TENTH_KM;
+  return { billableKm, halfKmBlocks, remainderTenths, distanceCharge };
+}
+
 /**
  * Calculates escort booking fare based on distance and trip schedule.
- * Pricing model:
- * - Base Fare: ₦800 per single trip.
- * - Distance Rate: ₦150 per km.
- * - Minimum Fare: ₦1,000 per single trip.
- * - Both Trips: Morning + Afternoon fare.
+ * Pricing model (parent-facing):
+ * - ₦300 per 0.5 km
+ * - ₦30 for every additional 0.1 km
+ * - 6% service charge on the distance charge
+ * - Both trips: morning + afternoon (each trip billed separately)
+ * Legacy fields ratePerKm / baseFarePerTrip are kept for existing callers.
  */
 export function calculateEscortFare(
   distanceKm: number,
   tripType: 'both' | 'morning_only' | 'afternoon_only' = 'both'
 ): EscortFareBreakdown {
-  const validKm = Math.max(0.5, Number(distanceKm) || 5.0);
-  const baseFarePerTrip = 800;
-  const ratePerKm = 150;
-
-  // Single trip calculation rounded to nearest 50 Naira
-  const rawSingleFare = baseFarePerTrip + validKm * ratePerKm;
-  const singleTripFare = Math.max(1000, Math.round(rawSingleFare / 50) * 50);
+  const { billableKm, halfKmBlocks, remainderTenths, distanceCharge } = calculateDistanceCharge(distanceKm);
+  const serviceCharge = Math.round(distanceCharge * (SERVICE_CHARGE_PERCENT / 100));
+  const singleTripFare = distanceCharge + serviceCharge;
 
   const morningFare = tripType === 'afternoon_only' ? 0 : singleTripFare;
   const afternoonFare = tripType === 'morning_only' ? 0 : singleTripFare;
   const dailyFare = morningFare + afternoonFare;
 
-  const formatNgn = (val: number) => `₦${val.toLocaleString('en-NG')}`;
+  const ratePerKm = RATE_PER_HALF_KM / 0.5;
+  const baseFarePerTrip = RATE_PER_HALF_KM;
 
   return {
     tripType,
@@ -103,5 +146,15 @@ export function calculateEscortFare(
     formattedDailyFare: formatNgn(dailyFare),
     ratePerKm,
     baseFarePerTrip,
+    billableKm,
+    halfKmBlocks,
+    remainderTenths,
+    distanceCharge,
+    serviceCharge,
+    serviceChargePercent: SERVICE_CHARGE_PERCENT,
+    ratePerHalfKm: RATE_PER_HALF_KM,
+    ratePerTenthKm: RATE_PER_TENTH_KM,
+    formattedDistanceCharge: formatNgn(distanceCharge),
+    formattedServiceCharge: formatNgn(serviceCharge),
   };
 }

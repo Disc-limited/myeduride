@@ -184,10 +184,11 @@ export async function notifyEscortAssignmentApproved(params: {
       .eq('id', bookingId)
       .maybeSingle();
 
-    const actualSchoolId = schoolId || booking?.school_id;
+    const bookingSchool = Array.isArray(booking?.school) ? booking.school[0] : booking?.school;
+    const actualSchoolId = schoolId || booking?.school_id || bookingSchool?.id;
     const actualStudentId = studentId || booking?.student_id;
     const studentName = booking?.student ? `${booking.student.first_name} ${booking.student.last_name}` : 'Student';
-    const schoolName = booking?.school?.name || 'School';
+    const schoolName = bookingSchool?.name || 'School';
 
     // 2. Fetch Escort Details
     const { data: escort } = await supabase

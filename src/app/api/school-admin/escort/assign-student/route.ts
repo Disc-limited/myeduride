@@ -9,6 +9,7 @@ import { normalizeEscortTripType } from '@/lib/escort/normalize-trip-type';
 import { notifyEscortAssignmentCreated } from '@/lib/notifications/escort-workflow-notify';
 import { checkSchoolTimingClash, validateEscortSchoolLimit } from '@/lib/escort/escort-scheduler';
 import { isApprovedMyEduRideEscort, resolveEscortCategory } from '@/lib/escort/escort-category';
+import { generateHandoverPin } from '@/lib/escort/handover-pin';
 
 export const dynamic = 'force-dynamic';
 
@@ -349,9 +350,17 @@ export async function POST(request: NextRequest) {
       formatted_morning_fare: fareResult.formattedMorningFare,
       formatted_afternoon_fare: fareResult.formattedAfternoonFare,
       formatted_daily_fare: fareResult.formattedDailyFare,
+      distance_charge: fareResult.distanceCharge,
+      service_charge: fareResult.serviceCharge,
+      service_charge_percent: fareResult.serviceChargePercent,
+      billable_km: fareResult.billableKm,
+      rate_per_half_km: fareResult.ratePerHalfKm,
+      rate_per_tenth_km: fareResult.ratePerTenthKm,
       assigned_escort_id: escort_id,
       assigned_escort_name: escortName,
       assigned_escort_phone: escortPhone,
+      security_pin: generateHandoverPin(),
+      security_pin_date: today,
       school_notes: notes || '',
       start_date: pickupDate,
       approval_status: 'PENDING_CITY_MANAGER_APPROVAL',

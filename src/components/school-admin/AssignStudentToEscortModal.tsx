@@ -21,6 +21,7 @@ import {
   ChevronDown
 } from 'lucide-react';
 import { toast } from 'sonner';
+import { calculateEscortFare } from '@/lib/escort/escort-pricing';
 
 interface AssignStudentToEscortModalProps {
   isOpen: boolean;
@@ -159,22 +160,23 @@ export default function AssignStudentToEscortModal({
 
   // Calculate fare breakdown
   const fareEstimates = useMemo(() => {
-    if (!selectedStudents.length) return { distance: 3.5, morning: 1525, afternoon: 1525, total: 3050 };
     const distance =
-      selectedStudents.reduce((sum, s) => sum + (Number(s.estimated_distance_km) || 3.5), 0) /
-      selectedStudents.length;
-    const baseFare = 1000;
-    const perKmRate = 150;
-    const morning = Math.round(baseFare + distance * perKmRate);
-    const afternoon = Math.round(baseFare + distance * perKmRate);
-    let total = morning + afternoon;
-    if (tripType === 'morning_only') total = morning;
-    if (tripType === 'afternoon_only') total = afternoon;
+      selectedStudents.length > 0
+        ? selectedStudents.reduce((sum, s) => sum + (Number(s.estimated_distance_km) || 3.5), 0) /
+          selectedStudents.length
+        : 3.5;
+    const trip =
+      tripType === 'morning_only' || tripType === 'afternoon_only' ? tripType : 'both';
+    const fare = calculateEscortFare(distance, trip);
     return {
-      distance,
-      morning,
-      afternoon,
-      total,
+      distance: Number(Number(distance).toFixed(1)),
+      morning: fare.morningFare,
+      afternoon: fare.afternoonFare,
+      total: fare.dailyFare,
+      distanceCharge: fare.distanceCharge,
+      serviceCharge: fare.serviceCharge,
+      serviceChargePercent: fare.serviceChargePercent,
+      billableKm: fare.billableKm,
     };
   }, [selectedStudents, tripType]);
 
@@ -546,6 +548,9 @@ export default function AssignStudentToEscortModal({
                   </span>
                 </div>
               </div>
+              <p className="text-[10px] text-slate-400 leading-relaxed">
+                ₦300 per 0.5 km · ₦30 per extra 0.1 km · 6% service charge included. Distance billed: {fareEstimates.billableKm} km (charge ₦{fareEstimates.distanceCharge.toLocaleString()} + service ₦{fareEstimates.serviceCharge.toLocaleString()} per trip).
+              </p>
             </div>
 
             {/* TRIP SCHEDULE & TYPE CONFIGURATION */}

@@ -6,6 +6,7 @@ import { getEscortApplications } from '@/lib/escort/escort-db';
 import { findEscortApplicationForSession, resolveEscortCategory } from '@/lib/escort/escort-category';
 import { nowUtcIso } from '@/lib/utils/time';
 import { checkSchoolTimingClash } from '@/lib/escort/escort-scheduler';
+import { calculateEscortFare } from '@/lib/escort/escort-pricing';
 
 export const dynamic = 'force-dynamic';
 
@@ -81,24 +82,41 @@ export async function GET(request: NextRequest) {
       }
     }
 
-    // If schoolData not found from user_school_roles, try default primary school
-    if (!schoolData) {
-      const { data: defaultSchool } = await supabase
-        .from('schools')
-        .select('*')
-        .limit(1)
-        .maybeSingle();
-      schoolData = defaultSchool;
-    }
+    // If schoolData not found from user_school_roles, leave it empty.
+    // Never pick an arbitrary platform school — that labels every student with the wrong campus.
 
     const schoolId = schoolData?.id;
 
-    // 3. Fetch Assigned Route & Stops
+    // 3. Fetch Assigned Route & Stops — only routes actually assigned to this escort
     let assignedRoute: any = null;
     let routeStops: any[] = [];
     let assignedVehicle: any = null;
 
-    if (schoolId) {
+    if (escortIdentifiers.length > 0) {
+      const uuidIds = escortIdentifiers.filter((id) =>
+        /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(String(id))
+      );
+      if (uuidIds.length > 0) {
+        const { data: escortRoutes } = await supabase
+          .from('transport_routes')
+          .select('*')
+          .eq('is_active', true)
+          .or(
+            [
+              `assigned_escort_id.in.(${uuidIds.join(',')})`,
+              `assigned_escort_user_id.in.(${uuidIds.join(',')})`,
+            ].join(',')
+          );
+
+        if (escortRoutes && escortRoutes.length > 0) {
+          assignedRoute =
+            (schoolId && escortRoutes.find((r) => r.school_id === schoolId)) ||
+            escortRoutes[0];
+        }
+      }
+    }
+
+    if (!assignedRoute && schoolId) {
       const { data: routes } = await supabase
         .from('transport_routes')
         .select('*')
@@ -107,9 +125,12 @@ export async function GET(request: NextRequest) {
 
       if (routes && routes.length > 0) {
         assignedRoute =
-          routes.find((r) => escortIdentifiers.includes(r.assigned_escort_user_id)) ||
-          routes[0];
+          routes.find((r) =>
+            escortIdentifiers.includes(r.assigned_escort_user_id) ||
+            escortIdentifiers.includes(r.assigned_escort_id)
+          ) || null;
       }
+    }
 
       if (assignedRoute) {
         const { data: stops } = await supabase
@@ -146,8 +167,9 @@ export async function GET(request: NextRequest) {
       if (escortIdentifiers.length > 0) {
         const { data: assignmentsData } = await supabase
           .from('escort_assignments')
-          .select('*')
+          .select('*, school:schools(id, name, address, gps_lat, gps_lng, location_address)')
           .in('escort_application_id', escortIdentifiers)
+          .in('status', ['active', 'pending_confirmation', 'pending'])
           .order('created_at', { ascending: false })
           .limit(50);
 
@@ -159,15 +181,16 @@ export async function GET(request: NextRequest) {
       console.warn('[dashboard-live] escort_assignments query notice:', err);
     }
 
-    // 4.1 Resolve all assigned schools (supporting dual-school assignments)
+    // 4.1 Resolve assigned schools from live assignments first (the student's real campus)
+    const unwrapRel = (rel: any) => (Array.isArray(rel) ? rel[0] : rel);
     const distinctSchoolIds = new Set<string>();
+    for (const a of liveAssignments) {
+      if (a.school_id) distinctSchoolIds.add(a.school_id);
+    }
     if (escortProfile?.primary_school_id) distinctSchoolIds.add(escortProfile.primary_school_id);
     if (escortProfile?.secondary_school_id) distinctSchoolIds.add(escortProfile.secondary_school_id);
     if (escortProfile?.school_id) distinctSchoolIds.add(escortProfile.school_id);
     if (schoolId) distinctSchoolIds.add(schoolId);
-    for (const a of liveAssignments) {
-      if (a.school_id) distinctSchoolIds.add(a.school_id);
-    }
 
     let assignedSchools: any[] = [];
     let dualSchoolSchedule: any = null;
@@ -179,8 +202,11 @@ export async function GET(request: NextRequest) {
           .in('id', Array.from(distinctSchoolIds));
         if (sList && sList.length > 0) {
           assignedSchools = sList;
-          if (!schoolData || !schoolData.id) {
-            schoolData = sList[0];
+          const assignmentSchoolIds = liveAssignments.map((a) => a.school_id).filter(Boolean);
+          const preferredSchool =
+            sList.find((s: any) => assignmentSchoolIds.includes(s.id)) || sList[0];
+          if (!schoolData?.id || (assignmentSchoolIds.length > 0 && !assignmentSchoolIds.includes(schoolData.id))) {
+            schoolData = preferredSchool;
           }
         }
 
@@ -248,26 +274,14 @@ export async function GET(request: NextRequest) {
       const { data: stList } = await supabase
         .from('students')
         .select(`
-          id, first_name, last_name, student_id_number, photo_url, is_active,
+          id, first_name, last_name, student_id_number, photo_url, is_active, school_id,
           house_address, house_lat, house_lng, house_landmark, house_notes, house_pinned_at,
-          class:school_classes(name)
+          class:school_classes(name),
+          school:schools(id, name, address, gps_lat, gps_lng, location_address)
         `)
         .in('id', allTargetStudentIds);
 
       assignedStudents = stList || [];
-    } else if (schoolId) {
-      const { data: defaultSt } = await supabase
-        .from('students')
-        .select(`
-          id, first_name, last_name, student_id_number, photo_url, is_active,
-          house_address, house_lat, house_lng, house_landmark, house_notes, house_pinned_at,
-          class:school_classes(name)
-        `)
-        .eq('school_id', schoolId)
-        .eq('is_active', true)
-        .limit(10);
-
-      assignedStudents = defaultSt || [];
     }
 
     // Merge student objects directly attached in liveBookings into assignedStudents
@@ -321,8 +335,12 @@ export async function GET(request: NextRequest) {
       if (matchBooking?.notes) {
         try {
           const parsed = typeof matchBooking.notes === 'string' ? JSON.parse(matchBooking.notes) : matchBooking.notes;
+          if (parsed?.distance_km != null) {
+            return calculateEscortFare(Number(parsed.distance_km), parsed.trip_type === 'morning_only' || parsed.trip_type === 'afternoon_only' ? parsed.trip_type : 'both').dailyFare;
+          }
           if (parsed?.fareResult?.dailyFare) return Number(parsed.fareResult.dailyFare);
           if (parsed?.dailyFare) return Number(parsed.dailyFare);
+          if (parsed?.daily_fare) return Number(parsed.daily_fare);
           if (parsed?.fare_amount) return Number(parsed.fare_amount);
         } catch {}
       }
@@ -333,8 +351,7 @@ export async function GET(request: NextRequest) {
           if (!isNaN(num) && num > 0) return num;
         }
       }
-      // Standard default approved daily fare
-      return 3500;
+      return calculateEscortFare(5).dailyFare;
     };
 
     const extractDiscountInfo = (stId: string): any => {
@@ -431,10 +448,17 @@ export async function GET(request: NextRequest) {
       const matchAssignment = liveAssignments.find((a) => a.student_id === st.id);
       const isCmApproved = matchAssignment ? matchAssignment.status === 'active' : true;
       const cmStatusLabel = matchAssignment?.status === 'pending_confirmation' ? 'pending_approval' : 'approved';
-      const assignedSchoolName = matchAssignment?.school?.name || schoolData?.name || 'School Fleet';
+      const assignmentSchool = unwrapRel(matchAssignment?.school);
+      const studentSchool = unwrapRel(st.school);
+      const rowSchool =
+        assignmentSchool ||
+        studentSchool ||
+        assignedSchools.find((s: any) => s.id === (matchAssignment?.school_id || st.school_id)) ||
+        null;
+      const assignedSchoolName = rowSchool?.name || 'Assigned School';
 
-      const schoolLat = schoolData?.gps_lat ? Number(schoolData.gps_lat) : 6.4474;
-      const schoolLng = schoolData?.gps_lng ? Number(schoolData.gps_lng) : 3.4731;
+      const schoolLat = rowSchool?.gps_lat != null ? Number(rowSchool.gps_lat) : (schoolData?.gps_lat ? Number(schoolData.gps_lat) : null);
+      const schoolLng = rowSchool?.gps_lng != null ? Number(rowSchool.gps_lng) : (schoolData?.gps_lng ? Number(schoolData.gps_lng) : null);
       const houseLat = st.house_lat ? Number(st.house_lat) : null;
       const houseLng = st.house_lng ? Number(st.house_lng) : null;
 
@@ -442,7 +466,7 @@ export async function GET(request: NextRequest) {
       let estimatedTransitMins: number | null = null;
       let directionsUrl: string | null = null;
 
-      if (houseLat != null && houseLng != null) {
+      if (houseLat != null && houseLng != null && schoolLat != null && schoolLng != null) {
         distanceKm = computeHaversineDistanceKm(schoolLat, schoolLng, houseLat, houseLng);
         estimatedTransitMins = Math.max(5, Math.round((distanceKm / 25) * 60));
         directionsUrl = `https://www.google.com/maps/dir/?api=1&origin=${schoolLat},${schoolLng}&destination=${houseLat},${houseLng}&travelmode=driving`;
@@ -469,11 +493,11 @@ export async function GET(request: NextRequest) {
         student_id_number: st.student_id_number || `2026-${1000 + idx}`,
         class_name: cls,
         photo_url: st.photo_url || null,
-        school_id: matchAssignment?.school_id || st.school_id || schoolId,
+        school_id: matchAssignment?.school_id || st.school_id || rowSchool?.id || null,
         school_name: assignedSchoolName,
         school_lat: schoolLat,
         school_lng: schoolLng,
-        school_address: schoolData?.location_address || schoolData?.address || 'School Campus Grounds',
+        school_address: rowSchool?.location_address || rowSchool?.address || schoolData?.location_address || schoolData?.address || 'School Campus Grounds',
         city_manager_status: cmStatusLabel,
         city_manager_approved: isCmApproved,
         show_price: !isSchoolEscort,
@@ -681,18 +705,20 @@ export async function GET(request: NextRequest) {
         is_school_escort: isSchoolEscort,
         is_myeduride_escort: !isSchoolEscort,
       },
-      school: {
-        id: schoolData?.id || '0af823c7-4587-4e97-9ff5-b92fc979a167',
-        name: schoolData?.name || 'Greenfield International School',
-        city: schoolData?.city || 'Lekki',
-        state: schoolData?.state || 'Lagos State',
-        address: schoolData?.location_address || schoolData?.address || 'Admiralty Way, Lekki Phase 1',
-        gps_lat: schoolData?.gps_lat ? Number(schoolData.gps_lat) : null,
-        gps_lng: schoolData?.gps_lng ? Number(schoolData.gps_lng) : null,
-        landmark: schoolData?.location_landmark || '',
-        is_pinned: schoolData?.gps_lat != null && schoolData?.gps_lng != null,
-        logo_url: schoolData?.logo_url || '/dashboard/logo.png',
-      },
+      school: schoolData
+        ? {
+            id: schoolData.id,
+            name: schoolData.name,
+            city: schoolData.city || '',
+            state: schoolData.state || '',
+            address: schoolData.location_address || schoolData.address || '',
+            gps_lat: schoolData.gps_lat != null ? Number(schoolData.gps_lat) : null,
+            gps_lng: schoolData.gps_lng != null ? Number(schoolData.gps_lng) : null,
+            landmark: schoolData.location_landmark || '',
+            is_pinned: schoolData.gps_lat != null && schoolData.gps_lng != null,
+            logo_url: schoolData.logo_url || '/dashboard/logo.png',
+          }
+        : null,
       assigned_schools: assignedSchools,
       dual_school_schedule: dualSchoolSchedule,
       driver: driverData,

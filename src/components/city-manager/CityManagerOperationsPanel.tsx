@@ -706,13 +706,18 @@ export function CityManagerOperationsPanel() {
                 <div className="grid grid-cols-2 gap-1.5 text-[10px]">
                   <div className="bg-slate-900 p-1.5 rounded-lg text-center">
                     <span className="text-slate-500 block">Morning Trip</span>
-                    <span className="font-bold text-slate-200">₦{Number(req.morning_fare || 1000).toLocaleString()}</span>
+                    <span className="font-bold text-slate-200">₦{Number(req.morning_fare || 0).toLocaleString()}</span>
                   </div>
                   <div className="bg-slate-900 p-1.5 rounded-lg text-center">
                     <span className="text-slate-500 block">Afternoon Trip</span>
-                    <span className="font-bold text-slate-200">₦{Number(req.afternoon_fare || 1000).toLocaleString()}</span>
+                    <span className="font-bold text-slate-200">₦{Number(req.afternoon_fare || 0).toLocaleString()}</span>
                   </div>
                 </div>
+                {typeof req.service_charge === 'number' ? (
+                  <p className="text-[9px] text-slate-500 leading-snug">
+                    ₦300 / 0.5 km · ₦30 / 0.1 km · 6% service ₦{Number(req.service_charge).toLocaleString()} per trip
+                  </p>
+                ) : null}
                 <div className="flex items-center justify-between text-[11px] pt-1 border-t border-slate-800 gap-2">
                   <span className="text-emerald-300 font-bold">Daily Total:</span>
                   <div className="text-right">
