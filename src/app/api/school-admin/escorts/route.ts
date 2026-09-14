@@ -3,6 +3,7 @@ import { getSessionFromRequest, isAuthorizedSchoolAdmin } from '@/lib/auth/auth-
 import { getAdminClient } from '@/lib/supabase/admin';
 import { nowUtcIso } from '@/lib/utils/time';
 import { getEscortApplications } from '@/lib/escort/escort-db';
+import { isApprovedMyEduRideEscort, resolveEscortCategory } from '@/lib/escort/escort-category';
 
 export const dynamic = 'force-dynamic';
 
@@ -45,8 +46,11 @@ export async function GET(request: NextRequest) {
     // 2. Fetch escort applications created by/for this school
     const allApps = await getEscortApplications().catch(() => []);
     const schoolApps = (allApps || []).filter(
-      (a) => a.createdBySchoolId === primarySchoolId || a.schoolId === primarySchoolId
+      (a) =>
+        resolveEscortCategory(a) === 'school_escort' &&
+        (a.createdBySchoolId === primarySchoolId || a.schoolId === primarySchoolId)
     );
+    const myedurideApps = (allApps || []).filter((a) => isApprovedMyEduRideEscort(a));
 
     // 3. Fetch school vehicles to link assignments
     const { data: vehicles } = await supabase
@@ -184,6 +188,60 @@ export async function GET(request: NextRequest) {
           duty_type: 'Full Day Route Transit',
           shift_window: '06:30 AM – 04:30 PM',
           assigned_by: 'School Transport Coordinator',
+          assigned_at: app.created_at || nowUtcIso(),
+        },
+        approval: {
+          status: app.status || 'CITY_MANAGER_APPROVED',
+          verified_by: 'City Manager Lagos Central',
+          verification_date: app.created_at || nowUtcIso(),
+          background_check: 'Passed (Clean Record)',
+          medical_clearance: 'Passed (Certified Fit)',
+        },
+        operational_status: app.status === 'CITY_MANAGER_APPROVED' || app.status === 'ACTIVE' ? 'Active On Duty' : 'Standby',
+        active_trip: null,
+        connected_students: [],
+        created_at: app.created_at || nowUtcIso(),
+      });
+    }
+
+    for (const app of myedurideApps) {
+      if (seenIds.has(app.id) || (app.emailOrUsername && seenIds.has(app.emailOrUsername)) || (app.email && seenIds.has(app.email))) continue;
+      seenIds.add(app.id);
+
+      escorts.push({
+        id: app.id,
+        user_id: app.user_id || app.id,
+        full_name: app.fullName || app.name || 'Escort',
+        phone: app.phone || '+234 800 000 0000',
+        email: app.email || app.emailOrUsername || '',
+        avatar_url: app.photo || null,
+        nin: app.nin || 'Verified',
+        driver_license: app.driverLicense || app.driversLicence || 'Verified',
+        escort_type: 'MyEduRide Escort',
+        school_id: primarySchoolId,
+        school_name: (session as any).primary_school?.name || 'School',
+        vehicle: app.vehicle || (app.regNumber ? {
+          id: `VH-${app.id}`,
+          reg_number: app.regNumber,
+          make_model: `${app.make || 'Toyota'} ${app.model || 'HiAce'}`.trim(),
+          type: app.vehicleType || 'Transit Vehicle',
+          capacity: Number(app.seatCapacity || 14),
+          roadworthiness_expiry: 'Active',
+          insurance_status: 'Active',
+        } : null),
+        route: app.operatingArea ? {
+          id: `RT-${app.id}`,
+          code: 'MYE-RT',
+          name: app.operatingArea,
+          departure_morning: '06:45 AM',
+          departure_afternoon: '03:15 PM',
+          total_stops: 4,
+          corridor: `${app.operatingArea} Corridor`,
+        } : null,
+        assignment: {
+          duty_type: 'MyEduRide Platform Assignment',
+          shift_window: '06:30 AM – 04:30 PM',
+          assigned_by: 'City Manager',
           assigned_at: app.created_at || nowUtcIso(),
         },
         approval: {

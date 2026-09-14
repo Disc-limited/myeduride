@@ -6,9 +6,41 @@ import { isSuperAdminUsername, DEFAULT_PLATFORM_SCHOOL_ID } from '@/lib/auth/sup
 import { findProfileByUsername } from '@/lib/auth/ensure-user';
 import { authEmailFromUsername, isValidUsername, normalizeUsername } from '@/lib/auth/username';
 import { writeAuditLog } from '@/lib/audit/log';
+import {
+  findEscortApplicationForSession,
+  hydrateEscortApplication,
+  resolveEscortCategory,
+} from '@/lib/escort/escort-category';
+
+export const maxDuration = 30;
 
 const MAX_FAILED_ATTEMPTS = 5;
 const LOCK_MINUTES = 15;
+
+const NON_ESCORT_PORTAL_ROLES = new Set([
+  'school_admin',
+  'super_admin',
+  'parent',
+  'teacher',
+  'gate_officer',
+  'city_manager',
+]);
+
+const ESCORT_PORTAL_ROLES = new Set([
+  'driver',
+  'escort',
+  'school_escort',
+  'myeduride_escort',
+  'shared_ride_escort',
+]);
+
+function shouldLookupEscortPortal(roles: Array<{ role?: string }>, username: string) {
+  const roleNames = (roles || []).map((r) => String(r?.role || ''));
+  if (roleNames.some((role) => ESCORT_PORTAL_ROLES.has(role))) return true;
+  if (String(username || '').toLowerCase().startsWith('escort.')) return true;
+  if (roleNames.some((role) => NON_ESCORT_PORTAL_ROLES.has(role))) return false;
+  return true;
+}
 
 function getPublicSupabaseClient() {
   let url = process.env.NEXT_PUBLIC_SUPABASE_URL || '';
@@ -407,23 +439,65 @@ export async function POST(request: NextRequest) {
       userSchoolRoles.push({ role: 'super_admin', school_id: DEFAULT_PLATFORM_SCHOOL_ID });
     }
 
+    if (!matchedEscortApp && shouldLookupEscortPortal(userSchoolRoles, profile.username || rawInput)) {
+      try {
+        const email = String(profile.email || '').toLowerCase().trim();
+        const clauses = [
+          profile.id ? `user_id.eq.${profile.id}` : '',
+          email.includes('@') ? `email.eq.${email}` : '',
+        ].filter(Boolean);
+
+        const { data: escortRows } = clauses.length
+          ? await supabase
+              .from('escort_applications')
+              .select('id, user_id, email, full_name, username, escort_code, status, school_id, application_data, created_at')
+              .or(clauses.join(','))
+              .order('created_at', { ascending: false })
+              .limit(20)
+          : { data: [] as any[] };
+
+        const hydratedRows = (escortRows || []).map((row: any) => hydrateEscortApplication(row));
+        matchedEscortApp = findEscortApplicationForSession(hydratedRows, {
+          user_id: profile.id,
+          email: profile.email,
+          username: profile.username,
+          full_name: profile.full_name,
+        });
+
+        if (!matchedEscortApp) {
+          const { loadFileStore } = await import('@/lib/escort/escort-db');
+          matchedEscortApp = findEscortApplicationForSession(loadFileStore(), {
+            user_id: profile.id,
+            email: profile.email,
+            username: profile.username,
+            full_name: profile.full_name,
+          });
+        }
+      } catch (err) {
+        console.warn('[login] Escort application portal lookup notice:', err);
+      }
+    }
+
+    if (matchedEscortApp) {
+      matchedEscortApp = hydrateEscortApplication(matchedEscortApp);
+    }
+
     const userLower = (profile.username || rawInput || '').toLowerCase().trim();
     const emailLower = (profile.email || rawInput || '').toLowerCase().trim();
+    const escortPortal = matchedEscortApp ? resolveEscortCategory(matchedEscortApp) : null;
 
     const isSchoolEscortCredential =
-      userLower.startsWith('escort.') ||
-      matchedEscortApp?.escortCategory === 'school_escort' ||
-      matchedEscortApp?.escortType === 'school_escort' ||
-      !!matchedEscortApp?.createdBySchoolName ||
-      !!matchedEscortApp?.school_id;
+      escortPortal === 'school_escort' ||
+      (!matchedEscortApp && userLower.startsWith('escort.'));
 
+    const hasNonEscortPortalRole = userSchoolRoles.some((r) => NON_ESCORT_PORTAL_ROLES.has(r.role));
     const isMyEduRideEscortCredential =
-      !isSchoolEscortCredential &&
-      (emailLower === 'kingsleyodiri74@gmail.com' ||
-        matchedEscortApp?.escortCategory === 'myeduride_escort' ||
-        matchedEscortApp?.escortCategory === 'shared_escort' ||
-        matchedEscortApp?.escortType === 'myeduride_escort' ||
-        matchedEscortApp?.escortType === 'shared_escort');
+      escortPortal === 'myeduride_escort' ||
+      escortPortal === 'shared_ride_escort' ||
+      (!isSchoolEscortCredential &&
+        !hasNonEscortPortalRole &&
+        (emailLower === 'kingsleyodiri74@gmail.com' ||
+          userSchoolRoles.some((r) => r.role === 'driver' || r.role === 'escort' || r.role === 'myeduride_escort')));
 
     if (isSchoolEscortCredential) {
       const cleanedRoles = userSchoolRoles.filter((r) => r.role !== 'driver' && r.role !== 'escort' && r.role !== 'myeduride_escort');
@@ -432,7 +506,7 @@ export async function POST(request: NextRequest) {
       }
       userSchoolRoles.length = 0;
       userSchoolRoles.push(...cleanedRoles);
-    } else if (isMyEduRideEscortCredential || userSchoolRoles.some((r) => r.role === 'driver' || r.role === 'escort' || r.role === 'myeduride_escort')) {
+    } else if (isMyEduRideEscortCredential) {
       const cleanedRoles = userSchoolRoles.filter((r) => r.role !== 'driver' && r.role !== 'escort' && r.role !== 'school_escort');
       if (!cleanedRoles.some((r) => r.role === 'myeduride_escort')) {
         cleanedRoles.push({ role: 'myeduride_escort', school_id: null });
@@ -440,8 +514,8 @@ export async function POST(request: NextRequest) {
       userSchoolRoles.length = 0;
       userSchoolRoles.push(...cleanedRoles);
     }
-    const isStaffOrAdmin = userSchoolRoles.some((r) => r.role === 'staff' || r.role === 'school_admin');
-    if (isStaffOrAdmin && schoolRole?.school_id) {
+    const isStaff = userSchoolRoles.some((r) => r.role === 'staff');
+    if (isStaff && schoolRole?.school_id) {
       const { data: tp } = await supabase
         .from('teacher_profiles')
         .select('id')
@@ -472,12 +546,18 @@ export async function POST(request: NextRequest) {
       }
     }
 
-    await writeAuditLog(supabase, {
+    void writeAuditLog(supabase, {
       school_id: schoolRole?.school_id || null,
       actor_user_id: profile.id,
       action: 'login_success',
       details: { roles: userSchoolRoles.map((r) => r.role) },
-    });
+    }).catch(() => {});
+
+    const landingPath = isMyEduRideEscortCredential
+      ? '/dashboard/myeduride-escort'
+      : isSchoolEscortCredential
+        ? '/dashboard/escort'
+        : '/dashboard';
 
     const sessionData = JSON.stringify({
       user_id: profile.id,
@@ -499,6 +579,7 @@ export async function POST(request: NextRequest) {
         full_name: profile.full_name,
       },
       roles: userSchoolRoles,
+      redirect: landingPath,
     });
 
     response.cookies.set('myeduride_session', sessionData, {

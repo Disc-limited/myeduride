@@ -3,6 +3,7 @@ import { getAdminClient } from '@/lib/supabase/admin';
 import { getSessionFromRequest } from '@/lib/session';
 import { todayInLagos, lagosDayBounds } from '@/lib/timezone';
 import { getEscortApplications } from '@/lib/escort/escort-db';
+import { findEscortApplicationForSession, resolveEscortCategory } from '@/lib/escort/escort-category';
 import { nowUtcIso } from '@/lib/utils/time';
 import { checkSchoolTimingClash } from '@/lib/escort/escort-scheduler';
 
@@ -26,14 +27,7 @@ export async function GET(request: NextRequest) {
     // 1. Fetch live escort application record cleanly for logged in session
     const allApps = await getEscortApplications();
     if (session) {
-      const emailQuery = (session.email || session.username || '').toLowerCase();
-      escortProfile = allApps.find(
-        (a: any) =>
-          (a.email && a.email.toLowerCase() === emailQuery) ||
-          (a.emailOrUsername && a.emailOrUsername.toLowerCase() === emailQuery) ||
-          (a.user_id && a.user_id === session.user_id) ||
-          (session.user_id && a.id === session.user_id)
-      );
+      escortProfile = findEscortApplicationForSession(allApps, session);
     }
 
     // DO NOT default to allApps[0] if session is present but unlinked, to prevent user cross-contamination!
@@ -363,11 +357,11 @@ export async function GET(request: NextRequest) {
       return null;
     };
 
+    const resolvedCategory = resolveEscortCategory(escortProfile);
     const isSchoolEscort = Boolean(
-      escortProfile?.escortCategory === 'school_escort' ||
-      escortProfile?.createdBySchoolId ||
-      escortProfile?.schoolId ||
-      session?.roles?.some((r: any) => r.role === 'school_escort' || (r.school_id && r.role === 'driver'))
+      escortProfile
+        ? resolvedCategory === 'school_escort'
+        : session?.roles?.some((r: any) => r.role === 'school_escort')
     );
     const escortCategory = isSchoolEscort ? 'school_escort' : 'myeduride_escort';
 

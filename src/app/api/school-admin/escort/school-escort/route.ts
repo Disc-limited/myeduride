@@ -4,6 +4,7 @@ import { getSessionFromRequest, isAuthorizedSchoolAdmin } from '@/lib/auth/auth-
 import { getAdminClient } from '@/lib/supabase/admin';
 import { getEscortApplications, saveEscortApplication } from '@/lib/escort/escort-db';
 import { nowUtcIso, todayInLagos } from '@/lib/utils/time';
+import { resolveEscortCategory } from '@/lib/escort/escort-category';
 
 /**
  * GET /api/school-admin/escort/school-escort
@@ -48,9 +49,9 @@ export async function GET(request: NextRequest) {
     // 2. Fetch all escort applications and filter for School Escorts
     const allEscorts = await getEscortApplications();
     const schoolEscortsList = (allEscorts || []).filter((e) => {
+      if (resolveEscortCategory(e) !== 'school_escort') return false;
       const createdBySchool = e.createdBySchoolId === primarySchoolId || e.schoolId === primarySchoolId;
-      const isSchoolRole = e.createdRole === 'school_admin' || e.escortType === 'school_escort';
-      return createdBySchool || isSchoolRole;
+      return createdBySchool || !e.createdBySchoolId;
     });
 
     const finalSchoolEscorts = schoolEscortsList.map((e) => ({

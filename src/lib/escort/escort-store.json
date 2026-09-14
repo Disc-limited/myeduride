@@ -40,16 +40,12 @@
     "employmentType": "Full-Time",
     "assignedVehicleId": "",
     "assignedRouteId": "",
-    "createdBySchoolId": "0af823c7-4587-4e97-9ff5-b92fc979a167",
-    "schoolId": "0af823c7-4587-4e97-9ff5-b92fc979a167",
-    "createdBySchoolName": "Myeduride Academy School",
-    "schoolName": "Myeduride Academy School",
-    "createdRole": "school_admin",
-    "escortCategory": "school_escort",
-    "categoryLabel": "School Escort",
+    "escortCategory": "myeduride_escort",
+    "categoryLabel": "MyEduRide Escort",
     "status": "CITY_MANAGER_APPROVED",
     "createdAt": "2026-09-01T21:18:25.192Z",
     "registrationDate": "2026-09-01",
-    "notes": "School Admin Correction Submitted"
+    "notes": "School Admin Correction Submitted",
+    "escortType": "myeduride_escort"
   }
 ]

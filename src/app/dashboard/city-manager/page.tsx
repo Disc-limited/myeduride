@@ -52,6 +52,7 @@ import StudentAvatar from '@/components/shared/StudentAvatar';
 import EscortApprovalNotificationModal from '@/components/escort/EscortApprovalNotificationModal';
 import { CityManagerCommandControl } from '@/components/city-manager/CityManagerCommandControl';
 import SchoolNoticeBanner from '@/components/shared/SchoolNoticeBanner';
+import { resolveEscortCategory } from '@/lib/escort/escort-category';
 
 function CityManagerDashboardContent() {
   const searchParams = useSearchParams();
@@ -231,13 +232,13 @@ function CityManagerDashboardContent() {
 
   // Counts for Escort Pillars & Pending Corrections
   const countMyEduRide = escortApplications.filter(
-    (a) => a.escortCategory === 'myeduride_escort' || (!a.escortCategory && !a.createdBySchoolId)
+    (a) => resolveEscortCategory(a) === 'myeduride_escort'
   ).length;
   const countSchool = escortApplications.filter(
-    (a) => a.escortCategory === 'school_escort' || a.createdBySchoolId || a.schoolName
+    (a) => resolveEscortCategory(a) === 'school_escort'
   ).length;
   const countSharedRide = escortApplications.filter(
-    (a) => a.escortCategory === 'shared_ride_escort' || a.service_type === 'shared_ride'
+    (a) => resolveEscortCategory(a) === 'shared_ride_escort'
   ).length;
   const countCorrections = escortApplications.filter(
     (a) => a.status === 'CORRECTION_PENDING' || !!a.proposed_correction
@@ -246,9 +247,9 @@ function CityManagerDashboardContent() {
   const filteredEscortApplications = escortApplications.filter((app) => {
     if (escortPillarFilter === 'all') return true;
     if (escortPillarFilter === 'corrections') return app.status === 'CORRECTION_PENDING' || !!app.proposed_correction;
-    if (escortPillarFilter === 'school') return app.escortCategory === 'school_escort' || app.createdBySchoolId || app.schoolName;
-    if (escortPillarFilter === 'shared_ride') return app.escortCategory === 'shared_ride_escort' || app.service_type === 'shared_ride';
-    if (escortPillarFilter === 'myeduride') return app.escortCategory === 'myeduride_escort' || (!app.escortCategory && !app.createdBySchoolId);
+    if (escortPillarFilter === 'school') return resolveEscortCategory(app) === 'school_escort';
+    if (escortPillarFilter === 'shared_ride') return resolveEscortCategory(app) === 'shared_ride_escort';
+    if (escortPillarFilter === 'myeduride') return resolveEscortCategory(app) === 'myeduride_escort';
     return true;
   });
 
@@ -390,6 +391,14 @@ function CityManagerDashboardContent() {
         if (selectedAppId === deleteModal.appId) {
           setSelectedAppId('');
         }
+        fetch('/api/escorts/applications')
+          .then((reloadRes) => reloadRes.json())
+          .then((payload) => {
+            if (payload?.applications && Array.isArray(payload.applications)) {
+              setEscortApplications(payload.applications);
+            }
+          })
+          .catch((err) => console.warn('[city-manager] reload applications after delete notice:', err));
       } else {
         toast.error(data.error || 'Failed to delete application');
       }
@@ -618,8 +627,8 @@ function CityManagerDashboardContent() {
                   .join('')
                   .toUpperCase();
                 
-                const isSchool = app.escortCategory === 'school_escort' || app.createdBySchoolId || app.schoolName;
-                const isShared = app.escortCategory === 'shared_ride_escort' || app.service_type === 'shared_ride';
+                const isSchool = resolveEscortCategory(app) === 'school_escort';
+                const isShared = resolveEscortCategory(app) === 'shared_ride_escort';
                 
                 return (
                   <div
@@ -754,10 +763,19 @@ function CityManagerDashboardContent() {
                       {selectedApp.email || selectedApp.emailOrUsername ? ` • ${selectedApp.email || selectedApp.emailOrUsername}` : ''}
                       {selectedApp.phone ? ` • ${selectedApp.phone}` : ''}
                     </p>
-                    <p className="text-[11px] text-amber-300 font-bold flex items-center gap-1.5 mt-0.5">
-                      <School size={13} className="text-amber-400 shrink-0" />
-                      <span>School: <strong>{selectedApp.createdBySchoolName || selectedApp.schoolName || 'Direct Independent Application'}</strong></span>
-                      {(selectedApp.createdBySchoolId || selectedApp.schoolId) && (
+                    <p className={`text-[11px] font-bold flex items-center gap-1.5 mt-0.5 ${resolveEscortCategory(selectedApp) === 'school_escort' ? 'text-amber-300' : 'text-indigo-300'}`}>
+                      {resolveEscortCategory(selectedApp) === 'school_escort' ? (
+                        <>
+                          <School size={13} className="text-amber-400 shrink-0" />
+                          <span>School: <strong>{selectedApp.createdBySchoolName || selectedApp.schoolName || 'Registered School Campus'}</strong></span>
+                        </>
+                      ) : (
+                        <>
+                          <ShieldCheck size={13} className="text-indigo-400 shrink-0" />
+                          <span>MyEduRide Escort</span>
+                        </>
+                      )}
+                      {resolveEscortCategory(selectedApp) === 'school_escort' && (selectedApp.createdBySchoolId || selectedApp.schoolId) && (
                         <span className="text-slate-400 font-mono text-[10px]">(ID: {selectedApp.createdBySchoolId || selectedApp.schoolId})</span>
                       )}
                     </p>

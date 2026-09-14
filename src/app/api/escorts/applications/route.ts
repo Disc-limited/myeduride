@@ -152,6 +152,9 @@ export async function DELETE(request: NextRequest) {
 
     const { deleteEscortApplication } = await import('@/lib/escort/escort-db');
     const result = await deleteEscortApplication(appId, deleteType);
+    if (!result.success) {
+      return NextResponse.json(result, { status: 500 });
+    }
 
     return NextResponse.json(result);
   } catch (error: unknown) {

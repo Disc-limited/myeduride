@@ -6,6 +6,7 @@ import { writeGateActivityLog } from '@/lib/gate/activity-log';
 import { notifyParentsOfAttendance } from '@/lib/notifications/parent-notify';
 import { nowUtcIso, todayInLagos } from '@/lib/timezone';
 import { getEscortApplications } from '@/lib/escort/escort-db';
+import { isApprovedMyEduRideEscort, resolveEscortCategory } from '@/lib/escort/escort-category';
 import { getGateDayStatus, assertGateDayOpen } from '@/lib/gate/school-day-gate';
 
 export const dynamic = 'force-dynamic';
@@ -237,17 +238,16 @@ export async function GET(request: NextRequest) {
     const allEscortApps = await getEscortApplications();
     
     // Strict Invariant: MyEduRide Escorts MUST have CITY_MANAGER_APPROVED or ACTIVE status
-    const cityManagerApprovedStatuses = ['CITY_MANAGER_APPROVED', 'ACTIVE', 'ACTIVATED'];
-
     const schoolEscorts: any[] = [];
     const myedurideEscorts: any[] = [];
 
     (allEscortApps || []).forEach((app) => {
-      const isApproved = cityManagerApprovedStatuses.includes(app.status);
+      const category = resolveEscortCategory(app);
       const isSchoolAffiliated =
-        app.createdBySchoolId === primarySchoolId ||
-        app.schoolId === primarySchoolId ||
-        app.createdRole === 'school_admin';
+        category === 'school_escort' &&
+        (app.createdBySchoolId === primarySchoolId ||
+          app.schoolId === primarySchoolId ||
+          !app.createdBySchoolId);
 
       const escortItem = {
         id: app.id,
@@ -255,7 +255,7 @@ export async function GET(request: NextRequest) {
         phone: app.phone || '',
         email: app.email || '',
         nin: app.nin || '',
-        escort_type: isSchoolAffiliated ? 'school_escort' : 'myeduride_escort',
+        escort_type: category === 'school_escort' ? 'school_escort' : 'myeduride_escort',
         city_manager_status: app.status,
         operating_area: app.operatingArea || app.city || 'Lagos',
         availability_status: app.availability_status || 'available',
@@ -272,8 +272,7 @@ export async function GET(request: NextRequest) {
 
       if (isSchoolAffiliated) {
         schoolEscorts.push(escortItem);
-      } else if (isApproved) {
-        // Only approved MyEduRide escorts are included
+      } else if (isApprovedMyEduRideEscort(app)) {
         myedurideEscorts.push(escortItem);
       }
     });

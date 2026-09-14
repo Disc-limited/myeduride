@@ -32,6 +32,7 @@ import MyEduRideEscortView from '@/components/escort/MyEduRideEscortView';
 import PickupVerificationModal from '@/components/escort/PickupVerificationModal';
 import IncidentReportModal from '@/components/escort/IncidentReportModal';
 import EscortIdCardModal from '@/components/escort/EscortIdCardModal';
+import { findEscortApplicationForSession, resolveEscortCategory } from '@/lib/escort/escort-category';
 
 export default function MyEduRideEscortDashboardPage() {
   const router = useRouter();
@@ -90,15 +91,11 @@ export default function MyEduRideEscortDashboardPage() {
       .then((res) => res.json())
       .then((data) => {
         if (data?.applications && Array.isArray(data.applications)) {
-          const emailQuery = s?.email || s?.emailOrUsername || '';
-          const matched = data.applications.find(
-            (a: any) =>
-              (emailQuery &&
-                (a.email?.toLowerCase() === emailQuery.toLowerCase() ||
-                  a.emailOrUsername?.toLowerCase() === emailQuery.toLowerCase())) ||
-              (s?.id && a.user_id === s.id)
-          ) || data.applications[0];
-
+          const matched = findEscortApplicationForSession(data.applications, s);
+          if (matched && resolveEscortCategory(matched) === 'school_escort') {
+            router.replace('/dashboard/escort');
+            return;
+          }
           if (matched) {
             setEscortData(matched);
           }

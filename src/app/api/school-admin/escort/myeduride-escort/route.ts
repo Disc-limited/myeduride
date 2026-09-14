@@ -6,6 +6,7 @@ import { getEscortApplications } from '@/lib/escort/escort-db';
 import { nowUtcIso, todayInLagos } from '@/lib/utils/time';
 import { calculateSchoolToHomeDistance, calculateEscortFare } from '@/lib/escort/escort-pricing';
 import { notifyEscortAssignmentCreated } from '@/lib/notifications/escort-workflow-notify';
+import { isApprovedMyEduRideEscort } from '@/lib/escort/escort-category';
 
 /**
  * GET /api/school-admin/escort/myeduride-escort
@@ -46,20 +47,14 @@ export async function GET(request: NextRequest) {
 
     // 2. Fetch all escort applications & strictly enforce City Manager Approved invariant
     const allEscorts = await getEscortApplications();
-    const approvedStatuses = ['CITY_MANAGER_APPROVED', 'ACTIVE', 'ACTIVATED'];
-
-    const myedurideApprovedList = (allEscorts || []).filter((e) => {
-      const isPlatformEscort = e.escortType !== 'school_escort' && e.createdRole !== 'school_admin';
-      const isApproved = approvedStatuses.includes(e.status);
-      return isPlatformEscort && isApproved;
-    });
+    const myedurideApprovedList = (allEscorts || []).filter((e) => isApprovedMyEduRideEscort(e));
 
     const finalApprovedEscorts = myedurideApprovedList.map((e) => ({
       id: e.id,
       fullName: e.fullName || e.name || 'MyEduRide Escort',
       name: e.fullName || e.name || 'MyEduRide Escort',
       phone: e.phone || '',
-      email: e.emailOrUsername || '',
+      email: e.email || e.emailOrUsername || '',
       nin: e.nin || '',
       status: e.status || 'CITY_MANAGER_APPROVED',
       cityManagerApprovalRef: `CM-VET-${e.id.slice(0, 8).toUpperCase()}`,

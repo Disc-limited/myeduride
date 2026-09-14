@@ -76,6 +76,13 @@ export default function DashboardRouter() {
       userRoles = [...new Set(['super_admin', ...allRoles])];
     }
 
+    if (userRoles.includes('myeduride_escort') || userRoles.includes('shared_escort') || userRoles.includes('driver')) {
+      if (!userRoles.includes('school_escort') && !userRoles.includes('school_admin') && !userRoles.includes('super_admin')) {
+        router.push('/dashboard/myeduride-escort');
+        return;
+      }
+    }
+
     if (userRoles.length === 0) {
       router.push('/dashboard/escort');
       return;

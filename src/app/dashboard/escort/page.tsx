@@ -41,6 +41,7 @@ import PickupVerificationModal from '@/components/escort/PickupVerificationModal
 import IncidentReportModal from '@/components/escort/IncidentReportModal';
 import SchoolNoticeBanner from '@/components/shared/SchoolNoticeBanner';
 import SchoolNoticesInboxView from '@/components/shared/SchoolNoticesInboxView';
+import { findEscortApplicationForSession, isMyEduRidePortal } from '@/lib/escort/escort-category';
 
 export default function SchoolEscortDashboardPage() {
   const router = useRouter();
@@ -70,6 +71,10 @@ export default function SchoolEscortDashboardPage() {
       .then((res) => res.json())
       .then((data) => {
         if (data?.success) {
+          if (data.escort?.is_myeduride_escort || data.escort?.escort_category === 'myeduride_escort') {
+            router.replace('/dashboard/myeduride-escort');
+            return;
+          }
           setLiveDashboardData(data);
         }
       })
@@ -80,6 +85,12 @@ export default function SchoolEscortDashboardPage() {
     const s = getSession();
     setSession(s);
 
+    const roles = (s?.roles || []).map((r: any) => (typeof r === 'string' ? r : r?.role));
+    if (roles.includes('myeduride_escort') && !roles.includes('school_escort')) {
+      router.replace('/dashboard/myeduride-escort');
+      return;
+    }
+
     // 1. Fetch live backend DB dashboard data
     fetchLiveData();
 
@@ -88,15 +99,11 @@ export default function SchoolEscortDashboardPage() {
       .then((res) => res.json())
       .then((data) => {
         if (data?.applications && Array.isArray(data.applications)) {
-          const emailQuery = s?.email || s?.emailOrUsername || '';
-          const matched = data.applications.find(
-            (a: any) =>
-              (emailQuery &&
-                (a.email?.toLowerCase() === emailQuery.toLowerCase() ||
-                  a.emailOrUsername?.toLowerCase() === emailQuery.toLowerCase())) ||
-              (s?.id && a.user_id === s.id)
-          ) || data.applications[0];
-
+          const matched = findEscortApplicationForSession(data.applications, s);
+          if (matched && isMyEduRidePortal(matched)) {
+            router.replace('/dashboard/myeduride-escort');
+            return;
+          }
           if (matched) {
             setEscortData(matched);
           }

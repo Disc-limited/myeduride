@@ -8,6 +8,7 @@ import { calculateSchoolToHomeDistance, calculateEscortFare } from '@/lib/escort
 import { normalizeEscortTripType } from '@/lib/escort/normalize-trip-type';
 import { notifyEscortAssignmentCreated } from '@/lib/notifications/escort-workflow-notify';
 import { checkSchoolTimingClash, validateEscortSchoolLimit } from '@/lib/escort/escort-scheduler';
+import { isApprovedMyEduRideEscort, resolveEscortCategory } from '@/lib/escort/escort-category';
 
 export const dynamic = 'force-dynamic';
 
@@ -116,9 +117,9 @@ export async function GET(request: NextRequest) {
     // A. School Escorts (internal)
     const schoolEscorts = (allApps || [])
       .filter((e) => {
+        if (resolveEscortCategory(e) !== 'school_escort') return false;
         const createdBySchool = e.createdBySchoolId === primarySchoolId || e.schoolId === primarySchoolId;
-        const isSchoolRole = e.createdRole === 'school_admin' || e.escortType === 'school_escort';
-        return createdBySchool || isSchoolRole;
+        return createdBySchool || !e.createdBySchoolId;
       })
       .map((e) => ({
         id: e.id,
@@ -135,12 +136,8 @@ export async function GET(request: NextRequest) {
       }));
 
     // B. MyEduRide Escorts (platform vetted)
-    const approvedStatuses = ['CITY_MANAGER_APPROVED', 'ACTIVE', 'ACTIVATED'];
     const myedurideEscorts = (allApps || [])
-      .filter((e) => {
-        const isPlatform = e.escortType !== 'school_escort' && e.createdRole !== 'school_admin';
-        return isPlatform && approvedStatuses.includes(e.status);
-      })
+      .filter((e) => isApprovedMyEduRideEscort(e))
       .map((e) => ({
         id: e.id,
         fullName: e.fullName || e.name || 'MyEduRide Escort',

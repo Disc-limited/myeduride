@@ -8,6 +8,7 @@ import {
   notifyEscortEmergencyReassigned,
 } from '@/lib/notifications/escort-workflow-notify';
 import { getPlatformSchoolId } from '@/lib/auth/super-admin';
+import { resolveEscortCategory } from '@/lib/escort/escort-category';
 
 export const dynamic = 'force-dynamic';
 
@@ -511,6 +512,7 @@ export async function GET(request: NextRequest) {
 
       return {
         ...e,
+        escort_category: resolveEscortCategory(e),
         school_id: e.school_id || assignedSchool?.id || null,
         school_name: e.school_name || assignedSchool?.name || (e.operating_area?.toLowerCase().includes('school') ? e.operating_area : null),
         assigned_school_id: e.school_id || assignedSchool?.id || null,

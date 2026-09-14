@@ -194,7 +194,7 @@ export default function LoginPage() {
       });
 
       const text = await response.text();
-      let data: { error?: string } = {};
+      let data: { error?: string; redirect?: string } = {};
       try {
         data = JSON.parse(text);
       } catch {
@@ -207,7 +207,7 @@ export default function LoginPage() {
         return;
       }
 
-      window.location.href = '/dashboard';
+      window.location.href = data.redirect || '/dashboard';
     } catch {
       setError('Network error. Check your internet connection.');
     }

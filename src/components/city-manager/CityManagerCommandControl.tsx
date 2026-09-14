@@ -71,6 +71,7 @@ import StudentAvatar from '@/components/shared/StudentAvatar';
 import { CityManagerOperationsPanel } from '@/components/city-manager/CityManagerOperationsPanel';
 import InteractiveRouteCorridorMap from '@/components/routes/InteractiveRouteCorridorMap';
 import SchoolHomeRouteMap from '@/components/routes/SchoolHomeRouteMap';
+import { resolveEscortCategory } from '@/lib/escort/escort-category';
 
 export interface CityManagerCommandControlProps {
   selectedCity: string;
@@ -199,7 +200,11 @@ export function CityManagerCommandControl({
               data.escorts.map((e: any) => ({
                 id: e.id,
                 name: e.full_name || 'Verified Escort',
-                type: e.operating_area?.toLowerCase().includes('school') || e.school_id ? 'school' : 'myeduride',
+                type:
+                  e.escort_category === 'school_escort' ||
+                  resolveEscortCategory(e) === 'school_escort'
+                    ? 'school'
+                    : 'myeduride',
                 phone: e.phone || '—',
                 status: e.availability_status === 'available' ? 'AVAILABLE' : e.status === 'ACTIVE' ? 'ON_TRIP' : 'STANDBY',
                 schoolName: e.assigned_school_name || e.school_name || e.operating_area || selectedCity,

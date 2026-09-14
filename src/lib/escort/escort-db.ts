@@ -2,6 +2,7 @@ import fs from 'fs';
 import path from 'path';
 import { getAdminClient } from '@/lib/supabase/admin';
 import { ensureAuthUser, ensureUserProfile } from '@/lib/auth/ensure-user';
+import { resolveEscortCategory } from '@/lib/escort/escort-category';
 
 export type EscortApplicationData = {
   id?: string;
@@ -320,8 +321,8 @@ export async function getEscortApplications(city?: string) {
           state: row.state || parsed.state || 'Lagos',
           operatingArea: row.operating_area || parsed.operatingArea || 'Lagos Mainland',
           registrationDate: row.created_at ? row.created_at.split('T')[0] : new Date().toISOString().split('T')[0],
-          schoolId: row.school_id || row.primary_school_id || parsed.createdBySchoolId,
-          createdBySchoolName: parsed.createdBySchoolName || 'Registered School',
+          schoolId: row.school_id || row.primary_school_id || parsed.createdBySchoolId || null,
+          createdBySchoolName: parsed.createdBySchoolName || parsed.schoolName || null,
           ...parsed,
         };
       });
@@ -340,6 +341,16 @@ export async function getEscortApplications(city?: string) {
       if (fileRec.status === 'CORRECTION_PENDING' || fileRec.proposed_correction) {
         existing.status = fileRec.status || existing.status;
         existing.proposed_correction = fileRec.proposed_correction || existing.proposed_correction;
+      }
+      if (fileRec.escortType || fileRec.escortCategory) {
+        existing.escortType = fileRec.escortType || fileRec.escortCategory;
+        existing.escortCategory = fileRec.escortCategory || fileRec.escortType;
+        existing.categoryLabel = fileRec.categoryLabel || existing.categoryLabel;
+        existing.createdRole = fileRec.createdRole;
+        existing.createdBySchoolId = fileRec.createdBySchoolId;
+        existing.createdBySchoolName = fileRec.createdBySchoolName;
+        existing.schoolId = fileRec.schoolId;
+        existing.schoolName = fileRec.schoolName;
       }
     } else {
       allApps.push({
@@ -366,24 +377,25 @@ export async function getEscortApplications(city?: string) {
 
   // 4. Normalize nested objects for City Manager Vetting UI & Tag 3 Escort Pillars
   allApps = allApps.map((app) => {
-    let escortCategory: 'school_escort' | 'myeduride_escort' | 'shared_ride_escort' = 'myeduride_escort';
-    let categoryLabel = 'MyEduRide Escort';
-
-    if (app.createdBySchoolId || app.schoolId || app.createdRole === 'school_admin' || app.schoolName || app.employmentType) {
-      escortCategory = 'school_escort';
-      categoryLabel = 'School Escort';
-    } else if (app.service_type === 'shared_ride' || app.is_shared_ride || app.services?.shared_ride || app.carpool_offering || app.escortCategory === 'shared_ride_escort') {
-      escortCategory = 'shared_ride_escort';
-      categoryLabel = 'Shared Ride Escort';
-    }
+    const escortCategory = resolveEscortCategory(app);
+    const categoryLabel =
+      escortCategory === 'school_escort'
+        ? 'School Escort'
+        : escortCategory === 'shared_ride_escort'
+          ? 'Shared Ride Escort'
+          : 'MyEduRide Escort';
 
     return {
       ...app,
       escortCategory,
       categoryLabel,
       // School metadata
-      createdBySchoolName: app.createdBySchoolName || app.schoolName || (escortCategory === 'school_escort' ? 'Registered School Campus' : null),
-      createdBySchoolId: app.createdBySchoolId || app.schoolId || null,
+      createdBySchoolName: escortCategory === 'school_escort'
+        ? (app.createdBySchoolName || app.schoolName || 'Registered School Campus')
+        : (app.createdBySchoolName || null),
+      createdBySchoolId: escortCategory === 'school_escort'
+        ? (app.createdBySchoolId || app.schoolId || null)
+        : (app.createdBySchoolId || null),
       // Build real vehicle object from flat fields if nested vehicle object absent
       vehicle: app.vehicle || (
         (app.regNumber || app.vehicleType || app.make || app.model || app.driversLicence)
@@ -501,6 +513,11 @@ export async function getEscortApplications(city?: string) {
     // Submission date timestamp
     registrationDate: app.registrationDate || app.created_at?.split('T')[0] || app.createdAt || new Date().toISOString().split('T')[0],
     };
+  });
+
+  allApps = allApps.filter((app) => {
+    const status = String(app.status || '').toUpperCase();
+    return !app.isDeleted && status !== 'ARCHIVED';
   });
 
   // 5. Smart city filter matching
@@ -801,6 +818,23 @@ export async function updateEscortApplicationStatus(
   };
 }
 
+function escortRecordMatchesKey(app: any, appId: string): boolean {
+  if (!app || !appId) return false;
+  const key = String(appId).trim();
+  const email = String(app.emailOrUsername || app.email || '').trim();
+  return (
+    app.id === key ||
+    email === key ||
+    app.escort_code === key ||
+    app.escortIdCode === key ||
+    app.user_id === key
+  );
+}
+
+async function noticeDbError(label: string, error: any) {
+  if (error) console.warn(`[escort-db] ${label}:`, error.message || error);
+}
+
 /**
  * Delete Escort Application & User Record (Soft Delete or Hard Delete)
  */
@@ -810,12 +844,52 @@ export async function deleteEscortApplication(
 ) {
   const supabase = getAdminClient();
   const fileRecords = loadFileStore();
-  const targetApp = fileRecords.find((a: any) => a.id === appId || a.emailOrUsername === appId || a.email === appId);
+  const key = String(appId || '').trim();
+
+  const { data: dbById } = await supabase.from('escort_applications').select('*').eq('id', key);
+  let dbRows = dbById || [];
+  if (dbRows.length === 0) {
+    const { data: dbByCode } = await supabase.from('escort_applications').select('*').eq('escort_code', key);
+    dbRows = dbByCode || [];
+  }
+
+  const fileMatches = fileRecords.filter((a: any) => escortRecordMatchesKey(a, key));
+  const seed = dbRows[0] || fileMatches[0];
+  const seedEmail = String(seed?.email || seed?.emailOrUsername || '').trim();
+  const seedUserId = seed?.user_id || null;
+
+  if (seedEmail) {
+    const { data: dbByEmail } = await supabase.from('escort_applications').select('*').eq('email', seedEmail);
+    for (const row of dbByEmail || []) {
+      if (!dbRows.some((existing) => existing.id === row.id)) dbRows.push(row);
+    }
+  }
+  if (seedUserId) {
+    const { data: dbByUser } = await supabase.from('escort_applications').select('*').eq('user_id', seedUserId);
+    for (const row of dbByUser || []) {
+      if (!dbRows.some((existing) => existing.id === row.id)) dbRows.push(row);
+    }
+  }
+
+  const allIds = Array.from(
+    new Set(
+      [...dbRows.map((row) => row.id), ...fileMatches.map((row: any) => row.id), key].filter(Boolean)
+    )
+  );
+  const allEmails = Array.from(
+    new Set(
+      [...dbRows.map((row) => row.email), ...fileMatches.map((row: any) => row.emailOrUsername || row.email), seedEmail]
+        .map((value) => String(value || '').trim())
+        .filter(Boolean)
+    )
+  );
+  const allUserIds = Array.from(
+    new Set([...dbRows.map((row) => row.user_id), seedUserId].filter(Boolean))
+  );
 
   if (deleteType === 'soft') {
-    // SOFT DELETE: Mark status as ARCHIVED & add deletedAt timestamp
     const updatedStore = fileRecords.map((a: any) => {
-      if (a.id === appId || a.emailOrUsername === appId || a.email === appId) {
+      if (escortRecordMatchesKey(a, key) || allIds.includes(a.id) || allEmails.includes(a.emailOrUsername || a.email)) {
         return {
           ...a,
           status: 'ARCHIVED' as const,
@@ -827,69 +901,99 @@ export async function deleteEscortApplication(
     });
     saveFileStore(updatedStore);
 
-    // Update in Supabase escort_applications
-    try {
-      await supabase
+    if (allIds.length > 0) {
+      const { error } = await supabase
         .from('escort_applications')
         .update({ status: 'ARCHIVED', updated_at: new Date().toISOString() })
-        .eq('id', appId);
-    } catch (err) {
-      console.warn('[escort-db] Supabase soft delete notice:', err);
+        .in('id', allIds);
+      await noticeDbError('soft delete', error);
     }
 
     return {
       success: true,
-      appId,
+      appId: key,
       deleteType: 'soft',
-      message: `Application ${appId} archived (Soft Deleted) successfully.`,
+      message: `Application ${key} archived (Soft Deleted) successfully.`,
     };
   }
 
-  // HARD DELETE: Completely purge application & profile from store & DB
   const filteredStore = fileRecords.filter(
-    (a: any) => a.id !== appId && a.emailOrUsername !== appId && a.email !== appId
+    (a: any) =>
+      !escortRecordMatchesKey(a, key) &&
+      !allIds.includes(a.id) &&
+      !allEmails.includes(String(a.emailOrUsername || a.email || '').trim())
   );
   saveFileStore(filteredStore);
 
-  // Clear memory cache
-  const memIndex = memoryEscortApplications.findIndex((a: any) => a.id === appId);
-  if (memIndex !== -1) {
-    memoryEscortApplications.splice(memIndex, 1);
+  for (let i = memoryEscortApplications.length - 1; i >= 0; i--) {
+    const app = memoryEscortApplications[i] as any;
+    if (escortRecordMatchesKey(app, key) || allIds.includes(app.id) || allEmails.includes(String(app.email || app.emailOrUsername || '').trim())) {
+      memoryEscortApplications.splice(i, 1);
+    }
   }
 
-  // Hard delete from Supabase DB tables
-  try {
-    // Delete from escort_applications
-    await supabase.from('escort_applications').delete().eq('id', appId);
+  if (allIds.length > 0) {
+    const { error: assignErr } = await supabase.from('escort_assignments').delete().in('escort_application_id', allIds);
+    await noticeDbError('hard delete escort_assignments', assignErr);
 
-    if (targetApp) {
-      const emailOrUser = targetApp.emailOrUsername || (targetApp as any).email;
-      if (emailOrUser) {
-        // Find profile
-        const { data: prof } = await supabase
-          .from('user_profiles')
-          .select('id')
-          .or(`email.eq.${emailOrUser},username.eq.${emailOrUser.split('@')[0]}`)
-          .maybeSingle();
+    const { error: tripsErr } = await supabase.from('escort_student_daily_trips').delete().in('escort_id', allIds);
+    await noticeDbError('hard delete daily trips', tripsErr);
 
-        if (prof?.id) {
-          // Delete user_school_roles
-          await supabase.from('user_school_roles').delete().eq('user_id', prof.id);
-          // Delete user_profiles
-          await supabase.from('user_profiles').delete().eq('id', prof.id);
-          // Delete Auth user
-          await supabase.auth.admin.deleteUser(prof.id).catch(() => {});
-        }
-      }
+    const { error: vehicleErr } = await supabase
+      .from('school_vehicles')
+      .update({ assigned_escort_id: null })
+      .in('assigned_escort_id', allIds);
+    await noticeDbError('hard delete unlink vehicles', vehicleErr);
+
+    const { error: routeErr } = await supabase
+      .from('transport_routes')
+      .update({ assigned_escort_id: null })
+      .in('assigned_escort_id', allIds);
+    await noticeDbError('hard delete unlink routes', routeErr);
+
+    const { error: deputyErr } = await supabase
+      .from('emergency_deputising')
+      .update({ deputy_escort_application_id: null })
+      .in('deputy_escort_application_id', allIds);
+    await noticeDbError('hard delete unlink deputies', deputyErr);
+
+    const { error: appErr } = await supabase.from('escort_applications').delete().in('id', allIds);
+    await noticeDbError('hard delete escort_applications', appErr);
+    if (appErr) {
+      return {
+        success: false,
+        appId: key,
+        deleteType: 'hard',
+        error: appErr.message,
+        message: `Could not permanently delete application ${key}. Related records may still be linked.`,
+      };
     }
-  } catch (dbErr) {
-    console.warn('[escort-db] Supabase hard delete DB purge notice:', dbErr);
+  }
+
+  for (const emailOrUser of allEmails) {
+    const username = emailOrUser.includes('@') ? emailOrUser.split('@')[0] : emailOrUser;
+    const { data: emailProf } = await supabase.from('user_profiles').select('id').eq('email', emailOrUser).maybeSingle();
+    const { data: userProf } = username
+      ? await supabase.from('user_profiles').select('id').eq('username', username).maybeSingle()
+      : { data: null };
+    if (emailProf?.id && !allUserIds.includes(emailProf.id)) allUserIds.push(emailProf.id);
+    if (userProf?.id && !allUserIds.includes(userProf.id)) allUserIds.push(userProf.id);
+  }
+
+  for (const userId of allUserIds) {
+    const { error: roleErr } = await supabase.from('user_school_roles').delete().eq('user_id', userId);
+    await noticeDbError('hard delete roles', roleErr);
+    const { error: profileErr } = await supabase.from('user_profiles').delete().eq('id', userId);
+    await noticeDbError('hard delete profile', profileErr);
+    await supabase.auth.admin.deleteUser(userId).catch((err) => {
+      console.warn('[escort-db] hard delete auth user:', err?.message || err);
+    });
   }
 
   return {
     success: true,
-    appId,
+    appId: key,
     deleteType: 'hard',
-    message: `Application ${appId} and user record permanently hard deleted from database.`,
+    message: `Application ${key} and user record permanently hard deleted from database.`,
   };
 }
