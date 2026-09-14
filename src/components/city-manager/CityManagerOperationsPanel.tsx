@@ -2,7 +2,7 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import { ClipboardList, RefreshCw, Search, UserPlus, Sparkles, CheckCircle2, ShieldCheck, Clock, MapPin, Phone, Car, Users, ArrowRightLeft, Footprints, AlertTriangle, Zap, CheckCheck, Tag, Info } from 'lucide-react';
+import { ClipboardList, RefreshCw, Search, UserPlus, Sparkles, CheckCircle2, ShieldCheck, Clock, MapPin, Phone, Car, Users, ArrowRightLeft, Footprints, AlertTriangle, Zap, CheckCheck, Tag, Info, ChevronLeft, ChevronRight } from 'lucide-react';
 import { toast } from 'sonner';
 import StudentAvatar from '@/components/shared/StudentAvatar';
 
@@ -30,6 +30,8 @@ const empty: Operations = {
   deputising_records: [],
 };
 
+const BOOKING_PAGE_SIZE = 5;
+
 export function CityManagerOperationsPanel() {
   const [data, setData] = useState<Operations>(empty);
   const [loading, setLoading] = useState(true);
@@ -42,6 +44,7 @@ export function CityManagerOperationsPanel() {
   const [selectedEscortsForParentBookings, setSelectedEscortsForParentBookings] = useState<Record<string, string>>({});
   const [processingBookingId, setProcessingBookingId] = useState<string | null>(null);
   const [batchApproving, setBatchApproving] = useState(false);
+  const [bookingPage, setBookingPage] = useState(1);
 
   // Escort Rosters Filters & In-Place Reassignment Modal State
   const [rosterSchoolFilter, setRosterSchoolFilter] = useState('all');
@@ -258,6 +261,20 @@ export function CityManagerOperationsPanel() {
   const emergencyPool = data.escorts.filter((e) => e.emergency_pool_enabled && e.availability_status === 'available');
   const dispatchEscorts = ['emergency', 'deputy'].includes(dispatch.assignmentType) ? emergencyPool : data.escorts;
   const parentRequests = data.parent_requests || [];
+  const bookingTotalPages = Math.max(1, Math.ceil(parentRequests.length / BOOKING_PAGE_SIZE));
+  const paginatedRequests = parentRequests.slice(
+    (bookingPage - 1) * BOOKING_PAGE_SIZE,
+    bookingPage * BOOKING_PAGE_SIZE
+  );
+  const bookingPageNumbers = (() => {
+    if (bookingTotalPages <= 7) return Array.from({ length: bookingTotalPages }, (_, i) => i + 1);
+    const start = Math.max(1, Math.min(bookingPage - 2, bookingTotalPages - 4));
+    return Array.from({ length: 5 }, (_, i) => start + i).filter((page) => page >= 1 && page <= bookingTotalPages);
+  })();
+
+  useEffect(() => {
+    if (bookingPage > bookingTotalPages) setBookingPage(bookingTotalPages);
+  }, [bookingPage, bookingTotalPages]);
 
   const handleExecuteReassign = async () => {
     if (!reassignModal.assignment || !reassignModal.targetEscortId) {
@@ -507,7 +524,7 @@ export function CityManagerOperationsPanel() {
                   <th className="py-2.5 px-3">Assigned Escort</th>
                   <th className="py-2.5 px-3">Vehicle & Phone</th>
                   <th className="py-2.5 px-3">Date / Status</th>
-                  <th className="py-2.5 px-3 text-right">Action</th>
+                  <th className="py-2.5 px-3 text-right sticky right-0 bg-[#0b1c30]">Action</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-800/60">
@@ -563,7 +580,7 @@ export function CityManagerOperationsPanel() {
                         </p>
                       </div>
                     </td>
-                    <td className="py-3 px-3 text-right">
+                    <td className="py-3 px-3 text-right sticky right-0 bg-[#0b1c30]/95 whitespace-nowrap">
                       <button
                         onClick={() => setReassignModal({
                           open: true,
@@ -622,15 +639,15 @@ export function CityManagerOperationsPanel() {
         </div>
 
         <div className="space-y-3">
-          {parentRequests.map((req) => (
+          {paginatedRequests.map((req) => (
             <div
               key={req.booking_id}
-              className="p-5 rounded-2xl bg-slate-900/90 border border-slate-800 flex flex-col xl:flex-row xl:items-center justify-between gap-4 text-xs text-slate-300 shadow-sm"
+              className="p-4 sm:p-5 rounded-2xl bg-slate-900/90 border border-slate-800 grid grid-cols-1 lg:grid-cols-[minmax(0,1.3fr)_minmax(220px,0.85fr)_minmax(260px,0.95fr)] gap-4 text-xs text-slate-300 shadow-sm"
             >
               {/* STUDENT & ORIGIN INFO */}
-              <div className="space-y-1.5 min-w-[260px]">
+              <div className="space-y-1.5 min-w-0">
                 <div className="flex flex-wrap items-center gap-2">
-                  <span className="px-2 py-0.5 rounded-md bg-amber-400/20 text-amber-300 font-bold text-[10px] font-mono">
+                  <span className="px-2 py-0.5 rounded-md bg-amber-400/20 text-amber-300 font-bold text-[10px] font-mono break-all">
                     {req.booking_id}
                   </span>
                   <span
@@ -661,11 +678,11 @@ export function CityManagerOperationsPanel() {
                     </span>
                   )}
                 </div>
-                <p className="text-sm font-black text-white">{req.child_name}</p>
+                <p className="text-sm font-black text-white break-words">{req.child_name}</p>
                 <p className="text-[11px] text-slate-400">
                   School: <strong className="text-slate-200">{req.school_name || 'Designated Campus'}</strong>
                 </p>
-                <p className="text-[11px] text-slate-400 truncate max-w-sm">
+                <p className="text-[11px] text-slate-400 break-words">
                   📍 Doorstep Stop: <strong className="text-slate-200">{req.pickup_location}</strong>
                 </p>
                 {req.landmark && (
@@ -679,8 +696,8 @@ export function CityManagerOperationsPanel() {
               </div>
 
               {/* DISTANCE & FARE BREAKDOWN DECK */}
-              <div className="p-3 rounded-xl bg-slate-950/80 border border-slate-800 space-y-2 min-w-[240px]">
-                <div className="flex items-center justify-between text-[11px]">
+              <div className="p-3 rounded-xl bg-slate-950/80 border border-slate-800 space-y-2 min-w-0">
+                <div className="flex items-center justify-between text-[11px] gap-2">
                   <span className="text-slate-400 font-bold">Doorstep Distance:</span>
                   <span className="font-mono font-black text-emerald-400">
                     📏 {req.distance_km || 4.2} km
@@ -696,7 +713,7 @@ export function CityManagerOperationsPanel() {
                     <span className="font-bold text-slate-200">₦{Number(req.afternoon_fare || 1000).toLocaleString()}</span>
                   </div>
                 </div>
-                <div className="flex items-center justify-between text-[11px] pt-1 border-t border-slate-800">
+                <div className="flex items-center justify-between text-[11px] pt-1 border-t border-slate-800 gap-2">
                   <span className="text-emerald-300 font-bold">Daily Total:</span>
                   <div className="text-right">
                     {req.is_discounted ? (
@@ -738,18 +755,19 @@ export function CityManagerOperationsPanel() {
                 </button>
               </div>
 
-              {/* ESCORT ASSIGNMENT & ACTION BUTTONS */}
-              <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2.5 min-w-[320px]">
+              {/* ACTION COLUMN */}
+              <div className="rounded-xl border border-slate-700/80 bg-slate-950/70 p-3 space-y-2 min-w-0">
+                <p className="text-[10px] uppercase tracking-wider font-black text-slate-400">Action</p>
                 {req.status === 'CONFIRMED' ? (
-                  <div className="p-3 rounded-xl bg-emerald-500/10 border border-emerald-500/30 text-emerald-300 text-xs space-y-2 w-full">
-                    <div className="flex items-center justify-between font-bold">
-                      <span>✓ Cleared: {req.escort_name}</span>
-                      <span className="font-mono bg-slate-900 px-2 py-0.5 rounded text-amber-300 border border-amber-400/30">
+                  <div className="p-3 rounded-xl bg-emerald-500/10 border border-emerald-500/30 text-emerald-300 text-xs space-y-2">
+                    <div className="flex flex-wrap items-center gap-2 font-bold">
+                      <span className="break-words min-w-0 flex-1">✓ Cleared: {req.escort_name}</span>
+                      <span className="font-mono bg-slate-900 px-2 py-0.5 rounded text-amber-300 border border-amber-400/30 shrink-0">
                         PIN: {req.security_pin || 'VERIFIED'}
                       </span>
                     </div>
                     {req.escort_phone && (
-                      <p className="text-[10px] text-slate-400 font-mono">
+                      <p className="text-[10px] text-slate-400 font-mono break-all">
                         📞 {req.escort_phone} · 🚗 {req.vehicle_plate || 'Fleet Verified'}
                       </p>
                     )}
@@ -770,60 +788,58 @@ export function CityManagerOperationsPanel() {
                           notes: 'Emergency operational reassignment by City Manager',
                         });
                       }}
-                      className="w-full mt-1 py-1.5 rounded-lg bg-amber-500/20 hover:bg-amber-500/30 text-amber-300 font-black text-[11px] border border-amber-400/30 cursor-pointer transition-all flex items-center justify-center gap-1.5"
+                      className="w-full mt-1 py-2 rounded-lg bg-amber-500/20 hover:bg-amber-500/30 text-amber-300 font-black text-[11px] border border-amber-400/30 cursor-pointer transition-all flex items-center justify-center gap-1.5"
                     >
                       <AlertTriangle size={12} />
                       <span>Emergency Reassign Escort</span>
                     </button>
                   </div>
                 ) : (
-                  <div className="flex flex-col gap-2 w-full">
+                  <div className="flex flex-col gap-2">
                     {req.escort_name && req.escort_name !== 'Awaiting City Manager Assignment' && (
-                      <p className="text-[10px] text-emerald-400 font-bold">
+                      <p className="text-[10px] text-emerald-400 font-bold break-words">
                         School Nominated: {req.escort_name}
                       </p>
                     )}
-                    <div className="flex items-center gap-2">
-                      <select
-                        value={
-                          selectedEscortsForParentBookings[req.booking_id] ||
-                          req.escort_id ||
-                          (data.escorts[0]?.id || '')
-                        }
-                        onChange={(e) =>
-                          setSelectedEscortsForParentBookings((prev) => ({
-                            ...prev,
-                            [req.booking_id]: e.target.value,
-                          }))
-                        }
-                        className="px-3 py-2 bg-slate-950 border border-slate-700 rounded-xl text-xs font-bold text-white focus:outline-none flex-1"
-                      >
-                        {data.escorts.length === 0 ? (
-                          <option value="">No Approved Escorts in Database</option>
-                        ) : (
-                          data.escorts.map((esc: any) => (
-                            <option key={esc.id} value={esc.id}>
-                              {esc.full_name} ({esc.operating_area || 'Standard Zone'})
-                            </option>
-                          ))
-                        )}
-                      </select>
+                    <select
+                      value={
+                        selectedEscortsForParentBookings[req.booking_id] ||
+                        req.escort_id ||
+                        (data.escorts[0]?.id || '')
+                      }
+                      onChange={(e) =>
+                        setSelectedEscortsForParentBookings((prev) => ({
+                          ...prev,
+                          [req.booking_id]: e.target.value,
+                        }))
+                      }
+                      className="w-full px-3 py-2 bg-slate-950 border border-slate-700 rounded-xl text-xs font-bold text-white focus:outline-none"
+                    >
+                      {data.escorts.length === 0 ? (
+                        <option value="">No Approved Escorts in Database</option>
+                      ) : (
+                        data.escorts.map((esc: any) => (
+                          <option key={esc.id} value={esc.id}>
+                            {esc.full_name} ({esc.operating_area || 'Standard Zone'})
+                          </option>
+                        ))
+                      )}
+                    </select>
 
-                      <button
-                        type="button"
-                        disabled={processingBookingId === req.booking_id}
-                        onClick={() =>
-                          handleApproveParentBooking(
-                            req.booking_id,
-                            selectedEscortsForParentBookings[req.booking_id] || req.escort_id
-                          )
-                        }
-                        className="px-4 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white font-black text-xs cursor-pointer transition-all shadow-xs shrink-0 flex items-center justify-center gap-1.5"
-                      >
-                        <CheckCircle2 size={14} />
-                        <span>{processingBookingId === req.booking_id ? 'Clearing...' : 'Approve & Clear'}</span>
-                      </button>
-                    </div>
+                    <button
+                      type="button"
+                      disabled={processingBookingId === req.booking_id}
+                      onClick={() =>
+                        handleApproveParentBooking(
+                          req.booking_id,
+                          selectedEscortsForParentBookings[req.booking_id] || req.escort_id
+                        )
+                      }
+                      className="w-full px-4 py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white font-black text-xs cursor-pointer transition-all shadow-xs flex items-center justify-center gap-1.5 disabled:opacity-50"
+                    >
+                      <CheckCircle2 size={14} />
+                      <span>{processingBookingId === req.booking_id ? 'Clearing...' : 'Approve & Clear'}</span>
+                    </button>
                   </div>
                 )}
               </div>
@@ -833,6 +849,47 @@ export function CityManagerOperationsPanel() {
           {parentRequests.length === 0 && (
             <div className="p-8 text-center text-slate-400 text-xs">
               No pending student escort requests at this time. All requests have been reviewed, cleared, and synchronized.
+            </div>
+          )}
+
+          {parentRequests.length > BOOKING_PAGE_SIZE && (
+            <div className="flex flex-wrap items-center justify-between gap-3 pt-2 border-t border-slate-800">
+              <p className="text-[11px] text-slate-400 font-medium">
+                Showing {(bookingPage - 1) * BOOKING_PAGE_SIZE + 1}–
+                {Math.min(bookingPage * BOOKING_PAGE_SIZE, parentRequests.length)} of {parentRequests.length} requests
+              </p>
+              <div className="flex items-center gap-1.5">
+                <button
+                  type="button"
+                  disabled={bookingPage <= 1}
+                  onClick={() => setBookingPage((p) => Math.max(1, p - 1))}
+                  className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-lg bg-slate-900 border border-slate-700 text-slate-200 text-[11px] font-bold disabled:opacity-40 disabled:cursor-not-allowed hover:bg-slate-800 cursor-pointer"
+                >
+                  <ChevronLeft size={14} /> Prev
+                </button>
+                {bookingPageNumbers.map((page) => (
+                  <button
+                    key={page}
+                    type="button"
+                    onClick={() => setBookingPage(page)}
+                    className={`min-w-[32px] px-2 py-1.5 rounded-lg text-[11px] font-black border cursor-pointer ${
+                      page === bookingPage
+                        ? 'bg-amber-500 text-slate-950 border-amber-400'
+                        : 'bg-slate-900 text-slate-300 border-slate-700 hover:bg-slate-800'
+                    }`}
+                  >
+                    {page}
+                  </button>
+                ))}
+                <button
+                  type="button"
+                  disabled={bookingPage >= bookingTotalPages}
+                  onClick={() => setBookingPage((p) => Math.min(bookingTotalPages, p + 1))}
+                  className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-lg bg-slate-900 border border-slate-700 text-slate-200 text-[11px] font-bold disabled:opacity-40 disabled:cursor-not-allowed hover:bg-slate-800 cursor-pointer"
+                >
+                  Next <ChevronRight size={14} />
+                </button>
+              </div>
             </div>
           )}
         </div>
