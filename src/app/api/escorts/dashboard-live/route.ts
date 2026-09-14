@@ -132,23 +132,22 @@ export async function GET(request: NextRequest) {
       }
     }
 
-      if (assignedRoute) {
-        const { data: stops } = await supabase
-          .from('transport_route_stops')
+    if (assignedRoute) {
+      const { data: stops } = await supabase
+        .from('transport_route_stops')
+        .select('*')
+        .eq('route_id', assignedRoute.id)
+        .order('stop_order', { ascending: true });
+
+      routeStops = stops || [];
+
+      if (assignedRoute.assigned_vehicle_id) {
+        const { data: vehicle } = await supabase
+          .from('school_vehicles')
           .select('*')
-          .eq('route_id', assignedRoute.id)
-          .order('stop_order', { ascending: true });
-
-        routeStops = stops || [];
-
-        if (assignedRoute.assigned_vehicle_id) {
-          const { data: vehicle } = await supabase
-            .from('school_vehicles')
-            .select('*')
-            .eq('id', assignedRoute.assigned_vehicle_id)
-            .maybeSingle();
-          assignedVehicle = vehicle;
-        }
+          .eq('id', assignedRoute.assigned_vehicle_id)
+          .maybeSingle();
+        assignedVehicle = vehicle;
       }
     }
 
