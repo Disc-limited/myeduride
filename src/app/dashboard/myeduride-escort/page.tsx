@@ -325,6 +325,15 @@ export default function MyEduRideEscortDashboardPage() {
               <Settings size={16} />
               <span>Settings</span>
             </button>
+
+            <button
+              type="button"
+              onClick={handleLogout}
+              className="lg:hidden w-full flex items-center gap-3 px-3.5 py-2.5 rounded-xl text-red-400 hover:bg-red-500/20 hover:text-red-300 transition-all font-extrabold cursor-pointer border border-red-500/20 mt-2"
+            >
+              <LogOut size={16} />
+              <span>Log Out</span>
+            </button>
           </nav>
         </div>
 
@@ -391,176 +400,258 @@ export default function MyEduRideEscortDashboardPage() {
       {/* 2. RIGHT MAIN CONTENT WRAPPER */}
       <div className="flex-1 flex flex-col min-w-0">
         
-        {/* TOP HEADER BAR - Mobile-First & Responsive */}
-        <header className="bg-white border-b border-slate-200 sticky top-0 z-30 px-3.5 sm:px-6 py-2.5 sm:py-3 flex flex-wrap items-center gap-x-4 gap-y-2 shadow-xs">
-          
-          {/* Header Left: Hamburger Toggle + Greeting/Badge */}
-          <div className="flex items-center gap-2.5 sm:gap-3.5 min-w-0 flex-1 basis-[16rem] lg:flex-none lg:min-w-[22rem] lg:max-w-[34rem]">
-            <button
-              type="button"
-              onClick={() => setSidebarOpen(true)}
-              className="lg:hidden p-2 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 transition-colors shrink-0"
-              aria-label="Open Navigation Menu"
-            >
-              <Menu size={20} />
-            </button>
-
-            <div className="min-w-0 lg:overflow-visible">
-              <p className="text-[10px] text-slate-400 font-semibold">
-                {clockDisplay.greeting},
-              </p>
-              <div className="flex items-center gap-2 min-w-0">
-                <h2
-                  className="font-black text-slate-900 text-sm sm:text-base md:text-lg leading-tight truncate lg:overflow-visible lg:whitespace-nowrap"
-                  title={escortName}
-                >
+        {/* TOP HEADER BAR */}
+        <header className="bg-white border-b border-slate-200 sticky top-0 z-30 shadow-xs">
+          {/* Mobile: identity row, then labeled actions */}
+          <div className="lg:hidden px-3.5 pt-2.5 pb-2.5 space-y-2.5">
+            <div className="flex items-center gap-2.5">
+              <button
+                type="button"
+                onClick={() => setSidebarOpen(true)}
+                className="p-2.5 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 transition-colors shrink-0"
+                aria-label="Open Navigation Menu"
+              >
+                <Menu size={20} />
+              </button>
+              <div className="min-w-0 flex-1">
+                <p className="text-[11px] text-slate-400 font-semibold leading-none">
+                  {clockDisplay.greeting}
+                </p>
+                <h2 className="font-black text-slate-900 text-base leading-tight truncate mt-0.5" title={escortName}>
                   {escortName}
                 </h2>
-                <span className="hidden sm:inline-flex px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-800 text-[10px] font-extrabold border border-emerald-200 shrink-0">
-                  MyEduRide Escort
-                </span>
+                <p className="text-[10px] text-slate-500 font-medium truncate mt-0.5">
+                  {escortCode ? `ID ${escortCode}` : 'Escort ID pending'}
+                  {schoolName ? ` · ${schoolName}` : null}
+                </p>
               </div>
-              <p
-                className="text-[10px] sm:text-[11px] text-slate-500 font-medium truncate lg:overflow-visible lg:whitespace-normal"
-                title={[escortCode ? `Escort ID: ${escortCode}` : 'Escort ID pending', schoolName ? `Assigned School${assignedSchoolNames.length > 1 ? 's' : ''}: ${schoolName}` : null].filter(Boolean).join(' · ')}
+              <button
+                type="button"
+                onClick={() => setShowAccountModal(true)}
+                className="relative shrink-0"
+                title="Escort Account Settings"
+                aria-label="Account settings"
               >
-                {escortCode ? <>Escort ID: {escortCode}</> : 'Escort ID pending'}
-                {schoolName ? <> · Assigned School{assignedSchoolNames.length > 1 ? 's' : ''}: {schoolName}</> : null}
-              </p>
-            </div>
-          </div>
-
-          {/* Header Right: Status, SOS Trigger, Clock, Profile, Logout */}
-          <div className="flex items-center gap-2 sm:gap-3 flex-wrap justify-end ml-auto">
-            <span className="hidden md:inline-flex px-2.5 py-1 rounded-full bg-emerald-600 text-white text-[11px] font-bold items-center gap-1.5 shadow-xs border border-emerald-500">
-              <span className="w-2 h-2 rounded-full bg-white animate-pulse" />
-              <span>I&apos;M ONLINE</span>
-            </span>
-            <button
-              type="button"
-              onClick={handleToggleAvailability}
-              className={`hidden lg:inline-flex px-2.5 py-1 rounded-full text-[11px] font-bold items-center gap-1.5 border ${
-                isAvailable ? 'bg-emerald-50 text-emerald-800 border-emerald-200' : 'bg-slate-50 text-slate-600 border-slate-200'
-              }`}
-            >
-              {isAvailable ? 'Available' : 'Primary only'}
-            </button>
-
-            <div className="hidden md:flex items-center gap-2 px-2.5 py-1 rounded-xl bg-slate-50 border border-slate-200">
-              <Wallet size={13} className="text-emerald-600" />
-              <div className="text-right leading-tight">
-                <span className="text-[9px] font-bold text-slate-400 block">Wallet Balance</span>
-                <span className="text-[11px] font-black text-slate-800 font-mono block">₦{walletBalance.toLocaleString('en-NG', { minimumFractionDigits: 2 })}</span>
-              </div>
-            </div>
-            <button
-              type="button"
-              onClick={() => setActiveNav('wallet')}
-              className="hidden sm:inline-flex px-2.5 py-1.5 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-black items-center gap-1.5"
-            >
-              <Plus size={14} />
-              Add Money
-            </button>
-
-            {/* Digital Escort Gate Pass Modal Trigger */}
-            <button
-              type="button"
-              onClick={() => setShowIdCardModal(true)}
-              className="px-2.5 py-1.5 rounded-xl bg-[#0A1128] hover:bg-slate-800 text-white border border-emerald-500/30 text-xs font-black flex items-center gap-1.5 cursor-pointer transition-colors shadow-xs"
-              title="Display Digital Escort Gate Pass with Scannable QR"
-            >
-              <QrCode size={14} className="text-emerald-400" />
-              <span className="hidden xs:inline">Gate Pass</span>
-            </button>
-
-            {/* Quick Emergency SOS Incident Modal Trigger */}
-            <button
-              type="button"
-              onClick={() => setIncidentModalOpen(true)}
-              className="px-2.5 py-1.5 rounded-xl bg-amber-50 hover:bg-amber-100 text-amber-800 border border-amber-300 text-xs font-black flex items-center gap-1 cursor-pointer transition-colors shadow-xs"
-              title="Report Incident / Safety SOS"
-            >
-              <AlertTriangle size={14} className="text-amber-600" />
-              <span className="hidden xs:inline">SOS</span>
-            </button>
-
-            <button
-              type="button"
-              onClick={() => setActiveNav('chat')}
-              className={`p-2 rounded-xl border relative transition-all cursor-pointer ${
-                activeNav === 'chat'
-                  ? 'bg-emerald-600 text-white border-emerald-600 shadow-sm'
-                  : 'bg-slate-50 hover:bg-slate-100 text-slate-700 border-slate-200'
-              }`}
-              title="Open Communications"
-            >
-              <MessageSquare size={16} />
-              {chatUnreadTotal > 0 && (
-                <span className="absolute -top-1 -right-1 min-w-4 h-4 px-0.5 rounded-full bg-rose-500 text-white text-[9px] font-black flex items-center justify-center">
-                  {chatUnreadTotal}
-                </span>
-              )}
-            </button>
-            <button
-              type="button"
-              className="p-2 rounded-xl border bg-slate-50 hover:bg-slate-100 text-slate-700 border-slate-200 relative"
-              title="Notifications"
-            >
-              <Bell size={16} />
-              {unreadNotifs > 0 && (
-                <span className="absolute -top-1 -right-1 min-w-4 h-4 px-0.5 rounded-full bg-rose-500 text-white text-[9px] font-black flex items-center justify-center">
-                  {Math.min(unreadNotifs, 99)}
-                </span>
-              )}
-            </button>
-
-            {/* Live Clock Display (Hidden on very small screens) */}
-            <div className="hidden md:flex items-center gap-2 px-2.5 py-1 rounded-xl bg-slate-50 border border-slate-200">
-              <Clock size={13} className="text-emerald-600" />
-              <div className="text-right leading-tight">
-                <span className="text-[11px] font-black text-slate-800 font-mono block">{clockDisplay.timeStr}</span>
-                <span className="text-[9px] font-bold text-slate-400 block">{clockDisplay.dateStr}</span>
-              </div>
-            </div>
-
-            {/* User Profile Avatar with Click for Account Settings */}
-            <div
-              className="flex items-center gap-1 cursor-pointer"
-              onClick={() => setShowAccountModal(true)}
-              title="Escort Account Settings"
-            >
-              <div className="relative">
                 {photoSrc(session?.avatar_url) || photoSrc(liveDashboardData?.escort?.photo) || photoSrc(escortData?.photo) ? (
-                <img
-                  src={(photoSrc(session?.avatar_url) || photoSrc(liveDashboardData?.escort?.photo) || photoSrc(escortData?.photo)) as string}
-                  alt="MyEduRide Escort"
-                  className="w-9 h-9 sm:w-10 sm:h-10 rounded-full object-cover border-2 border-emerald-500 shadow-xs"
-                />
+                  <img
+                    src={(photoSrc(session?.avatar_url) || photoSrc(liveDashboardData?.escort?.photo) || photoSrc(escortData?.photo)) as string}
+                    alt=""
+                    className="w-10 h-10 rounded-full object-cover border-2 border-emerald-500"
+                  />
                 ) : (
-                  <div className="w-9 h-9 sm:w-10 sm:h-10 rounded-full bg-emerald-600 text-white font-black flex items-center justify-center border-2 border-emerald-500 shadow-xs text-xs">
+                  <div className="w-10 h-10 rounded-full bg-emerald-600 text-white font-black flex items-center justify-center border-2 border-emerald-500 text-xs">
                     {escortName.split(' ').map((n: string) => n[0]).join('').slice(0, 2).toUpperCase()}
                   </div>
                 )}
                 <span className="absolute bottom-0 right-0 w-2.5 h-2.5 rounded-full bg-emerald-500 border-2 border-white" />
+              </button>
+              <button
+                type="button"
+                onClick={handleLogout}
+                className="p-2.5 rounded-xl bg-red-50 hover:bg-red-100 text-red-600 border border-red-200 shrink-0"
+                title="Log Out"
+                aria-label="Log Out"
+              >
+                <LogOut size={16} />
+              </button>
+            </div>
+
+            <div className="grid grid-cols-4 gap-1.5">
+              <button
+                type="button"
+                onClick={() => setShowIdCardModal(true)}
+                className="min-h-[52px] rounded-xl bg-[#0A1128] text-white flex flex-col items-center justify-center gap-0.5"
+              >
+                <QrCode size={16} className="text-emerald-400" />
+                <span className="text-[10px] font-bold">Pass</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => setIncidentModalOpen(true)}
+                className="min-h-[52px] rounded-xl bg-amber-50 text-amber-800 border border-amber-200 flex flex-col items-center justify-center gap-0.5"
+              >
+                <AlertTriangle size={16} />
+                <span className="text-[10px] font-bold">SOS</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => setActiveNav('chat')}
+                className={`min-h-[52px] rounded-xl border flex flex-col items-center justify-center gap-0.5 relative ${
+                  activeNav === 'chat' ? 'bg-emerald-600 text-white border-emerald-600' : 'bg-slate-50 text-slate-700 border-slate-200'
+                }`}
+              >
+                <MessageSquare size={16} />
+                <span className="text-[10px] font-bold">Chat</span>
+                {chatUnreadTotal > 0 && (
+                  <span className="absolute top-1 right-1 min-w-4 h-4 px-0.5 rounded-full bg-rose-500 text-white text-[9px] font-black flex items-center justify-center">
+                    {chatUnreadTotal}
+                  </span>
+                )}
+              </button>
+              <button
+                type="button"
+                className="min-h-[52px] rounded-xl bg-slate-50 text-slate-700 border border-slate-200 flex flex-col items-center justify-center gap-0.5 relative"
+              >
+                <Bell size={16} />
+                <span className="text-[10px] font-bold">Alerts</span>
+                {unreadNotifs > 0 && (
+                  <span className="absolute top-1 right-1 min-w-4 h-4 px-0.5 rounded-full bg-rose-500 text-white text-[9px] font-black flex items-center justify-center">
+                    {Math.min(unreadNotifs, 99)}
+                  </span>
+                )}
+              </button>
+            </div>
+          </div>
+
+          {/* Desktop header: identity + account on top, compact actions below */}
+          <div className="hidden lg:block px-6 py-3">
+            <div className="flex items-center gap-4">
+              <div className="min-w-0 flex-1">
+                <p className="text-[10px] text-slate-400 font-semibold">{clockDisplay.greeting},</p>
+                <div className="flex items-center gap-2 min-w-0">
+                  <h2 className="font-black text-slate-900 text-lg leading-tight truncate" title={escortName}>
+                    {escortName}
+                  </h2>
+                  <span className="inline-flex px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-800 text-[10px] font-extrabold border border-emerald-200 shrink-0">
+                    MyEduRide Escort
+                  </span>
+                </div>
+                <p
+                  className="text-[11px] text-slate-500 font-medium truncate"
+                  title={
+                    [
+                      escortCode ? `Escort ID: ${escortCode}` : 'Escort ID pending',
+                      schoolName ? `Assigned School${assignedSchoolNames.length > 1 ? 's' : ''}: ${schoolName}` : '',
+                    ]
+                      .filter(Boolean)
+                      .join(' · ')
+                  }
+                >
+                  {escortCode ? <>Escort ID: {escortCode}</> : 'Escort ID pending'}
+                  {schoolName ? <> · {assignedSchoolNames.length > 1 ? 'Schools' : 'School'}: {schoolName}</> : null}
+                </p>
               </div>
-              <ChevronDown size={14} className="text-slate-600 hidden sm:block" />
+
+              <div className="flex items-center gap-2 shrink-0">
+                <span className="inline-flex px-2.5 py-1 rounded-full bg-emerald-600 text-white text-[11px] font-bold items-center gap-1.5 border border-emerald-500">
+                  <span className="w-2 h-2 rounded-full bg-white animate-pulse" />
+                  I&apos;M ONLINE
+                </span>
+                <button
+                  type="button"
+                  onClick={handleToggleAvailability}
+                  className={`inline-flex px-2.5 py-1 rounded-full text-[11px] font-bold border ${
+                    isAvailable ? 'bg-emerald-50 text-emerald-800 border-emerald-200' : 'bg-slate-50 text-slate-600 border-slate-200'
+                  }`}
+                >
+                  {isAvailable ? 'Available' : 'Primary only'}
+                </button>
+                <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-xl bg-slate-50 border border-slate-200">
+                  <Clock size={13} className="text-emerald-600" />
+                  <div className="leading-tight">
+                    <span className="text-[11px] font-black text-slate-800 font-mono block">{clockDisplay.timeStr}</span>
+                    <span className="text-[9px] font-bold text-slate-400 block">{clockDisplay.dateStr}</span>
+                  </div>
+                </div>
+                <button
+                  type="button"
+                  className="flex items-center gap-1"
+                  onClick={() => setShowAccountModal(true)}
+                  title="Escort Account Settings"
+                >
+                  <div className="relative">
+                    {photoSrc(session?.avatar_url) || photoSrc(liveDashboardData?.escort?.photo) || photoSrc(escortData?.photo) ? (
+                      <img
+                        src={(photoSrc(session?.avatar_url) || photoSrc(liveDashboardData?.escort?.photo) || photoSrc(escortData?.photo)) as string}
+                        alt="MyEduRide Escort"
+                        className="w-9 h-9 rounded-full object-cover border-2 border-emerald-500"
+                      />
+                    ) : (
+                      <div className="w-9 h-9 rounded-full bg-emerald-600 text-white font-black flex items-center justify-center border-2 border-emerald-500 text-xs">
+                        {escortName.split(' ').map((n: string) => n[0]).join('').slice(0, 2).toUpperCase()}
+                      </div>
+                    )}
+                    <span className="absolute bottom-0 right-0 w-2.5 h-2.5 rounded-full bg-emerald-500 border-2 border-white" />
+                  </div>
+                  <ChevronDown size={14} className="text-slate-600" />
+                </button>
+                <button
+                  type="button"
+                  onClick={handleLogout}
+                  className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-xl bg-red-50 hover:bg-red-100 text-red-600 border border-red-200 text-xs font-extrabold"
+                  title="Sign Out of MyEduRide Escort Account"
+                >
+                  <LogOut size={14} />
+                  <span>Log Out</span>
+                </button>
+              </div>
             </div>
 
-            {/* Role Switcher */}
-            <div className="hidden xl:block">
-              <RoleSwitcher />
+            <div className="mt-2.5 flex items-center gap-2">
+              <div className="flex items-center gap-2 px-2.5 py-1 rounded-xl bg-slate-50 border border-slate-200">
+                <Wallet size={13} className="text-emerald-600 shrink-0" />
+                <div className="leading-tight">
+                  <span className="text-[9px] font-bold text-slate-400 block">Wallet</span>
+                  <span className="text-[11px] font-black text-slate-800 font-mono block">
+                    ₦{walletBalance.toLocaleString('en-NG', { minimumFractionDigits: 2 })}
+                  </span>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setActiveNav('wallet')}
+                className="inline-flex px-2.5 py-1.5 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-black items-center gap-1.5"
+              >
+                <Plus size={14} />
+                Add Money
+              </button>
+              <button
+                type="button"
+                onClick={() => setShowIdCardModal(true)}
+                className="px-2.5 py-1.5 rounded-xl bg-[#0A1128] hover:bg-slate-800 text-white border border-emerald-500/30 text-xs font-black flex items-center gap-1.5"
+                title="Display Digital Escort Gate Pass with Scannable QR"
+              >
+                <QrCode size={14} className="text-emerald-400" />
+                Gate Pass
+              </button>
+              <button
+                type="button"
+                onClick={() => setIncidentModalOpen(true)}
+                className="px-2.5 py-1.5 rounded-xl bg-amber-50 hover:bg-amber-100 text-amber-800 border border-amber-300 text-xs font-black flex items-center gap-1"
+                title="Report Incident / Safety SOS"
+              >
+                <AlertTriangle size={14} className="text-amber-600" />
+                SOS
+              </button>
+              <button
+                type="button"
+                onClick={() => setActiveNav('chat')}
+                className={`p-2 rounded-xl border relative ${
+                  activeNav === 'chat' ? 'bg-emerald-600 text-white border-emerald-600' : 'bg-slate-50 hover:bg-slate-100 text-slate-700 border-slate-200'
+                }`}
+                title="Open Communications"
+              >
+                <MessageSquare size={16} />
+                {chatUnreadTotal > 0 && (
+                  <span className="absolute -top-1 -right-1 min-w-4 h-4 px-0.5 rounded-full bg-rose-500 text-white text-[9px] font-black flex items-center justify-center">
+                    {chatUnreadTotal}
+                  </span>
+                )}
+              </button>
+              <button
+                type="button"
+                className="p-2 rounded-xl border bg-slate-50 hover:bg-slate-100 text-slate-700 border-slate-200 relative"
+                title="Notifications"
+              >
+                <Bell size={16} />
+                {unreadNotifs > 0 && (
+                  <span className="absolute -top-1 -right-1 min-w-4 h-4 px-0.5 rounded-full bg-rose-500 text-white text-[9px] font-black flex items-center justify-center">
+                    {Math.min(unreadNotifs, 99)}
+                  </span>
+                )}
+              </button>
+              <RoleSwitcher showLogout={false} />
             </div>
-
-            {/* Log Out Button */}
-            <button
-              type="button"
-              onClick={handleLogout}
-              className="hidden sm:flex items-center gap-1 px-2.5 py-1.5 rounded-xl bg-red-50 hover:bg-red-100 text-red-600 border border-red-200 text-xs font-extrabold transition-all cursor-pointer shadow-xs"
-              title="Sign Out of MyEduRide Escort Account"
-            >
-              <LogOut size={14} />
-              <span>Log Out</span>
-            </button>
           </div>
         </header>
 
