@@ -5,7 +5,7 @@ import { getAdminClient } from '@/lib/supabase/admin';
 import { nowUtcIso } from '@/lib/utils/time';
 import { todayInLagos } from '@/lib/timezone';
 import { ensureDailyHandoverPin } from '@/lib/escort/handover-pin';
-import { calculateEscortFare } from '@/lib/escort/escort-pricing';
+import { resolveStoredEscortFare } from '@/lib/escort/escort-pricing';
 
 export const dynamic = 'force-dynamic';
 
@@ -60,6 +60,12 @@ export async function GET(request: NextRequest) {
           if (typeof appData === 'string') {
             try { appData = JSON.parse(appData); } catch { appData = {}; }
           }
+          const assignFare = resolveStoredEscortFare({
+            assignmentNotes: assignedRow?.notes,
+            notes: assignedRow?.notes,
+            distanceKm: appData.distance_km,
+            tripType: appData.trip_type,
+          });
           schoolEscort = {
             id: assignedEscort.id,
             full_name: assignedEscort.full_name,
@@ -91,6 +97,14 @@ export async function GET(request: NextRequest) {
               status: assignedRow.status === 'active' ? 'CITY_MANAGER_APPROVED' : 'PENDING_CITY_MANAGER_APPROVAL',
               badge: assignedRow.status === 'active' ? 'Verified Assigned Escort' : 'Assigned — City Manager Review',
             },
+            daily_fare: assignFare.dailyFare,
+            morning_fare: assignFare.morningFare,
+            afternoon_fare: assignFare.afternoonFare,
+            standard_daily_fare: assignFare.standardDailyFare,
+            actual_amount_collected: assignFare.actualAmountCollected,
+            is_discounted: assignFare.isDiscounted,
+            distance_km: assignFare.distanceKm,
+            used_stored_fare: assignFare.usedStoredFare,
           };
         }
 
@@ -232,16 +246,18 @@ export async function GET(request: NextRequest) {
             if (pinErr) console.warn('[safety-connect] daily PIN persist notice:', pinErr);
           }
 
-          const distanceKm = meta.distance_km || 4.5;
-          const tripType = meta.trip_type === 'afternoon' || meta.trip_type === 'afternoon_only'
-            ? 'afternoon_only'
-            : meta.trip_type === 'morning' || meta.trip_type === 'morning_only'
-              ? 'morning_only'
-              : 'both';
-          const fareResult = calculateEscortFare(distanceKm, tripType);
-          const morningFare = fareResult.morningFare;
-          const afternoonFare = fareResult.afternoonFare;
-          const dailyFare = fareResult.dailyFare;
+          const fare = resolveStoredEscortFare({
+            fareAmount: b.fare_amount,
+            notes: meta,
+            assignmentNotes: matchedAssignment?.notes,
+            distanceKm: meta.distance_km,
+            tripType: meta.trip_type,
+          });
+          const distanceKm = fare.distanceKm;
+          const tripType = fare.tripType;
+          const morningFare = fare.morningFare;
+          const afternoonFare = fare.afternoonFare;
+          const dailyFare = fare.dailyFare;
 
           const isConfirmed = b.status === 'assigned' || matchedAssignment?.status === 'active';
 
@@ -276,13 +292,18 @@ export async function GET(request: NextRequest) {
             morning_fare: morningFare,
             afternoon_fare: afternoonFare,
             daily_fare: dailyFare,
+            standard_daily_fare: fare.standardDailyFare,
+            actual_amount_collected: fare.actualAmountCollected,
+            is_discounted: fare.isDiscounted,
+            discount_details: fare.discountDetails,
+            used_stored_fare: fare.usedStoredFare,
             trip_type: tripType,
-            distance_charge: fareResult.distanceCharge,
-            service_charge: fareResult.serviceCharge,
-            service_charge_percent: fareResult.serviceChargePercent,
-            billable_km: fareResult.billableKm,
-            formatted_distance_charge: fareResult.formattedDistanceCharge,
-            formatted_service_charge: fareResult.formattedServiceCharge,
+            distance_charge: fare.distanceCharge,
+            service_charge: fare.serviceCharge,
+            service_charge_percent: fare.serviceChargePercent,
+            billable_km: fare.billableKm,
+            formatted_distance_charge: fare.formattedDistanceCharge,
+            formatted_service_charge: fare.formattedServiceCharge,
             escort_id: escort?.id || meta.assigned_escort_id || null,
             escort_name: escort?.full_name || meta.assigned_escort_name || null,
             escort_phone: escort?.phone || meta.assigned_escort_phone || '',
@@ -365,6 +386,18 @@ export async function GET(request: NextRequest) {
       if (childBooking?.escort_name && !schoolEscort.full_name) {
         schoolEscort.full_name = childBooking.escort_name;
       }
+      // Prefer booking-stored actual charge (CM corrections) when available
+      if (childBooking?.daily_fare != null) {
+        schoolEscort.daily_fare = childBooking.daily_fare;
+        schoolEscort.morning_fare = childBooking.morning_fare;
+        schoolEscort.afternoon_fare = childBooking.afternoon_fare;
+        schoolEscort.standard_daily_fare = childBooking.standard_daily_fare;
+        schoolEscort.actual_amount_collected = childBooking.actual_amount_collected;
+        schoolEscort.is_discounted = childBooking.is_discounted;
+        schoolEscort.distance_km = childBooking.distance_km ?? schoolEscort.distance_km;
+        schoolEscort.used_stored_fare = childBooking.used_stored_fare;
+        schoolEscort.service_charge = childBooking.service_charge;
+      }
     } else if (childBooking?.escort_name) {
       schoolEscort = {
         id: childBooking.escort_id,
@@ -397,6 +430,15 @@ export async function GET(request: NextRequest) {
         },
         security_pin: childBooking.security_pin,
         security_pin_date: childBooking.security_pin_date,
+        daily_fare: childBooking.daily_fare,
+        morning_fare: childBooking.morning_fare,
+        afternoon_fare: childBooking.afternoon_fare,
+        standard_daily_fare: childBooking.standard_daily_fare,
+        actual_amount_collected: childBooking.actual_amount_collected,
+        is_discounted: childBooking.is_discounted,
+        distance_km: childBooking.distance_km,
+        used_stored_fare: childBooking.used_stored_fare,
+        service_charge: childBooking.service_charge,
       };
     }
 

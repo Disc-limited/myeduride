@@ -158,3 +158,88 @@ export function calculateEscortFare(
     formattedServiceCharge: formatNgn(serviceCharge),
   };
 }
+
+export function parseEscortNotes(notes: unknown): Record<string, any> {
+  if (!notes) return {};
+  if (typeof notes === 'object' && notes !== null) return notes as Record<string, any>;
+  const raw = String(notes).trim();
+  if (!raw.startsWith('{')) return {};
+  try {
+    return JSON.parse(raw);
+  } catch {
+    return {};
+  }
+}
+
+export function normalizeEscortTripType(raw?: string | null): 'both' | 'morning_only' | 'afternoon_only' {
+  if (raw === 'afternoon' || raw === 'afternoon_only') return 'afternoon_only';
+  if (raw === 'morning' || raw === 'morning_only') return 'morning_only';
+  return 'both';
+}
+
+export function resolveStoredEscortFare(input: {
+  fareAmount?: number | string | null;
+  notes?: unknown;
+  assignmentNotes?: unknown;
+  distanceKm?: number | string | null;
+  tripType?: string | null;
+}) {
+  const meta = parseEscortNotes(input.notes);
+  const assignMeta = parseEscortNotes(input.assignmentNotes);
+  const tripType = normalizeEscortTripType(
+    input.tripType || meta.trip_type || assignMeta.trip_type || meta.fareResult?.tripType
+  );
+  const distanceKm = Number(input.distanceKm || meta.distance_km || assignMeta.distance_km || 4.5) || 4.5;
+  const engine = calculateEscortFare(distanceKm, tripType);
+  const storedDiscount = meta.discount || assignMeta.discount || null;
+  const storedDaily = Number(
+    storedDiscount?.discountedFare ||
+      meta?.fareResult?.dailyFare ||
+      meta?.daily_fare ||
+      assignMeta?.fareResult?.dailyFare ||
+      assignMeta?.daily_fare ||
+      input.fareAmount ||
+      0
+  );
+  const standardDaily = Number(
+    meta?.fareResult?.originalDailyFare ||
+      assignMeta?.fareResult?.originalDailyFare ||
+      storedDiscount?.originalFare ||
+      engine.dailyFare
+  );
+  const dailyFare = storedDaily > 0 ? storedDaily : engine.dailyFare;
+  const usedStored = storedDaily > 0;
+  const morningFare = usedStored
+    ? Number(
+        meta?.fareResult?.morningFare ||
+          meta?.morning_fare ||
+          assignMeta?.fareResult?.morningFare ||
+          (tripType === 'afternoon_only' ? 0 : tripType === 'morning_only' ? dailyFare : Math.round(dailyFare / 2))
+      )
+    : engine.morningFare;
+  const afternoonFare = usedStored
+    ? Number(
+        meta?.fareResult?.afternoonFare ||
+          meta?.afternoon_fare ||
+          assignMeta?.fareResult?.afternoonFare ||
+          (tripType === 'morning_only' ? 0 : dailyFare - morningFare)
+      )
+    : engine.afternoonFare;
+
+  return {
+    ...engine,
+    tripType,
+    distanceKm,
+    morningFare,
+    afternoonFare,
+    dailyFare,
+    standardDailyFare: standardDaily,
+    actualAmountCollected: dailyFare,
+    isDiscounted: Boolean(storedDiscount) || (standardDaily > 0 && dailyFare < standardDaily),
+    discountDetails: storedDiscount,
+    usedStoredFare: usedStored,
+    formattedMorningFare: formatNgn(morningFare),
+    formattedAfternoonFare: formatNgn(afternoonFare),
+    formattedDailyFare: formatNgn(dailyFare),
+  };
+}

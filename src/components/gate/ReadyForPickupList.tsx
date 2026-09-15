@@ -32,7 +32,7 @@ export default function ReadyForPickupList({
   schoolId,
   onRelease,
   showReleaseButton = true,
-  refreshMs = 15000,
+  refreshMs = 4000,
   compact = false,
 }) {
   const [queue, setQueue] = useState([]);
@@ -61,7 +61,17 @@ export default function ReadyForPickupList({
     load();
     if (!refreshMs) return undefined;
     const interval = setInterval(load, refreshMs);
-    return () => clearInterval(interval);
+    const onFocus = () => load();
+    const onVisible = () => {
+      if (document.visibilityState === 'visible') load();
+    };
+    window.addEventListener('focus', onFocus);
+    document.addEventListener('visibilitychange', onVisible);
+    return () => {
+      clearInterval(interval);
+      window.removeEventListener('focus', onFocus);
+      document.removeEventListener('visibilitychange', onVisible);
+    };
   }, [schoolId, load, refreshMs]);
 
   const filtered = useMemo(

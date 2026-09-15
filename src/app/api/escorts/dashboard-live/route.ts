@@ -1124,7 +1124,7 @@ export async function POST(request: NextRequest) {
       });
     }
 
-    // Action 1d: Toggle "Ready for Pickup"
+    // Action 1d: Toggle "Ready for Pickup" — also queues assigned students for immediate gate release
     if (action === 'toggle_ready_for_pickup') {
       const isReady = Boolean(body.ready);
       if (session?.user_id) {
@@ -1137,19 +1137,22 @@ export async function POST(request: NextRequest) {
           })
           .eq('user_id', session.user_id);
 
-        if (isReady && primarySchoolId) {
-          const { data: appRow } = await supabase
-            .from('escort_applications')
-            .select('id, house_lat, house_lng')
-            .eq('user_id', session.user_id)
-            .maybeSingle();
+        const { data: appRow } = await supabase
+          .from('escort_applications')
+          .select('id, full_name, phone, house_lat, house_lng, school_id, primary_school_id')
+          .eq('user_id', session.user_id)
+          .maybeSingle();
 
-          const escortAppId = appRow?.id || session.user_id;
+        const escortAppId = appRow?.id || session.user_id;
+        const schoolForQueue =
+          primarySchoolId || appRow?.primary_school_id || appRow?.school_id || null;
+
+        if (isReady && schoolForQueue) {
           const initialLat = appRow?.house_lat ? Number(appRow.house_lat) : 6.4474;
           const initialLng = appRow?.house_lng ? Number(appRow.house_lng) : 3.4731;
 
           await supabase.from('vehicle_active_sessions').insert({
-            school_id: primarySchoolId,
+            school_id: schoolForQueue,
             escort_id: escortAppId,
             escort_user_id: session.user_id,
             trip_type: 'morning_pickup',
@@ -1162,6 +1165,38 @@ export async function POST(request: NextRequest) {
             started_at: nowUtcIso(),
             last_ping_at: nowUtcIso(),
           });
+
+          // Put this escort's assigned students onto the gate Ready for Pickup queue now
+          const { data: assignedRows } = await supabase
+            .from('escort_assignments')
+            .select('student_id')
+            .eq('escort_application_id', escortAppId)
+            .eq('school_id', schoolForQueue)
+            .eq('status', 'active');
+
+          const studentIds = (assignedRows || []).map((r: any) => r.student_id).filter(Boolean);
+          if (studentIds.length > 0) {
+            const { ensureStudentsReadyForPickup } = await import('@/lib/gate/ensure-dismissal-ready');
+            const queueResult = await ensureStudentsReadyForPickup(supabase, {
+              schoolId: schoolForQueue,
+              studentIds,
+              requestedByUserId: session.user_id,
+              pickupPersonName: appRow?.full_name || 'Assigned Escort',
+              pickupPersonPhone: appRow?.phone || null,
+              pickupSource: 'school_escort',
+              notes: 'Escort marked Ready for Pickup — queued for immediate gate release',
+            });
+            return NextResponse.json({
+              success: true,
+              ready_for_pickup: true,
+              students_queued: queueResult.queued,
+              students_already_ready: queueResult.alreadyReady,
+              message:
+                queueResult.queued > 0
+                  ? `Ready for Pickup active. ${queueResult.queued} student(s) queued for immediate gate release.`
+                  : 'Live Pickup Mode ACTIVATED! Students already on the gate Ready queue.',
+            });
+          }
         }
       }
       return NextResponse.json({

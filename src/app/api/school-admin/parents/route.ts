@@ -147,39 +147,19 @@ export async function POST(request: NextRequest) {
       const cleanName = parent_name.trim();
       const cleanPhone = parent_phone?.trim() || null;
 
-      // 1. If daily dismissal requested, upsert dismissal_requests
+      // 1. If daily dismissal requested, put student on gate Ready for Pickup immediately
       if (is_daily_dismissal) {
-        const { data: existingDismissal } = await supabase
-          .from('dismissal_requests')
-          .select('id')
-          .eq('school_id', schoolId)
-          .eq('student_id', student_id)
-          .eq('dismissal_date', today)
-          .maybeSingle();
-
-        if (existingDismissal) {
-          await supabase
-            .from('dismissal_requests')
-            .update({
-              pickup_person_name: cleanName,
-              pickup_person_phone: cleanPhone,
-              pickup_source: 'parent',
-              notes: notes || `Assigned to parent ${cleanName}`,
-              status: 'pending',
-            })
-            .eq('id', existingDismissal.id);
-        } else {
-          await supabase.from('dismissal_requests').insert({
-            school_id: schoolId,
-            student_id,
-            dismissal_date: today,
-            pickup_person_name: cleanName,
-            pickup_person_phone: cleanPhone,
-            pickup_source: 'parent',
-            notes: notes || `Assigned to parent ${cleanName}`,
-            status: 'pending',
-          });
-        }
+        const { ensureDismissalReady } = await import('@/lib/gate/ensure-dismissal-ready');
+        await ensureDismissalReady(supabase, {
+          schoolId,
+          studentId: student_id,
+          requestedByUserId: session.user_id,
+          pickupPersonName: cleanName,
+          pickupPersonPhone: cleanPhone,
+          pickupSource: 'parent',
+          notes: notes || `Assigned to parent ${cleanName}`,
+          reopenCompleted: true,
+        });
       }
 
       // 2. Ensure parent is registered in pickup_persons and pickup_person_students

@@ -280,6 +280,63 @@ export default function SchoolEscortView({
       </div>
 
       {/* ------------------------------------------------------------------------- */}
+      {/* ACTUAL DAILY CHARGE                                                        */}
+      {/* ------------------------------------------------------------------------- */}
+      {(escortData?.daily_fare != null || escortData?.actual_amount_collected != null) && (
+        <div className="bg-white p-4 sm:p-5 rounded-3xl border border-slate-200/90 shadow-xs space-y-3">
+          <div className="flex items-center justify-between gap-2">
+            <div>
+              <h2 className="text-sm font-black text-slate-900">Actual Daily Charge</h2>
+              <p className="text-[11px] text-slate-500 font-medium">
+                Amount charged for today&apos;s escort service
+              </p>
+            </div>
+            {escortData.distance_km != null && (
+              <span className="font-mono font-black text-xs text-emerald-800 bg-emerald-50 px-2 py-0.5 rounded-md border border-emerald-200">
+                📏 {escortData.distance_km} km
+              </span>
+            )}
+          </div>
+          <div className="grid grid-cols-3 gap-2 text-center">
+            <div className="p-2.5 rounded-2xl bg-slate-50 border border-slate-100">
+              <span className="text-[10px] text-slate-500 font-bold block">Morning</span>
+              <span className="font-black text-slate-900 text-sm">
+                ₦{Number(escortData.morning_fare || 0).toLocaleString()}
+              </span>
+            </div>
+            <div className="p-2.5 rounded-2xl bg-slate-50 border border-slate-100">
+              <span className="text-[10px] text-slate-500 font-bold block">Afternoon</span>
+              <span className="font-black text-slate-900 text-sm">
+                ₦{Number(escortData.afternoon_fare || 0).toLocaleString()}
+              </span>
+            </div>
+            <div className="p-2.5 rounded-2xl bg-emerald-600 text-white">
+              <span className="text-[10px] text-emerald-100 font-bold block">Charged Today</span>
+              {escortData.is_discounted && Number(escortData.standard_daily_fare || 0) > Number(escortData.actual_amount_collected || escortData.daily_fare || 0) ? (
+                <div>
+                  <span className="text-[10px] text-emerald-200/80 line-through block">
+                    ₦{Number(escortData.standard_daily_fare).toLocaleString()}
+                  </span>
+                  <span className="font-black text-sm">
+                    ₦{Number(escortData.actual_amount_collected || escortData.daily_fare || 0).toLocaleString()}
+                  </span>
+                </div>
+              ) : (
+                <span className="font-black text-sm">
+                  ₦{Number(escortData.actual_amount_collected || escortData.daily_fare || 0).toLocaleString()}
+                </span>
+              )}
+            </div>
+          </div>
+          {escortData.is_discounted && (
+            <p className="text-[10px] text-emerald-700 font-semibold">
+              Discount applied — you are charged the corrected daily amount above.
+            </p>
+          )}
+        </div>
+      )}
+
+      {/* ------------------------------------------------------------------------- */}
       {/* ROW 2: PRIMARY OPERATIONAL CONSOLE (3 COLUMNS OR EMPTY STATE) */}
       {/* ------------------------------------------------------------------------- */}
       {escortData?.security_pin ? (

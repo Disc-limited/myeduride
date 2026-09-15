@@ -1,6 +1,7 @@
 import type { SupabaseClient } from '@supabase/supabase-js';
 import { lagosDayBounds, nigeriaNowParts, nowUtcIso, todayInLagos } from '@/lib/timezone';
 import { getGateDayStatus } from '@/lib/gate/school-day-gate';
+import { ensureDismissalReady } from '@/lib/gate/ensure-dismissal-ready';
 
 export type SchoolDismissalTimes = {
   dismissal_start_time?: string | null;
@@ -137,6 +138,7 @@ export async function ensureAutoReadyForPickup(
             .eq('school_id', schoolId)
             .eq('dismissal_date', today)
             .in('student_id', studentIds)
+            .in('status', ['pending', 'approved'])
         : Promise.resolve({ data: [] as Array<{ student_id: string }> }),
     ]);
 
@@ -167,38 +169,37 @@ export async function ensureAutoReadyForPickup(
     );
     const alreadyReady = new Set((existingRes.data || []).map((d: any) => d.student_id));
 
-    const toInsert: Array<Record<string, unknown>> = [];
+    let studentsReady = 0;
     const seenStudent = new Set<string>();
     for (const row of rows) {
       const studentId = (row as any).student_id;
       if (!studentId || seenStudent.has(studentId)) continue;
       seenStudent.add(studentId);
       if (extraLessonLookupFailed) continue;
-      if (!arrived.has(studentId) || departed.has(studentId) || heldForLesson.has(studentId) || alreadyReady.has(studentId)) {
+      if (
+        !arrived.has(studentId) ||
+        departed.has(studentId) ||
+        heldForLesson.has(studentId) ||
+        alreadyReady.has(studentId)
+      ) {
         continue;
       }
       const escort = unwrapRel((row as any).escort);
       const pickupSource =
         (row as any).assignment_type === 'deputy' ? 'myeduride_escort' : 'school_escort';
-      toInsert.push({
-        school_id: schoolId,
-        student_id: studentId,
-        dismissal_date: today,
-        pickup_person_name: escort?.full_name || 'Assigned Escort',
-        pickup_person_phone: escort?.phone || null,
-        pickup_source: pickupSource,
+      const result = await ensureDismissalReady(supabase, {
+        schoolId,
+        studentId,
+        requestedByUserId: escort?.user_id || null,
+        pickupPersonName: escort?.full_name || 'Assigned Escort',
+        pickupPersonPhone: escort?.phone || null,
+        pickupSource,
         notes: 'Auto-ready at school dismissal start (Gate Settings)',
-        status: 'pending',
       });
-    }
-
-    let studentsReady = 0;
-    for (const row of toInsert) {
-      const { error: insertErr } = await supabase.from('dismissal_requests').insert(row);
-      if (!insertErr) {
+      if (result.ok && (result.created || result.updated)) {
         studentsReady += 1;
-      } else if (insertErr.code !== '23505') {
-        console.warn('[auto-ready-pickup] dismissal_requests insert notice:', insertErr.message);
+      } else if (!result.ok) {
+        console.warn('[auto-ready-pickup] ensureDismissalReady notice:', result.error);
       }
     }
 

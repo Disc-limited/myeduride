@@ -247,8 +247,18 @@ export default function GateOfficerDashboard() {
     if (!schoolId) return undefined;
     loadGateData();
     loadStaffDirectory();
-    const poll = setInterval(loadGateData, 12000);
-    return () => clearInterval(poll);
+    const poll = setInterval(loadGateData, 4000);
+    const onFocus = () => loadGateData();
+    const onVisible = () => {
+      if (document.visibilityState === 'visible') loadGateData();
+    };
+    window.addEventListener('focus', onFocus);
+    document.addEventListener('visibilitychange', onVisible);
+    return () => {
+      clearInterval(poll);
+      window.removeEventListener('focus', onFocus);
+      document.removeEventListener('visibilitychange', onVisible);
+    };
   }, [schoolId, loadGateData, loadStaffDirectory]);
 
   const loadSchoolData = async () => {

@@ -441,6 +441,17 @@ export async function POST(request: NextRequest) {
       }
     }
 
+    // Clear Ready for Pickup queue for students just released with escort
+    if (mode === 'departure' && newStudentIds.length > 0) {
+      await supabase
+        .from('dismissal_requests')
+        .update({ status: 'completed', completed_at: timestamp })
+        .eq('school_id', school_id)
+        .eq('dismissal_date', todayDate)
+        .in('student_id', newStudentIds)
+        .in('status', ['pending', 'approved']);
+    }
+
     // If afternoon departure, immediately convert students to PICKED UP for the escort
     if (mode === 'departure' && escort_id) {
       try {

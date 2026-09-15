@@ -378,12 +378,12 @@ export default function SafetyConnectView({
                     )}
                   </div>
 
-                  {/* AUTOMATIC DISTANCE & TRIP-BY-TRIP FARE ENGINE DISPLAY */}
+                  {/* ACTUAL DAILY CHARGE */}
                   <div className="p-3.5 rounded-2xl bg-white border border-slate-200/80 space-y-2.5">
-                    <div className="flex items-center justify-between">
+                    <div className="flex items-center justify-between gap-2">
                       <span className="text-[10px] font-black uppercase text-slate-400 tracking-wider flex items-center gap-1.5">
                         <Sparkles size={12} className="text-emerald-600" />
-                        Calculated Distance &amp; Daily Fare Breakdown
+                        Actual Daily Charge
                       </span>
                       <span className="font-mono font-black text-xs text-emerald-800 bg-emerald-50 px-2 py-0.5 rounded-md border border-emerald-200">
                         📏 {activeBooking.distance_km || 4.2} km
@@ -404,20 +404,43 @@ export default function SafetyConnectView({
                         </span>
                       </div>
                       <div className="p-2 rounded-xl bg-emerald-600 text-white shadow-2xs">
-                        <span className="text-[10px] text-emerald-100 font-bold block">Daily Total</span>
-                        <span className="font-black text-white text-xs sm:text-sm">
-                          ₦{Number(activeBooking.daily_fare || 0).toLocaleString()}
-                        </span>
+                        <span className="text-[10px] text-emerald-100 font-bold block">Charged Today</span>
+                        {activeBooking.is_discounted && Number(activeBooking.standard_daily_fare || 0) > Number(activeBooking.actual_amount_collected || activeBooking.daily_fare || 0) ? (
+                          <div>
+                            <span className="text-[10px] text-emerald-200/80 line-through block">
+                              ₦{Number(activeBooking.standard_daily_fare).toLocaleString()}
+                            </span>
+                            <span className="font-black text-white text-xs sm:text-sm">
+                              ₦{Number(activeBooking.actual_amount_collected || activeBooking.daily_fare || 0).toLocaleString()}
+                            </span>
+                          </div>
+                        ) : (
+                          <span className="font-black text-white text-xs sm:text-sm">
+                            ₦{Number(activeBooking.actual_amount_collected || activeBooking.daily_fare || 0).toLocaleString()}
+                          </span>
+                        )}
                       </div>
                     </div>
                     <p className="text-[10px] text-slate-500 leading-relaxed">
-                      ₦300 / 0.5 km · ₦30 / extra 0.1 km
-                      {typeof activeBooking.service_charge === 'number' ? (
-                        <> · 6% service ₦{Number(activeBooking.service_charge).toLocaleString()} per trip</>
+                      {activeBooking.is_discounted ? (
+                        <>
+                          Standard fare ₦{Number(activeBooking.standard_daily_fare || 0).toLocaleString()} · actual amount charged for your child&apos;s escort today is{' '}
+                          <strong className="text-emerald-700">₦{Number(activeBooking.actual_amount_collected || activeBooking.daily_fare || 0).toLocaleString()}</strong>
+                          {activeBooking.discount_details?.discountReason ? ` (${activeBooking.discount_details.discountReason}).` : '.'}
+                        </>
+                      ) : activeBooking.used_stored_fare ? (
+                        <>This is the actual daily amount charged for your child&apos;s escort service.</>
                       ) : (
-                        <> · 6% service charge included</>
+                        <>
+                          ₦300 / 0.5 km · ₦30 / extra 0.1 km
+                          {typeof activeBooking.service_charge === 'number' ? (
+                            <> · 6% service ₦{Number(activeBooking.service_charge).toLocaleString()} per trip</>
+                          ) : (
+                            <> · 6% service charge included</>
+                          )}
+                          . This is the amount payable for your child&apos;s escort.
+                        </>
                       )}
-                      . This is the amount payable for your child&apos;s escort.
                     </p>
                   </div>
 

@@ -575,37 +575,23 @@ export async function POST(request: NextRequest) {
         }
       }
 
-      // Upsert dismissal request record to mark student in Ready / Assigned queue
-      const { data: existingDismissal } = await supabase
-        .from('dismissal_requests')
-        .select('id')
-        .eq('school_id', school_id)
-        .eq('student_id', student_id)
-        .eq('dismissal_date', today)
-        .maybeSingle();
-
-      if (existingDismissal) {
-        await supabase
-          .from('dismissal_requests')
-          .update({
-            pickup_person_name: picker_name,
-            pickup_person_phone: picker_phone || null,
-            pickup_source: picker_type,
-            notes: notes || `Assigned to ${picker_name} (${picker_type})`,
-            status: 'pending',
-          })
-          .eq('id', existingDismissal.id);
-      } else {
-        await supabase.from('dismissal_requests').insert({
-          school_id,
-          student_id,
-          dismissal_date: today,
-          pickup_person_name: picker_name,
-          pickup_person_phone: picker_phone || null,
-          pickup_source: picker_type,
-          notes: notes || `Assigned to ${picker_name} (${picker_type})`,
-          status: 'pending',
-        });
+      // Upsert dismissal request so student appears on gate Ready for Pickup immediately
+      const { ensureDismissalReady } = await import('@/lib/gate/ensure-dismissal-ready');
+      const readyResult = await ensureDismissalReady(supabase, {
+        schoolId: school_id,
+        studentId: student_id,
+        requestedByUserId: session.user_id,
+        pickupPersonName: picker_name,
+        pickupPersonPhone: picker_phone || null,
+        pickupSource: picker_type,
+        notes: notes || `Assigned to ${picker_name} (${picker_type})`,
+        reopenCompleted: true,
+      });
+      if (!readyResult.ok) {
+        return NextResponse.json(
+          { error: readyResult.error || 'Could not mark student ready for pickup' },
+          { status: 500 }
+        );
       }
 
       // If escort assignment, also record in escort_assignments table
@@ -697,14 +683,12 @@ export async function POST(request: NextRequest) {
         .update({
           status: 'completed',
           completed_at: nowIso,
-          pickup_person_name: picker_name,
-          pickup_person_phone: picker_phone || null,
-          pickup_source: picker_type,
           notes: notes || `Released via Central Control to ${picker_name} (${picker_type})`,
         })
         .eq('student_id', student_id)
         .eq('school_id', school_id)
-        .eq('dismissal_date', today);
+        .eq('dismissal_date', today)
+        .in('status', ['pending', 'approved']);
 
       // 3. Mark active escort assignment as completed if applicable
       if (['school_escort', 'myeduride_escort'].includes(picker_type)) {

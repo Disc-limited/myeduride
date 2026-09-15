@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getSessionFromRequest } from '@/lib/auth/auth-server';
 import { getAdminClient } from '@/lib/supabase/admin';
+import { resolveStoredEscortFare } from '@/lib/escort/escort-pricing';
 
 export const dynamic = 'force-dynamic';
 
@@ -183,7 +184,13 @@ export async function GET(request: NextRequest) {
     });
 
     (transportBookings || []).forEach((b) => {
-      const amt = Number((b.notes && b.notes.includes('₦')) ? 2500 : 0);
+      const fare = resolveStoredEscortFare({
+        fareAmount: b.fare_amount,
+        notes: b.notes,
+        distanceKm: null,
+        tripType: null,
+      });
+      const amt = Number(fare.actualAmountCollected || fare.dailyFare || b.fare_amount || 0);
       if (b.source === 'edrive') {
         edriveSpend += amt;
       } else {
