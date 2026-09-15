@@ -157,7 +157,7 @@ export function CityManagerOperationsPanel() {
   const load = async (query = search) => {
     setLoading(true);
     try {
-      const r = await fetch(`/api/city-manager/operations${query ? `?q=${encodeURIComponent(query)}` : ''}`);
+      const r = await fetch(`/api/city-manager/operations?view=full${query ? `&q=${encodeURIComponent(query)}` : ''}`);
       const d = await r.json();
       if (!r.ok) throw new Error(d.error);
       setData(d);
@@ -439,6 +439,12 @@ export function CityManagerOperationsPanel() {
         </div>
 
         <div className="mt-5 grid gap-3 grid-cols-2 sm:grid-cols-3 lg:grid-cols-5">
+          {loading
+            ? Array.from({ length: 5 }).map((_, idx) => (
+                <div key={`ops-skel-${idx}`} className="rounded-2xl bg-slate-900/90 border border-slate-800 p-3.5 h-24 animate-pulse" />
+              ))
+            : (
+            <>
           <div className="rounded-2xl bg-slate-900/90 border border-slate-800 p-3.5 text-xs text-slate-400">
             Approved Escorts
             <strong className="mt-1 block text-2xl text-emerald-400 font-black">{data.escorts.length}</strong>
@@ -459,6 +465,8 @@ export function CityManagerOperationsPanel() {
             Walk-Home Today
             <strong className="mt-1 block text-2xl text-blue-400 font-black">{(data.walk_home_records || []).length}</strong>
           </div>
+            </>
+              )}
         </div>
       </div>
 

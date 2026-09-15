@@ -92,7 +92,7 @@ export function CityManagerCommandControl({
 }: CityManagerCommandControlProps) {
   // Local active section state ensures tabs always toggle immediately
   const [currentTab, setCurrentTab] = useState<string>(activeSection || 'dashboard');
-  const [loading, setLoading] = useState(false);
+  const [loading, setLoading] = useState(true);
 
   useEffect(() => {
     if (activeSection) {
@@ -161,7 +161,7 @@ export function CityManagerCommandControl({
   // Fetch Live City Manager Operations Data
   useEffect(() => {
     setLoading(true);
-    fetch(`/api/city-manager/operations?city=${encodeURIComponent(selectedCity)}`)
+    fetch(`/api/city-manager/operations?view=tables&city=${encodeURIComponent(selectedCity)}`)
       .then((res) => res.json())
       .then((data) => {
         if (data && !data.error) {
@@ -449,10 +449,12 @@ export function CityManagerCommandControl({
     open: boolean;
     school: any | null;
     search: string;
+    loadingRoster?: boolean;
   }>({
     open: false,
     school: null,
     search: '',
+    loadingRoster: false,
   });
 
   // AI Assistant Chat Widget State
@@ -478,6 +480,14 @@ export function CityManagerCommandControl({
       return matchesType && matchesTelemetry && matchesSearch;
     });
   }, [escorts, escortTypeFilter, escortTelemetryFilter, escortSearch]);
+
+  const ESCORT_PAGE_SIZE = 20;
+  const [escortPage, setEscortPage] = useState(1);
+  useEffect(() => {
+    setEscortPage(1);
+  }, [escortTypeFilter, escortTelemetryFilter, escortSearch, selectedCity]);
+  const escortTotalPages = Math.max(1, Math.ceil(filteredEscorts.length / ESCORT_PAGE_SIZE));
+  const pagedEscorts = filteredEscorts.slice((escortPage - 1) * ESCORT_PAGE_SIZE, escortPage * ESCORT_PAGE_SIZE);
 
   // Handlers for Disciplinary Controls
   const handleExecuteDisciplinary = () => {
@@ -865,6 +875,11 @@ export function CityManagerCommandControl({
       {/* ========================================================================= */}
       {(currentTab === 'dashboard' || currentTab === 'live-operations' || (!['escorts', 'gate-monitor', 'trips-management', 'corridor-map', 'safety-incidents', 'escalations', 'communication', 'schools', 'vehicles', 'assignments', 'performance', 'reports-analytics', 'settings-access', 'audit-logs'].includes(currentTab))) && (
         <div className="space-y-4">
+          {loading && (
+            <div className="rounded-xl border border-cyan-500/30 bg-cyan-500/10 px-4 py-2 text-xs font-semibold text-cyan-200">
+              Loading city operations tables…
+            </div>
+          )}
           <div className="grid grid-cols-1 lg:grid-cols-12 gap-4">
             {/* Left Col: Interactive Live Operations Radar Map */}
             <div className="lg:col-span-9 bg-[#0b1c30] rounded-2xl border border-slate-800 p-4 shadow-md flex flex-col justify-between">
@@ -1185,7 +1200,15 @@ export function CityManagerCommandControl({
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-800/80 font-medium text-slate-200">
-                {filteredEscorts.length === 0 ? (
+                {loading ? (
+                  Array.from({ length: 6 }).map((_, idx) => (
+                    <tr key={`escort-skel-${idx}`}>
+                      <td colSpan={7} className="p-3.5">
+                        <div className="h-12 rounded-xl bg-slate-800/80 animate-pulse" />
+                      </td>
+                    </tr>
+                  ))
+                ) : filteredEscorts.length === 0 ? (
                   <tr>
                     <td colSpan={7} className="text-center py-12 text-slate-400">
                       <UserCheck className="w-8 h-8 text-slate-600 mx-auto mb-2" />
@@ -1194,7 +1217,7 @@ export function CityManagerCommandControl({
                     </td>
                   </tr>
                 ) : (
-                  filteredEscorts.map((escort) => {
+                  pagedEscorts.map((escort) => {
                     const initials = (escort.name || 'E')
                       .split(' ')
                       .map((n: string) => n[0])
@@ -1404,11 +1427,34 @@ export function CityManagerCommandControl({
               </tbody>
             </table>
           </div>
+          {escortTotalPages > 1 && !loading && (
+            <div className="flex items-center justify-between pt-2">
+              <p className="text-[11px] text-slate-400 font-semibold">
+                Showing {(escortPage - 1) * ESCORT_PAGE_SIZE + 1}–{Math.min(escortPage * ESCORT_PAGE_SIZE, filteredEscorts.length)} of {filteredEscorts.length}
+              </p>
+              <div className="flex items-center gap-1.5">
+                <button
+                  type="button"
+                  disabled={escortPage <= 1}
+                  onClick={() => setEscortPage((p) => Math.max(1, p - 1))}
+                  className="px-2.5 py-1 rounded-lg bg-slate-800 text-slate-200 text-[11px] font-bold disabled:opacity-40"
+                >
+                  Prev
+                </button>
+                <span className="text-[11px] text-slate-400 font-mono px-2">{escortPage}/{escortTotalPages}</span>
+                <button
+                  type="button"
+                  disabled={escortPage >= escortTotalPages}
+                  onClick={() => setEscortPage((p) => Math.min(escortTotalPages, p + 1))}
+                  className="px-2.5 py-1 rounded-lg bg-slate-800 text-slate-200 text-[11px] font-bold disabled:opacity-40"
+                >
+                  Next
+                </button>
+              </div>
+            </div>
+          )}
         </div>
       )}
-
-      {/* ========================================================================= */}
-      {/* VIEW 3: GATE OFFICERS & GATE STREAM MONITOR */}
       {/* ========================================================================= */}
       {currentTab === 'gate-monitor' && (
         <div className="space-y-4">
@@ -2298,7 +2344,13 @@ export function CityManagerCommandControl({
             </span>
           </div>
 
-          {schools.length === 0 ? (
+          {loading ? (
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
+              {Array.from({ length: 6 }).map((_, idx) => (
+                <div key={`school-skel-${idx}`} className="h-44 rounded-2xl bg-slate-900 border border-slate-800 animate-pulse" />
+              ))}
+            </div>
+          ) : schools.length === 0 ? (
             <div className="text-center py-12 text-slate-400 border border-slate-800 rounded-2xl bg-slate-900/50">
               <School className="w-8 h-8 text-slate-600 mx-auto mb-2" />
               <p className="text-sm font-bold text-slate-300">No Schools Registered in {selectedCity}</p>
@@ -2337,7 +2389,21 @@ export function CityManagerCommandControl({
 
                   <button
                     type="button"
-                    onClick={() => setSchoolStudentsModal({ open: true, school: sch, search: '' })}
+                    onClick={async () => {
+                      setSchoolStudentsModal({ open: true, school: sch, search: '', loadingRoster: true });
+                      try {
+                        const res = await fetch(`/api/city-manager/operations?view=roster&school_id=${encodeURIComponent(sch.id)}`);
+                        const json = await res.json();
+                        setSchoolStudentsModal({
+                          open: true,
+                          school: { ...sch, students: json.students || [] },
+                          search: '',
+                          loadingRoster: false,
+                        });
+                      } catch {
+                        setSchoolStudentsModal({ open: true, school: sch, search: '', loadingRoster: false });
+                      }
+                    }}
                     className="w-full mt-2 py-2 rounded-xl bg-blue-600/20 hover:bg-blue-600 text-blue-300 hover:text-white text-xs font-bold transition-all flex items-center justify-center gap-1.5 border border-blue-500/30 cursor-pointer shadow-xs"
                   >
                     <Users size={13} />
@@ -2385,7 +2451,15 @@ export function CityManagerCommandControl({
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-800/80 font-medium text-slate-200">
-                {vehicles.length === 0 ? (
+                {loading ? (
+                  Array.from({ length: 5 }).map((_, idx) => (
+                    <tr key={`veh-skel-${idx}`}>
+                      <td colSpan={6} className="p-3">
+                        <div className="h-12 rounded-xl bg-slate-800/80 animate-pulse" />
+                      </td>
+                    </tr>
+                  ))
+                ) : vehicles.length === 0 ? (
                   <tr>
                     <td colSpan={6} className="text-center py-12 text-slate-400">
                       <Car className="w-8 h-8 text-slate-600 mx-auto mb-2" />
@@ -3352,6 +3426,16 @@ export function CityManagerCommandControl({
                   const id = (s.student_id_number || s.id || '').toLowerCase();
                   return name.includes(q) || phone.includes(q) || id.includes(q);
                 });
+
+                if (schoolStudentsModal.loadingRoster) {
+                  return (
+                    <div className="p-6 space-y-2">
+                      {Array.from({ length: 6 }).map((_, idx) => (
+                        <div key={`roster-skel-${idx}`} className="h-12 rounded-xl bg-slate-800/80 animate-pulse" />
+                      ))}
+                    </div>
+                  );
+                }
 
                 if (filtered.length === 0) {
                   return (

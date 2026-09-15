@@ -4,10 +4,129 @@ import { getAdminClient } from '@/lib/supabase/admin';
 import { todayInLagos } from '@/lib/timezone';
 import { nowUtcIso } from '@/lib/utils/time';
 import { getEscortApplications } from '@/lib/escort/escort-db';
+import { findEscortApplicationForSession } from '@/lib/escort/escort-category';
 import { resolveStudentIdAny } from '@/lib/attendance/resolve-student';
 import { extractHandoverPin, isTodayHandoverPin, normalizePin } from '@/lib/escort/handover-pin';
 
 export const dynamic = 'force-dynamic';
+
+const LIVE_ASSIGNMENT_STATUSES = ['active', 'completed', 'pending_confirmation', 'pending'];
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+
+function escortScheduleKeys(profile: any, session: any): string[] {
+  return Array.from(
+    new Set(
+      [
+        profile?.id,
+        profile?.user_id,
+        profile?.escort_code,
+        profile?.escortIdCode,
+        session?.user_id,
+        session?.id,
+      ]
+        .filter(Boolean)
+        .map((value) => String(value))
+    )
+  );
+}
+
+function assignmentBelongsToEscort(row: any, keys: string[]): boolean {
+  const candidates = [
+    row?.escort_application_id,
+    row?.escort_id,
+    row?.assigned_escort_id,
+    row?.deputy_escort_application_id,
+  ]
+    .filter(Boolean)
+    .map((value) => String(value));
+  return candidates.some((id) => keys.includes(id));
+}
+
+async function resolveEscortProfile(supabase: any, session: any) {
+  const allApps = await getEscortApplications();
+  let profile = session ? findEscortApplicationForSession(allApps, session) : null;
+
+  if (!profile && session?.user_id) {
+    const { data } = await supabase
+      .from('escort_applications')
+      .select('id, user_id, email, full_name, escort_code, status')
+      .or(`id.eq.${session.user_id},user_id.eq.${session.user_id}`)
+      .limit(1)
+      .maybeSingle();
+    if (data) profile = data;
+  }
+
+  if (!profile && session?.email) {
+    const { data } = await supabase
+      .from('escort_applications')
+      .select('id, user_id, email, full_name, escort_code, status')
+      .ilike('email', session.email)
+      .limit(1)
+      .maybeSingle();
+    if (data) profile = data;
+  }
+
+  return profile;
+}
+
+async function studentIsOnEscortSchedule(
+  supabase: any,
+  studentId: string,
+  escortKeys: string[]
+): Promise<boolean> {
+  if (!studentId || escortKeys.length === 0) return false;
+
+  const { data: assignmentRows } = await supabase
+    .from('escort_assignments')
+    .select('id, status, escort_application_id')
+    .eq('student_id', studentId)
+    .in('status', LIVE_ASSIGNMENT_STATUSES)
+    .limit(20);
+
+  if ((assignmentRows || []).some((row: any) => assignmentBelongsToEscort(row, escortKeys))) {
+    return true;
+  }
+
+  const uuidKeys = escortKeys.filter((id) => UUID_RE.test(id));
+  const routeIds = new Set<string>();
+
+  const { data: byAssignedEscort } = await supabase
+    .from('transport_routes')
+    .select('id')
+    .in('assigned_escort_id', escortKeys)
+    .limit(20);
+  (byAssignedEscort || []).forEach((r: any) => {
+    if (r.id) routeIds.add(r.id);
+  });
+
+  if (uuidKeys.length > 0) {
+    const { data: byAssignedUser } = await supabase
+      .from('transport_routes')
+      .select('id')
+      .in('assigned_escort_user_id', uuidKeys)
+      .limit(20);
+    (byAssignedUser || []).forEach((r: any) => {
+      if (r.id) routeIds.add(r.id);
+    });
+  }
+
+  if (routeIds.size > 0) {
+    const { data: byRoute } = await supabase
+      .from('student_route_assignments')
+      .select('id, morning_route_id, afternoon_route_id, status')
+      .eq('student_id', studentId)
+      .limit(10);
+
+    const onRoute = (byRoute || []).some((row: any) => {
+      const live = row.status ? String(row.status).toLowerCase() !== 'cancelled' && String(row.status).toLowerCase() !== 'paused' : true;
+      if (!live) return false;
+      return routeIds.has(row.morning_route_id) || routeIds.has(row.afternoon_route_id);
+    });
+    if (onRoute) return true;
+  }
+
+  return false;
+}
 
 /**
  * POST /api/escorts/pickup-verify
@@ -18,21 +137,11 @@ export async function POST(request: NextRequest) {
   try {
     const session = getSessionFromRequest(request);
     const supabase = getAdminClient();
-    const allApps = await getEscortApplications();
 
-    let escortProfile: any = null;
-    if (session) {
-      const emailQuery = (session.email || session.username || '').toLowerCase();
-      escortProfile = allApps.find(
-        (a: any) =>
-          (a.email && a.email.toLowerCase() === emailQuery) ||
-          (a.emailOrUsername && a.emailOrUsername.toLowerCase() === emailQuery) ||
-          (a.user_id && a.user_id === session.user_id) ||
-          (session.user_id && a.id === session.user_id)
-      );
-    }
+    let escortProfile: any = await resolveEscortProfile(supabase, session);
 
     if (!escortProfile && (process.env.NODE_ENV === 'development' || !session)) {
+      const allApps = await getEscortApplications();
       if (allApps.length > 0) escortProfile = allApps[0];
     }
 
@@ -41,16 +150,16 @@ export async function POST(request: NextRequest) {
     }
 
     const escortId = escortProfile?.id || session?.user_id;
-    const escortName = escortProfile?.full_name || session?.full_name || 'Assigned Escort';
+    const escortName = escortProfile?.full_name || escortProfile?.fullName || session?.full_name || 'Assigned Escort';
 
     const body = await request.json();
     const { school_id, action = 'morning_pickup', pin_code, scan_data, student_id_number } = body || {};
     let student_id = body?.student_id as string | undefined;
     const enteredPin = normalizePin(pin_code);
-    const escortIdentifiers = [escortProfile?.id, escortProfile?.user_id, session?.user_id].filter(Boolean);
+    const escortIdentifiers = escortScheduleKeys(escortProfile, session);
     const today = todayInLagos();
 
-    if (!student_id && (scan_data || student_id_number)) {
+    if (scan_data || student_id_number) {
       const resolved = await resolveStudentIdAny(supabase, String(scan_data || student_id_number));
       if (!resolved) {
         return NextResponse.json({ error: 'Student ID card or number not recognized' }, { status: 404 });
@@ -119,45 +228,13 @@ export async function POST(request: NextRequest) {
     }
 
     if (escortIdentifiers.length > 0) {
-      const { data: assignment } = await supabase
-        .from('escort_assignments')
-        .select('id, status')
-        .in('escort_application_id', escortIdentifiers)
-        .eq('student_id', student_id)
-        .in('status', ['active', 'completed', 'pending_confirmation', 'pending'])
-        .limit(1)
-        .maybeSingle();
-
-      let onEscortRoute = Boolean(assignment);
-      if (!onEscortRoute) {
-        const { data: escortRoute } = await supabase
-          .from('transport_routes')
-          .select('id')
-          .in('assigned_escort_id', escortIdentifiers)
-          .limit(5);
-        const routeIds = (escortRoute || []).map((r: any) => r.id);
-        if (routeIds.length) {
-          const { data: byMorning } = await supabase
-            .from('student_route_assignments')
-            .select('id')
-            .eq('student_id', student_id)
-            .in('morning_route_id', routeIds)
-            .limit(1)
-            .maybeSingle();
-          const { data: byAfternoon } = byMorning
-            ? { data: byMorning }
-            : await supabase
-                .from('student_route_assignments')
-                .select('id')
-                .eq('student_id', student_id)
-                .in('afternoon_route_id', routeIds)
-                .limit(1)
-                .maybeSingle();
-          onEscortRoute = Boolean(byMorning || byAfternoon);
-        }
-      }
+      const onEscortRoute = await studentIsOnEscortSchedule(supabase, student_id, escortIdentifiers);
 
       if (!onEscortRoute) {
+        console.warn('[pickup-verify] schedule miss', {
+          student_id,
+          escort_keys: escortIdentifiers,
+        });
         return NextResponse.json(
           { error: 'This student is not on your City Manager-approved schedule' },
           { status: 403 }

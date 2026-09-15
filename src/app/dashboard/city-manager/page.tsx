@@ -88,6 +88,7 @@ function CityManagerDashboardContent() {
 
   // Escort Applications & Verification State (Live data fetched from API)
   const [escortApplications, setEscortApplications] = useState<any[]>([]);
+  const [appsLoading, setAppsLoading] = useState(true);
   const [selectedAppId, setSelectedAppId] = useState<string>('');
   const [escortPillarFilter, setEscortPillarFilter] = useState<'all' | 'myeduride' | 'school' | 'shared_ride'>('all');
   const [cmActionModal, setCmActionModal] = useState<{ open: boolean; type: 'correction' | 'reject' | null }>({
@@ -151,7 +152,7 @@ function CityManagerDashboardContent() {
 
   // Fetch Live Schools from Backend
   useEffect(() => {
-    fetch('/api/city-manager/operations')
+    fetch('/api/city-manager/operations?view=schools')
       .then((res) => res.json())
       .then((data) => {
         if (data?.schools && Array.isArray(data.schools)) {
@@ -163,16 +164,34 @@ function CityManagerDashboardContent() {
 
   // Fetch Live Escort Applications from Backend
   useEffect(() => {
+    setAppsLoading(true);
     fetch(`/api/escorts/applications?city=${encodeURIComponent(selectedCity)}`)
       .then((res) => res.json())
       .then((data) => {
         if (data?.applications && Array.isArray(data.applications) && data.applications.length > 0) {
           setEscortApplications(data.applications);
-          setSelectedAppId(data.applications[0].id);
+          setSelectedAppId((prev) => prev || data.applications[0].id);
         }
       })
-      .catch((err) => console.warn('[city-manager] fetch applications notice:', err));
+      .catch((err) => console.warn('[city-manager] fetch applications notice:', err))
+      .finally(() => setAppsLoading(false));
   }, [selectedCity]);
+
+  useEffect(() => {
+    if (!selectedAppId) return;
+    let cancelled = false;
+    fetch(`/api/escorts/applications?appId=${encodeURIComponent(selectedAppId)}`)
+      .then((res) => res.json())
+      .then((data) => {
+        const detail = data?.application || data?.applications?.[0];
+        if (!detail || cancelled) return;
+        setEscortApplications((prev) => prev.map((a) => (a.id === detail.id ? { ...a, ...detail } : a)));
+      })
+      .catch((err) => console.warn('[city-manager] fetch application detail notice:', err));
+    return () => {
+      cancelled = true;
+    };
+  }, [selectedAppId]);
 
   // Handler for Quick Approve & Assign to School
   const handleQuickApproveAndAssignSubmit = async () => {
@@ -658,7 +677,14 @@ function CityManagerDashboardContent() {
         </div>
 
         {/* Main Split Grid: Left Application Selector list, Right Full Inspector */}
-        {filteredEscortApplications.length === 0 ? (
+        {appsLoading ? (
+          <div className="mt-4 p-8 rounded-3xl border border-slate-800 bg-[#07172b] space-y-3">
+            <div className="h-4 w-40 rounded bg-slate-800 animate-pulse" />
+            {Array.from({ length: 5 }).map((_, idx) => (
+              <div key={`app-skel-${idx}`} className="h-16 rounded-2xl bg-slate-800/80 animate-pulse" />
+            ))}
+          </div>
+        ) : filteredEscortApplications.length === 0 ? (
           <div className="mt-4 p-12 rounded-3xl border border-slate-800 bg-[#07172b] text-center space-y-3 shadow-xl">
             <div className="w-14 h-14 bg-slate-800/80 text-emerald-400 border border-slate-700 rounded-2xl flex items-center justify-center mx-auto">
               <ShieldCheck className="w-7 h-7" />

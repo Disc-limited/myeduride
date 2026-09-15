@@ -52,9 +52,9 @@ export default function PickupVerificationModal({
   const actionType = isAfternoonDropoff ? 'afternoon_dropoff' : 'morning_pickup';
 
   const executeVerification = async (opts?: { pin?: string; scanData?: string; studentId?: string }) => {
-    const scanData = (opts?.scanData || (opts?.pin ? '' : manualId) || '').trim();
-    const studentId = opts?.studentId || sampleStudent.id;
+    const scanData = (opts?.scanData || '').trim();
     const pin = opts?.pin;
+    const studentId = opts?.studentId || (scanData ? undefined : sampleStudent.id);
     if (!studentId && !scanData && !(pin && String(pin).replace(/\D/g, '').length >= 4)) {
       toast.error('Scan the student ID, enter the ID number, or enter the parent phone code');
       return;

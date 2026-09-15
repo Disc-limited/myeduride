@@ -63,6 +63,110 @@ export type EscortApplicationData = {
 // File path for persistent local store fallback
 const DATA_FILE = path.join(process.cwd(), 'src', 'lib', 'escort', 'escort-store.json');
 
+const ESCORT_LIST_COLUMNS =
+  'id, user_id, full_name, email, phone, nin, photo, status, city, lga, state, operating_area, school_id, primary_school_id, secondary_school_id, escort_type, escort_code, created_at, proposed_correction, passport_doc_url, drivers_licence_doc_url, police_clearance_doc_url, medical_fitness_doc_url, reg_number, vehicle_type';
+
+function isHttpUrl(value: unknown): value is string {
+  return typeof value === 'string' && (value.startsWith('http://') || value.startsWith('https://') || value.startsWith('/'));
+}
+
+function compactUploadedDocs(docs: any, includeDocuments: boolean) {
+  if (!docs || typeof docs !== 'object') return includeDocuments ? docs || null : null;
+  const out: Record<string, any> = {};
+  for (const [key, raw] of Object.entries(docs)) {
+    if (!raw || typeof raw !== 'object') continue;
+    const fileUrl = (raw as any).fileUrl;
+    if (includeDocuments) {
+      out[key] = raw;
+      continue;
+    }
+    if (isHttpUrl(fileUrl)) {
+      out[key] = {
+        fileName: (raw as any).fileName || key,
+        fileUrl,
+        fileSize: (raw as any).fileSize || null,
+        uploadedAt: (raw as any).uploadedAt || null,
+      };
+    }
+  }
+  return Object.keys(out).length > 0 ? out : null;
+}
+
+function mapEscortApplicationRow(row: any, parsed: any = {}) {
+  return {
+    id: row.id,
+    user_id: row.user_id,
+    name: row.full_name || parsed.fullName || parsed.name,
+    fullName: row.full_name || parsed.fullName || parsed.name,
+    email: row.email || parsed.email || parsed.emailOrUsername,
+    emailOrUsername: row.email || parsed.emailOrUsername || parsed.email,
+    phone: row.phone || parsed.phone,
+    nin: row.nin || parsed.nin,
+    photo: row.photo || parsed.photo,
+    passportDocUrl: row.passport_doc_url || parsed.passportDocUrl,
+    facialScanToken: row.facial_scan_token || parsed.facialScanToken,
+    fingerprintToken: row.fingerprint_token || parsed.fingerprintToken,
+    status: row.status || 'PENDING_CITY_MANAGER_REVIEW',
+    proposed_correction: row.proposed_correction || parsed.proposed_correction || null,
+    city: row.city || row.lga || parsed.city || 'Lagos',
+    state: row.state || parsed.state || 'Lagos',
+    operatingArea: row.operating_area || parsed.operatingArea || 'Lagos Mainland',
+    registrationDate: row.created_at ? String(row.created_at).split('T')[0] : new Date().toISOString().split('T')[0],
+    schoolId: row.school_id || row.primary_school_id || parsed.createdBySchoolId || parsed.schoolId || null,
+    schoolName: parsed.schoolName || parsed.createdBySchoolName || null,
+    createdBySchoolId: parsed.createdBySchoolId || row.school_id || row.primary_school_id || null,
+    createdBySchoolName: parsed.createdBySchoolName || parsed.schoolName || null,
+    createdRole: parsed.createdRole || null,
+    escortType: row.escort_type || parsed.escortType || parsed.escortCategory || null,
+    escortCategory: parsed.escortCategory || row.escort_type || parsed.escortType || null,
+    escort_code: row.escort_code || parsed.escort_code || parsed.escortIdCode || null,
+    escortIdCode: row.escort_code || parsed.escortIdCode || parsed.escort_code || null,
+    regNumber: row.reg_number || parsed.regNumber || null,
+    vehicleType: row.vehicle_type || parsed.vehicleType || null,
+    make: parsed.make || null,
+    model: parsed.model || null,
+    color: parsed.color || null,
+    year: parsed.year || null,
+    dob: row.dob || parsed.dob || null,
+    uploadedDocDetails: parsed.uploadedDocDetails || null,
+    signatureData: parsed.signatureData || null,
+    vehiclePhotos: parsed.vehiclePhotos || null,
+    driversLicence: parsed.driversLicence || null,
+    driversLicenceDocUrl: row.drivers_licence_doc_url || parsed.driversLicenceDocUrl || null,
+    policeClearanceDocUrl: row.police_clearance_doc_url || parsed.policeClearanceDocUrl || null,
+    medicalFitnessDocUrl: row.medical_fitness_doc_url || parsed.medicalFitnessDocUrl || null,
+    isResubmitted: Boolean(parsed.isResubmitted),
+    isDeleted: Boolean(parsed.isDeleted || row.is_deleted),
+  };
+}
+
+export type GetEscortApplicationsOptions = {
+  includeDocuments?: boolean;
+  applicationId?: string;
+};
+
+function compactEscortAppForClient(app: any, includeDocuments: boolean) {
+  const photo = isHttpUrl(app.photo)
+    ? app.photo
+    : isHttpUrl(app.uploadedDocDetails?.selfie?.fileUrl)
+      ? app.uploadedDocDetails.selfie.fileUrl
+      : isHttpUrl(app.uploadedDocDetails?.live_face?.fileUrl)
+        ? app.uploadedDocDetails.live_face.fileUrl
+        : includeDocuments
+          ? app.photo || null
+          : null;
+
+  return {
+    ...app,
+    photo,
+    signatureData: includeDocuments ? app.signatureData || null : null,
+    vehiclePhotos: includeDocuments ? app.vehiclePhotos || null : null,
+    driversLicence: includeDocuments ? app.driversLicence || null : (typeof app.driversLicence === 'string' ? app.driversLicence : null),
+    uploadedDocDetails: compactUploadedDocs(app.uploadedDocDetails, includeDocuments),
+    application_data: undefined,
+  };
+}
+
 export function loadFileStore(): EscortApplicationData[] {
   try {
     if (fs.existsSync(DATA_FILE)) {
@@ -284,21 +388,32 @@ export const saveEscortApplication = registerEscortApplication;
 /**
  * Fetch all submitted escort applications for City Manager
  */
-export async function getEscortApplications(city?: string) {
+export async function getEscortApplications(city?: string, options?: GetEscortApplicationsOptions) {
   let allApps: any[] = [];
+  const includeDocuments = Boolean(options?.includeDocuments);
+  const applicationId = options?.applicationId?.trim() || '';
 
   // 1. Fetch from Supabase Database (escort_applications)
   try {
     const supabase = getAdminClient();
-    const { data, error } = await supabase
-      .from('escort_applications')
-      .select('*')
-      .order('created_at', { ascending: false });
+    let query = supabase.from('escort_applications').select((includeDocuments || applicationId ? '*' : ESCORT_LIST_COLUMNS) as any);
+    if (applicationId) {
+      query = query.or(`id.eq.${applicationId},user_id.eq.${applicationId}`);
+    } else {
+      query = query.order('created_at', { ascending: false });
+    }
+    let { data, error } = await query;
+
+    if (error && !includeDocuments && !applicationId) {
+      const fallback = await supabase.from('escort_applications').select('*').order('created_at', { ascending: false });
+      data = fallback.data;
+      error = fallback.error;
+    }
 
     if (!error && data && data.length > 0) {
-      allApps = data.map((row) => {
+      allApps = data.map((row: any) => {
         let parsed: any = {};
-        if (row.application_data) {
+        if ((includeDocuments || applicationId) && row.application_data) {
           if (typeof row.application_data === 'string') {
             try {
               parsed = JSON.parse(row.application_data);
@@ -309,27 +424,7 @@ export async function getEscortApplications(city?: string) {
             parsed = row.application_data;
           }
         }
-        return {
-          id: row.id,
-          name: row.full_name || parsed.fullName || parsed.name,
-          fullName: row.full_name || parsed.fullName || parsed.name,
-          email: row.email || parsed.email || parsed.emailOrUsername,
-          phone: row.phone || parsed.phone,
-          nin: row.nin || parsed.nin,
-          photo: row.photo || parsed.photo,
-          passportDocUrl: row.passport_doc_url || parsed.passportDocUrl,
-          facialScanToken: row.facial_scan_token || parsed.facialScanToken,
-          fingerprintToken: row.fingerprint_token || parsed.fingerprintToken,
-          status: row.status || 'PENDING_CITY_MANAGER_REVIEW',
-          proposed_correction: row.proposed_correction || parsed.proposed_correction || null,
-          city: row.city || row.lga || parsed.city || 'Lagos',
-          state: row.state || parsed.state || 'Lagos',
-          operatingArea: row.operating_area || parsed.operatingArea || 'Lagos Mainland',
-          registrationDate: row.created_at ? row.created_at.split('T')[0] : new Date().toISOString().split('T')[0],
-          schoolId: row.school_id || row.primary_school_id || parsed.createdBySchoolId || null,
-          createdBySchoolName: parsed.createdBySchoolName || parsed.schoolName || null,
-          ...parsed,
-        };
+        return mapEscortApplicationRow(row, parsed);
       });
     }
   } catch (err) {
@@ -337,7 +432,7 @@ export async function getEscortApplications(city?: string) {
   }
 
   // 2. Merge in file store applications & pending corrections
-  const fileRecords = loadFileStore();
+  const fileRecords = memoryEscortApplications.length > 0 ? memoryEscortApplications : loadFileStore();
   fileRecords.forEach((fileRec) => {
     const existing = allApps.find(
       (a) => a.id === fileRec.id || (fileRec.emailOrUsername && a.email?.toLowerCase() === fileRec.emailOrUsername?.toLowerCase())
@@ -358,20 +453,17 @@ export async function getEscortApplications(city?: string) {
         existing.schoolName = fileRec.schoolName;
       }
     } else {
-      allApps.push({
+      allApps.push(mapEscortApplicationRow({
         id: fileRec.id,
         phone: fileRec.phone,
         nin: fileRec.nin,
         status: fileRec.status || 'PENDING_CITY_MANAGER_REVIEW',
-        proposed_correction: fileRec.proposed_correction || null,
         city: fileRec.city || null,
         state: fileRec.state || null,
-        registrationDate: fileRec.createdAt || new Date().toISOString().split('T')[0],
-        ...fileRec,
-        name: fileRec.fullName || fileRec.name || 'Escort',
-        fullName: fileRec.fullName || fileRec.name || 'Escort',
-        email: fileRec.emailOrUsername || fileRec.email || '',
-      });
+        created_at: fileRec.createdAt,
+        email: fileRec.emailOrUsername || fileRec.email,
+        full_name: fileRec.fullName || fileRec.name,
+      }, fileRec));
     }
   });
 
@@ -569,7 +661,7 @@ export async function getEscortApplications(city?: string) {
         status,
         created_at,
         school:schools(id, name, address, gps_lat, gps_lng),
-        student:students(id, first_name, last_name, student_id_number, photo_url, house_address, house_lat, house_lng, house_landmark, house_notes, house_pinned_at, parent_phone, class:school_classes(id, name))
+        student:students(id, first_name, last_name, student_id_number, house_address, house_lat, house_lng, house_landmark, class:school_classes(id, name))
       `)
       .in('status', ['active', 'pending_confirmation']);
 
@@ -611,7 +703,7 @@ export async function getEscortApplications(city?: string) {
             firstName: st?.first_name || '',
             lastName: st?.last_name || '',
             studentIdNumber: st?.student_id_number || 'N/A',
-            photo: st?.photo_url || null,
+            photo: null,
             className,
             schoolId: a.school_id || sch?.id || app.schoolId,
             schoolName: sch?.name || app.createdBySchoolName || 'Assigned School',
@@ -625,7 +717,7 @@ export async function getEscortApplications(city?: string) {
             distanceKm,
             estimatedTransitMins,
             directionsUrl,
-            parentPhone: st?.parent_phone || '—',
+            parentPhone: '—',
             status: a.status,
             assignmentType: a.assignment_type || 'standard',
             assignedAt: a.created_at,
@@ -654,7 +746,11 @@ export async function getEscortApplications(city?: string) {
     }));
   }
 
-  return allApps;
+  if (applicationId) {
+    allApps = allApps.filter((app) => app.id === applicationId || app.user_id === applicationId);
+  }
+
+  return allApps.map((app) => compactEscortAppForClient(app, includeDocuments || Boolean(applicationId)));
 }
 
 /**

@@ -16,6 +16,29 @@ export const dynamic = 'force-dynamic';
 
 const LIVE_ASSIGNMENT_STATUSES = ['active', 'pending_confirmation', 'pending'];
 const DEAD_BOOKING_STATUSES = ['cancelled', 'canceled', 'rejected', 'reassigned'];
+const OPS_CACHE_TTL_MS = 12_000;
+const opsGetCache = new Map<string, { at: number; payload: any }>();
+
+function readOpsCache(key: string) {
+  const hit = opsGetCache.get(key);
+  if (!hit) return null;
+  if (Date.now() - hit.at > OPS_CACHE_TTL_MS) {
+    opsGetCache.delete(key);
+    return null;
+  }
+  return hit.payload;
+}
+
+function writeOpsCache(key: string, payload: any) {
+  opsGetCache.set(key, { at: Date.now(), payload });
+}
+
+function invalidateOpsCache() {
+  opsGetCache.clear();
+}
+
+const ESCORT_TABLE_COLUMNS =
+  'id,full_name,email,phone,operating_area,status,availability_status,emergency_pool_enabled,last_available_at,user_id,residential_address,closest_landmark,lga,house_lat,house_lng,location_pinned_at,today_trip_status,today_trip_declined_reason,ready_for_pickup,school_id,primary_school_id,secondary_school_id,reg_number';
 
 const canOperate = (request: NextRequest) => {
   const session = getSessionFromRequest(request);
@@ -77,20 +100,83 @@ export async function GET(request: NextRequest) {
   try {
     const db = getAdminClient();
     const query = request.nextUrl.searchParams.get('q')?.trim();
+    const view = (request.nextUrl.searchParams.get('view') || 'tables').toLowerCase();
+    const rosterSchoolId = request.nextUrl.searchParams.get('school_id')?.trim() || '';
+    const cacheKey = `${view}:${query || ''}:${rosterSchoolId}`;
+    const cached = readOpsCache(cacheKey);
+    if (cached) {
+      return NextResponse.json(cached, { headers: { 'Cache-Control': 'private, max-age=8', 'X-CM-Cache': 'HIT' } });
+    }
+
+    if (view === 'schools') {
+      const { data: schoolRows } = await db.from('schools').select('id, name, address').order('name');
+      const platformSchoolId = getPlatformSchoolId();
+      const schools = (schoolRows || []).filter((s: any) => {
+        if (!s?.id || s.id === platformSchoolId) return false;
+        const name = String(s.name || '').trim().toLowerCase();
+        return name && name !== 'myeduride platform';
+      });
+      const payload = { schools };
+      writeOpsCache(cacheKey, payload);
+      return NextResponse.json(payload, { headers: { 'Cache-Control': 'private, max-age=8' } });
+    }
+
+    if (view === 'roster') {
+      if (!rosterSchoolId) {
+        return NextResponse.json({ students: [] });
+      }
+      const { data: rosterRows } = await db
+        .from('students')
+        .select('id, first_name, last_name, student_id_number, photo_url, school_id, is_active, house_address, house_lat, house_lng, house_landmark, custom_fields, class:school_classes(name)')
+        .eq('school_id', rosterSchoolId)
+        .order('first_name')
+        .limit(400);
+      const students = (rosterRows || []).map((st: any) => ({
+        id: st.id,
+        name: `${st.first_name || ''} ${st.last_name || ''}`.trim() || 'Student',
+        first_name: st.first_name,
+        last_name: st.last_name,
+        student_id_number: st.student_id_number || 'N/A',
+        photo_url: st.photo_url || null,
+        class_name: Array.isArray(st.class) ? st.class[0]?.name : (st.class?.name || 'Class N/A'),
+        parent_phone: st.custom_fields?.parent_phone || st.parent_phone || '—',
+        house_address: st.house_address || 'Designated Home Residence',
+        house_lat: st.house_lat,
+        house_lng: st.house_lng,
+        house_landmark: st.house_landmark,
+        is_house_pinned: Boolean(st.house_lat && st.house_lng),
+        status: st.is_active ? 'ACTIVE' : 'ENROLLED',
+      }));
+      const payload = { students };
+      writeOpsCache(cacheKey, payload);
+      return NextResponse.json(payload, { headers: { 'Cache-Control': 'private, max-age=8' } });
+    }
+
+    const includeCensus = view === 'full';
+    const includePins = view === 'full' || view === 'pins';
+    const includeWalkHome = view === 'full';
+
+    const empty: any[] = [];
     const [schoolsRes, escortsRes, bookingsRes, assignmentsRes, auditRes, deputisingRes, vehiclesRes, routesRes, walkHomeRes, pinnedParentsRes, gateOfficersRes, gateActivitiesRes, allSchoolStudentsRes] = await Promise.all([
       db.from('schools').select('id, name, address, gps_lat, gps_lng, location_address, location_landmark, location_pinned_at').order('name').then((r: any) => r.data || [], () => []),
-      db.from('escort_applications').select('id,full_name,email,phone,operating_area,status,availability_status,emergency_pool_enabled,last_available_at,application_data,user_id,residential_address,closest_landmark,lga,house_lat,house_lng,location_pinned_at,today_trip_status,today_trip_declined_reason,ready_for_pickup').in('status', ['CITY_MANAGER_APPROVED', 'ACTIVE']).then((r: any) => r.data || [], () => []),
-      db.from('transport_bookings').select('*, school:schools(name), student:students(first_name,last_name,student_id_number,class_id,house_address,house_lat,house_lng,house_landmark,house_notes,house_pinned_at,custom_fields), parent:user_profiles!parent_user_id(full_name, phone)').not('status', 'in', '(cancelled,canceled,rejected,reassigned)').order('created_at', { ascending: false }).limit(100).then((r: any) => r.data || [], () => []),
+      db.from('escort_applications').select(ESCORT_TABLE_COLUMNS).in('status', ['CITY_MANAGER_APPROVED', 'ACTIVE']).then((r: any) => r.data || [], () => []),
+      db.from('transport_bookings').select('id, status, notes, fare_amount, source, student_id, school_id, parent_user_id, parent_phone, pickup_address, pickup_lat, pickup_lng, requested_pickup_at, created_at, school:schools(name), student:students(first_name,last_name,student_id_number,class_id,house_address,house_lat,house_lng,house_landmark,house_notes,house_pinned_at,custom_fields), parent:user_profiles!parent_user_id(full_name, phone)').not('status', 'in', '(cancelled,canceled,rejected,reassigned)').order('created_at', { ascending: false }).limit(100).then((r: any) => r.data || [], () => []),
       db.from('escort_assignments').select('*, escort:escort_applications(id,full_name,phone,operating_area,status), school:schools(id,name,address,gps_lat,gps_lng), student:students(id,first_name,last_name,student_id_number,photo_url,class:school_classes(name),house_address,house_lat,house_lng,house_landmark,house_notes,house_pinned_at,custom_fields)').in('status', LIVE_ASSIGNMENT_STATUSES).order('created_at', { ascending: false }).limit(200).then((r: any) => r.data || [], () => []),
       db.from('city_manager_audit_log').select('*').order('created_at', { ascending: false }).limit(100).then((r: any) => r.data || [], () => []),
       db.from('emergency_deputising').select('*').order('created_at', { ascending: false }).limit(100).then((r: any) => r.data || [], () => []),
       db.from('school_vehicles').select('*').order('created_at', { ascending: false }).limit(100).then((r: any) => r.data || [], () => []),
       db.from('transport_routes').select('id, name, code, assigned_vehicle_id, assigned_escort_id').order('created_at', { ascending: false }).limit(100).then((r: any) => r.data || [], () => []),
-      db.from('attendance_records').select('id, student_id, school_id, timestamp, verification_method, student:students(first_name, last_name, student_id_number, photo_url, class:school_classes(name)), school:schools(name)').eq('type', 'departure').ilike('verification_method', '%walk_home%').order('timestamp', { ascending: false }).limit(50).then((r: any) => r.data || [], () => []),
-      db.from('students').select('id, first_name, last_name, student_id_number, photo_url, school_id, school:schools(id, name, address, gps_lat, gps_lng, location_address), class:school_classes(name), house_address, house_lat, house_lng, house_landmark, house_notes, house_pinned_at, house_pinned_by').not('house_lat', 'is', null).order('house_pinned_at', { ascending: false }).limit(200).then((r: any) => r.data || [], () => []),
+      includeWalkHome
+        ? db.from('attendance_records').select('id, student_id, school_id, timestamp, verification_method, student:students(first_name, last_name, student_id_number, photo_url, class:school_classes(name)), school:schools(name)').eq('type', 'departure').ilike('verification_method', '%walk_home%').order('timestamp', { ascending: false }).limit(50).then((r: any) => r.data || [], () => [])
+        : Promise.resolve(empty),
+      includePins
+        ? db.from('students').select('id, first_name, last_name, student_id_number, photo_url, school_id, school:schools(id, name, address, gps_lat, gps_lng, location_address), class:school_classes(name), house_address, house_lat, house_lng, house_landmark, house_notes, house_pinned_at, house_pinned_by').not('house_lat', 'is', null).order('house_pinned_at', { ascending: false }).limit(200).then((r: any) => r.data || [], () => [])
+        : Promise.resolve(empty),
       db.from('user_school_roles').select('id, user_id, school_id, role, is_active, created_at, user:user_profiles(id, full_name, email, phone, avatar_url), school:schools(id, name, address)').eq('role', 'gate_officer').then((r: any) => r.data || [], () => []),
       db.from('attendance_records').select('id, student_id, school_id, timestamp, type, verification_method, verified_by_user_id, student:students(first_name, last_name, student_id_number, photo_url, class:school_classes(name)), school:schools(name)').order('timestamp', { ascending: false }).limit(60).then((r: any) => r.data || [], () => []),
-      db.from('students').select('id, first_name, last_name, student_id_number, photo_url, school_id, is_active, custom_fields, house_address, house_lat, house_lng, house_landmark, class:school_classes(name)').order('first_name').limit(500).then((r: any) => r.data || [], () => []),
+      includeCensus
+        ? db.from('students').select('id, first_name, last_name, student_id_number, photo_url, school_id, is_active, custom_fields, house_address, house_lat, house_lng, house_landmark, class:school_classes(name)').order('first_name').limit(500).then((r: any) => r.data || [], () => [])
+        : db.from('students').select('school_id').not('school_id', 'is', null).limit(4000).then((r: any) => r.data || [], () => []),
     ]);
 
     let students: any[] = [];
@@ -289,38 +375,43 @@ export async function GET(request: NextRequest) {
     const schoolsList = schoolsRes;
     const routesList = routesRes;
 
-    const { loadFileStore } = await import('@/lib/escort/escort-db');
-    const fileStore = loadFileStore();
     const escortsList = [...escortsRes];
-    const seenEscortIds = new Set(escortsList.map((e: any) => e.id));
-    for (const fe of fileStore) {
-      if (!seenEscortIds.has(fe.id)) {
-        seenEscortIds.add(fe.id);
-        const anyFe = fe as any;
-        escortsList.push({
-          id: fe.id,
-          full_name: anyFe.full_name || fe.fullName || anyFe.name,
-          phone: fe.phone,
-          operating_area: fe.operatingArea || anyFe.operating_area || anyFe.service_city || anyFe.school_name,
-          status: fe.status || 'ACTIVE',
-          availability_status: anyFe.availability_status || 'available',
-        });
+    if (escortsList.length === 0) {
+      const { loadFileStore } = await import('@/lib/escort/escort-db');
+      const fileStore = loadFileStore();
+      const seenEscortIds = new Set(escortsList.map((e: any) => e.id));
+      for (const fe of fileStore) {
+        if (!seenEscortIds.has(fe.id)) {
+          seenEscortIds.add(fe.id);
+          const anyFe = fe as any;
+          escortsList.push({
+            id: fe.id,
+            full_name: anyFe.full_name || fe.fullName || anyFe.name,
+            phone: fe.phone,
+            operating_area: fe.operatingArea || anyFe.operating_area || anyFe.service_city || anyFe.school_name,
+            status: fe.status || 'ACTIVE',
+            availability_status: anyFe.availability_status || 'available',
+            escort_type: anyFe.escortType || anyFe.escortCategory || null,
+            school_id: anyFe.schoolId || anyFe.createdBySchoolId || null,
+          });
+        }
       }
     }
-
-    const { loadVehicleFileStore } = await import('@/lib/vehicle/vehicle-db');
-    const fileVehicles = loadVehicleFileStore();
+    const pendingCorrections: any[] = [];
 
     const dbVehiclesList = vehiclesRes;
     const combinedVehicles = [...dbVehiclesList];
-    const seenVehicleIds = new Set(combinedVehicles.map((v: any) => v.id));
-    const seenPlates = new Set(combinedVehicles.map((v: any) => (v.reg_number || '').toUpperCase()));
-
-    for (const fv of fileVehicles) {
-      if (!seenVehicleIds.has(fv.id) && (!fv.reg_number || !seenPlates.has(fv.reg_number.toUpperCase()))) {
-        seenVehicleIds.add(fv.id);
-        if (fv.reg_number) seenPlates.add(fv.reg_number.toUpperCase());
-        combinedVehicles.push(fv);
+    if (combinedVehicles.length === 0) {
+      const { loadVehicleFileStore } = await import('@/lib/vehicle/vehicle-db');
+      const fileVehicles = loadVehicleFileStore();
+      const seenVehicleIds = new Set(combinedVehicles.map((v: any) => v.id));
+      const seenPlates = new Set(combinedVehicles.map((v: any) => (v.reg_number || '').toUpperCase()));
+      for (const fv of fileVehicles) {
+        if (!seenVehicleIds.has(fv.id) && (!fv.reg_number || !seenPlates.has(fv.reg_number.toUpperCase()))) {
+          seenVehicleIds.add(fv.id);
+          if (fv.reg_number) seenPlates.add(fv.reg_number.toUpperCase());
+          combinedVehicles.push(fv);
+        }
       }
     }
 
@@ -356,10 +447,6 @@ export async function GET(request: NextRequest) {
         created_at: v.created_at,
       };
     });
-
-    const pendingCorrections = fileStore.filter(
-      (a: any) => a.status === 'CORRECTION_PENDING' || !!a.proposed_correction
-    );
 
     const formattedAssignments = (assignmentsRes || [])
       .filter((a: any) => LIVE_ASSIGNMENT_STATUSES.includes(String(a.status || '').toLowerCase()))
@@ -553,7 +640,12 @@ export async function GET(request: NextRequest) {
 
       return {
         ...e,
-        escort_category: resolveEscortCategory(e),
+        createdBySchoolId: e.createdBySchoolId || e.school_id || e.primary_school_id || null,
+        escort_type: e.escort_type || e.escortType || null,
+        escort_category: resolveEscortCategory({
+          ...e,
+          createdBySchoolId: e.createdBySchoolId || e.school_id || e.primary_school_id || null,
+        }),
         school_id: e.school_id || assignedSchool?.id || null,
         school_name: e.school_name || assignedSchool?.name || (e.operating_area?.toLowerCase().includes('school') ? e.operating_area : null),
         assigned_school_id: e.school_id || assignedSchool?.id || null,
@@ -575,26 +667,28 @@ export async function GET(request: NextRequest) {
 
     // 6. School Students Census & Demographics (Requirement E)
     const schoolStudentsMap: Record<string, any[]> = {};
+    const schoolStudentCounts: Record<string, number> = {};
     for (const st of (allSchoolStudentsRes || [])) {
-      if (st.school_id) {
-        if (!schoolStudentsMap[st.school_id]) schoolStudentsMap[st.school_id] = [];
-        schoolStudentsMap[st.school_id].push({
-          id: st.id,
-          name: `${st.first_name || ''} ${st.last_name || ''}`.trim() || 'Student',
-          first_name: st.first_name,
-          last_name: st.last_name,
-          student_id_number: st.student_id_number || 'N/A',
-          photo_url: st.photo_url || null,
-          class_name: Array.isArray(st.class) ? st.class[0]?.name : (st.class?.name || 'Class N/A'),
-          parent_phone: st.custom_fields?.parent_phone || st.parent_phone || '—',
-          house_address: st.house_address || 'Designated Home Residence',
-          house_lat: st.house_lat,
-          house_lng: st.house_lng,
-          house_landmark: st.house_landmark,
-          is_house_pinned: Boolean(st.house_lat && st.house_lng),
-          status: st.is_active ? 'ACTIVE' : 'ENROLLED',
-        });
-      }
+      if (!st.school_id) continue;
+      schoolStudentCounts[st.school_id] = (schoolStudentCounts[st.school_id] || 0) + 1;
+      if (!includeCensus || !st.id) continue;
+      if (!schoolStudentsMap[st.school_id]) schoolStudentsMap[st.school_id] = [];
+      schoolStudentsMap[st.school_id].push({
+        id: st.id,
+        name: `${st.first_name || ''} ${st.last_name || ''}`.trim() || 'Student',
+        first_name: st.first_name,
+        last_name: st.last_name,
+        student_id_number: st.student_id_number || 'N/A',
+        photo_url: st.photo_url || null,
+        class_name: Array.isArray(st.class) ? st.class[0]?.name : (st.class?.name || 'Class N/A'),
+        parent_phone: st.custom_fields?.parent_phone || st.parent_phone || '—',
+        house_address: st.house_address || 'Designated Home Residence',
+        house_lat: st.house_lat,
+        house_lng: st.house_lng,
+        house_landmark: st.house_landmark,
+        is_house_pinned: Boolean(st.house_lat && st.house_lng),
+        status: st.is_active ? 'ACTIVE' : 'ENROLLED',
+      });
     }
 
     const platformSchoolId = getPlatformSchoolId();
@@ -609,8 +703,8 @@ export async function GET(request: NextRequest) {
         const schOfficers = (gateOfficersRes || []).filter((g: any) => g.school_id === s.id);
         return {
           ...s,
-          students: schStudents,
-          studentsCount: schStudents.length,
+          students: includeCensus ? schStudents : [],
+          studentsCount: includeCensus ? schStudents.length : (schoolStudentCounts[s.id] || 0),
           gateOfficersCount: schOfficers.length,
           escortsCount: enrichedEscortsList.filter((e: any) => e.school_id === s.id).length,
           complianceScore: 100,
@@ -689,13 +783,13 @@ export async function GET(request: NextRequest) {
       uniqueParentRequests.push(req);
     }
 
-    return NextResponse.json({
+    const payload = {
       schools: uniqueSchoolsList,
       escorts: enrichedEscortsList,
       gate_officers: formattedGateOfficers,
       gate_activities: formattedGateActivities,
       vehicles: rawVehicles,
-      bookings: rawBookings,
+      bookings: [],
       parent_requests: uniqueParentRequests,
       assignments: formattedAssignments,
       walk_home_records: formattedWalkHomeRecords,
@@ -707,7 +801,9 @@ export async function GET(request: NextRequest) {
       pending_corrections: pendingCorrections,
       deputising_records: deputisingRes,
       emergency_deputising: deputisingRes,
-    });
+    };
+    writeOpsCache(cacheKey, payload);
+    return NextResponse.json(payload, { headers: { 'Cache-Control': 'private, max-age=8', 'X-CM-Cache': 'MISS' } });
   } catch (error: any) { return NextResponse.json({ error: error.message || 'Unable to load operations' }, { status: 500 }); }
 }
 
@@ -715,6 +811,7 @@ export async function POST(request: NextRequest) {
   const session = canOperate(request);
   if (!session) return NextResponse.json({ error: 'City Manager access required' }, { status: 403 });
   try {
+    invalidateOpsCache();
     const body = await request.json(); const db = getAdminClient();
     if (body.action === 'unassign_escort_school') {
       const escortAppId = String(body.escortApplicationId || body.appId || '').trim();

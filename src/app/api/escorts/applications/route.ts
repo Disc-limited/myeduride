@@ -10,8 +10,18 @@ export async function GET(request: NextRequest) {
   try {
     const { searchParams } = new URL(request.url);
     const city = searchParams.get('city') || undefined;
+    const appId = searchParams.get('appId')?.trim();
 
-    const applications = await getEscortApplications(city);
+    if (appId) {
+      const applications = await getEscortApplications(undefined, { includeDocuments: true, applicationId: appId });
+      return NextResponse.json({
+        success: true,
+        application: applications[0] || null,
+        applications,
+      });
+    }
+
+    const applications = await getEscortApplications(city, { includeDocuments: false });
     return NextResponse.json({ success: true, applications });
   } catch (error: unknown) {
     const message = error instanceof Error ? error.message : 'Failed to fetch escort applications';
