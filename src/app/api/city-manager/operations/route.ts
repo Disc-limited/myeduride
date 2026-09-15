@@ -238,18 +238,35 @@ export async function GET(request: NextRequest) {
           ? 'morning_only'
           : 'both';
       const fareResult = calculateEscortFare(distanceKm, tripType);
-      const morningFare = fareResult.morningFare;
-      const afternoonFare = fareResult.afternoonFare;
-      const dailyFare = fareResult.dailyFare;
+      const storedDiscount = meta?.discount || null;
+      const storedDaily = Number(
+        storedDiscount?.discountedFare ||
+        meta?.fareResult?.dailyFare ||
+        meta?.daily_fare ||
+        b.fare_amount ||
+        0
+      );
+      const standardDaily = Number(meta?.fareResult?.originalDailyFare || fareResult.dailyFare);
+      const dailyFare = storedDaily > 0 ? storedDaily : fareResult.dailyFare;
+      const morningFare =
+        storedDaily > 0
+          ? Number(
+              meta?.fareResult?.morningFare ||
+                meta?.morning_fare ||
+                (tripType === 'afternoon_only' ? 0 : tripType === 'morning_only' ? dailyFare : Math.round(dailyFare / 2))
+            )
+          : fareResult.morningFare;
+      const afternoonFare =
+        storedDaily > 0
+          ? Number(
+              meta?.fareResult?.afternoonFare ||
+                meta?.afternoon_fare ||
+                (tripType === 'morning_only' ? 0 : dailyFare - morningFare)
+            )
+          : fareResult.afternoonFare;
 
-      let discountDetails: any = null;
-      let actualCollected = b.fare_amount ? Number(b.fare_amount) : dailyFare;
-      if (meta?.discount) {
-        discountDetails = meta.discount;
-        if (discountDetails.discountedFare) {
-          actualCollected = Number(discountDetails.discountedFare);
-        }
-      }
+      let discountDetails: any = storedDiscount;
+      let actualCollected = dailyFare;
 
       const isConfirmed = b.status === 'assigned' || matchedAssignment?.status === 'active';
 
@@ -276,13 +293,14 @@ export async function GET(request: NextRequest) {
         morning_fare: morningFare,
         afternoon_fare: afternoonFare,
         daily_fare: dailyFare,
+        standard_daily_fare: standardDaily,
         distance_charge: fareResult.distanceCharge,
         service_charge: fareResult.serviceCharge,
         service_charge_percent: fareResult.serviceChargePercent,
         billable_km: fareResult.billableKm,
         actual_amount_collected: actualCollected,
         discount_details: discountDetails,
-        is_discounted: Boolean(discountDetails),
+        is_discounted: Boolean(discountDetails) || (standardDaily > 0 && dailyFare < standardDaily),
         accountant_approval_ref: discountDetails?.accountantApprovalRef || null,
         accountant_name: discountDetails?.accountantName || null,
         trip_type: tripType,
@@ -326,6 +344,16 @@ export async function GET(request: NextRequest) {
       const isPinned = Boolean(stu?.house_lat && stu?.house_lng);
 
       const fallbackFare = calculateEscortFare(4.2, 'both');
+      let assignMeta: any = {};
+      try {
+        if (typeof a.notes === 'string' && a.notes.trim().startsWith('{')) assignMeta = JSON.parse(a.notes);
+      } catch {
+        assignMeta = {};
+      }
+      const storedAssignDaily = Number(assignMeta?.discount?.discountedFare || assignMeta?.fareResult?.dailyFare || 0);
+      const assignDaily = storedAssignDaily > 0 ? storedAssignDaily : fallbackFare.dailyFare;
+      const assignMorning = storedAssignDaily > 0 ? Number(assignMeta?.fareResult?.morningFare || Math.round(assignDaily / 2)) : fallbackFare.morningFare;
+      const assignAfternoon = storedAssignDaily > 0 ? Number(assignMeta?.fareResult?.afternoonFare || assignDaily - assignMorning) : fallbackFare.afternoonFare;
       parentRequests.push({
         booking_id: a.booking_id || a.id,
         assignment_id: a.id,
@@ -338,14 +366,15 @@ export async function GET(request: NextRequest) {
         school_name: sch?.name || 'School Campus',
         source: 'school',
         distance_km: 4.2,
-        morning_fare: fallbackFare.morningFare,
-        afternoon_fare: fallbackFare.afternoonFare,
-        daily_fare: fallbackFare.dailyFare,
-        actual_amount_collected: fallbackFare.dailyFare,
-        discount_details: null,
-        is_discounted: false,
-        accountant_approval_ref: null,
-        accountant_name: null,
+        morning_fare: assignMorning,
+        afternoon_fare: assignAfternoon,
+        daily_fare: assignDaily,
+        standard_daily_fare: fallbackFare.dailyFare,
+        actual_amount_collected: assignDaily,
+        discount_details: assignMeta?.discount || null,
+        is_discounted: Boolean(assignMeta?.discount) || assignDaily < fallbackFare.dailyFare,
+        accountant_approval_ref: assignMeta?.discount?.accountantApprovalRef || null,
+        accountant_name: assignMeta?.discount?.accountantName || null,
         trip_type: 'both',
         escort_type: 'myeduride_escort',
         preferred_escort_id: a.escort_application_id,
@@ -783,6 +812,41 @@ export async function GET(request: NextRequest) {
       uniqueParentRequests.push(req);
     }
 
+    const requestByAssignment = new Map<string, any>();
+    const requestByBooking = new Map<string, any>();
+    const requestByStudent = new Map<string, any>();
+    for (const req of uniqueParentRequests) {
+      if (req.assignment_id) requestByAssignment.set(req.assignment_id, req);
+      if (req.booking_id) requestByBooking.set(req.booking_id, req);
+      if (req.child_id) requestByStudent.set(req.child_id, req);
+    }
+    for (const assignment of formattedAssignments) {
+      const match =
+        requestByAssignment.get(assignment.id) ||
+        (assignment.booking_id ? requestByBooking.get(assignment.booking_id) : null) ||
+        (assignment.student_id ? requestByStudent.get(assignment.student_id) : null);
+      let assignMeta: any = {};
+      try {
+        if (typeof assignment.notes === 'string' && assignment.notes.trim().startsWith('{')) {
+          assignMeta = JSON.parse(assignment.notes);
+        }
+      } catch {}
+      const storedDaily = Number(assignMeta?.discount?.discountedFare || assignMeta?.fareResult?.dailyFare || 0);
+      const fallback = calculateEscortFare(4.2, 'both');
+      const dailyFare = Number(match?.daily_fare || storedDaily || fallback.dailyFare);
+      const morningFare = Number(match?.morning_fare || assignMeta?.fareResult?.morningFare || Math.round(dailyFare / 2));
+      assignment.daily_fare = dailyFare;
+      assignment.standard_daily_fare = Number(match?.standard_daily_fare || assignMeta?.fareResult?.originalDailyFare || fallback.dailyFare);
+      assignment.actual_amount_collected = Number(match?.actual_amount_collected || dailyFare);
+      assignment.morning_fare = morningFare;
+      assignment.afternoon_fare = Number(match?.afternoon_fare || assignMeta?.fareResult?.afternoonFare || dailyFare - morningFare);
+      assignment.is_discounted = Boolean(match?.is_discounted || assignMeta?.discount) || (assignment.standard_daily_fare > dailyFare);
+      assignment.accountant_approval_ref = match?.accountant_approval_ref || assignMeta?.discount?.accountantApprovalRef || null;
+      assignment.accountant_name = match?.accountant_name || assignMeta?.discount?.accountantName || null;
+      assignment.discount_details = match?.discount_details || assignMeta?.discount || null;
+      assignment.trip_type = match?.trip_type || 'both';
+    }
+
     const payload = {
       schools: uniqueSchoolsList,
       escorts: enrichedEscortsList,
@@ -1081,87 +1145,124 @@ export async function POST(request: NextRequest) {
       });
     }
 
-    // 2. Accountant-Approved Parent Discounted Fee Input (Requirement G)
-    if (body.action === 'apply_accountant_discount') {
-      const { bookingId, studentId, originalFare, discountedFare, accountantApprovalRef, accountantName, discountReason } = body;
+    // 2. City Manager fare correction with optional discount
+    if (body.action === 'apply_accountant_discount' || body.action === 'correct_fare') {
+      const {
+        bookingId,
+        assignmentId,
+        studentId,
+        originalFare,
+        discountedFare,
+        correctedFare,
+        accountantApprovalRef,
+        accountantName,
+        discountReason,
+        tripType,
+      } = body;
 
-      if (!accountantApprovalRef || !accountantApprovalRef.trim()) {
-        return NextResponse.json({ error: 'Accountant approval reference number is required to apply discount' }, { status: 400 });
-      }
-      const rawOriginal = Number(originalFare) || 3500;
-      const rawDiscounted = Number(discountedFare);
+      const rawOriginal = Number(originalFare) || 0;
+      const rawCorrected = Number(correctedFare ?? discountedFare);
 
-      if (isNaN(rawDiscounted) || rawDiscounted <= 0) {
-        return NextResponse.json({ error: 'Valid discounted fare amount is required' }, { status: 400 });
-      }
-      if (rawDiscounted >= rawOriginal) {
-        return NextResponse.json({ error: `Discounted fare (₦${rawDiscounted.toLocaleString()}) must be less than original fare (₦${rawOriginal.toLocaleString()})` }, { status: 400 });
+      if (isNaN(rawCorrected) || rawCorrected <= 0) {
+        return NextResponse.json({ error: 'Enter a valid corrected daily fare' }, { status: 400 });
       }
 
-      const variance = rawOriginal - rawDiscounted;
+      const variance = rawOriginal > 0 ? rawOriginal - rawCorrected : 0;
+      const isDiscount = variance > 0;
+      const resolvedTripType = tripType === 'morning_only' || tripType === 'afternoon_only' ? tripType : 'both';
+      const morningFare = resolvedTripType === 'afternoon_only' ? 0 : resolvedTripType === 'morning_only' ? rawCorrected : Math.round(rawCorrected / 2);
+      const afternoonFare = resolvedTripType === 'morning_only' ? 0 : rawCorrected - morningFare;
       const discountPayload = {
-        originalFare: rawOriginal,
-        discountedFare: rawDiscounted,
+        originalFare: rawOriginal || rawCorrected,
+        discountedFare: rawCorrected,
         variance,
-        accountantApprovalRef: accountantApprovalRef.trim(),
-        accountantName: accountantName?.trim() || 'School Accountant / Bursar',
-        discountReason: discountReason?.trim() || 'Authorized bursar rate concession',
+        is_correction: true,
+        is_discount: isDiscount,
+        accountantApprovalRef: String(accountantApprovalRef || '').trim() || null,
+        accountantName: String(accountantName || '').trim() || (isDiscount ? 'City Manager Fare Correction' : 'City Manager'),
+        discountReason: String(discountReason || '').trim() || (isDiscount ? 'City Manager discount correction' : 'City Manager fare correction'),
         appliedByUserId: session.user_id,
         appliedAt: new Date().toISOString(),
       };
 
-      // 1. Update transport_bookings
       if (bookingId) {
         try {
           const { data: bData } = await db.from('transport_bookings').select('notes').eq('id', bookingId).maybeSingle();
           let currentNotes: any = {};
           try {
-            if (bData?.notes && bData.notes.startsWith('{')) currentNotes = JSON.parse(bData.notes);
+            if (bData?.notes && String(bData.notes).trim().startsWith('{')) currentNotes = JSON.parse(bData.notes);
           } catch {}
 
-          currentNotes.discount = discountPayload;
+          currentNotes.discount = isDiscount ? discountPayload : null;
+          currentNotes.fare_correction = discountPayload;
+          currentNotes.daily_fare = rawCorrected;
+          currentNotes.morning_fare = morningFare;
+          currentNotes.afternoon_fare = afternoonFare;
           currentNotes.fareResult = {
             ...(currentNotes.fareResult || {}),
-            dailyFare: rawDiscounted,
-            originalDailyFare: rawOriginal,
+            dailyFare: rawCorrected,
+            morningFare,
+            afternoonFare,
+            originalDailyFare: rawOriginal || currentNotes.fareResult?.originalDailyFare || rawCorrected,
             discountVariance: variance,
           };
 
           await db.from('transport_bookings').update({
-            fare_amount: rawDiscounted,
+            fare_amount: rawCorrected,
             notes: JSON.stringify(currentNotes),
           }).eq('id', bookingId);
         } catch (err) {
-          console.warn('[operations] apply_accountant_discount transport_bookings update notice:', err);
+          console.warn('[operations] correct_fare transport_bookings update notice:', err);
         }
       }
 
-      // 2. Update escort_assignments notes so escorts are explicitly aware
       try {
-        let aQuery = db.from('escort_assignments').update({
-          notes: `Accountant Discounted Fare ₦${rawDiscounted.toLocaleString()}/day (Approved Ref: ${accountantApprovalRef})`,
-        });
-        if (bookingId) {
-          await aQuery.eq('booking_id', bookingId);
-        } else if (studentId) {
-          await aQuery.eq('student_id', studentId);
+        let assignLookup = db.from('escort_assignments').select('id, notes');
+        if (assignmentId) assignLookup = assignLookup.eq('id', assignmentId);
+        else if (bookingId) assignLookup = assignLookup.eq('booking_id', bookingId);
+        else if (studentId) assignLookup = assignLookup.eq('student_id', studentId);
+        const { data: assignRows } = await assignLookup.limit(5);
+        for (const row of assignRows || []) {
+          let assignNotes: any = {};
+          let keepText = '';
+          try {
+            if (row.notes && String(row.notes).trim().startsWith('{')) assignNotes = JSON.parse(row.notes);
+            else if (row.notes) keepText = String(row.notes);
+          } catch {
+            keepText = String(row.notes || '');
+          }
+          assignNotes.fareResult = {
+            dailyFare: rawCorrected,
+            morningFare,
+            afternoonFare,
+            originalDailyFare: rawOriginal || rawCorrected,
+          };
+          if (isDiscount) assignNotes.discount = discountPayload;
+          else delete assignNotes.discount;
+          if (keepText) assignNotes.prior_notes = keepText;
+          await db.from('escort_assignments').update({ notes: JSON.stringify(assignNotes) }).eq('id', row.id);
         }
       } catch (err) {
-        console.warn('[operations] apply_accountant_discount escort_assignments update notice:', err);
+        console.warn('[operations] correct_fare escort_assignments update notice:', err);
       }
 
-      // 3. Record Audit Log
-      await audit(db, session.user_id, 'ACCOUNTANT_DISCOUNT_APPLIED', 'transport_booking', bookingId || studentId, {
+      await audit(db, session.user_id, isDiscount ? 'FARE_DISCOUNT_CORRECTION' : 'FARE_CORRECTION', 'transport_booking', bookingId || assignmentId || studentId, {
         ...discountPayload,
-        actualAmountCollected: rawDiscounted,
+        actualAmountCollected: rawCorrected,
+        morningFare,
+        afternoonFare,
       });
 
       return NextResponse.json({
         success: true,
-        message: `Accountant-approved discount applied successfully. Actual collected fare: ₦${rawDiscounted.toLocaleString()}`,
-        actualAmountCollected: rawDiscounted,
+        message: isDiscount
+          ? `Discount applied. Collected daily fare is now ₦${rawCorrected.toLocaleString()}.`
+          : `Fare corrected to ₦${rawCorrected.toLocaleString()} per day.`,
+        daily_fare: rawCorrected,
+        morning_fare: morningFare,
+        afternoon_fare: afternoonFare,
+        actualAmountCollected: rawCorrected,
         discountVariance: variance,
-        accountantApprovalRef,
       });
     }
 

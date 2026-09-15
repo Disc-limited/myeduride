@@ -2,7 +2,7 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import { ClipboardList, RefreshCw, Search, UserPlus, Sparkles, CheckCircle2, ShieldCheck, Clock, MapPin, Phone, Car, Users, ArrowRightLeft, Footprints, AlertTriangle, Zap, CheckCheck, Tag, Info, ChevronLeft, ChevronRight } from 'lucide-react';
+import { ClipboardList, RefreshCw, Search, UserPlus, Sparkles, CheckCircle2, ShieldCheck, Clock, MapPin, Phone, Car, Users, ArrowRightLeft, Footprints, AlertTriangle, Zap, CheckCheck, Info, ChevronLeft, ChevronRight, Pencil } from 'lucide-react';
 import { toast } from 'sonner';
 import StudentAvatar from '@/components/shared/StudentAvatar';
 
@@ -68,6 +68,7 @@ export function CityManagerOperationsPanel() {
     booking: any | null;
     originalFare: number;
     discountedFare: string;
+    discountAmount: string;
     accountantApprovalRef: string;
     accountantName: string;
     discountReason: string;
@@ -77,24 +78,47 @@ export function CityManagerOperationsPanel() {
     booking: null,
     originalFare: 3500,
     discountedFare: '2500',
+    discountAmount: '',
     accountantApprovalRef: '',
-    accountantName: 'School Bursar Office',
-    discountReason: 'Concession clearance authorized by Bursar',
+    accountantName: 'City Manager',
+    discountReason: 'Fare correction',
     submitting: false,
   });
 
-  const handleApplyAccountantDiscount = async () => {
-    if (!discountModal.accountantApprovalRef.trim()) {
-      toast.error('Please enter the Accountant/Bursar Approval Reference');
-      return;
-    }
+  const openFareEditor = (req: any) => {
+    const studentName = req.child_name
+      || (req.student ? `${req.student.first_name || ''} ${req.student.last_name || ''}`.trim() : '')
+      || 'Student';
+    const schoolName = req.school_name
+      || (typeof req.school === 'object' ? req.school?.name : req.school)
+      || 'School Campus';
+    const standard = Number(req.standard_daily_fare || req.daily_fare || req.actual_amount_collected || 0);
+    const current = Number(req.actual_amount_collected || req.daily_fare || standard);
+    const savings = standard > current ? standard - current : 0;
+    setDiscountModal({
+      open: true,
+      booking: {
+        ...req,
+        child_name: studentName,
+        school_name: schoolName,
+        booking_id: req.booking_id || req.bookingId || null,
+        assignment_id: req.assignment_id || req.id || null,
+        child_id: req.child_id || req.student_id || req.student?.id || null,
+      },
+      originalFare: standard,
+      discountedFare: String(current || standard),
+      discountAmount: savings > 0 ? String(savings) : '',
+      accountantApprovalRef: req.accountant_approval_ref || '',
+      accountantName: req.accountant_name || 'City Manager',
+      discountReason: req.discount_details?.discountReason || 'Fare correction',
+      submitting: false,
+    });
+  };
+
+  const handleSaveFareCorrection = async () => {
     const dFare = Number(discountModal.discountedFare);
     if (isNaN(dFare) || dFare <= 0) {
-      toast.error('Please enter a valid discounted fee amount');
-      return;
-    }
-    if (dFare >= discountModal.originalFare) {
-      toast.error(`Discounted fee must be less than base fee (₦${discountModal.originalFare.toLocaleString()})`);
+      toast.error('Enter a valid daily fare amount');
       return;
     }
 
@@ -104,36 +128,41 @@ export function CityManagerOperationsPanel() {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          action: 'apply_accountant_discount',
+          action: 'correct_fare',
           bookingId: discountModal.booking?.booking_id,
+          assignmentId: discountModal.booking?.assignment_id,
           studentId: discountModal.booking?.child_id,
           originalFare: discountModal.originalFare,
-          discountedFare: dFare,
+          tripType: discountModal.booking?.trip_type || 'both',
+          correctedFare: dFare,
           accountantApprovalRef: discountModal.accountantApprovalRef.trim(),
           accountantName: discountModal.accountantName.trim(),
           discountReason: discountModal.discountReason.trim(),
         }),
       });
       const json = await res.json();
-      if (!res.ok) throw new Error(json.error || 'Failed to apply discount');
+      if (!res.ok) throw new Error(json.error || 'Failed to save fare');
 
-      toast.success(json.message || `Accountant discount applied! Actual collected: ₦${dFare.toLocaleString()}`);
-      setDiscountModal({
-        open: false,
-        booking: null,
-        originalFare: 3500,
-        discountedFare: '2500',
-        accountantApprovalRef: '',
-        accountantName: 'School Bursar Office',
-        discountReason: '',
-        submitting: false,
-      });
+      toast.success(json.message || `Fare updated to ₦${dFare.toLocaleString()}/day`);
+      setDiscountModal((prev) => ({ ...prev, open: false, submitting: false }));
       await load();
     } catch (err: any) {
-      toast.error(err.message || 'Error applying discount');
+      toast.error(err.message || 'Error saving fare');
     } finally {
       setDiscountModal((prev) => ({ ...prev, submitting: false }));
     }
+  };
+
+  const applyDiscountAmount = (amountStr: string) => {
+    const amount = Number(amountStr);
+    const nextFare = Number.isFinite(amount) && amount > 0
+      ? Math.max(0, discountModal.originalFare - amount)
+      : discountModal.originalFare;
+    setDiscountModal((prev) => ({
+      ...prev,
+      discountAmount: amountStr,
+      discountedFare: String(nextFare),
+    }));
   };
 
   // Emergency Deputising State
@@ -531,6 +560,7 @@ export function CityManagerOperationsPanel() {
                   <th className="py-2.5 px-3">School</th>
                   <th className="py-2.5 px-3">Assigned Escort</th>
                   <th className="py-2.5 px-3">Vehicle & Phone</th>
+                  <th className="py-2.5 px-3">Daily Fare</th>
                   <th className="py-2.5 px-3">Date / Status</th>
                   <th className="py-2.5 px-3 text-right sticky right-0 bg-[#0b1c30]">Action</th>
                 </tr>
@@ -577,6 +607,23 @@ export function CityManagerOperationsPanel() {
                       </div>
                     </td>
                     <td className="py-3 px-3">
+                      {a.is_discounted ? (
+                        <div>
+                          <p className="text-[10px] text-slate-500 line-through">
+                            ₦{Number(a.standard_daily_fare || a.daily_fare || 0).toLocaleString()}
+                          </p>
+                          <p className="font-black text-amber-300">
+                            ₦{Number(a.actual_amount_collected || a.daily_fare || 0).toLocaleString()}
+                          </p>
+                          <p className="text-[9px] text-amber-400/80 font-bold">Discounted</p>
+                        </div>
+                      ) : (
+                        <p className="font-black text-emerald-300">
+                          ₦{Number(a.daily_fare || 0).toLocaleString()}
+                        </p>
+                      )}
+                    </td>
+                    <td className="py-3 px-3">
                       <div className="space-y-0.5">
                         <span className={`inline-block px-2 py-0.5 rounded-full text-[10px] font-black uppercase ${
                           a.status === 'active' ? 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/40' : 'bg-slate-800 text-slate-400'
@@ -589,18 +636,51 @@ export function CityManagerOperationsPanel() {
                       </div>
                     </td>
                     <td className="py-3 px-3 text-right sticky right-0 bg-[#0b1c30]/95 whitespace-nowrap">
-                      <button
-                        onClick={() => setReassignModal({
-                          open: true,
-                          assignment: a,
-                          targetEscortId: a.escort?.id || (data.escorts[0]?.id || ''),
-                          notes: '',
-                        })}
-                        className="px-3 py-1.5 rounded-xl bg-cyan-600/30 hover:bg-cyan-600/50 border border-cyan-500/50 text-cyan-200 font-bold text-xs inline-flex items-center gap-1.5 transition-all cursor-pointer shadow-xs"
-                      >
-                        <ArrowRightLeft size={13} />
-                        Reassign Escort
-                      </button>
+                      <div className="inline-flex items-center gap-1.5">
+                        <button
+                          type="button"
+                          onClick={() => {
+                            const match = parentRequests.find((r: any) =>
+                              r.assignment_id === a.id ||
+                              (a.booking_id && r.booking_id === a.booking_id) ||
+                              (a.student_id && r.child_id === a.student_id)
+                            );
+                            openFareEditor({
+                              ...a,
+                              ...(match || {}),
+                              booking_id: match?.booking_id || a.booking_id || null,
+                              assignment_id: match?.assignment_id || a.id,
+                              child_id: match?.child_id || a.student_id,
+                              child_name: match?.child_name,
+                              school_name: match?.school_name,
+                              daily_fare: match?.daily_fare ?? a.daily_fare,
+                              standard_daily_fare: match?.standard_daily_fare ?? a.standard_daily_fare,
+                              actual_amount_collected: match?.actual_amount_collected ?? a.actual_amount_collected,
+                              is_discounted: match?.is_discounted ?? a.is_discounted,
+                              accountant_approval_ref: match?.accountant_approval_ref || a.accountant_approval_ref,
+                              accountant_name: match?.accountant_name || a.accountant_name,
+                              discount_details: match?.discount_details || a.discount_details,
+                              trip_type: match?.trip_type || a.trip_type,
+                            });
+                          }}
+                          className="px-3 py-1.5 rounded-xl bg-indigo-600/30 hover:bg-indigo-600/50 border border-indigo-500/50 text-indigo-200 font-bold text-xs inline-flex items-center gap-1.5 transition-all cursor-pointer shadow-xs"
+                        >
+                          <Pencil size={13} />
+                          Edit Price
+                        </button>
+                        <button
+                          onClick={() => setReassignModal({
+                            open: true,
+                            assignment: a,
+                            targetEscortId: a.escort?.id || (data.escorts[0]?.id || ''),
+                            notes: '',
+                          })}
+                          className="px-3 py-1.5 rounded-xl bg-cyan-600/30 hover:bg-cyan-600/50 border border-cyan-500/50 text-cyan-200 font-bold text-xs inline-flex items-center gap-1.5 transition-all cursor-pointer shadow-xs"
+                        >
+                          <ArrowRightLeft size={13} />
+                          Reassign Escort
+                        </button>
+                      </div>
                     </td>
                   </tr>
                 ))}
@@ -732,14 +812,18 @@ export function CityManagerOperationsPanel() {
                     {req.is_discounted ? (
                       <div>
                         <span className="text-[10px] text-slate-400 line-through mr-1">
-                          ₦{Number(req.daily_fare || 2000).toLocaleString()}
+                          ₦{Number(req.standard_daily_fare || req.daily_fare || 2000).toLocaleString()}
                         </span>
                         <span className="font-black text-amber-400 text-xs">
-                          ₦{Number(req.actual_amount_collected).toLocaleString()}
+                          ₦{Number(req.actual_amount_collected || req.daily_fare).toLocaleString()}
                         </span>
-                        <span className="block text-[8px] text-emerald-400 font-bold">
-                          ✓ Ref: {req.accountant_approval_ref}
-                        </span>
+                        {req.accountant_approval_ref ? (
+                          <span className="block text-[8px] text-emerald-400 font-bold">
+                            ✓ Ref: {req.accountant_approval_ref}
+                          </span>
+                        ) : (
+                          <span className="block text-[8px] text-amber-300 font-bold">Discount applied</span>
+                        )}
                       </div>
                     ) : (
                       <span className="font-black text-emerald-400 text-xs">
@@ -751,20 +835,11 @@ export function CityManagerOperationsPanel() {
 
                 <button
                   type="button"
-                  onClick={() => setDiscountModal({
-                    open: true,
-                    booking: req,
-                    originalFare: Number(req.daily_fare || 3500),
-                    discountedFare: req.is_discounted ? String(req.actual_amount_collected) : String(Math.round(Number(req.daily_fare || 3500) * 0.75)),
-                    accountantApprovalRef: req.accountant_approval_ref || '',
-                    accountantName: req.accountant_name || 'School Bursar Office',
-                    discountReason: req.discount_details?.discountReason || 'Bursar concession authorized',
-                    submitting: false,
-                  })}
+                  onClick={() => openFareEditor(req)}
                   className="w-full mt-1.5 py-1 px-2 rounded-lg bg-indigo-500/10 hover:bg-indigo-500/20 text-indigo-300 hover:text-white border border-indigo-500/30 text-[10px] font-extrabold flex items-center justify-center gap-1 transition-all cursor-pointer"
                 >
-                  <Tag size={10} />
-                  <span>{req.is_discounted ? 'Edit Accountant Discount' : 'Apply Accountant Discount'}</span>
+                  <Pencil size={10} />
+                  <span>{req.is_discounted ? 'Edit Fare / Discount' : 'Correct Fare / Discount'}</span>
                 </button>
               </div>
 
@@ -1498,18 +1573,18 @@ export function CityManagerOperationsPanel() {
         </div>
       )}
 
-      {/* ACCOUNTANT-APPROVED PARENT DISCOUNT MODAL (Requirement G) */}
+      {/* FARE CORRECTION / OPTIONAL DISCOUNT */}
       {discountModal.open && (
         <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-xs flex items-center justify-center p-4">
-          <div className="bg-[#0b1c30] border border-slate-700 rounded-3xl max-w-md w-full p-6 shadow-2xl space-y-4">
+          <div className="bg-[#0b1c30] border border-slate-700 rounded-3xl max-w-md w-full p-6 shadow-2xl space-y-4 max-h-[92vh] overflow-y-auto">
             <div className="flex items-center justify-between pb-3 border-b border-slate-800">
               <div className="flex items-center gap-2.5">
                 <div className="w-10 h-10 rounded-xl bg-indigo-500/20 text-indigo-400 border border-indigo-500/30 flex items-center justify-center">
-                  <Tag size={18} />
+                  <Pencil size={18} />
                 </div>
                 <div>
-                  <h3 className="font-black text-white text-sm">Accountant-Approved Parent Discount</h3>
-                  <p className="text-[11px] text-slate-400">Record bursar concession & verify actual collection</p>
+                  <h3 className="font-black text-white text-sm">Correct Fare / Apply Discount</h3>
+                  <p className="text-[11px] text-slate-400">Edit the collected daily fare. Discount is optional.</p>
                 </div>
               </div>
               <button
@@ -1521,7 +1596,6 @@ export function CityManagerOperationsPanel() {
               </button>
             </div>
 
-            {/* Student & Parent Summary */}
             <div className="p-3 rounded-2xl bg-slate-900 border border-slate-800 space-y-1 text-xs">
               <div className="flex items-center justify-between">
                 <span className="text-slate-400">Student:</span>
@@ -1537,25 +1611,56 @@ export function CityManagerOperationsPanel() {
               </div>
             </div>
 
-            {/* Discount Inputs */}
             <div className="space-y-3 text-xs">
               <div>
                 <label className="block text-[10px] font-bold uppercase text-slate-400 mb-1">
-                  Discounted Fare (Actual Amount to Collect) *
+                  Daily Fare to Collect *
                 </label>
                 <div className="relative">
                   <span className="absolute left-3 top-2.5 font-bold text-slate-400">₦</span>
                   <input
                     type="number"
+                    min={1}
                     value={discountModal.discountedFare}
-                    onChange={(e) => setDiscountModal({ ...discountModal, discountedFare: e.target.value })}
-                    placeholder="2500"
+                    onChange={(e) => {
+                      const val = e.target.value;
+                      const fare = Number(val);
+                      const savings = Number.isFinite(fare) && fare < discountModal.originalFare
+                        ? discountModal.originalFare - fare
+                        : 0;
+                      setDiscountModal({
+                        ...discountModal,
+                        discountedFare: val,
+                        discountAmount: savings > 0 ? String(savings) : '',
+                      });
+                    }}
+                    placeholder={String(discountModal.originalFare || 3500)}
                     className="w-full pl-8 pr-3 py-2 bg-slate-900 border border-slate-700 rounded-xl text-white font-mono font-bold focus:outline-none focus:border-indigo-500"
                   />
                 </div>
+              </div>
+
+              <div>
+                <label className="block text-[10px] font-bold uppercase text-slate-400 mb-1">
+                  Discount Amount (optional)
+                </label>
+                <div className="relative">
+                  <span className="absolute left-3 top-2.5 font-bold text-slate-400">₦</span>
+                  <input
+                    type="number"
+                    min={0}
+                    value={discountModal.discountAmount}
+                    onChange={(e) => applyDiscountAmount(e.target.value)}
+                    placeholder="0"
+                    className="w-full pl-8 pr-3 py-2 bg-slate-900 border border-slate-700 rounded-xl text-white font-mono font-bold focus:outline-none focus:border-indigo-500"
+                  />
+                </div>
+                <span className="text-[10px] text-slate-500 block mt-0.5">
+                  Enter a discount to auto-reduce the collected fare from the standard amount.
+                </span>
                 {Number(discountModal.discountedFare) > 0 && Number(discountModal.discountedFare) < discountModal.originalFare && (
                   <div className="mt-1 flex items-center justify-between text-[11px] text-emerald-400 font-bold px-1">
-                    <span>Discount Savings: ₦{(discountModal.originalFare - Number(discountModal.discountedFare)).toLocaleString()}</span>
+                    <span>Discount: ₦{(discountModal.originalFare - Number(discountModal.discountedFare)).toLocaleString()}</span>
                     <span>({Math.round(((discountModal.originalFare - Number(discountModal.discountedFare)) / discountModal.originalFare) * 100)}% off)</span>
                   </div>
                 )}
@@ -1563,7 +1668,7 @@ export function CityManagerOperationsPanel() {
 
               <div>
                 <label className="block text-[10px] font-bold uppercase text-slate-400 mb-1">
-                  Accountant Approval Reference Number *
+                  Accountant / Bursar Reference (optional)
                 </label>
                 <input
                   type="text"
@@ -1572,43 +1677,40 @@ export function CityManagerOperationsPanel() {
                   placeholder="e.g. ACC-DISC-2026-081"
                   className="w-full px-3 py-2 bg-slate-900 border border-slate-700 rounded-xl text-white font-mono uppercase text-xs focus:outline-none focus:border-indigo-500"
                 />
-                <span className="text-[10px] text-slate-500 block mt-0.5">Reference token generated from School Bursar/Finance department.</span>
               </div>
 
               <div>
                 <label className="block text-[10px] font-bold uppercase text-slate-400 mb-1">
-                  Approving Accountant / Officer Name
+                  Officer Name (optional)
                 </label>
                 <input
                   type="text"
                   value={discountModal.accountantName}
                   onChange={(e) => setDiscountModal({ ...discountModal, accountantName: e.target.value })}
-                  placeholder="e.g. Bursar C. Adeleke"
+                  placeholder="e.g. City Manager"
                   className="w-full px-3 py-2 bg-slate-900 border border-slate-700 rounded-xl text-white text-xs focus:outline-none focus:border-indigo-500"
                 />
               </div>
 
               <div>
                 <label className="block text-[10px] font-bold uppercase text-slate-400 mb-1">
-                  Concession Justification / Notes
+                  Correction / Discount Notes
                 </label>
                 <textarea
                   value={discountModal.discountReason}
                   onChange={(e) => setDiscountModal({ ...discountModal, discountReason: e.target.value })}
-                  placeholder="e.g. 3rd child sibling subsidy approved by finance..."
+                  placeholder="e.g. Fare correction for wrong distance, or bursar concession..."
                   rows={2}
                   className="w-full px-3 py-2 bg-slate-900 border border-slate-700 rounded-xl text-white text-xs focus:outline-none focus:border-indigo-500"
                 />
               </div>
             </div>
 
-            {/* Escort Awareness Notice */}
             <div className="p-2.5 rounded-xl bg-indigo-500/10 border border-indigo-500/20 text-[11px] text-indigo-300 flex items-start gap-2">
               <Info size={14} className="shrink-0 mt-0.5" />
-              <span>Once confirmed, the actual collected amount (₦{Number(discountModal.discountedFare || 0).toLocaleString()}) and the bursar reference will sync immediately to the escort manifest.</span>
+              <span>Saved daily fare (₦{Number(discountModal.discountedFare || 0).toLocaleString()}) will appear on bookings, assignments, and the escort manifest.</span>
             </div>
 
-            {/* Actions */}
             <div className="flex items-center justify-end gap-2 pt-2 border-t border-slate-800">
               <button
                 type="button"
@@ -1619,12 +1721,12 @@ export function CityManagerOperationsPanel() {
               </button>
               <button
                 type="button"
-                onClick={handleApplyAccountantDiscount}
+                onClick={handleSaveFareCorrection}
                 disabled={discountModal.submitting}
                 className="px-5 py-2.5 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white font-black text-xs flex items-center gap-1.5 shadow-lg cursor-pointer"
               >
-                <Tag size={13} />
-                <span>{discountModal.submitting ? 'Applying...' : 'Confirm Accountant Discount'}</span>
+                <Pencil size={13} />
+                <span>{discountModal.submitting ? 'Saving...' : 'Save Fare Correction'}</span>
               </button>
             </div>
           </div>
