@@ -659,7 +659,7 @@ export async function POST(request: NextRequest) {
             .eq('date', today),
         ]);
 
-        let students = studentsRes.data;
+        let students: any[] | null = studentsRes.data as any[] | null;
         if (studentsRes.error) {
           console.error('[get_parent_children] students select error:', studentsRes.error.message);
           // Fallback: still return linked students without joins so the portal never goes blank
@@ -672,7 +672,7 @@ export async function POST(request: NextRequest) {
             console.error('[get_parent_children] students fallback error:', plainErr.message);
             return NextResponse.json({ children: [], error: plainErr.message }, { status: 500 });
           }
-          students = plainStudents;
+          students = (plainStudents as any[]) || [];
         }
 
         const arrivalMap = new Map(arrivals?.map((a: any) => [a.student_id, a]) || []);
