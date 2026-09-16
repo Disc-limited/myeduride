@@ -3,7 +3,7 @@ import { getAdminClient } from '@/lib/supabase/admin';
 import { getSessionFromRequest } from '@/lib/session';
 import { todayInLagos, lagosDayBounds } from '@/lib/timezone';
 import { getEscortApplications } from '@/lib/escort/escort-db';
-import { resolveEscortCategory } from '@/lib/escort/escort-category';
+import { findEscortApplicationForSession, resolveEscortCategory } from '@/lib/escort/escort-category';
 import { nowUtcIso } from '@/lib/utils/time';
 import { checkSchoolTimingClash } from '@/lib/escort/escort-scheduler';
 import { calculateEscortFare } from '@/lib/escort/escort-pricing';
@@ -44,6 +44,62 @@ export async function GET(request: NextRequest) {
         }
       } catch (err) {
         console.warn('[dashboard-live] email escort lookup notice:', err);
+      }
+    }
+
+    // Username / fuzzy session match — needed when escort_applications.user_id is unset or id ≠ auth user
+    if (!escortProfile && session) {
+      try {
+        const username = String(session.username || '').trim();
+        if (username) {
+          const { data: byUsernameProfile } = await supabase
+            .from('user_profiles')
+            .select('id, email')
+            .eq('username', username)
+            .maybeSingle();
+          if (byUsernameProfile?.id) {
+            escortProfile =
+              (await getEscortApplications(undefined, { applicationId: byUsernameProfile.id }))[0] || null;
+          }
+        }
+
+        if (!escortProfile) {
+          const orFilters: string[] = [];
+          if (session.user_id) {
+            orFilters.push(`id.eq.${session.user_id}`, `user_id.eq.${session.user_id}`);
+          }
+          if (session.email) {
+            orFilters.push(`email.ilike.${session.email}`);
+          }
+          if (username) {
+            orFilters.push(`email.ilike.${username}@myeduride.local`, `escort_code.ilike.${username}`);
+          }
+
+          if (orFilters.length > 0) {
+            const { data: candidates } = await supabase
+              .from('escort_applications')
+              .select('id')
+              .or(orFilters.join(','))
+              .order('created_at', { ascending: false })
+              .limit(8);
+
+            for (const row of candidates || []) {
+              const hydrated =
+                (await getEscortApplications(undefined, { applicationId: row.id }))[0] || null;
+              if (hydrated) {
+                escortProfile = hydrated;
+                break;
+              }
+            }
+          }
+        }
+
+        if (!escortProfile) {
+          const allApps = await getEscortApplications(undefined, { includeDocuments: false });
+          escortProfile = findEscortApplicationForSession(allApps, session);
+        }
+      } catch (err) {
+        console.warn('[dashboard-live] session escort fallback notice:', err);
       }
     }
 

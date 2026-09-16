@@ -73,7 +73,7 @@ export default function MyEduRideEscortDashboardPage() {
   };
 
   const fetchLiveData = () => {
-    fetch('/api/escorts/dashboard-live')
+    fetch('/api/escorts/dashboard-live', { credentials: 'include', cache: 'no-store' })
       .then((res) => res.json())
       .then((data) => {
         if (data?.success) {
@@ -92,11 +92,17 @@ export default function MyEduRideEscortDashboardPage() {
     fetchLiveData();
 
     // 2. Fetch live application status for logged-in escort user
-    fetch('/api/escorts/applications')
+    const appQuery = s?.user_id ? `?appId=${encodeURIComponent(s.user_id)}` : '';
+    fetch(`/api/escorts/applications${appQuery}`, { credentials: 'include', cache: 'no-store' })
       .then((res) => res.json())
       .then((data) => {
-        if (data?.applications && Array.isArray(data.applications)) {
-          const matched = findEscortApplicationForSession(data.applications, s);
+        const apps = data?.applications && Array.isArray(data.applications)
+          ? data.applications
+          : data?.application
+            ? [data.application]
+            : [];
+        if (apps.length > 0) {
+          const matched = findEscortApplicationForSession(apps, s) || apps[0];
           if (matched && resolveEscortCategory(matched) === 'school_escort') {
             router.replace('/dashboard/escort');
             return;
@@ -104,6 +110,19 @@ export default function MyEduRideEscortDashboardPage() {
           if (matched) {
             setEscortData(matched);
           }
+        } else if (s?.user_id) {
+          // Broader fallback when targeted lookup misses (username-only escorts)
+          return fetch('/api/escorts/applications', { credentials: 'include', cache: 'no-store' })
+            .then((r) => r.json())
+            .then((fallback) => {
+              if (!fallback?.applications?.length) return;
+              const matched = findEscortApplicationForSession(fallback.applications, s);
+              if (matched && resolveEscortCategory(matched) === 'school_escort') {
+                router.replace('/dashboard/escort');
+                return;
+              }
+              if (matched) setEscortData(matched);
+            });
         }
       })
       .catch((err) => console.warn('[myeduride-escort] Load application error:', err));

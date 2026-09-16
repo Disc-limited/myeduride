@@ -6,6 +6,42 @@ function isValidEmail(value: string): boolean {
   return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value);
 }
 
+/** Return the logged-in user's profile from user_profiles (not just the session cookie). */
+export async function GET(request: NextRequest) {
+  const session = getSessionFromRequest(request);
+  if (!session?.user_id) {
+    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+  }
+
+  try {
+    const supabase = getAdminClient();
+    const { data: profile, error } = await supabase
+      .from('user_profiles')
+      .select('id, username, full_name, email, phone, avatar_url')
+      .eq('id', session.user_id)
+      .maybeSingle();
+
+    if (error) {
+      return NextResponse.json({ error: error.message }, { status: 500 });
+    }
+
+    return NextResponse.json({
+      success: true,
+      profile: profile || {
+        id: session.user_id,
+        username: session.username,
+        full_name: session.full_name,
+        email: session.email,
+        phone: session.phone ?? null,
+        avatar_url: session.avatar_url ?? null,
+      },
+    });
+  } catch (err: unknown) {
+    const message = err instanceof Error ? err.message : 'Could not load profile';
+    return NextResponse.json({ error: message }, { status: 500 });
+  }
+}
+
 export async function POST(request: NextRequest) {
   const session = getSessionFromRequest(request);
   if (!session?.user_id) {

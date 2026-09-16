@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getEscortApplications, updateEscortApplicationStatus } from '@/lib/escort/escort-db';
+import { findEscortApplicationForSession } from '@/lib/escort/escort-category';
 import { sendEmail } from '@/lib/notifications/email-service';
 import { getAdminClient } from '@/lib/supabase/admin';
 import { getSessionFromRequest } from '@/lib/session';
@@ -13,7 +14,15 @@ export async function GET(request: NextRequest) {
     const appId = searchParams.get('appId')?.trim();
 
     if (appId) {
-      const applications = await getEscortApplications(undefined, { includeDocuments: true, applicationId: appId });
+      let applications = await getEscortApplications(undefined, { includeDocuments: true, applicationId: appId });
+      if (applications.length === 0) {
+        const session = getSessionFromRequest(request);
+        if (session) {
+          const allApps = await getEscortApplications(undefined, { includeDocuments: true });
+          const matched = findEscortApplicationForSession(allApps, session);
+          if (matched) applications = [matched];
+        }
+      }
       return NextResponse.json({
         success: true,
         application: applications[0] || null,

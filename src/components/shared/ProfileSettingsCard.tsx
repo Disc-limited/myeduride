@@ -36,15 +36,47 @@ export function ProfileSettingsCard({ onSuccess }: ProfileSettingsCardProps) {
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
-    const session = getSession();
-    const initial: ProfileForm = {
-      full_name: session?.full_name || '',
-      email: session?.email || '',
-      phone: (session as any)?.phone || '',
-      avatar_url: (session as any)?.avatar_url || null,
+    let cancelled = false;
+
+    const applyProfile = (profile: Partial<ProfileForm>) => {
+      const initial: ProfileForm = {
+        full_name: profile.full_name || '',
+        email: profile.email || '',
+        phone: profile.phone || '',
+        avatar_url: profile.avatar_url ?? null,
+      };
+      if (!cancelled) {
+        setOriginal(initial);
+        setForm(initial);
+      }
     };
-    setOriginal(initial);
-    setForm(initial);
+
+    const session = getSession();
+    applyProfile({
+      full_name: session?.full_name,
+      email: session?.email,
+      phone: (session as any)?.phone,
+      avatar_url: (session as any)?.avatar_url,
+    });
+
+    (async () => {
+      try {
+        const res = await fetch('/api/auth/update-profile', {
+          credentials: 'include',
+          cache: 'no-store',
+        });
+        const data = await res.json();
+        if (res.ok && data?.profile) {
+          applyProfile(data.profile);
+        }
+      } catch {
+        // Session fallback already applied
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
   }, []);
 
   const isDirty =
