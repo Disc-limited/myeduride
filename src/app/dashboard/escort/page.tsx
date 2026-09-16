@@ -30,6 +30,7 @@ import {
   Bus,
   CheckCircle2,
   AlertTriangle,
+  BadgePercent,
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { photoSrc } from '@/lib/photo';
@@ -41,6 +42,7 @@ import PickupVerificationModal from '@/components/escort/PickupVerificationModal
 import IncidentReportModal from '@/components/escort/IncidentReportModal';
 import SchoolNoticeBanner from '@/components/shared/SchoolNoticeBanner';
 import SchoolNoticesInboxView from '@/components/shared/SchoolNoticesInboxView';
+import { CityPricingReadOnlyPanel } from '@/components/shared/CityPricingPanel';
 import { findEscortApplicationForSession, isMyEduRidePortal } from '@/lib/escort/escort-category';
 
 export default function SchoolEscortDashboardPage() {
@@ -301,6 +303,21 @@ export default function SchoolEscortDashboardPage() {
               </div>
             </button>
 
+            {/* 6b. City Pricing */}
+            <button
+              onClick={() => setActiveNav('pricing')}
+              className={`w-full flex items-center justify-between px-3.5 py-2.5 rounded-xl transition-all ${
+                activeNav === 'pricing'
+                  ? 'bg-blue-600 text-white shadow-md font-extrabold'
+                  : 'text-slate-300 hover:bg-white/10 hover:text-white'
+              }`}
+            >
+              <div className="flex items-center gap-3">
+                <BadgePercent size={17} />
+                <span>Pricing</span>
+              </div>
+            </button>
+
             {/* 7. Settings */}
             <button
               onClick={() => setActiveNav('settings')}
@@ -535,6 +552,11 @@ export default function SchoolEscortDashboardPage() {
               onOpenVerificationModal={handleOpenVerification}
               onOpenIncidentModal={() => setIncidentModalOpen(true)}
             />
+          )}
+
+          {/* 6b. City Pricing (read-only) */}
+          {activeNav === 'pricing' && (
+            <CityPricingReadOnlyPanel title="City Transport Pricing" />
           )}
 
           {/* 7. Escort Account Settings */}

@@ -5,6 +5,7 @@ import { getAdminClient } from '@/lib/supabase/admin';
 import { getEscortApplications } from '@/lib/escort/escort-db';
 import { nowUtcIso, todayInLagos } from '@/lib/utils/time';
 import { calculateSchoolToHomeDistance, calculateEscortFare } from '@/lib/escort/escort-pricing';
+import { getActiveCityPricing, toEscortFareOverrides } from '@/lib/escort/city-pricing';
 import { normalizeEscortTripType } from '@/lib/escort/normalize-trip-type';
 import { notifyEscortAssignmentCreated } from '@/lib/notifications/escort-workflow-notify';
 import { checkSchoolTimingClash, escortAllowsOverlappingPickup, validateEscortSchoolLimit } from '@/lib/escort/escort-scheduler';
@@ -370,7 +371,12 @@ export async function POST(request: NextRequest) {
       { house_lat: student.house_lat, house_lng: student.house_lng, house_address: student.house_address }
     );
 
-    const fareResult = calculateEscortFare(distanceResult.distanceKm, trip_type);
+    const cityPricing = await getActiveCityPricing('LAGOS');
+    const fareResult = calculateEscortFare(
+      distanceResult.distanceKm,
+      trip_type,
+      toEscortFareOverrides(cityPricing)
+    );
 
     const parentUserIds = (parentLinksRes.data || []).map((p) => p.parent_user_id).filter(Boolean);
     const primaryParentId = parentUserIds[0] || null;

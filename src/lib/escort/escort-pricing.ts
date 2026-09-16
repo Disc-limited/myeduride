@@ -80,6 +80,12 @@ export const RATE_PER_HALF_KM = 300;
 export const RATE_PER_TENTH_KM = 30;
 export const SERVICE_CHARGE_PERCENT = 6;
 
+export type EscortFareRateOverrides = {
+  rate_per_half_km?: number;
+  rate_per_tenth_km?: number;
+  service_charge_percent?: number;
+};
+
 export function billableDistanceKm(distanceKm: number): number {
   const raw = Number(distanceKm);
   const km = Number.isFinite(raw) && raw > 0 ? raw : 0.5;
@@ -93,47 +99,58 @@ function formatNgn(val: number): string {
 
 /**
  * Distance charge for one trip:
- * - ₦300 for every complete 0.5 km
- * - ₦30 for every extra 0.1 km
- * Then 6% service charge is added for the parent-facing total.
+ * - ₦300 for every complete 0.5 km (or city override)
+ * - ₦30 for every extra 0.1 km (or city override)
+ * Then service charge % is added for the parent-facing total.
  */
-export function calculateDistanceCharge(distanceKm: number): {
+export function calculateDistanceCharge(
+  distanceKm: number,
+  rates?: EscortFareRateOverrides
+): {
   billableKm: number;
   halfKmBlocks: number;
   remainderTenths: number;
   distanceCharge: number;
+  ratePerHalfKm: number;
+  ratePerTenthKm: number;
 } {
+  const ratePerHalfKm = Number(rates?.rate_per_half_km ?? RATE_PER_HALF_KM);
+  const ratePerTenthKm = Number(rates?.rate_per_tenth_km ?? RATE_PER_TENTH_KM);
   const billableKm = billableDistanceKm(distanceKm);
   const halfKmBlocks = Math.floor(billableKm / 0.5 + 1e-9);
   const remainderKm = Number((billableKm - halfKmBlocks * 0.5).toFixed(1));
   const remainderTenths = Math.round(remainderKm * 10);
-  const distanceCharge = halfKmBlocks * RATE_PER_HALF_KM + remainderTenths * RATE_PER_TENTH_KM;
-  return { billableKm, halfKmBlocks, remainderTenths, distanceCharge };
+  const distanceCharge = halfKmBlocks * ratePerHalfKm + remainderTenths * ratePerTenthKm;
+  return { billableKm, halfKmBlocks, remainderTenths, distanceCharge, ratePerHalfKm, ratePerTenthKm };
 }
 
 /**
  * Calculates escort booking fare based on distance and trip schedule.
- * Pricing model (parent-facing):
- * - ₦300 per 0.5 km
- * - ₦30 for every additional 0.1 km
- * - 6% service charge on the distance charge
- * - Both trips: morning + afternoon (each trip billed separately)
- * Legacy fields ratePerKm / baseFarePerTrip are kept for existing callers.
+ * Optional rates override uses per-city City Manager pricing when provided.
  */
 export function calculateEscortFare(
   distanceKm: number,
-  tripType: 'both' | 'morning_only' | 'afternoon_only' = 'both'
+  tripType: 'both' | 'morning_only' | 'afternoon_only' = 'both',
+  rates?: EscortFareRateOverrides
 ): EscortFareBreakdown {
-  const { billableKm, halfKmBlocks, remainderTenths, distanceCharge } = calculateDistanceCharge(distanceKm);
-  const serviceCharge = Math.round(distanceCharge * (SERVICE_CHARGE_PERCENT / 100));
+  const {
+    billableKm,
+    halfKmBlocks,
+    remainderTenths,
+    distanceCharge,
+    ratePerHalfKm,
+    ratePerTenthKm,
+  } = calculateDistanceCharge(distanceKm, rates);
+  const serviceChargePercent = Number(rates?.service_charge_percent ?? SERVICE_CHARGE_PERCENT);
+  const serviceCharge = Math.round(distanceCharge * (serviceChargePercent / 100));
   const singleTripFare = distanceCharge + serviceCharge;
 
   const morningFare = tripType === 'afternoon_only' ? 0 : singleTripFare;
   const afternoonFare = tripType === 'morning_only' ? 0 : singleTripFare;
   const dailyFare = morningFare + afternoonFare;
 
-  const ratePerKm = RATE_PER_HALF_KM / 0.5;
-  const baseFarePerTrip = RATE_PER_HALF_KM;
+  const ratePerKm = ratePerHalfKm / 0.5;
+  const baseFarePerTrip = ratePerHalfKm;
 
   return {
     tripType,
@@ -151,9 +168,9 @@ export function calculateEscortFare(
     remainderTenths,
     distanceCharge,
     serviceCharge,
-    serviceChargePercent: SERVICE_CHARGE_PERCENT,
-    ratePerHalfKm: RATE_PER_HALF_KM,
-    ratePerTenthKm: RATE_PER_TENTH_KM,
+    serviceChargePercent,
+    ratePerHalfKm,
+    ratePerTenthKm,
     formattedDistanceCharge: formatNgn(distanceCharge),
     formattedServiceCharge: formatNgn(serviceCharge),
   };
@@ -183,6 +200,7 @@ export function resolveStoredEscortFare(input: {
   assignmentNotes?: unknown;
   distanceKm?: number | string | null;
   tripType?: string | null;
+  rates?: EscortFareRateOverrides;
 }) {
   const meta = parseEscortNotes(input.notes);
   const assignMeta = parseEscortNotes(input.assignmentNotes);
@@ -190,7 +208,7 @@ export function resolveStoredEscortFare(input: {
     input.tripType || meta.trip_type || assignMeta.trip_type || meta.fareResult?.tripType
   );
   const distanceKm = Number(input.distanceKm || meta.distance_km || assignMeta.distance_km || 4.5) || 4.5;
-  const engine = calculateEscortFare(distanceKm, tripType);
+  const engine = calculateEscortFare(distanceKm, tripType, input.rates);
 
   // Prefer the newest City Manager fare_correction / discount by appliedAt
   const correctionCandidates = [

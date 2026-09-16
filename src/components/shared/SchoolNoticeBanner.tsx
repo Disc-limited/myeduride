@@ -58,6 +58,13 @@ const CATEGORY_STYLES: Record<string, { label: string; bg: string; text: string;
     border: 'border-sky-400/40',
     icon: Megaphone,
   },
+  pricing: {
+    label: 'City Fare Update',
+    bg: 'bg-emerald-500/10',
+    text: 'text-emerald-800',
+    border: 'border-emerald-400/40',
+    icon: Megaphone,
+  },
 };
 
 export default function SchoolNoticeBanner({

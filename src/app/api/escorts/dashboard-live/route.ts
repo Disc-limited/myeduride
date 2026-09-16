@@ -7,6 +7,7 @@ import { findEscortApplicationForSession, resolveEscortCategory } from '@/lib/es
 import { nowUtcIso } from '@/lib/utils/time';
 import { checkSchoolTimingClash } from '@/lib/escort/escort-scheduler';
 import { calculateEscortFare } from '@/lib/escort/escort-pricing';
+import { getActiveCityPricing, toEscortFareOverrides } from '@/lib/escort/city-pricing';
 import { ensureAutoReadyForPickup, isDismissalWindowOpen } from '@/lib/gate/auto-ready-pickup';
 
 export const dynamic = 'force-dynamic';
@@ -424,6 +425,9 @@ export async function GET(request: NextRequest) {
 
     // Map students into rich manifest
     // Helper to extract daily fare from booking / assignment metadata — never invent a default distance.
+    const cityPricing = await getActiveCityPricing('LAGOS');
+    const fareRates = toEscortFareOverrides(cityPricing);
+
     const extractStoredFare = (stId: string): number | null => {
       const matchAssignment = liveAssignments.find((a) => a.student_id === stId);
       const matchBooking = liveBookings.find(
@@ -449,7 +453,8 @@ export async function GET(request: NextRequest) {
           if (parsed?.distance_km != null) {
             return calculateEscortFare(
               Number(parsed.distance_km),
-              parsed.trip_type === 'morning_only' || parsed.trip_type === 'afternoon_only' ? parsed.trip_type : 'both'
+              parsed.trip_type === 'morning_only' || parsed.trip_type === 'afternoon_only' ? parsed.trip_type : 'both',
+              fareRates
             ).dailyFare;
           }
         } catch {}
@@ -600,7 +605,7 @@ export async function GET(request: NextRequest) {
       // School Escort: DOES NOT see any price, but sees location, doorstep address, distance, and direction
       const storedFare = extractStoredFare(st.id);
       const gpsFare = !isSchoolEscort && storedFare == null && distanceKm != null
-        ? calculateEscortFare(distanceKm).dailyFare
+        ? calculateEscortFare(distanceKm, 'both', fareRates).dailyFare
         : null;
       const rawDailyFare = storedFare != null ? storedFare : gpsFare;
       const dailyFare = isSchoolEscort ? null : rawDailyFare;

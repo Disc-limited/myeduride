@@ -30,6 +30,7 @@ import {
   Plus,
   Building2,
   BarChart3,
+  BadgePercent,
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { photoSrc } from '@/lib/photo';
@@ -37,6 +38,7 @@ import MyEduRideEscortView from '@/components/escort/MyEduRideEscortView';
 import PickupVerificationModal from '@/components/escort/PickupVerificationModal';
 import IncidentReportModal from '@/components/escort/IncidentReportModal';
 import EscortIdCardModal from '@/components/escort/EscortIdCardModal';
+import { CityPricingReadOnlyPanel } from '@/components/shared/CityPricingPanel';
 import { findEscortApplicationForSession, resolveEscortCategory } from '@/lib/escort/escort-category';
 
 export default function MyEduRideEscortDashboardPage() {
@@ -239,6 +241,7 @@ export default function MyEduRideEscortDashboardPage() {
     { id: 'students', label: 'Students', icon: Users },
     { id: 'shared', label: 'Shared Ride', icon: Share2, badge: 'NEW' },
     { id: 'wallet', label: 'Wallet', icon: Wallet },
+    { id: 'pricing', label: 'Pricing', icon: BadgePercent, badge: 'NEW' },
     { id: 'earnings', label: 'Earnings', icon: DollarSign },
     { id: 'edusave', label: 'EduSave', icon: PiggyBank },
     { id: 'eduinsured', label: 'EduInsuRed', icon: ShieldCheck },
@@ -676,15 +679,19 @@ export default function MyEduRideEscortDashboardPage() {
 
         {/* MAIN CANVAS BODY - Padded for mobile bottom bar */}
         <main className="flex-1 p-3.5 sm:p-5 md:p-6 space-y-5 pb-24 lg:pb-8 max-w-7xl w-full mx-auto">
-          <MyEduRideEscortView
-            liveDashboardData={liveDashboardData}
-            onRefreshData={fetchLiveData}
-            onOpenVerificationModal={handleOpenVerification}
-            onOpenIncidentModal={() => setIncidentModalOpen(true)}
-            onOpenIdCardModal={() => setShowIdCardModal(true)}
-            activeNav={activeNav}
-            onNavChange={setActiveNav}
-          />
+          {activeNav === 'pricing' ? (
+            <CityPricingReadOnlyPanel title="City Transport Pricing" />
+          ) : (
+            <MyEduRideEscortView
+              liveDashboardData={liveDashboardData}
+              onRefreshData={fetchLiveData}
+              onOpenVerificationModal={handleOpenVerification}
+              onOpenIncidentModal={() => setIncidentModalOpen(true)}
+              onOpenIdCardModal={() => setShowIdCardModal(true)}
+              activeNav={activeNav}
+              onNavChange={setActiveNav}
+            />
+          )}
         </main>
       </div>
 

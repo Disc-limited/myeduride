@@ -5,6 +5,7 @@ import { getAdminClient } from '@/lib/supabase/admin';
 import { getEscortApplications } from '@/lib/escort/escort-db';
 import { nowUtcIso, todayInLagos } from '@/lib/utils/time';
 import { calculateSchoolToHomeDistance, calculateEscortFare } from '@/lib/escort/escort-pricing';
+import { getActiveCityPricing, toEscortFareOverrides } from '@/lib/escort/city-pricing';
 import { notifyEscortAssignmentCreated } from '@/lib/notifications/escort-workflow-notify';
 import { isApprovedMyEduRideEscort } from '@/lib/escort/escort-category';
 import { validateEscortSchoolLimit } from '@/lib/escort/escort-scheduler';
@@ -237,7 +238,12 @@ export async function POST(request: NextRequest) {
       );
 
       // 3. Automatically Calculate Fare Breakdown (Morning, Afternoon, Daily Total)
-      const fareResult = calculateEscortFare(distanceResult.distanceKm, trip_type);
+      const cityPricing = await getActiveCityPricing('LAGOS');
+      const fareResult = calculateEscortFare(
+        distanceResult.distanceKm,
+        trip_type,
+        toEscortFareOverrides(cityPricing)
+      );
 
       // 4. Primary Parent Link
       const parentUserIds = (parentLinksRes.data || []).map((p) => p.parent_user_id).filter(Boolean);

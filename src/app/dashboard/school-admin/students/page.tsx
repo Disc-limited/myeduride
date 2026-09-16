@@ -20,6 +20,7 @@ export default function StudentsListPage() {
   const [schoolId, setSchoolId] = useState('');
   const [editingStudent, setEditingStudent] = useState(null);
   const [editFaceData, setEditFaceData] = useState({ photos: [], face_descriptor: null });
+  const [clearingPhoto, setClearingPhoto] = useState(false);
   const [selectedIds, setSelectedIds] = useState([]);
   const [promoteOpen, setPromoteOpen] = useState(false);
   const [promoteClassId, setPromoteClassId] = useState('');
@@ -62,6 +63,32 @@ export default function StudentsListPage() {
     } else toast.error(data.error || 'Failed to delete');
   };
 
+  const handleClearPhoto = async () => {
+    if (!editingStudent?.id) return;
+    if (!confirm(`Remove the registered photo for ${editingStudent.first_name} ${editingStudent.last_name}? You can then capture the correct face.`)) {
+      return;
+    }
+    setClearingPhoto(true);
+    try {
+      const res = await fetch('/api/students/update', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify({ id: editingStudent.id, clear_photo: true }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data.error || 'Failed to remove photo');
+      setEditingStudent({ ...editingStudent, photo_url: null, face_descriptor: null });
+      setEditFaceData({ photos: [], face_descriptor: null });
+      toast.success('Photo removed. Capture 3 new face photos for the correct student.');
+      loadStudents();
+    } catch (err) {
+      toast.error(err?.message || 'Failed to remove photo');
+    } finally {
+      setClearingPhoto(false);
+    }
+  };
+
   const handleSaveEdit = async () => {
     if (!editingStudent) return;
 
@@ -77,6 +104,7 @@ export default function StudentsListPage() {
     if (editFaceData.photos.length === 3) {
       payload.photo_base64 = editFaceData.photos[0];
       payload.face_descriptor = editFaceData.face_descriptor;
+      payload.clear_photo = false;
     }
 
     const res = await fetch('/api/students/update', {
@@ -284,10 +312,25 @@ export default function StudentsListPage() {
               {editingStudent.photo_url && (
                 <div className="flex items-center gap-3 p-3 bg-slate-50 rounded-xl border border-slate-100">
                   <StudentAvatar photoUrl={editingStudent.photo_url} firstName={editingStudent.first_name} lastName={editingStudent.last_name} size="sm" />
-                  <div>
+                  <div className="flex-1 min-w-0">
                     <p className="text-xs font-semibold text-slate-600">Current Photo Registered</p>
-                    <p className="text-[10px] text-slate-500">Capturing new photos below will overwrite this.</p>
+                    <p className="text-[10px] text-slate-500">Wrong photo? Remove it, then capture 3 new face shots below.</p>
                   </div>
+                  <button
+                    type="button"
+                    onClick={handleClearPhoto}
+                    disabled={clearingPhoto}
+                    className="shrink-0 text-xs font-bold text-red-600 hover:text-red-700 hover:bg-red-50 px-2.5 py-1.5 rounded-lg border border-red-200 disabled:opacity-60 flex items-center gap-1"
+                    title="Remove registered photo"
+                  >
+                    <X size={12} />
+                    {clearingPhoto ? 'Removing…' : 'Remove photo'}
+                  </button>
+                </div>
+              )}
+              {!editingStudent.photo_url && (
+                <div className="p-3 rounded-xl border border-amber-200 bg-amber-50 text-[11px] text-amber-900 font-medium">
+                  No photo registered. Use the camera below to capture 3 face photos for this student, then Save.
                 </div>
               )}
               <div className="grid grid-cols-2 gap-3">

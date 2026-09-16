@@ -41,6 +41,7 @@ import { VoiceRecordButton } from '@/components/chat/VoiceRecordButton';
 import { AccountSettingsModal } from '@/components/shared/AccountSettingsModal';
 import SchoolNoticeBanner from '@/components/shared/SchoolNoticeBanner';
 import SchoolNoticesInboxView from '@/components/shared/SchoolNoticesInboxView';
+import { CityPricingReadOnlyPanel } from '@/components/shared/CityPricingPanel';
 
 // Revamped Dashboard Components
 import ParentHeader from '@/components/parent/ParentHeader';
@@ -753,6 +754,10 @@ export default function ParentDashboard() {
           ) : activeTab === 'attendance' ? (
             <div className="max-w-[1600px] mx-auto space-y-5">
               <ParentAttendanceView childrenList={safeChildren} />
+            </div>
+          ) : activeTab === 'pricing' ? (
+            <div className="max-w-5xl mx-auto space-y-5">
+              <CityPricingReadOnlyPanel title="City Transport Pricing" />
             </div>
           ) : activeTab === 'children' || activeTab === 'pin_house' ? (
             <div className="max-w-[1600px] mx-auto space-y-6">

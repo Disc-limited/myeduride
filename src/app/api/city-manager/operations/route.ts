@@ -11,6 +11,7 @@ import { getPlatformSchoolId } from '@/lib/auth/super-admin';
 import { resolveEscortCategory } from '@/lib/escort/escort-category';
 import { extractHandoverPin, ensureDailyHandoverPin } from '@/lib/escort/handover-pin';
 import { calculateEscortFare } from '@/lib/escort/escort-pricing';
+import { getActiveCityPricing, normalizeCityKey, toEscortFareOverrides } from '@/lib/escort/city-pricing';
 
 export const dynamic = 'force-dynamic';
 
@@ -102,7 +103,10 @@ export async function GET(request: NextRequest) {
     const query = request.nextUrl.searchParams.get('q')?.trim();
     const view = (request.nextUrl.searchParams.get('view') || 'tables').toLowerCase();
     const rosterSchoolId = request.nextUrl.searchParams.get('school_id')?.trim() || '';
-    const cacheKey = `${view}:${query || ''}:${rosterSchoolId}`;
+    const cityKey = normalizeCityKey(request.nextUrl.searchParams.get('city'));
+    const cityPricing = await getActiveCityPricing(cityKey);
+    const fareRates = toEscortFareOverrides(cityPricing);
+    const cacheKey = `${view}:${query || ''}:${rosterSchoolId}:${cityKey}`;
     const cached = readOpsCache(cacheKey);
     if (cached) {
       return NextResponse.json(cached, { headers: { 'Cache-Control': 'private, max-age=8', 'X-CM-Cache': 'HIT' } });
@@ -237,7 +241,7 @@ export async function GET(request: NextRequest) {
         : meta.trip_type === 'morning' || meta.trip_type === 'morning_only'
           ? 'morning_only'
           : 'both';
-      const fareResult = calculateEscortFare(distanceKm, tripType);
+      const fareResult = calculateEscortFare(distanceKm, tripType, fareRates);
       const storedDiscount = meta?.discount || null;
       const storedDaily = Number(
         storedDiscount?.discountedFare ||
@@ -343,7 +347,7 @@ export async function GET(request: NextRequest) {
       const isConfirmed = a.status === 'active' || a.status === 'completed';
       const isPinned = Boolean(stu?.house_lat && stu?.house_lng);
 
-      const fallbackFare = calculateEscortFare(4.2, 'both');
+      const fallbackFare = calculateEscortFare(4.2, 'both', fareRates);
       let assignMeta: any = {};
       try {
         if (typeof a.notes === 'string' && a.notes.trim().startsWith('{')) assignMeta = JSON.parse(a.notes);
@@ -832,7 +836,7 @@ export async function GET(request: NextRequest) {
         }
       } catch {}
       const storedDaily = Number(assignMeta?.discount?.discountedFare || assignMeta?.fareResult?.dailyFare || 0);
-      const fallback = calculateEscortFare(4.2, 'both');
+      const fallback = calculateEscortFare(4.2, 'both', fareRates);
       const dailyFare = Number(match?.daily_fare || storedDaily || fallback.dailyFare);
       const morningFare = Number(match?.morning_fare || assignMeta?.fareResult?.morningFare || Math.round(dailyFare / 2));
       assignment.daily_fare = dailyFare;

@@ -28,6 +28,7 @@ import {
   CalendarCheck,
   CreditCard,
   Radio,
+  BadgePercent,
 } from 'lucide-react';
 import { toast } from 'sonner';
 
@@ -41,6 +42,7 @@ export type ParentTabType =
   | 'safety'
   | 'edrive'
   | 'wallet'
+  | 'pricing'
   | 'reports'
   | 'educhat'
   | 'migoai'
@@ -117,6 +119,7 @@ export default function ParentSidebar({
     {
       section: 'FINANCIAL & SETTINGS',
       items: [
+        { id: 'pricing', label: 'Pricing', icon: BadgePercent },
         { id: 'wallet', label: 'Transport Wallet', icon: Wallet },
         { id: 'settings', label: 'Account Settings', icon: Settings },
       ],

@@ -52,6 +52,7 @@ import { toast } from 'sonner';
 import StudentAvatar from '@/components/shared/StudentAvatar';
 import EscortApprovalNotificationModal from '@/components/escort/EscortApprovalNotificationModal';
 import { CityManagerCommandControl } from '@/components/city-manager/CityManagerCommandControl';
+import { CityManagerPricingView } from '@/components/shared/CityPricingPanel';
 import SchoolNoticeBanner from '@/components/shared/SchoolNoticeBanner';
 import { resolveEscortCategory } from '@/lib/escort/escort-category';
 
@@ -515,7 +516,8 @@ function CityManagerDashboardContent() {
             type="button"
             onClick={() => setActiveSection('dashboard')}
             className={`px-4 py-2 rounded-xl text-xs font-extrabold flex items-center gap-2 transition-all ${
-              activeSection === 'dashboard' || (!['tasks-approvals', 'assignments'].includes(activeSection))
+              activeSection === 'dashboard' ||
+              !['tasks-approvals', 'assignments', 'pricing'].includes(activeSection)
                 ? 'bg-brand-green text-white shadow-lg shadow-emerald-600/30'
                 : 'bg-slate-900 text-slate-400 hover:bg-slate-800 hover:text-white border border-slate-800'
             }`}
@@ -573,8 +575,13 @@ function CityManagerDashboardContent() {
         </div>
       </div>
 
-      {/* SECTION 1: TASKS & APPROVALS (Escort Applications & Verification Portal) */}
-      {activeSection === 'tasks-approvals' ? (
+      {/* SECTION: CITY PRICING ADJUSTER */}
+      {activeSection === 'pricing' ? (
+        <CityManagerPricingView
+          selectedCity={selectedCity}
+          onCityChange={(city) => setSelectedCity(city)}
+        />
+      ) : activeSection === 'tasks-approvals' ? (
         <div className="bg-[#0b1c30] rounded-2xl border border-slate-800 p-5 shadow-xl animate-in fade-in">
         <div className="flex flex-wrap items-center justify-between gap-3 pb-4 border-b border-slate-800">
           <div className="flex items-center gap-2.5">

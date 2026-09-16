@@ -61,6 +61,11 @@ export default function AssignStudentToEscortModal({
   const [dropoffTime, setDropoffTime] = useState('15:30');
   const [startDate, setStartDate] = useState('');
   const [notes, setNotes] = useState('');
+  const [cityRates, setCityRates] = useState<{
+    rate_per_half_km?: number;
+    rate_per_tenth_km?: number;
+    service_charge_percent?: number;
+  } | null>(null);
 
   // Default start date to tomorrow
   useEffect(() => {
@@ -68,6 +73,22 @@ export default function AssignStudentToEscortModal({
     tomorrow.setDate(tomorrow.getDate() + 1);
     setStartDate(tomorrow.toISOString().split('T')[0]);
   }, []);
+
+  useEffect(() => {
+    if (!isOpen) return;
+    fetch('/api/pricing/active?city=LAGOS', { credentials: 'include', cache: 'no-store' })
+      .then((r) => r.json())
+      .then((data) => {
+        if (data?.pricing) {
+          setCityRates({
+            rate_per_half_km: Number(data.pricing.rate_per_half_km),
+            rate_per_tenth_km: Number(data.pricing.rate_per_tenth_km),
+            service_charge_percent: Number(data.pricing.service_charge_percent),
+          });
+        }
+      })
+      .catch(() => {});
+  }, [isOpen]);
 
   useEffect(() => {
     if (defaultEscortType) setEscortType(defaultEscortType);
@@ -179,7 +200,7 @@ export default function AssignStudentToEscortModal({
         : 3.5;
     const trip =
       tripType === 'morning_only' || tripType === 'afternoon_only' ? tripType : 'both';
-    const fare = calculateEscortFare(distance, trip);
+    const fare = calculateEscortFare(distance, trip, cityRates || undefined);
     return {
       distance: Number(Number(distance).toFixed(1)),
       morning: fare.morningFare,
@@ -190,7 +211,7 @@ export default function AssignStudentToEscortModal({
       serviceChargePercent: fare.serviceChargePercent,
       billableKm: fare.billableKm,
     };
-  }, [selectedStudents, tripType]);
+  }, [selectedStudents, tripType, cityRates]);
 
   // Selected escort details
   const selectedEscort = useMemo(() => {

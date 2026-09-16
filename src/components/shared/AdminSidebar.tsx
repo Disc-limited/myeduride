@@ -37,6 +37,7 @@ import {
   Calendar,
   ClipboardCheck,
   Activity,
+  BadgePercent,
 } from 'lucide-react';
 import { logout } from '@/lib/api';
 
@@ -161,6 +162,7 @@ export function AdminSidebar({
     {
       title: 'WALLET',
       items: [
+        { label: 'Pricing', href: '/dashboard/school-admin/pricing', icon: <BadgePercent size={18} />, badge: 'City', badgeColor: 'bg-emerald-500 text-white' },
         { label: 'Wallet Overview', href: '/dashboard/school-admin/wallet', icon: <Wallet size={18} /> },
         { label: 'Transfer', href: '/dashboard/school-admin/wallet/transfer', icon: <ArrowRightLeft size={18} /> },
         { label: 'Withdrawal', href: '/dashboard/school-admin/wallet/withdrawal', icon: <ArrowDownLeft size={18} /> },
