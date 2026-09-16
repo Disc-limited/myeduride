@@ -659,6 +659,7 @@ export default function MyEduRideEscortDashboardPage() {
         <main className="flex-1 p-3.5 sm:p-5 md:p-6 space-y-5 pb-24 lg:pb-8 max-w-7xl w-full mx-auto">
           <MyEduRideEscortView
             liveDashboardData={liveDashboardData}
+            onRefreshData={fetchLiveData}
             onOpenVerificationModal={handleOpenVerification}
             onOpenIncidentModal={() => setIncidentModalOpen(true)}
             onOpenIdCardModal={() => setShowIdCardModal(true)}

@@ -57,6 +57,18 @@ interface EscortBatchReceptionModalProps {
       already_checked_out: number;
       pending_arrival: number;
       pending_departure: number;
+      max_batch?: number;
+      on_board?: number;
+      seats_remaining?: number;
+      daily_legs_used?: number;
+      daily_legs_remaining?: number;
+      batch_message?: string;
+    };
+    batch?: {
+      on_board?: number;
+      max_batch?: number;
+      seats_remaining?: number;
+      message?: string;
     };
     suggested_mode?: 'arrival' | 'departure';
   };
@@ -92,7 +104,10 @@ export default function EscortBatchReceptionModal({
     if (selectedIds.size === students.length) {
       setSelectedIds(new Set());
     } else {
-      setSelectedIds(new Set(students.map((s) => s.id)));
+      const maxBatch = batchData.batch_metrics?.max_batch || batchData.batch?.max_batch || 9;
+      const seats = batchData.batch_metrics?.seats_remaining ?? batchData.batch?.seats_remaining ?? maxBatch;
+      const ids = students.map((s) => s.id);
+      setSelectedIds(new Set(mode === 'departure' ? ids.slice(0, Math.max(0, seats)) : ids));
     }
   };
 
@@ -101,6 +116,12 @@ export default function EscortBatchReceptionModal({
     if (next.has(id)) {
       next.delete(id);
     } else {
+      const maxBatch = batchData.batch_metrics?.max_batch || batchData.batch?.max_batch || 9;
+      const seats = batchData.batch_metrics?.seats_remaining ?? batchData.batch?.seats_remaining ?? maxBatch;
+      if (mode === 'departure' && next.size >= seats) {
+        toast.error(`Escort can only receive ${seats} student(s) in this batch (max ${maxBatch}).`);
+        return;
+      }
       next.add(id);
     }
     setSelectedIds(next);
@@ -238,11 +259,13 @@ export default function EscortBatchReceptionModal({
 
         {mode === 'departure' ? (
           <div className="px-5 py-2.5 bg-blue-50 border-b border-blue-200 text-[11px] text-blue-950 font-semibold leading-relaxed">
-            Afternoon release to escort does not need a parent phone code or student ID card. Confirm the roster and release. Scan and headcount override remain available.
+            Afternoon: release up to 9 Ready-for-Pickup students to this escort. They must deliver that batch home before returning for the next 9.
+            {batchData.batch_metrics?.batch_message ? ` · ${batchData.batch_metrics.batch_message}` : ''}
           </div>
         ) : (
           <div className="px-5 py-2.5 bg-emerald-50 border-b border-emerald-200 text-[11px] text-emerald-950 font-semibold leading-relaxed">
-            Morning sign-in can use ID scan or headcount override. Students without ID cards can still be received from the escort roster.
+            Morning: receive students already picked up at home (max 9 per trip). Scan escort ID to sign them all in for drop-off.
+            {batchData.batch_metrics?.batch_message ? ` · ${batchData.batch_metrics.batch_message}` : ''}
           </div>
         )}
 

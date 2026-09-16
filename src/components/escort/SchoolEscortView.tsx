@@ -1,7 +1,7 @@
 // @ts-nocheck
 'use client';
 
-import { useState, useEffect, useMemo } from 'react';
+import { useState, useEffect, useMemo, useRef } from 'react';
 import {
   Users,
   MapPin,
@@ -42,6 +42,8 @@ interface SchoolEscortViewProps {
   onOpenIncidentModal: () => void;
   tripType?: 'morning' | 'afternoon';
   onTripTypeChange?: (type: 'morning' | 'afternoon') => void;
+  liveDashboardData?: any;
+  onRefreshData?: () => void;
 }
 
 export default function SchoolEscortView({
@@ -49,6 +51,8 @@ export default function SchoolEscortView({
   onOpenIncidentModal,
   tripType = 'morning',
   onTripTypeChange,
+  liveDashboardData: liveDashboardDataProp,
+  onRefreshData,
 }: SchoolEscortViewProps) {
   // Voice Migo state
   const [micActive, setMicActive] = useState(false);
@@ -65,40 +69,63 @@ export default function SchoolEscortView({
   const [onBoardStudents, setOnBoardStudents] = useState<any[]>([]);
   const [activityFeed, setActivityFeed] = useState<any[]>([]);
 
-  // Fetch Live Escort Data from Backend
-  const fetchDashboardData = async () => {
-    try {
-      const res = await fetch('/api/escorts/dashboard-live');
-      const data = await res.json();
-      if (res.ok && data?.success) {
-        setLiveData(data);
+  const applyLiveData = (data: any) => {
+    if (!data?.success && !data?.students) return;
+    setLiveData(data);
 
-        // Populate students for current shift
-        const studentList = tripType === 'morning' ? (data.students?.morning || []) : (data.students?.afternoon || []);
-        
-        // Split into pending pickup vs on-board
-        const onBoard = studentList.filter((s: any) => s.status === 'PICKED' || s.status === 'ON_BOARD');
-        const pending = studentList.filter((s: any) => s.status !== 'PICKED' && s.status !== 'ON_BOARD');
+    const studentList =
+      tripType === 'morning' ? data.students?.morning || [] : data.students?.afternoon || [];
 
-        setOnBoardStudents(onBoard);
-        setPickupQueue(pending);
+    const onBoard = studentList.filter((s: any) => s.status === 'PICKED' || s.status === 'ON_BOARD');
+    const pending = studentList.filter((s: any) => s.status !== 'PICKED' && s.status !== 'ON_BOARD');
 
-        if (data.activity_feed && Array.isArray(data.activity_feed)) {
-          setActivityFeed(data.activity_feed);
-        }
-      }
-    } catch (err) {
-      console.warn('[SchoolEscortView] fetch notice:', err);
-    } finally {
-      setLoading(false);
+    setOnBoardStudents(onBoard);
+    setPickupQueue(pending);
+
+    if (data.activity_feed && Array.isArray(data.activity_feed)) {
+      setActivityFeed(data.activity_feed);
     }
+    setLoading(false);
   };
 
+  // Prefer parent-owned live payload — avoid a second dashboard-live fetch on mount
   useEffect(() => {
-    fetchDashboardData();
-    const interval = setInterval(fetchDashboardData, 12000); // 12s live sync
+    if (liveDashboardDataProp) {
+      applyLiveData(liveDashboardDataProp);
+      return;
+    }
+    if (onRefreshData) return;
+
+    let cancelled = false;
+    (async () => {
+      try {
+        const res = await fetch('/api/escorts/dashboard-live');
+        const data = await res.json();
+        if (!cancelled && res.ok && data?.success) applyLiveData(data);
+      } catch (err) {
+        console.warn('[SchoolEscortView] fetch notice:', err);
+      } finally {
+        if (!cancelled) setLoading(false);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [liveDashboardDataProp, tripType]);
+
+  // Slow background refresh via parent (no duplicate 12s full poll inside this view).
+  // Ref keeps a stable interval even when the parent re-creates onRefreshData each render.
+  const refreshRef = useRef(onRefreshData);
+  refreshRef.current = onRefreshData;
+  useEffect(() => {
+    if (!onRefreshData) return;
+    const interval = setInterval(() => refreshRef.current?.(), 45000);
     return () => clearInterval(interval);
-  }, [tripType]);
+  }, [Boolean(onRefreshData)]);
+
+  const refreshDashboard = () => {
+    refreshRef.current?.();
+  };
 
   // Handle Quick Student Scan
   const handleScanId = (student: any) => {
@@ -127,7 +154,7 @@ export default function SchoolEscortView({
       toast.dismiss();
       if (res.ok && data.success) {
         toast.success(data.message || `${name} verified and boarded successfully!`);
-        fetchDashboardData();
+        refreshDashboard();
       } else {
         toast.error(data.error || `Could not board ${name}`);
       }

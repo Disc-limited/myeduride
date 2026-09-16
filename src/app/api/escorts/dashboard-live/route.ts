@@ -3,7 +3,7 @@ import { getAdminClient } from '@/lib/supabase/admin';
 import { getSessionFromRequest } from '@/lib/session';
 import { todayInLagos, lagosDayBounds } from '@/lib/timezone';
 import { getEscortApplications } from '@/lib/escort/escort-db';
-import { findEscortApplicationForSession, resolveEscortCategory } from '@/lib/escort/escort-category';
+import { resolveEscortCategory } from '@/lib/escort/escort-category';
 import { nowUtcIso } from '@/lib/utils/time';
 import { checkSchoolTimingClash } from '@/lib/escort/escort-scheduler';
 import { calculateEscortFare } from '@/lib/escort/escort-pricing';
@@ -26,14 +26,30 @@ export async function GET(request: NextRequest) {
     let userProfile: any = null;
     let schoolData: any = null;
 
-    // 1. Fetch live escort application record cleanly for logged in session
-    const allApps = await getEscortApplications();
-    if (session) {
-      escortProfile = findEscortApplicationForSession(allApps, session);
+    // 1. Resolve ONLY the logged-in escort (avoid loading all applications)
+    if (session?.user_id) {
+      escortProfile = (await getEscortApplications(undefined, { applicationId: session.user_id }))[0] || null;
+    }
+    if (!escortProfile && session?.email) {
+      try {
+        const { data: byEmail } = await supabase
+          .from('escort_applications')
+          .select('id, user_id, email, full_name, escort_code, status, phone, photo, school_id, primary_school_id, secondary_school_id, ready_for_pickup, ready_for_pickup_at, today_trip_status, today_trip_declined_reason, today_trip_accepted_at, house_lat, house_lng, residential_address, closest_landmark, available_for_other_schools, escort_type, application_data, created_at')
+          .ilike('email', session.email)
+          .order('created_at', { ascending: false })
+          .limit(1)
+          .maybeSingle();
+        if (byEmail) {
+          escortProfile = (await getEscortApplications(undefined, { applicationId: byEmail.id }))[0] || byEmail;
+        }
+      } catch (err) {
+        console.warn('[dashboard-live] email escort lookup notice:', err);
+      }
     }
 
-    // DO NOT default to allApps[0] if session is present but unlinked, to prevent user cross-contamination!
+    // Dev-only fallback when no session
     if (!escortProfile && !session) {
+      const allApps = await getEscortApplications();
       if (allApps.length > 0) escortProfile = allApps[0];
     }
 
@@ -843,13 +859,21 @@ export async function GET(request: NextRequest) {
         ? `Next pickup: ${nextPendingStudent.name}${nextPendingStudent.address ? ` at ${nextPendingStudent.address}` : ''}.`
         : (morningStudents.length > 0 ? 'All morning pickups on this roster are complete.' : 'No students are assigned to you yet.'),
       'Scan the student ID card or enter the parent phone code before boarding.',
+      'Board up to 9 students, drop them at school, then pick the next batch. Max 18 trips to and fro today.',
       'Keep communication professional with parents, school, and City Manager.',
     ];
+
+    const { getEscortBatchStatus } = await import('@/lib/escort/batch-capacity');
+    const escortBatchIds = [escortProfile?.id, escortProfile?.user_id, session?.user_id].filter(Boolean);
+    const hour = new Date().getHours();
+    const batchPhase = hour < 12 ? 'morning' : 'afternoon';
+    const batch = await getEscortBatchStatus(supabase, escortBatchIds as string[], batchPhase);
 
     return NextResponse.json({
       success: true,
       last_sync: nowUtcIso(),
       earnings_summary: earningsSummary,
+      batch,
       escort: {
         id: escortProfile?.id || session?.user_id || null,
         name: displayName,
@@ -1124,7 +1148,7 @@ export async function POST(request: NextRequest) {
       });
     }
 
-    // Action 1d: Toggle "Ready for Pickup" — also queues assigned students for immediate gate release
+    // Action 1d: Toggle "I am Ready for Pickup" — shows assigned roster for house pickups (max 9 per batch)
     if (action === 'toggle_ready_for_pickup') {
       const isReady = Boolean(body.ready);
       if (session?.user_id) {
@@ -1144,15 +1168,15 @@ export async function POST(request: NextRequest) {
           .maybeSingle();
 
         const escortAppId = appRow?.id || session.user_id;
-        const schoolForQueue =
+        const schoolForSession =
           primarySchoolId || appRow?.primary_school_id || appRow?.school_id || null;
 
-        if (isReady && schoolForQueue) {
+        if (isReady && schoolForSession) {
           const initialLat = appRow?.house_lat ? Number(appRow.house_lat) : 6.4474;
           const initialLng = appRow?.house_lng ? Number(appRow.house_lng) : 3.4731;
 
           await supabase.from('vehicle_active_sessions').insert({
-            school_id: schoolForQueue,
+            school_id: schoolForSession,
             escort_id: escortAppId,
             escort_user_id: session.user_id,
             trip_type: 'morning_pickup',
@@ -1165,45 +1189,25 @@ export async function POST(request: NextRequest) {
             started_at: nowUtcIso(),
             last_ping_at: nowUtcIso(),
           });
-
-          // Put this escort's assigned students onto the gate Ready for Pickup queue now
-          const { data: assignedRows } = await supabase
-            .from('escort_assignments')
-            .select('student_id')
-            .eq('escort_application_id', escortAppId)
-            .eq('school_id', schoolForQueue)
-            .eq('status', 'active');
-
-          const studentIds = (assignedRows || []).map((r: any) => r.student_id).filter(Boolean);
-          if (studentIds.length > 0) {
-            const { ensureStudentsReadyForPickup } = await import('@/lib/gate/ensure-dismissal-ready');
-            const queueResult = await ensureStudentsReadyForPickup(supabase, {
-              schoolId: schoolForQueue,
-              studentIds,
-              requestedByUserId: session.user_id,
-              pickupPersonName: appRow?.full_name || 'Assigned Escort',
-              pickupPersonPhone: appRow?.phone || null,
-              pickupSource: 'school_escort',
-              notes: 'Escort marked Ready for Pickup — queued for immediate gate release',
-            });
-            return NextResponse.json({
-              success: true,
-              ready_for_pickup: true,
-              students_queued: queueResult.queued,
-              students_already_ready: queueResult.alreadyReady,
-              message:
-                queueResult.queued > 0
-                  ? `Ready for Pickup active. ${queueResult.queued} student(s) queued for immediate gate release.`
-                  : 'Live Pickup Mode ACTIVATED! Students already on the gate Ready queue.',
-            });
-          }
         }
+
+        const { getEscortBatchStatus } = await import('@/lib/escort/batch-capacity');
+        const batch = await getEscortBatchStatus(supabase, [escortAppId, session.user_id], 'morning');
+
+        return NextResponse.json({
+          success: true,
+          ready_for_pickup: isReady,
+          batch,
+          message: isReady
+            ? `Ready for Pickup active. Show your assigned students and board up to ${batch.max_batch} before school drop-off (${batch.message}).`
+            : 'Pickup mode set to standby.',
+        });
       }
       return NextResponse.json({
         success: true,
         ready_for_pickup: isReady,
         message: isReady
-          ? 'Live Pickup Mode ACTIVATED! Your pickup manifest is ready and parents are notified.'
+          ? 'Ready for Pickup active. Your assigned student list is ready.'
           : 'Pickup mode set to standby.',
       });
     }

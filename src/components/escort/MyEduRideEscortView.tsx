@@ -113,44 +113,46 @@ export default function MyEduRideEscortView({
   const [navModalStudent, setNavModalStudent] = useState<any | null>(null);
 
   const reloadData = () => {
-    fetch('/api/escorts/dashboard-live')
-      .then((res) => res.json())
-      .then((data) => {
-        if (data?.success && data?.assignments) {
-          setDiscAssignments(data.assignments);
-        }
-      })
-      .catch((err) => console.warn('[MyEduRideEscortView] fetch notice:', err));
     onRefreshData?.();
   };
 
   useEffect(() => {
-    reloadData();
-    // Load current escort pinned location
-    fetch('/api/escorts/house-location')
-      .then((res) => res.json())
-      .then((data) => {
-        if (data?.success) {
-          setLocationForm({
-            residential_address: data.residential_address || '',
-            closest_landmark: data.closest_landmark || '',
-            house_lat: data.house_lat,
-            house_lng: data.house_lng,
-          });
-        }
-      })
-      .catch(() => {});
+    // Defer secondary fetches so first paint uses parent-provided liveDashboardData
+    const t = setTimeout(() => {
+      fetch('/api/escorts/house-location')
+        .then((res) => res.json())
+        .then((data) => {
+          if (data?.success) {
+            setLocationForm({
+              residential_address: data.residential_address || '',
+              closest_landmark: data.closest_landmark || '',
+              house_lat: data.house_lat,
+              house_lng: data.house_lng,
+            });
+          }
+        })
+        .catch(() => {});
 
-    // Load unread chat notifications
-    fetch('/api/escorts/chat')
-      .then((res) => res.json())
-      .then((data) => {
-        if (data?.unread_totals?.total !== undefined) {
-          setChatUnreadTotal(data.unread_totals.total);
-        }
-      })
-      .catch(() => {});
+      fetch('/api/escorts/chat')
+        .then((res) => res.json())
+        .then((data) => {
+          if (data?.unread_totals?.total !== undefined) {
+            setChatUnreadTotal(data.unread_totals.total);
+          }
+        })
+        .catch(() => {});
+    }, 0);
+    return () => clearTimeout(t);
   }, []);
+
+  useEffect(() => {
+    // Prefer roster from parent live payload — no second dashboard-live round-trip on mount
+    if (liveDashboardData?.assignments && Array.isArray(liveDashboardData.assignments)) {
+      setDiscAssignments(liveDashboardData.assignments);
+    } else if (liveDashboardData?.students?.manifest) {
+      setDiscAssignments(liveDashboardData.students.manifest);
+    }
+  }, [liveDashboardData]);
 
   const manifestStudents = liveDashboardData?.students?.manifest || [];
   const displayRoster = manifestStudents.length > 0 ? manifestStudents : discAssignments;
@@ -171,6 +173,7 @@ export default function MyEduRideEscortView({
   const isReadyForPickup = escort?.ready_for_pickup === true;
   const autoReadyFromGate = escort?.auto_ready_from_gate === true;
   const dismissalClock = String(liveDashboardData?.school?.dismissal_start_time || '').slice(0, 5);
+  const batch = liveDashboardData?.batch || null;
 
   // Handle Trip Commitment (Accept)
   const handleAcceptTrips = async () => {
@@ -336,6 +339,12 @@ export default function MyEduRideEscortView({
           {autoReadyFromGate && dismissalClock ? (
             <p className="text-[10px] text-emerald-300 font-semibold text-center sm:text-right">
               Auto-ready at school dismissal {dismissalClock}
+            </p>
+          ) : null}
+          {batch ? (
+            <p className={`text-[10px] font-bold text-center sm:text-right ${batch.must_drop_before_next ? 'text-amber-300' : 'text-slate-300'}`}>
+              On board {batch.on_board}/{batch.max_batch} · Daily {batch.daily_legs_used}/{batch.max_daily_legs}
+              {batch.must_drop_before_next ? ' · Drop batch before next pickup' : ''}
             </p>
           ) : null}
         </div>
@@ -725,8 +734,13 @@ export default function MyEduRideEscortView({
             <div>
               <h3 className="font-black text-base sm:text-lg text-slate-900">Assigned Students Manifest</h3>
               <p className="text-xs text-slate-500">
-                School-assigned passengers with verified morning doorstep pickups and afternoon gate releases.
+                Scan ID or parent code at the house. Board up to 9, drop at school, then continue. Max 18 trips to and fro today.
               </p>
+              {batch ? (
+                <p className={`text-[11px] font-bold mt-1 ${batch.must_drop_before_next ? 'text-amber-700' : 'text-emerald-700'}`}>
+                  {batch.message}
+                </p>
+              ) : null}
             </div>
             <div className="flex items-center gap-2 flex-wrap">
               {onOpenIdCardModal && (

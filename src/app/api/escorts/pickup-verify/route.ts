@@ -7,6 +7,7 @@ import { getEscortApplications } from '@/lib/escort/escort-db';
 import { findEscortApplicationForSession } from '@/lib/escort/escort-category';
 import { resolveStudentIdAny } from '@/lib/attendance/resolve-student';
 import { extractHandoverPin, isTodayHandoverPin, normalizePin } from '@/lib/escort/handover-pin';
+import { assertCanBoardStudent, getEscortBatchStatus } from '@/lib/escort/batch-capacity';
 
 export const dynamic = 'force-dynamic';
 
@@ -292,6 +293,22 @@ export async function POST(request: NextRequest) {
     }
 
     const studentName = student ? `${student.first_name} ${student.last_name}` : 'Student';
+    const capacityEscortIds = escortIdentifiers.length ? escortIdentifiers : [escortId];
+
+    if (action === 'morning_pickup') {
+      const capacity = await assertCanBoardStudent(supabase, {
+        escortIds: capacityEscortIds,
+        studentId: student_id,
+        phase: 'morning',
+        tripDate: today,
+      });
+      if (!capacity.ok) {
+        return NextResponse.json(
+          { error: capacity.error, batch: capacity.status, code: 'batch_full' },
+          { status: 409 }
+        );
+      }
+    }
 
     // Fetch existing trip record for today
     const { data: existingTrip } = await supabase
@@ -299,7 +316,7 @@ export async function POST(request: NextRequest) {
       .select('*')
       .eq('trip_date', today)
       .eq('student_id', student_id)
-      .in('escort_id', escortIdentifiers.length ? escortIdentifiers : [escortId])
+      .in('escort_id', capacityEscortIds)
       .maybeSingle();
 
     let updatedTrip: any = null;
@@ -424,14 +441,22 @@ export async function POST(request: NextRequest) {
       }
     }
 
+    const batch = await getEscortBatchStatus(
+      supabase,
+      capacityEscortIds,
+      action === 'afternoon_dropoff' ? 'afternoon' : 'morning',
+      today
+    );
+
     return NextResponse.json({
       success: true,
       action,
       student_id,
       student_name: studentName,
       trip: updatedTrip,
+      batch,
       message: action === 'morning_pickup'
-        ? `${studentName} pickup confirmed! Student is on board for morning transit.`
+        ? `${studentName} is on your pickup list (${batch.on_board}/${batch.max_batch} on board).`
         : `${studentName} afternoon doorstep drop-off confirmed!`,
     });
   } catch (err: any) {

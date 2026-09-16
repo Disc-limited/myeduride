@@ -487,6 +487,8 @@ export default function SchoolEscortDashboardPage() {
               onOpenIncidentModal={() => setIncidentModalOpen(true)}
               tripType={tripMode}
               onTripTypeChange={setTripMode}
+              liveDashboardData={liveDashboardData}
+              onRefreshData={fetchLiveData}
             />
           )}
 

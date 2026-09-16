@@ -281,16 +281,12 @@ export default function ParentDashboard() {
     };
   }, [messageForm.student_id, children]);
 
-  // Load Parent Data
+  // Load Parent Data — paint home as soon as children arrive; defer notices/chat/tracking
   const loadData = async () => {
     try {
-      const [kidsRes, notifRes] = await Promise.all([
-        fetchData('get_parent_children').catch(() => ({ children: [] })),
-        fetchData('get_parent_notifications').catch(() => ({ notifications: [] })),
-      ]);
+      const kidsRes = await fetchData('get_parent_children').catch(() => ({ children: [] }));
       const kids = kidsRes?.children || [];
       setChildren(kids);
-      setNotifications(notifRes?.notifications || []);
 
       const sess = getSession();
       if (kids[0]) {
@@ -302,21 +298,24 @@ export default function ParentDashboard() {
           student_id: f.student_id || firstId,
           pickup_person_name: f.is_self ? (sess?.full_name || '') : f.pickup_person_name,
         }));
-        fetchLiveTracking(firstId);
-      } else {
-        fetchLiveTracking();
-      }
-
-      const noticeRes = await fetch('/api/parents/pickup-notice', { credentials: 'include' }).catch(() => null);
-      if (noticeRes && noticeRes.ok) {
-        const noticeData = await noticeRes.json();
-        setRecentNotices(noticeData?.notices || []);
       }
     } catch (err) {
       console.error('Error loading parent data:', err);
     } finally {
       setLoading(false);
     }
+
+    // Secondary loads after first paint
+    Promise.all([
+      fetchData('get_parent_notifications').catch(() => ({ notifications: [] })),
+      fetch('/api/parents/pickup-notice', { credentials: 'include' })
+        .then(async (res) => (res.ok ? res.json() : { notices: [] }))
+        .catch(() => ({ notices: [] })),
+      fetchUnreadChatTotal().catch(() => {}),
+    ]).then(([notifRes, noticeData]) => {
+      setNotifications(notifRes?.notifications || []);
+      setRecentNotices(noticeData?.notices || []);
+    });
   };
 
   useEffect(() => {
@@ -332,7 +331,6 @@ export default function ParentDashboard() {
       setUserName(sess.full_name || 'Mr Osatohanmwen');
       setUserPhotoUrl(sess.photo_url || sess.avatar_url || null);
       loadData();
-      fetchUnreadChatTotal();
     } else {
       setLoading(false);
     }

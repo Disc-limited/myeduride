@@ -8,6 +8,10 @@ import { nowUtcIso } from '@/lib/utils/time';
 import { logGateActivity } from '@/lib/gate/activity-log';
 import { notifyParentsOfAttendance } from '@/lib/notifications/parent-notify';
 import { ensureAutoReadyForPickup } from '@/lib/gate/auto-ready-pickup';
+import {
+  ESCORT_MAX_BATCH_SIZE,
+  getEscortBatchStatus,
+} from '@/lib/escort/batch-capacity';
 
 export const dynamic = 'force-dynamic';
 
@@ -275,26 +279,68 @@ export async function GET(request: NextRequest) {
     const currentHour = new Date().getHours();
     const suggestedMode = currentHour < 12 ? 'arrival' : 'departure';
 
-    // Query today's doorstep pickup status from escort_student_daily_trips
+    // Query today's doorstep pickup / afternoon custody status
     const morningPickedUpStudentIds = new Set<string>();
+    const afternoonOnBoardIds = new Set<string>();
+    const afternoonDroppedIds = new Set<string>();
+    const escortIdTokens = [escortRecord.id, escortRecord.user_id].filter(Boolean);
     if (studentIds.length > 0) {
-      const escortIdTokens = [escortRecord.id, escortRecord.user_id].filter(Boolean);
       const { data: tripRecords } = await supabase
         .from('escort_student_daily_trips')
-        .select('student_id, morning_picked_up, morning_picked_up_at')
+        .select('student_id, morning_picked_up, afternoon_picked_up, afternoon_dropped_off')
         .eq('trip_date', today)
-        .in('escort_id', escortIdTokens)
-        .eq('morning_picked_up', true);
+        .in('escort_id', escortIdTokens);
 
-      if (tripRecords && tripRecords.length > 0) {
-        tripRecords.forEach((t: any) => morningPickedUpStudentIds.add(t.student_id));
-      }
+      (tripRecords || []).forEach((t: any) => {
+        if (t.morning_picked_up) morningPickedUpStudentIds.add(t.student_id);
+        if (t.afternoon_picked_up && !t.afternoon_dropped_off) afternoonOnBoardIds.add(t.student_id);
+        if (t.afternoon_dropped_off) afternoonDroppedIds.add(t.student_id);
+      });
     }
 
-    // Morning: only students already boarded at home. Afternoon: students this escort brought to school.
-    const activeStudentsSource = suggestedMode === 'arrival'
-      ? rawStudents.filter((st: any) => morningPickedUpStudentIds.has(st.id))
-      : rawStudents.filter((st: any) => arrivalsMap.has(st.id) || morningPickedUpStudentIds.has(st.id));
+    // Afternoon: prefer students marked Ready for Pickup at gate
+    const readyStudentIds = new Set<string>();
+    if (suggestedMode === 'departure' && studentIds.length > 0) {
+      const { data: readyRows } = await supabase
+        .from('dismissal_requests')
+        .select('student_id')
+        .eq('school_id', schoolId)
+        .eq('dismissal_date', today)
+        .in('status', ['pending', 'approved'])
+        .in('student_id', studentIds);
+      (readyRows || []).forEach((r: any) => readyStudentIds.add(r.student_id));
+    }
+
+    const batchStatus = await getEscortBatchStatus(
+      supabase,
+      escortIdTokens,
+      suggestedMode === 'arrival' ? 'morning' : 'afternoon',
+      today
+    );
+
+    // Morning: only students already boarded at home (awaiting school drop-off).
+    // Afternoon: ready students first, still at school, not already with escort — max 9 seats.
+    let activeStudentsSource = suggestedMode === 'arrival'
+      ? rawStudents.filter((st: any) => morningPickedUpStudentIds.has(st.id) && !arrivalsMap.has(st.id))
+      : rawStudents.filter((st: any) => {
+          if (departuresMap.has(st.id) || afternoonOnBoardIds.has(st.id) || afternoonDroppedIds.has(st.id)) {
+            return false;
+          }
+          if (!arrivalsMap.has(st.id) && !morningPickedUpStudentIds.has(st.id)) return false;
+          if (readyStudentIds.size > 0) return readyStudentIds.has(st.id);
+          return true;
+        });
+
+    if (suggestedMode === 'departure') {
+      // Sort ready first, then cap to remaining batch seats
+      activeStudentsSource = [...activeStudentsSource].sort((a: any, b: any) => {
+        const ar = readyStudentIds.has(a.id) ? 0 : 1;
+        const br = readyStudentIds.has(b.id) ? 0 : 1;
+        return ar - br;
+      });
+      const seats = Math.max(0, Math.min(ESCORT_MAX_BATCH_SIZE, batchStatus.seats_remaining || ESCORT_MAX_BATCH_SIZE));
+      activeStudentsSource = activeStudentsSource.slice(0, seats);
+    }
 
     // 6. Build Manifest with Status
     const studentsManifest = activeStudentsSource.map((st) => {
@@ -310,6 +356,7 @@ export async function GET(request: NextRequest) {
         class_name: cls,
         pickup_address: st.house_address || st.pickup_address || 'Designated Stop',
         was_picked_up_by_escort: morningPickedUpStudentIds.has(st.id),
+        ready_for_pickup: readyStudentIds.has(st.id),
         today_status: {
           has_arrival: Boolean(arr),
           arrival_time: arr?.timestamp ? new Date(arr.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : null,
@@ -346,7 +393,14 @@ export async function GET(request: NextRequest) {
         already_checked_out: alreadyDeparted,
         pending_arrival: Math.max(0, totalCount - alreadyArrived),
         pending_departure: Math.max(0, totalCount - alreadyDeparted),
+        max_batch: ESCORT_MAX_BATCH_SIZE,
+        on_board: batchStatus.on_board,
+        seats_remaining: batchStatus.seats_remaining,
+        daily_legs_used: batchStatus.daily_legs_used,
+        daily_legs_remaining: batchStatus.daily_legs_remaining,
+        batch_message: batchStatus.message,
       },
+      batch: batchStatus,
       suggested_mode: suggestedMode,
     });
   } catch (err: any) {
@@ -391,17 +445,43 @@ export async function POST(request: NextRequest) {
       await ensureAutoReadyForPickup(supabase, school_id);
     }
 
+    const escortTokens = [escort_id].filter(Boolean);
+    let releaseIds = [...student_ids];
+
+    if (mode === 'departure' && escortTokens.length > 0) {
+      const batchStatus = await getEscortBatchStatus(supabase, escortTokens, 'afternoon', todayDate);
+      if (batchStatus.seats_remaining <= 0) {
+        return NextResponse.json(
+          {
+            error: batchStatus.message || `Escort already has ${ESCORT_MAX_BATCH_SIZE} students. They must deliver home before a second batch.`,
+            batch: batchStatus,
+            code: 'batch_full',
+          },
+          { status: 409 }
+        );
+      }
+      if (releaseIds.length > batchStatus.seats_remaining) {
+        releaseIds = releaseIds.slice(0, batchStatus.seats_remaining);
+      }
+      if (releaseIds.length === 0) {
+        return NextResponse.json(
+          { error: 'No seats remaining in this escort batch (max 9).', batch: batchStatus, code: 'batch_full' },
+          { status: 409 }
+        );
+      }
+    }
+
     const { data: existingToday } = await supabase
       .from('attendance_records')
       .select('student_id')
       .eq('school_id', school_id)
       .eq('type', mode)
-      .in('student_id', student_ids)
+      .in('student_id', releaseIds)
       .gte('timestamp', `${todayDate}T00:00:00.000Z`)
       .lte('timestamp', `${todayDate}T23:59:59.999Z`);
 
     const alreadyRecorded = new Set((existingToday || []).map((r: any) => r.student_id));
-    const newStudentIds = student_ids.filter((sId: string) => !alreadyRecorded.has(sId));
+    const newStudentIds = releaseIds.filter((sId: string) => !alreadyRecorded.has(sId));
 
     let insertedRecords: any[] = [];
     if (newStudentIds.length > 0) {
@@ -455,7 +535,7 @@ export async function POST(request: NextRequest) {
     // If afternoon departure, immediately convert students to PICKED UP for the escort
     if (mode === 'departure' && escort_id) {
       try {
-        for (const sId of student_ids) {
+        for (const sId of releaseIds) {
           const { data: existingTrip } = await supabase
             .from('escort_student_daily_trips')
             .select('id')
@@ -492,6 +572,16 @@ export async function POST(request: NextRequest) {
       }
     }
 
+    const finalBatch =
+      escortTokens.length > 0
+        ? await getEscortBatchStatus(
+            supabase,
+            escortTokens,
+            mode === 'arrival' ? 'morning' : 'afternoon',
+            todayDate
+          )
+        : null;
+
     // Log gate activity
     const actionLabel = is_override
       ? `escort_batch_override_${mode}`
@@ -507,11 +597,12 @@ export async function POST(request: NextRequest) {
       details: {
         escort_name: escort_name || 'Assigned Escort',
         vehicle_plate: vehicle_plate || 'Transit Bus',
-        student_count: student_ids.length,
+        student_count: releaseIds.length,
         mode,
         is_override: Boolean(is_override),
         override_reason: override_reason || (is_override ? 'Complete headcount verified by Gate Officer override' : null),
         timestamp,
+        batch: finalBatch,
       },
     });
 
@@ -526,8 +617,8 @@ export async function POST(request: NextRequest) {
         escort_id,
         escort_name,
         mode,
-        student_count: student_ids.length,
-        student_ids,
+        student_count: releaseIds.length,
+        student_ids: releaseIds,
         override_reason,
         timestamp,
       },
@@ -535,12 +626,19 @@ export async function POST(request: NextRequest) {
 
     return NextResponse.json({
       success: true,
-      processed_count: student_ids.length,
+      processed_count: releaseIds.length,
       mode,
       is_override: Boolean(is_override),
-      message: `${student_ids.length} students successfully ${
-        mode === 'arrival' ? 'signed in and received from escort' : 'signed out and released to escort'
-      }! Gate queue cleared.`,
+      batch: finalBatch,
+      truncated_to_batch:
+        mode === 'departure' && student_ids.length > releaseIds.length
+          ? student_ids.length - releaseIds.length
+          : 0,
+      message: `${releaseIds.length} students successfully ${
+        mode === 'arrival'
+          ? 'signed in and received from escort (morning drop-off complete)'
+          : `signed out to escort (batch ${finalBatch?.on_board || releaseIds.length}/${ESCORT_MAX_BATCH_SIZE})`
+      }.`,
     });
   } catch (err: any) {
     console.error('[gate/escort-batch POST] Error:', err);

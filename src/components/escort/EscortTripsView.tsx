@@ -48,6 +48,7 @@ export default function EscortTripsView({
   const isReady = Boolean(escort?.ready_for_pickup);
   const autoReadyFromGate = escort?.auto_ready_from_gate === true;
   const dismissalClock = String(liveDashboardData?.school?.dismissal_start_time || '').slice(0, 5);
+  const batch = liveDashboardData?.batch || null;
 
   const isSchoolEscort = Boolean(
     escort?.is_school_escort ||
@@ -69,7 +70,7 @@ export default function EscortTripsView({
       });
       const data = await res.json();
       if (res.ok) {
-        toast.success(nextState ? 'Ready for Pickup activated! Students roster queued.' : 'Pickup mode set to standby.');
+        toast.success(nextState ? 'Ready for Pickup active — your assigned students are listed. Board up to 9, then drop at school.' : 'Pickup mode set to standby.');
         onRefreshData();
       } else {
         toast.error(data.error || 'Failed to update ready status');
@@ -210,6 +211,11 @@ export default function EscortTripsView({
             {autoReadyFromGate && dismissalClock ? (
               <span className="text-[10px] text-emerald-700 font-bold">
                 Auto-ready at {dismissalClock}
+              </span>
+            ) : null}
+            {batch ? (
+              <span className={`text-[10px] font-bold ${batch.must_drop_before_next ? 'text-amber-700' : 'text-slate-600'}`}>
+                On board {batch.on_board}/{batch.max_batch} · Daily {batch.daily_legs_used}/{batch.max_daily_legs}
               </span>
             ) : null}
 

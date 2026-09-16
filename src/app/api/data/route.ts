@@ -617,38 +617,46 @@ export async function POST(request: NextRequest) {
         }
 
         const ids = links.map((l: any) => l.student_id);
-        const { data: students } = await supabase
-          .from('students')
-          .select('*, class:school_classes(name, grade), school:schools(id, name, primary_color, logo_url, gps_lat, gps_lng, address, location_address, location_landmark, location_pinned_at)')
-          .in('id', ids)
-          .eq('is_active', true);
-
-        // Fetch today's arrivals, dismissals, and extra lessons for these children
         const { startIso, endIso } = lagosDayBounds();
         const today = todayInLagos();
-        const { data: arrivals } = await supabase
-          .from('attendance_records')
-          .select('student_id, status, timestamp')
-          .in('student_id', ids)
-          .eq('type', 'arrival')
-          .gte('timestamp', startIso)
-          .lte('timestamp', endIso);
 
-        const { data: dismissals } = await supabase
-          .from('dismissal_requests')
-          .select('student_id, status')
-          .in('student_id', ids)
-          .eq('dismissal_date', today);
-
-        const { data: extraLessons } = await supabase
-          .from('extra_lessons')
-          .select('student_id, is_released, lesson_end_time, reason')
-          .in('student_id', ids)
-          .eq('date', today);
+        // Students + today's status tables in parallel (slim columns for faster home paint)
+        const [
+          { data: students },
+          { data: arrivals },
+          { data: dismissals },
+          { data: extraLessons },
+        ] = await Promise.all([
+          supabase
+            .from('students')
+            .select(
+              'id, first_name, last_name, photo_url, student_id_number, class_id, school_id, house_lat, house_lng, house_address, house_landmark, house_notes, residential_address, class:school_classes(name, grade), school:schools(id, name, primary_color, logo_url, gps_lat, gps_lng, address, location_address, location_landmark, location_pinned_at)'
+            )
+            .in('id', ids)
+            .eq('is_active', true),
+          supabase
+            .from('attendance_records')
+            .select('student_id, status, timestamp')
+            .in('student_id', ids)
+            .eq('type', 'arrival')
+            .gte('timestamp', startIso)
+            .lte('timestamp', endIso),
+          supabase
+            .from('dismissal_requests')
+            .select('student_id, status')
+            .in('student_id', ids)
+            .eq('dismissal_date', today),
+          supabase
+            .from('extra_lessons')
+            .select('student_id, is_released, lesson_end_time, reason')
+            .in('student_id', ids)
+            .eq('date', today),
+        ]);
 
         const arrivalMap = new Map(arrivals?.map((a: any) => [a.student_id, a]) || []);
         const dismissalMap = new Map(dismissals?.map((d: any) => [d.student_id, d]) || []);
         const extraLessonMap = new Map(extraLessons?.map((e: any) => [e.student_id, e]) || []);
+        const linkByStudent = new Map(links.map((l: any) => [l.student_id, l]));
 
         const children = (students || []).map((s: any) => {
           const arrival = arrivalMap.get(s.id);
@@ -656,7 +664,7 @@ export async function POST(request: NextRequest) {
           const extraLesson = extraLessonMap.get(s.id);
           return {
             ...s,
-            relationship: links.find((l: any) => l.student_id === s.id)?.relationship || 'parent',
+            relationship: linkByStudent.get(s.id)?.relationship || 'parent',
             present_today: !!arrival,
             arrival_status: arrival?.status || null,
             arrival_time: arrival?.timestamp || null,
