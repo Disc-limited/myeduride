@@ -5,7 +5,7 @@ import { useEffect, useState } from 'react';
 import { fetchData } from '@/lib/api';
 import DetailedAttendanceReports from '@/components/attendance/DetailedAttendanceReports';
 import Link from 'next/link';
-import { ClipboardList, ClipboardCheck, DoorOpen, Users } from 'lucide-react';
+import { ClipboardList, ClipboardCheck, DoorOpen, Users, UserPlus } from 'lucide-react';
 
 export default function ReportsPage() {
   const [loading, setLoading] = useState(true);
@@ -49,7 +49,7 @@ export default function ReportsPage() {
         </div>
       </div>
 
-      <div className="grid sm:grid-cols-2 lg:grid-cols-4 gap-3 mb-6">
+      <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-3 mb-6">
         <div className="card border-2 border-primary-200 bg-primary-50/40">
           <ClipboardList size={20} className="text-primary-600 mb-2" />
           <p className="font-semibold text-slate-900">Student Attendance</p>
@@ -75,6 +75,19 @@ export default function ReportsPage() {
           <DoorOpen size={20} className="text-slate-600 mb-2" />
           <p className="font-semibold text-slate-900">Gate activities</p>
           <p className="text-xs text-slate-500 mt-1">Releases, check-in/out, pickup persons</p>
+        </Link>
+        <Link
+          href="/dashboard/school-admin/reports/student-registrations"
+          className="card hover:border-emerald-300 hover:shadow-md transition-all group"
+        >
+          <UserPlus size={20} className="text-emerald-600 mb-2 group-hover:scale-105 transition-transform" />
+          <div className="flex items-center justify-between">
+            <p className="font-semibold text-slate-900">Student Registrations</p>
+            <span className="px-1.5 py-0.5 rounded text-[9px] font-black uppercase bg-emerald-100 text-emerald-800">
+              Accountant
+            </span>
+          </div>
+          <p className="text-xs text-slate-500 mt-1">Daily creation counts by registration date</p>
         </Link>
         <Link
           href="/dashboard/school-admin/reports/visitors"

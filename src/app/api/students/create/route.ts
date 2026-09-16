@@ -12,6 +12,7 @@ import {
 import { uploadBase64Photo } from '@/lib/storage/upload-photo';
 import { generateRandomPassword } from '@/lib/auth/username';
 import { sendEmail } from '@/lib/notifications/email-service';
+import { nowUtcIso } from '@/lib/utils/time';
 
 export async function POST(request: NextRequest) {
   try {
@@ -87,6 +88,8 @@ export async function POST(request: NextRequest) {
       face_descriptor: face_descriptor || null,
       custom_fields: custom_fields || {},
       is_active: true,
+      created_at: nowUtcIso(),
+      updated_at: nowUtcIso(),
     }).select().single();
 
     if (error) {

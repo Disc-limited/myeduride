@@ -3,12 +3,13 @@
 
 import { useEffect, useState } from 'react';
 import { fetchData } from '@/lib/api';
-import { Search, Plus, Trash2, Edit, X, ArrowUpCircle, CreditCard } from 'lucide-react';
+import { Search, Plus, Trash2, Edit, X, ArrowUpCircle, CreditCard, CalendarDays } from 'lucide-react';
 import Link from 'next/link';
 import { toast } from 'sonner';
 import StudentAvatar from '@/components/shared/StudentAvatar';
 import FaceCapture from '@/components/shared/FaceCapture';
-import { todayInLagos } from '@/lib/timezone';
+import { todayInLagos, formatDateTimeLagos } from '@/lib/timezone';
+import { timestampToLagosDateKey } from '@/lib/attendance/lagos-dates';
 import { IdCardPreviewModal, IdCardPreviewData } from '@/components/id-card/IdCardPreviewModal';
 
 export default function StudentsListPage() {
@@ -17,6 +18,7 @@ export default function StudentsListPage() {
   const [loading, setLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState('');
   const [classFilter, setClassFilter] = useState('');
+  const [dateFilter, setDateFilter] = useState('');
   const [schoolId, setSchoolId] = useState('');
   const [editingStudent, setEditingStudent] = useState(null);
   const [editFaceData, setEditFaceData] = useState({ photos: [], face_descriptor: null });
@@ -175,11 +177,18 @@ export default function StudentsListPage() {
     setCardPreviewOpen(true);
   };
 
+  const todayKey = todayInLagos();
+  const registeredToday = students.filter(
+    (s) => s.created_at && timestampToLagosDateKey(s.created_at) === todayKey
+  ).length;
+
   const filteredStudents = students.filter((s) => {
     const q = searchQuery.toLowerCase();
     const matchesSearch = `${s.first_name} ${s.last_name} ${s.student_id_number} ${s.class?.name || ''}`.toLowerCase().includes(q);
     const matchesClass = !classFilter || s.class_id === classFilter || s.class?.id === classFilter;
-    return matchesSearch && matchesClass;
+    const matchesDate =
+      !dateFilter || (s.created_at && timestampToLagosDateKey(s.created_at) === dateFilter);
+    return matchesSearch && matchesClass && matchesDate;
   });
 
   const toggleSelect = (id) => {
@@ -199,11 +208,44 @@ export default function StudentsListPage() {
         <div>
           <p className="page-badge">Students</p>
           <h1 className="page-title">Student list ({students.length})</h1>
-          <p className="page-subtitle">Search, filter by class, or promote to the next class for the new term.</p>
+          <p className="page-subtitle">Search, filter by class or registration date, or promote to the next class for the new term.</p>
         </div>
-        <Link href="/dashboard/school-admin/students/new" className="btn-primary flex items-center justify-center gap-2 text-sm shrink-0 w-full sm:w-auto min-h-[44px]">
-          <Plus size={18} /> Add student
-        </Link>
+        <div className="flex flex-col sm:flex-row gap-2 shrink-0 w-full sm:w-auto">
+          <Link
+            href="/dashboard/school-admin/reports/student-registrations"
+            className="btn-secondary flex items-center justify-center gap-2 text-sm min-h-[44px]"
+          >
+            <CalendarDays size={16} /> Daily registrations
+          </Link>
+          <Link href="/dashboard/school-admin/students/new" className="btn-primary flex items-center justify-center gap-2 text-sm min-h-[44px]">
+            <Plus size={18} /> Add student
+          </Link>
+        </div>
+      </div>
+
+      <div className="grid sm:grid-cols-2 gap-3 mb-4">
+        <div className="rounded-2xl border border-emerald-200 bg-emerald-50/60 px-4 py-3 flex items-center justify-between">
+          <div>
+            <p className="text-[10px] font-extrabold uppercase tracking-wider text-emerald-700">Registered today</p>
+            <p className="text-2xl font-black text-slate-900">{registeredToday}</p>
+          </div>
+          <button
+            type="button"
+            onClick={() => setDateFilter(todayKey)}
+            className="text-xs font-bold text-emerald-700 hover:underline"
+          >
+            View today
+          </button>
+        </div>
+        <div className="rounded-2xl border border-slate-200 bg-white px-4 py-3 flex items-center justify-between">
+          <div>
+            <p className="text-[10px] font-extrabold uppercase tracking-wider text-slate-500">Total students</p>
+            <p className="text-2xl font-black text-slate-900">{students.length}</p>
+          </div>
+          <Link href="/dashboard/school-admin/reports/student-registrations" className="text-xs font-bold text-slate-600 hover:underline">
+            Accountant ledger →
+          </Link>
+        </div>
       </div>
 
       <div className="flex flex-col sm:flex-row gap-3 mb-4">
@@ -227,6 +269,18 @@ export default function StudentsListPage() {
             <option key={c.id} value={c.id}>{c.name}{c.section ? ` · Arm ${c.section}` : ''}</option>
           ))}
         </select>
+        <input
+          type="date"
+          value={dateFilter}
+          onChange={(e) => setDateFilter(e.target.value)}
+          className="input sm:w-44 min-h-[44px]"
+          title="Filter by registration date"
+        />
+        {dateFilter && (
+          <button type="button" onClick={() => setDateFilter('')} className="btn-secondary text-xs min-h-[44px] px-3">
+            Clear date
+          </button>
+        )}
       </div>
 
       {selectedIds.length > 0 && (
@@ -253,6 +307,7 @@ export default function StudentsListPage() {
               <th className="text-left px-4 py-3 text-xs font-medium text-gray-500 uppercase">Student</th>
               <th className="text-left px-4 py-3 text-xs font-medium text-gray-500 uppercase">Class</th>
               <th className="text-left px-4 py-3 text-xs font-medium text-gray-500 uppercase">ID</th>
+              <th className="text-left px-4 py-3 text-xs font-medium text-gray-500 uppercase">Date created</th>
               <th className="text-right px-4 py-3 text-xs font-medium text-gray-500 uppercase">Actions</th>
             </tr>
           </thead>
@@ -278,6 +333,9 @@ export default function StudentsListPage() {
                 </td>
                 <td className="px-4 py-3 text-sm font-medium text-primary-700">{s.class?.name || '—'}</td>
                 <td className="px-4 py-3 text-sm text-gray-500 font-mono">{s.student_id_number}</td>
+                <td className="px-4 py-3 text-sm text-slate-700 whitespace-nowrap">
+                  {s.created_at ? formatDateTimeLagos(s.created_at) : '—'}
+                </td>
                 <td className="px-4 py-3 text-right">
                   <div className="flex items-center justify-end gap-1">
                     <button type="button" onClick={() => openCardPreview(s)} className="p-2.5 rounded-lg hover:bg-emerald-50 text-gray-400 hover:text-emerald-600 min-h-[44px] min-w-[44px]" title="View Digital ID Pass (Read-Only)">
@@ -296,7 +354,7 @@ export default function StudentsListPage() {
                 </td>
               </tr>
             ))}
-            {filteredStudents.length === 0 && <tr><td colSpan={5} className="py-8 text-center text-gray-400">No students found</td></tr>}
+            {filteredStudents.length === 0 && <tr><td colSpan={6} className="py-8 text-center text-gray-400">No students found</td></tr>}
           </tbody>
         </table>
       </div>

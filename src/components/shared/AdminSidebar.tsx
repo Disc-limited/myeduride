@@ -179,6 +179,7 @@ export function AdminSidebar({
           icon: <BarChart3 size={18} />,
           children: [
             { label: 'Student Attendance', href: '/dashboard/school-admin/reports', icon: <BarChart3 size={16} /> },
+            { label: 'Student Registrations', href: '/dashboard/school-admin/reports/student-registrations', icon: <UserPlus size={16} />, badge: 'New', badgeColor: 'bg-emerald-500 text-white' },
             { label: 'Staff Attendance', href: '/dashboard/school-admin/reports/staff-attendance', icon: <ClipboardCheck size={16} /> },
             { label: 'Gate Activity Log', href: '/dashboard/school-admin/reports/gate-activities', icon: <DoorOpen size={16} /> },
             { label: 'Visitors Report', href: '/dashboard/school-admin/reports/visitors', icon: <Users size={16} />, badge: 'New', badgeColor: 'bg-blue-500 text-white' },

@@ -34,10 +34,10 @@ export async function GET(req: NextRequest) {
   try {
     const { data: students, error } = await supabase
       .from('students')
-      .select('id, first_name, last_name, student_id_number, photo_url, is_active, class:school_classes(id, name, grade)')
+      .select('id, first_name, last_name, student_id_number, photo_url, is_active, created_at, class:school_classes(id, name, grade)')
       .eq('school_id', schoolId)
       .eq('is_active', true)
-      .order('last_name');
+      .order('created_at', { ascending: false });
 
     if (error) {
       console.error('[GET /api/school-admin/students] DB error:', error);
