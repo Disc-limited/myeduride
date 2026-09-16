@@ -355,7 +355,7 @@ export async function GET(request: NextRequest) {
       const assignMorning = storedAssignDaily > 0 ? Number(assignMeta?.fareResult?.morningFare || Math.round(assignDaily / 2)) : fallbackFare.morningFare;
       const assignAfternoon = storedAssignDaily > 0 ? Number(assignMeta?.fareResult?.afternoonFare || assignDaily - assignMorning) : fallbackFare.afternoonFare;
       parentRequests.push({
-        booking_id: a.booking_id || a.id,
+        booking_id: a.booking_id || null,
         assignment_id: a.id,
         child_id: a.student_id,
         child_name: stu ? `${(stu.first_name || '').trim()} ${(stu.last_name || '').trim()}`.trim() : 'Student',
@@ -1185,12 +1185,73 @@ export async function POST(request: NextRequest) {
         appliedAt: new Date().toISOString(),
       };
 
+      // Resolve real booking / assignment / student IDs (roster sometimes sends assignment id as booking_id)
+      let resolvedBookingIds: string[] = [];
+      let resolvedStudentId = studentId || null;
+      let resolvedAssignmentIds: string[] = assignmentId ? [assignmentId] : [];
+
       if (bookingId) {
+        const { data: bookHit } = await db.from('transport_bookings').select('id, student_id').eq('id', bookingId).maybeSingle();
+        if (bookHit?.id) {
+          resolvedBookingIds.push(bookHit.id);
+          if (!resolvedStudentId) resolvedStudentId = bookHit.student_id;
+        } else {
+          // bookingId may actually be an assignment id
+          const { data: asHit } = await db.from('escort_assignments').select('id, booking_id, student_id').eq('id', bookingId).maybeSingle();
+          if (asHit?.id) {
+            resolvedAssignmentIds.push(asHit.id);
+            if (asHit.booking_id) resolvedBookingIds.push(asHit.booking_id);
+            if (!resolvedStudentId) resolvedStudentId = asHit.student_id;
+          }
+        }
+      }
+
+      if (assignmentId) {
+        const { data: asHit } = await db.from('escort_assignments').select('id, booking_id, student_id').eq('id', assignmentId).maybeSingle();
+        if (asHit?.id) {
+          if (!resolvedAssignmentIds.includes(asHit.id)) resolvedAssignmentIds.push(asHit.id);
+          if (asHit.booking_id && !resolvedBookingIds.includes(asHit.booking_id)) resolvedBookingIds.push(asHit.booking_id);
+          if (!resolvedStudentId) resolvedStudentId = asHit.student_id;
+        }
+      }
+
+      if (resolvedStudentId) {
+        const { data: studentBooks } = await db
+          .from('transport_bookings')
+          .select('id, status')
+          .eq('student_id', resolvedStudentId)
+          .order('created_at', { ascending: false })
+          .limit(15);
+        const deadStatuses = new Set(['cancelled', 'canceled', 'rejected', 'reassigned']);
+        for (const b of studentBooks || []) {
+          if (!b?.id || deadStatuses.has(String(b.status || '').toLowerCase())) continue;
+          if (!resolvedBookingIds.includes(b.id)) resolvedBookingIds.push(b.id);
+        }
+        const { data: studentAssigns } = await db
+          .from('escort_assignments')
+          .select('id, booking_id')
+          .eq('student_id', resolvedStudentId)
+          .in('status', LIVE_ASSIGNMENT_STATUSES)
+          .limit(10);
+        for (const a of studentAssigns || []) {
+          if (a?.id && !resolvedAssignmentIds.includes(a.id)) resolvedAssignmentIds.push(a.id);
+          if (a?.booking_id && !resolvedBookingIds.includes(a.booking_id)) resolvedBookingIds.push(a.booking_id);
+        }
+      }
+
+      let bookingsUpdated = 0;
+      const bookingUpdateErrors: string[] = [];
+      for (const bid of resolvedBookingIds) {
         try {
-          const { data: bData } = await db.from('transport_bookings').select('notes').eq('id', bookingId).maybeSingle();
+          const { data: bData } = await db.from('transport_bookings').select('id, notes, fare_amount').eq('id', bid).maybeSingle();
+          if (!bData?.id) {
+            bookingUpdateErrors.push(`${bid}: not found`);
+            continue;
+          }
           let currentNotes: any = {};
           try {
-            if (bData?.notes && String(bData.notes).trim().startsWith('{')) currentNotes = JSON.parse(bData.notes);
+            if (bData?.notes && typeof bData.notes === 'object') currentNotes = { ...(bData.notes as object) };
+            else if (bData?.notes && String(bData.notes).trim().startsWith('{')) currentNotes = JSON.parse(String(bData.notes));
           } catch {}
 
           currentNotes.discount = isDiscount ? discountPayload : null;
@@ -1198,6 +1259,7 @@ export async function POST(request: NextRequest) {
           currentNotes.daily_fare = rawCorrected;
           currentNotes.morning_fare = morningFare;
           currentNotes.afternoon_fare = afternoonFare;
+          currentNotes.actual_amount_collected = rawCorrected;
           currentNotes.fareResult = {
             ...(currentNotes.fareResult || {}),
             dailyFare: rawCorrected,
@@ -1207,26 +1269,73 @@ export async function POST(request: NextRequest) {
             discountVariance: variance,
           };
 
-          await db.from('transport_bookings').update({
-            fare_amount: rawCorrected,
-            notes: JSON.stringify(currentNotes),
-          }).eq('id', bookingId);
-        } catch (err) {
+          const notesPayload = JSON.stringify(currentNotes);
+          let bookErr: any = null;
+          const withFare = await db
+            .from('transport_bookings')
+            .update({ fare_amount: rawCorrected, notes: notesPayload })
+            .eq('id', bid)
+            .select('id')
+            .maybeSingle();
+          bookErr = withFare.error;
+          if (bookErr && /fare_amount|column/i.test(String(bookErr.message || ''))) {
+            const notesOnly = await db
+              .from('transport_bookings')
+              .update({ notes: notesPayload })
+              .eq('id', bid)
+              .select('id')
+              .maybeSingle();
+            bookErr = notesOnly.error;
+            if (!bookErr && notesOnly.data?.id) bookingsUpdated += 1;
+          } else if (!bookErr && withFare.data?.id) {
+            bookingsUpdated += 1;
+          } else if (!bookErr) {
+            // some drivers return no row on update; verify by re-read
+            const { data: verify } = await db.from('transport_bookings').select('notes').eq('id', bid).maybeSingle();
+            const verifyMeta = (() => {
+              try {
+                if (verify?.notes && typeof verify.notes === 'object') return verify.notes as any;
+                if (verify?.notes && String(verify.notes).trim().startsWith('{')) return JSON.parse(String(verify.notes));
+              } catch {}
+              return {};
+            })();
+            if (Number(verifyMeta?.fareResult?.dailyFare || verifyMeta?.daily_fare || 0) === rawCorrected) {
+              bookingsUpdated += 1;
+            } else {
+              bookingUpdateErrors.push(`${bid}: update produced no confirmation`);
+            }
+          }
+          if (bookErr) {
+            bookingUpdateErrors.push(`${bid}: ${bookErr.message}`);
+            console.warn('[operations] correct_fare booking update:', bookErr.message);
+          }
+        } catch (err: any) {
+          bookingUpdateErrors.push(`${bid}: ${err?.message || err}`);
           console.warn('[operations] correct_fare transport_bookings update notice:', err);
         }
       }
 
+      let assignmentsUpdated = 0;
       try {
-        let assignLookup = db.from('escort_assignments').select('id, notes');
-        if (assignmentId) assignLookup = assignLookup.eq('id', assignmentId);
-        else if (bookingId) assignLookup = assignLookup.eq('booking_id', bookingId);
-        else if (studentId) assignLookup = assignLookup.eq('student_id', studentId);
-        const { data: assignRows } = await assignLookup.limit(5);
-        for (const row of assignRows || []) {
+        let assignRows: any[] = [];
+        if (resolvedAssignmentIds.length > 0) {
+          const { data } = await db.from('escort_assignments').select('id, notes').in('id', resolvedAssignmentIds);
+          assignRows = data || [];
+        } else if (resolvedStudentId) {
+          const { data } = await db
+            .from('escort_assignments')
+            .select('id, notes')
+            .eq('student_id', resolvedStudentId)
+            .in('status', LIVE_ASSIGNMENT_STATUSES)
+            .limit(10);
+          assignRows = data || [];
+        }
+        for (const row of assignRows) {
           let assignNotes: any = {};
           let keepText = '';
           try {
-            if (row.notes && String(row.notes).trim().startsWith('{')) assignNotes = JSON.parse(row.notes);
+            if (row.notes && typeof row.notes === 'object') assignNotes = { ...(row.notes as object) };
+            else if (row.notes && String(row.notes).trim().startsWith('{')) assignNotes = JSON.parse(row.notes);
             else if (row.notes) keepText = String(row.notes);
           } catch {
             keepText = String(row.notes || '');
@@ -1237,20 +1346,123 @@ export async function POST(request: NextRequest) {
             afternoonFare,
             originalDailyFare: rawOriginal || rawCorrected,
           };
+          assignNotes.fare_correction = discountPayload;
+          assignNotes.daily_fare = rawCorrected;
+          assignNotes.morning_fare = morningFare;
+          assignNotes.afternoon_fare = afternoonFare;
           if (isDiscount) assignNotes.discount = discountPayload;
           else delete assignNotes.discount;
           if (keepText) assignNotes.prior_notes = keepText;
-          await db.from('escort_assignments').update({ notes: JSON.stringify(assignNotes) }).eq('id', row.id);
+          const { error: aErr } = await db.from('escort_assignments').update({ notes: JSON.stringify(assignNotes) }).eq('id', row.id);
+          if (!aErr) assignmentsUpdated += 1;
         }
       } catch (err) {
         console.warn('[operations] correct_fare escort_assignments update notice:', err);
       }
 
-      await audit(db, session.user_id, isDiscount ? 'FARE_DISCOUNT_CORRECTION' : 'FARE_CORRECTION', 'transport_booking', bookingId || assignmentId || studentId, {
+      if (bookingsUpdated === 0 && resolvedStudentId) {
+        // No live transport_bookings row — create one so parents can see the corrected charge
+        try {
+          const { data: stu } = await db
+            .from('students')
+            .select('id, school_id, house_address, house_lat, house_lng, custom_fields')
+            .eq('id', resolvedStudentId)
+            .maybeSingle();
+          const schoolIdForBooking = stu?.school_id || null;
+          if (schoolIdForBooking) {
+            let parentUserId =
+              stu?.custom_fields?.parent_user_id ||
+              stu?.custom_fields?.parent_id ||
+              null;
+            if (!parentUserId) {
+              const { data: parentLink } = await db
+                .from('student_parents')
+                .select('parent_user_id')
+                .eq('student_id', resolvedStudentId)
+                .limit(1)
+                .maybeSingle();
+              parentUserId = parentLink?.parent_user_id || null;
+            }
+            const notesPayload = {
+              discount: isDiscount ? discountPayload : null,
+              fare_correction: discountPayload,
+              daily_fare: rawCorrected,
+              morning_fare: morningFare,
+              afternoon_fare: afternoonFare,
+              actual_amount_collected: rawCorrected,
+              fareResult: {
+                dailyFare: rawCorrected,
+                morningFare,
+                afternoonFare,
+                originalDailyFare: rawOriginal || rawCorrected,
+                discountVariance: variance,
+              },
+              source: 'city_manager_fare_correction',
+            };
+            const insertRow: Record<string, unknown> = {
+              school_id: schoolIdForBooking,
+              student_id: resolvedStudentId,
+              parent_user_id: parentUserId,
+              source: 'school',
+              status: 'assigned',
+              pickup_address: stu?.house_address || null,
+              pickup_lat: stu?.house_lat || null,
+              pickup_lng: stu?.house_lng || null,
+              fare_amount: rawCorrected,
+              notes: JSON.stringify(notesPayload),
+            };
+            let { data: created, error: createErr } = await db
+              .from('transport_bookings')
+              .insert(insertRow)
+              .select('id')
+              .single();
+            if (createErr && /fare_amount|column/i.test(String(createErr.message || ''))) {
+              delete insertRow.fare_amount;
+              const retry = await db.from('transport_bookings').insert(insertRow).select('id').single();
+              created = retry.data;
+              createErr = retry.error;
+            }
+            if (!createErr && created?.id) {
+              bookingsUpdated += 1;
+              resolvedBookingIds.push(created.id);
+              // Link assignments to this booking for future corrections
+              if (resolvedAssignmentIds.length > 0) {
+                await db
+                  .from('escort_assignments')
+                  .update({ booking_id: created.id })
+                  .in('id', resolvedAssignmentIds);
+              } else if (resolvedStudentId) {
+                await db
+                  .from('escort_assignments')
+                  .update({ booking_id: created.id })
+                  .eq('student_id', resolvedStudentId)
+                  .in('status', LIVE_ASSIGNMENT_STATUSES);
+              }
+            } else if (createErr) {
+              bookingUpdateErrors.push(`create: ${createErr.message}`);
+              console.warn('[operations] correct_fare booking create notice:', createErr.message);
+            }
+          }
+        } catch (err: any) {
+          bookingUpdateErrors.push(`create: ${err?.message || err}`);
+          console.warn('[operations] correct_fare booking create notice:', err);
+        }
+      }
+
+      if (bookingsUpdated === 0 && assignmentsUpdated === 0) {
+        return NextResponse.json(
+          { error: 'Could not find a booking or assignment to update. Open the student from the bookings queue and try again.' },
+          { status: 404 }
+        );
+      }
+
+      await audit(db, session.user_id, isDiscount ? 'FARE_DISCOUNT_CORRECTION' : 'FARE_CORRECTION', 'transport_booking', resolvedBookingIds[0] || resolvedAssignmentIds[0] || resolvedStudentId, {
         ...discountPayload,
         actualAmountCollected: rawCorrected,
         morningFare,
         afternoonFare,
+        bookingsUpdated,
+        assignmentsUpdated,
       });
 
       return NextResponse.json({
@@ -1263,6 +1475,11 @@ export async function POST(request: NextRequest) {
         afternoon_fare: afternoonFare,
         actualAmountCollected: rawCorrected,
         discountVariance: variance,
+        bookings_updated: bookingsUpdated,
+        assignments_updated: assignmentsUpdated,
+        booking_update_errors: bookingUpdateErrors.slice(0, 3),
+        resolved_booking_ids: resolvedBookingIds.slice(0, 5),
+        resolved_assignment_ids: resolvedAssignmentIds.slice(0, 5),
       });
     }
 

@@ -191,9 +191,16 @@ export function resolveStoredEscortFare(input: {
   );
   const distanceKm = Number(input.distanceKm || meta.distance_km || assignMeta.distance_km || 4.5) || 4.5;
   const engine = calculateEscortFare(distanceKm, tripType);
-  const storedDiscount = meta.discount || assignMeta.discount || null;
+  const storedDiscount =
+    meta.discount ||
+    assignMeta.discount ||
+    meta.fare_correction ||
+    assignMeta.fare_correction ||
+    null;
   const storedDaily = Number(
     storedDiscount?.discountedFare ||
+      meta?.fare_correction?.discountedFare ||
+      assignMeta?.fare_correction?.discountedFare ||
       meta?.fareResult?.dailyFare ||
       meta?.daily_fare ||
       assignMeta?.fareResult?.dailyFare ||
@@ -204,6 +211,8 @@ export function resolveStoredEscortFare(input: {
   const standardDaily = Number(
     meta?.fareResult?.originalDailyFare ||
       assignMeta?.fareResult?.originalDailyFare ||
+      meta?.fare_correction?.originalFare ||
+      assignMeta?.fare_correction?.originalFare ||
       storedDiscount?.originalFare ||
       engine.dailyFare
   );

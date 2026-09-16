@@ -5,7 +5,7 @@ import { getAdminClient } from '@/lib/supabase/admin';
 import { nowUtcIso } from '@/lib/utils/time';
 import { todayInLagos } from '@/lib/timezone';
 import { ensureDailyHandoverPin } from '@/lib/escort/handover-pin';
-import { resolveStoredEscortFare } from '@/lib/escort/escort-pricing';
+import { resolveStoredEscortFare, parseEscortNotes } from '@/lib/escort/escort-pricing';
 
 export const dynamic = 'force-dynamic';
 
@@ -217,14 +217,7 @@ export async function GET(request: NextRequest) {
           const dead = ['cancelled', 'canceled', 'rejected', 'reassigned'].includes(String(b.status || '').toLowerCase());
           if (dead) continue;
 
-          let meta: any = {};
-          try {
-            if (b.notes && b.notes.startsWith('{')) {
-              meta = JSON.parse(b.notes);
-            }
-          } catch {
-            meta = {};
-          }
+          let meta: any = parseEscortNotes(b.notes);
 
           const matchedAssignment =
             assignments.find((a) => a.booking_id === b.id && LIVE_ASSIGNMENT_STATUSES.includes(a.status)) ||
@@ -244,6 +237,8 @@ export async function GET(request: NextRequest) {
               .update({ notes: ensured.notes })
               .eq('id', b.id);
             if (pinErr) console.warn('[safety-connect] daily PIN persist notice:', pinErr);
+            // Re-parse after PIN merge so fare_correction fields are not dropped from fare resolve
+            meta = parseEscortNotes(ensured.notes);
           }
 
           const fare = resolveStoredEscortFare({
@@ -321,6 +316,75 @@ export async function GET(request: NextRequest) {
         }
         activeChildBookings = mapped;
       }
+
+      // If school assignment has a CM-corrected fare but no transport_booking, still expose it to parents
+      if (childId && activeChildBookings.length === 0) {
+        const { data: liveAssignRows } = await supabase
+          .from('escort_assignments')
+          .select('*, escort:escort_applications(id, full_name, phone, photo, passport_photograph, operating_area, application_data, escort_type), school:schools(id, name)')
+          .eq('student_id', childId)
+          .in('status', LIVE_ASSIGNMENT_STATUSES)
+          .order('updated_at', { ascending: false })
+          .limit(3);
+        const assignedRow =
+          (liveAssignRows || []).find((a: any) => a.status === 'active') ||
+          (liveAssignRows || [])[0] ||
+          null;
+        if (assignedRow) {
+          const escort = unwrapRel(assignedRow.escort);
+          const sch = unwrapRel(assignedRow.school);
+          let escortAppData = escort?.application_data || {};
+          if (typeof escortAppData === 'string') {
+            try { escortAppData = JSON.parse(escortAppData); } catch { escortAppData = {}; }
+          }
+          const fare = resolveStoredEscortFare({
+            assignmentNotes: assignedRow.notes,
+            notes: assignedRow.notes,
+          });
+          const ensured = ensureDailyHandoverPin(assignedRow.notes, pinDay);
+          activeChildBookings.push({
+            booking_id: assignedRow.booking_id || assignedRow.id,
+            assignment_id: assignedRow.id,
+            child_id: childId,
+            child_name: childRecord
+              ? `${childRecord.first_name} ${childRecord.last_name}`
+              : 'Student',
+            parent_user_id: session.user_id,
+            source: 'school',
+            school_name: sch?.name || unwrapRel(childRecord?.school)?.name || 'School Campus',
+            pickup_date: 'Today',
+            pickup_time: '07:00',
+            dropoff_time: '15:30',
+            pickup_location: childRecord?.house_address || 'Designated Home Doorstep',
+            destination: sch?.name || 'School Campus',
+            distance_km: fare.distanceKm,
+            morning_fare: fare.morningFare,
+            afternoon_fare: fare.afternoonFare,
+            daily_fare: fare.dailyFare,
+            standard_daily_fare: fare.standardDailyFare,
+            actual_amount_collected: fare.actualAmountCollected,
+            is_discounted: fare.isDiscounted,
+            discount_details: fare.discountDetails,
+            used_stored_fare: fare.usedStoredFare,
+            trip_type: fare.tripType,
+            distance_charge: fare.distanceCharge,
+            service_charge: fare.serviceCharge,
+            escort_id: escort?.id || null,
+            escort_name: escort?.full_name || null,
+            escort_phone: escort?.phone || '',
+            escort_photo: escort?.photo || escort?.passport_photograph || null,
+            vehicle_plate: escortAppData.assignedVehicle || escortAppData.regNumber || 'Certified Escort Vehicle',
+            operating_area: escort?.operating_area || 'Assigned Corridor',
+            security_pin: ensured.pin,
+            security_pin_date: ensured.date,
+            status: assignedRow.status === 'active' ? 'CONFIRMED' : 'PENDING_CM_REVIEW',
+            stage: assignedRow.status === 'active' ? 5 : 2,
+            stage_label: assignedRow.status === 'active' ? 'Escort Cleared & Dispatched' : 'Awaiting City Manager Clearance',
+            reason: 'School Escort Assignment',
+            created_at: assignedRow.created_at,
+          });
+        }
+      }
     } catch (bookingErr) {
       console.warn('[safety-connect GET] booking mapping notice:', bookingErr);
     }
@@ -386,17 +450,22 @@ export async function GET(request: NextRequest) {
       if (childBooking?.escort_name && !schoolEscort.full_name) {
         schoolEscort.full_name = childBooking.escort_name;
       }
-      // Prefer booking-stored actual charge (CM corrections) when available
-      if (childBooking?.daily_fare != null) {
-        schoolEscort.daily_fare = childBooking.daily_fare;
-        schoolEscort.morning_fare = childBooking.morning_fare;
-        schoolEscort.afternoon_fare = childBooking.afternoon_fare;
-        schoolEscort.standard_daily_fare = childBooking.standard_daily_fare;
-        schoolEscort.actual_amount_collected = childBooking.actual_amount_collected;
-        schoolEscort.is_discounted = childBooking.is_discounted;
-        schoolEscort.distance_km = childBooking.distance_km ?? schoolEscort.distance_km;
-        schoolEscort.used_stored_fare = childBooking.used_stored_fare;
-        schoolEscort.service_charge = childBooking.service_charge;
+      // Prefer CM-corrected stored fare from booking OR assignment (never overwrite a stored correction with engine fare)
+      if (childBooking) {
+        const bookingStored = Boolean(childBooking.used_stored_fare || childBooking.is_discounted);
+        const assignStored = Boolean(schoolEscort.used_stored_fare || schoolEscort.is_discounted);
+        if (bookingStored || !assignStored) {
+          schoolEscort.daily_fare = childBooking.daily_fare;
+          schoolEscort.morning_fare = childBooking.morning_fare;
+          schoolEscort.afternoon_fare = childBooking.afternoon_fare;
+          schoolEscort.standard_daily_fare = childBooking.standard_daily_fare;
+          schoolEscort.actual_amount_collected = childBooking.actual_amount_collected;
+          schoolEscort.is_discounted = childBooking.is_discounted;
+          schoolEscort.distance_km = childBooking.distance_km ?? schoolEscort.distance_km;
+          schoolEscort.used_stored_fare = childBooking.used_stored_fare;
+          schoolEscort.service_charge = childBooking.service_charge;
+          schoolEscort.discount_details = childBooking.discount_details || schoolEscort.discount_details;
+        }
       }
     } else if (childBooking?.escort_name) {
       schoolEscort = {
