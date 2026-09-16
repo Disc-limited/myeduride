@@ -44,7 +44,7 @@ export default function SharedRideEscortView({
   const [selectedEscortId, setSelectedEscortId] = useState<string>('');
   const [loadingEscorts, setLoadingEscorts] = useState(true);
   const [selectedStudentId, setSelectedStudentId] = useState<string>(childrenList[0]?.id || '');
-  const [walletBalance, setWalletBalance] = useState<number>(25600.0);
+  const [walletBalance, setWalletBalance] = useState<number>(0);
   const [submittingBooking, setSubmittingBooking] = useState(false);
   const [showFullRouteModal, setShowFullRouteModal] = useState(false);
 
@@ -56,6 +56,14 @@ export default function SharedRideEscortView({
     fetchEscorts();
     fetchParentWallet();
   }, []);
+
+  useEffect(() => {
+    if (!childrenList.length) return;
+    setSelectedStudentId((current) => {
+      if (current && childrenList.some((c) => c.id === current)) return current;
+      return childrenList[0].id;
+    });
+  }, [childrenList]);
 
   const fetchParentWallet = async () => {
     try {
@@ -703,7 +711,7 @@ export default function SharedRideEscortView({
                       {c.first_name} {c.last_name}
                     </option>
                   ))}
-                  {childrenList.length === 0 && <option value="STU-001">1 Student (David)</option>}
+                  {childrenList.length === 0 && <option value="">No linked children</option>}
                 </select>
               </div>
 

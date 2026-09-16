@@ -70,8 +70,9 @@ export async function GET(request: NextRequest) {
 
     // 3. Fetch passenger students assigned to these routes
     let studentsByRoute: Record<string, any[]> = {};
+    let dbAssignments: any[] = [];
     if (routeIds.length > 0) {
-      const { data: dbAssignments } = await supabase
+      const { data: assignmentRows } = await supabase
         .from('student_route_assignments')
         .select(`
           student_id, morning_route_id, afternoon_route_id, morning_stop_id, afternoon_stop_id,
@@ -84,7 +85,9 @@ export async function GET(request: NextRequest) {
         .eq('school_id', primarySchoolId)
         .eq('status', 'active');
 
-      if (dbAssignments) {
+      dbAssignments = assignmentRows || [];
+
+      if (dbAssignments.length > 0) {
         for (const sa of dbAssignments) {
           const stu = Array.isArray(sa.student) ? sa.student[0] : sa.student;
           const isHousePinned = stu?.house_lat != null && stu?.house_lng != null;

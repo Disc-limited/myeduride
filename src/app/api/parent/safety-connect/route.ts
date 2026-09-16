@@ -28,6 +28,20 @@ export async function GET(request: NextRequest) {
     let childRecord: any = null;
 
     if (childId) {
+      const { data: parentLink } = await supabase
+        .from('student_parents')
+        .select('student_id')
+        .eq('parent_user_id', session.user_id)
+        .eq('student_id', childId)
+        .maybeSingle();
+
+      if (!parentLink) {
+        return NextResponse.json(
+          { error: 'You are not linked to this student. Ask your school admin to connect your parent account.' },
+          { status: 403 }
+        );
+      }
+
       const { data: student } = await supabase
         .from('students')
         .select('id, first_name, last_name, school_id, school:schools(id, name)')

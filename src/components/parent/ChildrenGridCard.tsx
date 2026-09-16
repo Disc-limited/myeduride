@@ -39,31 +39,7 @@ export default function ChildrenGridCard({
   onOpenChildProfile,
   onPinHouseLocation,
 }: ChildrenGridCardProps) {
-  const displayKids: ChildStudent[] =
-    childrenList && childrenList.length > 0
-      ? childrenList
-      : [
-          {
-            id: 'demo-david',
-            first_name: 'David',
-            last_name: 'James',
-            present_today: true,
-            class: { name: 'Primary 4' },
-            escort_name: 'John Okafor',
-            route_name: 'Route A',
-            vehicle_model: 'Toyota Hiace',
-          },
-          {
-            id: 'demo-esther',
-            first_name: 'Esther',
-            last_name: 'James',
-            present_today: true,
-            class: { name: 'Primary 2' },
-            escort_name: 'Grace Bello',
-            route_name: 'Route B',
-            vehicle_model: 'Honda Pilot',
-          },
-        ];
+  const displayKids: ChildStudent[] = childrenList && childrenList.length > 0 ? childrenList : [];
 
   return (
     <div className="space-y-3">
@@ -72,6 +48,14 @@ export default function ChildrenGridCard({
         <span className="text-xs font-bold text-slate-400">{displayKids.length} Registered</span>
       </div>
 
+      {displayKids.length === 0 ? (
+        <div className="bg-white rounded-3xl p-8 border border-dashed border-slate-200 text-center">
+          <p className="text-sm font-bold text-slate-700">No linked children yet</p>
+          <p className="text-xs text-slate-500 mt-1">
+            Ask your school admin to link your parent account to your child&apos;s profile.
+          </p>
+        </div>
+      ) : (
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
         {displayKids.map((child) => {
           const fullName = `${child.first_name || 'Child'} ${child.last_name || ''}`.trim();
@@ -79,9 +63,9 @@ export default function ChildrenGridCard({
           const isPresent = Boolean(child.present_today);
           const isReady = Boolean(child.ready_for_pickup);
           const isDelayed = Boolean(child.in_extra_lesson);
-          const escort = child.escort_name || 'John Okafor';
-          const route = child.route_name || 'Route A';
-          const vehicle = child.vehicle_model || 'Toyota Hiace';
+          const escort = child.escort_name || 'Not assigned';
+          const route = child.route_name || 'Not assigned';
+          const vehicle = child.vehicle_model || 'Not assigned';
 
           return (
             <div
@@ -252,6 +236,7 @@ export default function ChildrenGridCard({
           );
         })}
       </div>
+      )}
     </div>
   );
 }

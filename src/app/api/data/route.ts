@@ -658,6 +658,39 @@ export async function POST(request: NextRequest) {
         const extraLessonMap = new Map(extraLessons?.map((e: any) => [e.student_id, e]) || []);
         const linkByStudent = new Map(links.map((l: any) => [l.student_id, l]));
 
+        const [{ data: escortAssigns }, { data: routeAssigns }] = await Promise.all([
+          supabase
+            .from('escort_assignments')
+            .select('student_id, escort:escort_applications(full_name)')
+            .in('student_id', ids)
+            .in('status', ['active', 'pending_confirmation', 'pending']),
+          supabase
+            .from('student_route_assignments')
+            .select('student_id, morning_route:transport_routes(name, code, vehicle:school_vehicles(make, model, reg_number))')
+            .in('student_id', ids)
+            .eq('status', 'active'),
+        ]);
+
+        const escortByStudent = new Map(
+          (escortAssigns || []).map((row: any) => {
+            const escort = Array.isArray(row.escort) ? row.escort[0] : row.escort;
+            return [row.student_id, escort?.full_name || null];
+          })
+        );
+        const routeByStudent = new Map(
+          (routeAssigns || []).map((row: any) => {
+            const route = Array.isArray(row.morning_route) ? row.morning_route[0] : row.morning_route;
+            const vehicle = route?.vehicle ? (Array.isArray(route.vehicle) ? route.vehicle[0] : route.vehicle) : null;
+            return [
+              row.student_id,
+              {
+                route_name: route?.name || route?.code || null,
+                vehicle_model: vehicle ? `${vehicle.make || ''} ${vehicle.model || ''}`.trim() || vehicle.reg_number : null,
+              },
+            ];
+          })
+        );
+
         const children = (students || []).map((s: any) => {
           const arrival = arrivalMap.get(s.id);
           const dismissal = dismissalMap.get(s.id);
@@ -665,6 +698,9 @@ export async function POST(request: NextRequest) {
           return {
             ...s,
             relationship: linkByStudent.get(s.id)?.relationship || 'parent',
+            escort_name: escortByStudent.get(s.id) || null,
+            route_name: routeByStudent.get(s.id)?.route_name || null,
+            vehicle_model: routeByStudent.get(s.id)?.vehicle_model || null,
             present_today: !!arrival,
             arrival_status: arrival?.status || null,
             arrival_time: arrival?.timestamp || null,
@@ -898,6 +934,26 @@ export async function POST(request: NextRequest) {
           extra_lesson_count: enriched.filter((s: any) => s.in_extra_lesson).length,
           attendance_ui_note: ATTENDANCE_UI_NOTE,
         });
+      }
+
+      case 'get_parent_wallet': {
+        const { data: walletRow } = await supabase
+          .from('wallets')
+          .select('balance')
+          .eq('user_id', session.user_id)
+          .maybeSingle();
+
+        if (walletRow?.balance != null) {
+          return NextResponse.json({ balance: Number(walletRow.balance) || 0 });
+        }
+
+        const { data: profileRow } = await supabase
+          .from('user_profiles')
+          .select('wallet_balance')
+          .eq('id', session.user_id)
+          .maybeSingle();
+
+        return NextResponse.json({ balance: Number(profileRow?.wallet_balance || 0) });
       }
 
       case 'get_parent_notifications': {

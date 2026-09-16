@@ -1,7 +1,7 @@
 // @ts-nocheck
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import {
   ShieldCheck,
   UserCheck,
@@ -40,18 +40,21 @@ export type SafetyPillarTab = 'school_escort' | 'myeduride_escort' | 'shared_rid
 interface SafetyConnectViewProps {
   initialTab?: SafetyPillarTab;
   childrenList: any[];
+  initialChildId?: string;
   onClose?: () => void;
 }
 
 export default function SafetyConnectView({
   initialTab = 'school_escort',
   childrenList = [],
+  initialChildId,
   onClose,
 }: SafetyConnectViewProps) {
   const [activePillar, setActivePillar] = useState<SafetyPillarTab>(initialTab);
-  const [selectedChildId, setSelectedChildId] = useState(childrenList[0]?.id || 'STU-001');
+  const [selectedChildId, setSelectedChildId] = useState('');
   const [data, setData] = useState<any>(null);
   const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState<string | null>(null);
   const [bookingModalOpen, setBookingModalOpen] = useState(false);
   const [liveRadarOpen, setLiveRadarOpen] = useState(false);
   const [bookingForm, setBookingForm] = useState({
@@ -69,14 +72,14 @@ export default function SafetyConnectView({
     }
   }, [initialTab]);
 
-  useEffect(() => {
-    loadSafetyData();
-  }, [selectedChildId]);
-
-  const loadSafetyData = async () => {
+  const loadSafetyData = useCallback(async (childId?: string) => {
     setLoading(true);
+    setLoadError(null);
     try {
-      const res = await fetch(`/api/parent/safety-connect?child_id=${selectedChildId}`, {
+      const url = childId
+        ? `/api/parent/safety-connect?child_id=${encodeURIComponent(childId)}`
+        : '/api/parent/safety-connect';
+      const res = await fetch(url, {
         credentials: 'include',
         cache: 'no-store',
       });
@@ -84,13 +87,37 @@ export default function SafetyConnectView({
       if (res.ok && json.success) {
         setData(json.safety_connect);
       } else {
-        toast.error(json.error || 'Failed to load safety data');
+        const message = json.error || 'Failed to load safety data';
+        setLoadError(message);
+        toast.error(message);
       }
     } catch {
-      toast.error('Network error loading safety connect');
+      const message = 'Network error loading safety connect';
+      setLoadError(message);
+      toast.error(message);
     } finally {
       setLoading(false);
     }
+  }, []);
+
+  useEffect(() => {
+    if (childrenList.length === 0) {
+      setSelectedChildId('');
+      loadSafetyData();
+      return;
+    }
+
+    const preferred =
+      (initialChildId && childrenList.some((c) => c.id === initialChildId) ? initialChildId : null) ||
+      childrenList[0].id;
+
+    setSelectedChildId(preferred);
+    loadSafetyData(preferred);
+  }, [childrenList, initialChildId, loadSafetyData]);
+
+  const handleChildChange = (childId: string) => {
+    setSelectedChildId(childId);
+    loadSafetyData(childId);
   };
 
   const handleBookMyEduRide = async (e: React.FormEvent) => {
@@ -98,7 +125,7 @@ export default function SafetyConnectView({
     setSubmittingBooking(true);
     try {
       const selectedChild = childrenList.find((c) => c.id === selectedChildId);
-      const childName = selectedChild ? `${selectedChild.first_name} ${selectedChild.last_name}` : 'David James';
+      const childName = selectedChild ? `${selectedChild.first_name} ${selectedChild.last_name}` : 'Student';
 
       const res = await fetch('/api/parent/safety-connect', {
         method: 'POST',
@@ -171,12 +198,12 @@ export default function SafetyConnectView({
               <span className="text-[11px] font-bold text-slate-400 pl-2">Child:</span>
               <select
                 value={selectedChildId}
-                onChange={(e) => setSelectedChildId(e.target.value)}
+                onChange={(e) => handleChildChange(e.target.value)}
                 className="bg-transparent text-white text-xs font-bold focus:outline-none pr-3 cursor-pointer"
               >
                 {childrenList.map((c) => (
                   <option key={c.id} value={c.id} className="bg-slate-900 text-white">
-                    {c.first_name} {c.last_name} ({c.class_name || 'Student'})
+                    {c.first_name} {c.last_name} ({c.class?.name || c.class_name || 'Student'})
                   </option>
                 ))}
               </select>
@@ -233,6 +260,27 @@ export default function SafetyConnectView({
           <div className="py-16 text-center space-y-3">
             <div className="w-8 h-8 border-3 border-emerald-600 border-t-transparent rounded-full animate-spin mx-auto" />
             <p className="text-xs font-bold text-slate-400">Loading Safety Connect Command Center...</p>
+          </div>
+        ) : childrenList.length === 0 ? (
+          <div className="py-16 text-center space-y-3 max-w-md mx-auto">
+            <ShieldCheck className="w-10 h-10 text-slate-300 mx-auto" />
+            <p className="text-sm font-bold text-slate-700">No linked children yet</p>
+            <p className="text-xs text-slate-500">
+              Ask your school admin to link your parent account to your child before using Safety Connect.
+            </p>
+          </div>
+        ) : loadError && !data ? (
+          <div className="py-16 text-center space-y-3 max-w-md mx-auto">
+            <AlertTriangle className="w-10 h-10 text-amber-500 mx-auto" />
+            <p className="text-sm font-bold text-slate-700">Could not load Safety Connect</p>
+            <p className="text-xs text-slate-500">{loadError}</p>
+            <button
+              type="button"
+              onClick={() => loadSafetyData(selectedChildId || undefined)}
+              className="mt-2 px-4 py-2 rounded-xl bg-emerald-600 text-white text-xs font-bold"
+            >
+              Try again
+            </button>
           </div>
         ) : (
           <>
@@ -651,13 +699,13 @@ export default function SafetyConnectView({
         <LiveJourneyModal
           isOpen={liveRadarOpen}
           onClose={() => setLiveRadarOpen(false)}
-          childName={selectedChildObj ? `${selectedChildObj.first_name} ${selectedChildObj.last_name}` : 'David James'}
-          escortName="Officer John Okonkwo"
-          escortCode="ESC-4089"
-          vehicleModel="Toyota Hiace (Gold Shield)"
-          licensePlate="LAG-894-XA"
-          routeName="Ikeja - Maryland - Surulere Route"
-          sessionId="demo-active-session"
+          childName={selectedChildObj ? `${selectedChildObj.first_name} ${selectedChildObj.last_name}` : 'Student'}
+          escortName={activeBooking?.escort_name || data?.school_escort?.full_name || 'Assigned Escort'}
+          escortCode={activeBooking?.escort_id ? `ESC-${String(activeBooking.escort_id).slice(0, 4).toUpperCase()}` : '—'}
+          vehicleModel={activeBooking?.vehicle_plate || data?.school_escort?.vehicle?.make_model || '—'}
+          licensePlate={activeBooking?.vehicle_plate || '—'}
+          routeName={activeBooking?.operating_area || data?.school_escort?.route?.name || 'Assigned route'}
+          sessionId={data?.edrive?.trip_id || undefined}
         />
           </>
         )}

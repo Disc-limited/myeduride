@@ -18,28 +18,7 @@ interface SchoolAnnouncementsCardProps {
 }
 
 export default function SchoolAnnouncementsCard({
-  announcements = [
-    {
-      id: '1',
-      title: 'End of Term Exams',
-      desc: 'The second term examination will commence on June 30th, 2026.',
-      tag: 'Academic',
-      tagColor: 'purple',
-      timeAgo: '2 hours ago',
-      imgUrl:
-        'https://images.unsplash.com/photo-1427504494785-3a9ca7044f45?auto=format&fit=crop&q=80',
-    },
-    {
-      id: '2',
-      title: "Children's Day Celebration",
-      desc: 'Join us on May 27th as we celebrate our wonderful children.',
-      tag: 'Event',
-      tagColor: 'orange',
-      timeAgo: '1 day ago',
-      imgUrl:
-        'https://images.unsplash.com/photo-1509062522246-3755977927d7?auto=format&fit=crop&q=80',
-    },
-  ],
+  announcements = [],
   onViewAll,
 }: SchoolAnnouncementsCardProps) {
   const getTagBadgeClass = (color: string) => {

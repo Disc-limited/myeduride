@@ -71,7 +71,7 @@ export async function POST(request: NextRequest) {
     const supabase = getAdminClient();
 
     // 1. Fetch parent wallet to check balance
-    let parentBalance = 25600.0;
+    let parentBalance = 0;
     try {
       const { data: wallet } = await supabase
         .from('wallets')
@@ -81,9 +81,16 @@ export async function POST(request: NextRequest) {
 
       if (wallet && typeof wallet.balance === 'number') {
         parentBalance = wallet.balance;
+      } else {
+        const { data: profileRow } = await supabase
+          .from('user_profiles')
+          .select('wallet_balance')
+          .eq('id', session.user_id)
+          .maybeSingle();
+        parentBalance = Number(profileRow?.wallet_balance || 0);
       }
     } catch {
-      /* fallback balance check */
+      parentBalance = 0;
     }
 
     if (parentBalance < total_amount) {

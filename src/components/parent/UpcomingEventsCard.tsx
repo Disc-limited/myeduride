@@ -18,35 +18,7 @@ interface UpcomingEventsCardProps {
 }
 
 export default function UpcomingEventsCard({
-  events = [
-    {
-      id: '1',
-      month: 'JUN',
-      day: '25',
-      title: 'PTA Meeting',
-      timeRange: '2:00 PM - 3:30 PM',
-      tag: 'Meeting',
-      tagColor: 'blue',
-    },
-    {
-      id: '2',
-      month: 'JUN',
-      day: '30',
-      title: 'End of Term Exams',
-      timeRange: 'All Day',
-      tag: 'Academic',
-      tagColor: 'purple',
-    },
-    {
-      id: '3',
-      month: 'JUL',
-      day: '05',
-      title: "Children's Day Celebration",
-      timeRange: '10:00 AM - 2:00 PM',
-      tag: 'Event',
-      tagColor: 'orange',
-    },
-  ],
+  events = [],
   onViewAll,
 }: UpcomingEventsCardProps) {
   const getTagBadgeClass = (color: string) => {

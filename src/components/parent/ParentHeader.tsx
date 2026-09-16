@@ -168,7 +168,7 @@ export default function ParentHeader({
 
               <div className="text-left hidden sm:block">
                 <p className="text-xs font-extrabold text-slate-900 leading-tight group-hover:text-emerald-700 transition-colors">
-                  {userName || 'Mr Osatohanmwen'}
+                  {userName || 'Parent'}
                 </p>
                 <p className="text-[10px] font-semibold text-slate-400 leading-none">Parent</p>
               </div>

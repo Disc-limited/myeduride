@@ -19,40 +19,7 @@ interface EduChatPreviewCardProps {
 }
 
 export default function EduChatPreviewCard({
-  threads = [
-    {
-      id: 'school',
-      name: 'Greenfield International School',
-      role: 'School Office',
-      lastMessage: 'New announcement posted',
-      time: '10:14 AM',
-      unreadCount: 2,
-    },
-    {
-      id: 'teacher',
-      name: 'Mrs. Smith',
-      role: 'Class Teacher',
-      lastMessage: 'Science assignment uploaded',
-      time: '9:30 AM',
-      unreadCount: 1,
-    },
-    {
-      id: 'escort',
-      name: 'John Okafor',
-      role: 'Escort',
-      lastMessage: "I have arrived at David's stop.",
-      time: '2:40 PM',
-      unreadCount: 0,
-    },
-    {
-      id: 'support',
-      name: 'Customer Care',
-      role: 'Support',
-      lastMessage: 'How can we help you today?',
-      time: 'Yesterday',
-      unreadCount: 0,
-    },
-  ],
+  threads = [],
   onOpenChat,
   onSeeAll,
 }: EduChatPreviewCardProps) {

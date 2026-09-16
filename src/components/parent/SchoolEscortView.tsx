@@ -98,6 +98,7 @@ export default function SchoolEscortView({
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         credentials: 'include',
+        cache: 'no-store',
         body: JSON.stringify({
           action: 'update_attendance',
           child_id: childId,
@@ -137,6 +138,7 @@ export default function SchoolEscortView({
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         credentials: 'include',
+        cache: 'no-store',
         body: JSON.stringify({
           action: 'mark_absent',
           child_id: targetChildId,
@@ -171,6 +173,7 @@ export default function SchoolEscortView({
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         credentials: 'include',
+        cache: 'no-store',
         body: JSON.stringify({
           action: 'not_going_today',
           child_id: targetChildId,

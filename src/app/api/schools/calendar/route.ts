@@ -28,6 +28,23 @@ function canView(session: ReturnType<typeof getSessionFromRequest>, schoolId: st
   return session.roles.some((r) => r.school_id === schoolId);
 }
 
+async function parentLinkedToSchool(
+  supabase: ReturnType<typeof getAdminClient>,
+  userId: string,
+  schoolId: string
+): Promise<boolean> {
+  const { data: links } = await supabase
+    .from('student_parents')
+    .select('student:students(school_id)')
+    .eq('parent_user_id', userId)
+    .limit(20);
+
+  return (links || []).some((row: any) => {
+    const student = Array.isArray(row.student) ? row.student[0] : row.student;
+    return student?.school_id === schoolId;
+  });
+}
+
 function normalizeDateInput(value: string): string | null {
   if (!value) return null;
   const s = String(value).trim();
@@ -101,14 +118,18 @@ export async function GET(request: NextRequest) {
 
   const schoolId = request.nextUrl.searchParams.get('school_id');
   if (!schoolId) return NextResponse.json({ error: 'school_id required' }, { status: 400 });
-  if (!canView(session, schoolId)) {
+
+  const supabase = getAdminClient();
+  const allowed =
+    canView(session, schoolId) ||
+    (session.user_id ? await parentLinkedToSchool(supabase, session.user_id, schoolId) : false);
+  if (!allowed) {
     return NextResponse.json({ error: 'Access denied' }, { status: 403 });
   }
 
   const year = request.nextUrl.searchParams.get('year');
   const month = request.nextUrl.searchParams.get('month');
 
-  const supabase = getAdminClient();
   let q = supabase
     .from('school_non_school_days')
     .select('*')

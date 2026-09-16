@@ -97,7 +97,24 @@ export async function GET(request: NextRequest) {
     }
 
     if (!schoolId && session.user_id) {
-      // 5. Check students for parents
+      // 5. Check student_parents link (primary parent ↔ student path)
+      const { data: parentLink } = await supabase
+        .from('student_parents')
+        .select('student:students(school_id)')
+        .eq('parent_user_id', session.user_id)
+        .limit(1)
+        .maybeSingle();
+
+      const linkedStudent = parentLink?.student
+        ? (Array.isArray(parentLink.student) ? parentLink.student[0] : parentLink.student)
+        : null;
+      if (linkedStudent?.school_id) {
+        schoolId = linkedStudent.school_id;
+      }
+    }
+
+    if (!schoolId && session.user_id) {
+      // 6. Legacy students.parent_id column
       const { data: st } = await supabase
         .from('students')
         .select('school_id')

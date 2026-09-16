@@ -137,7 +137,7 @@ export default function ParentDashboard() {
   const [sendingMessage, setSendingMessage] = useState(false);
   const [chatHistory, setChatHistory] = useState([]);
   const [attachPhoto, setAttachPhoto] = useState(false);
-  const [unreadEduChartCount, setUnreadEduChartCount] = useState(2);
+  const [unreadEduChartCount, setUnreadEduChartCount] = useState(0);
 
   // File & Voice Upload
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
@@ -146,8 +146,10 @@ export default function ParentDashboard() {
   const [isRecordingVoice, setIsRecordingVoice] = useState(false);
 
   // Wallet State
-  const [walletBalance, setWalletBalance] = useState(25600); // ₦25,600.00 or 0 if empty
+  const [walletBalance, setWalletBalance] = useState(0);
   const [liveTrackingData, setLiveTrackingData] = useState<any>(null);
+  const [schoolAnnouncements, setSchoolAnnouncements] = useState<any[]>([]);
+  const [upcomingEvents, setUpcomingEvents] = useState<any[]>([]);
 
   // Fetch Live Tracking directly from Database
   const fetchLiveTracking = async (childId?: string) => {
@@ -281,6 +283,48 @@ export default function ParentDashboard() {
     };
   }, [messageForm.student_id, children]);
 
+  const formatTimeAgo = (iso?: string) => {
+    if (!iso) return '';
+    const diff = Date.now() - new Date(iso).getTime();
+    if (Number.isNaN(diff)) return '';
+    const mins = Math.floor(diff / 60000);
+    if (mins < 60) return `${Math.max(mins, 1)} min ago`;
+    const hrs = Math.floor(mins / 60);
+    if (hrs < 24) return `${hrs} hour${hrs === 1 ? '' : 's'} ago`;
+    const days = Math.floor(hrs / 24);
+    return `${days} day${days === 1 ? '' : 's'} ago`;
+  };
+
+  const mapSchoolNotices = (rows: any[] = []) =>
+    rows.slice(0, 4).map((n) => ({
+      id: n.id,
+      title: n.title || 'School notice',
+      desc: n.message || n.body || n.content || '',
+      tag: n.category || n.notice_type || 'Notice',
+      tagColor: 'emerald' as const,
+      timeAgo: formatTimeAgo(n.created_at || n.published_at),
+    }));
+
+  const mapCalendarEvents = (rows: any[] = []) => {
+    const today = todayInLagos();
+    return rows
+      .filter((evt) => String(evt.start_date || evt.calendar_date || '') >= today)
+      .slice(0, 4)
+      .map((evt) => {
+        const dateStr = String(evt.start_date || evt.calendar_date || today);
+        const d = new Date(`${dateStr}T12:00:00`);
+        return {
+          id: evt.id || dateStr,
+          month: d.toLocaleString('en-US', { month: 'short' }).toUpperCase(),
+          day: String(d.getDate()).padStart(2, '0'),
+          title: evt.title || 'School event',
+          timeRange: evt.description || 'All day',
+          tag: String(evt.day_type || 'event').replace(/_/g, ' '),
+          tagColor: evt.day_type === 'public_holiday' ? 'orange' : evt.day_type === 'school_event' ? 'blue' : 'purple',
+        };
+      });
+  };
+
   // Load Parent Data — paint home as soon as children arrive; defer notices/chat/tracking
   const loadData = async () => {
     try {
@@ -298,6 +342,31 @@ export default function ParentDashboard() {
           student_id: f.student_id || firstId,
           pickup_person_name: f.is_self ? (sess?.full_name || '') : f.pickup_person_name,
         }));
+        fetchLiveTracking(firstId);
+      } else {
+        fetchLiveTracking();
+      }
+
+      const schoolId = kids[0]?.school_id || sess?.roles?.find((r: any) => r.school_id)?.school_id;
+      if (schoolId) {
+        fetch(`/api/school-notices/active?user_role=parents&school_id=${encodeURIComponent(schoolId)}`, {
+          credentials: 'include',
+          cache: 'no-store',
+        })
+          .then((res) => (res.ok ? res.json() : { notices: [] }))
+          .then((payload) => setSchoolAnnouncements(mapSchoolNotices(payload?.notices || [])))
+          .catch(() => setSchoolAnnouncements([]));
+
+        fetch(`/api/schools/calendar?school_id=${encodeURIComponent(schoolId)}`, {
+          credentials: 'include',
+          cache: 'no-store',
+        })
+          .then((res) => (res.ok ? res.json() : { events: [] }))
+          .then((payload) => setUpcomingEvents(mapCalendarEvents(payload?.events || payload?.days || [])))
+          .catch(() => setUpcomingEvents([]));
+      } else {
+        setSchoolAnnouncements([]);
+        setUpcomingEvents([]);
       }
     } catch (err) {
       console.error('Error loading parent data:', err);
@@ -308,12 +377,14 @@ export default function ParentDashboard() {
     // Secondary loads after first paint
     Promise.all([
       fetchData('get_parent_notifications').catch(() => ({ notifications: [] })),
-      fetch('/api/parents/pickup-notice', { credentials: 'include' })
+      fetchData('get_parent_wallet').catch(() => ({ balance: 0 })),
+      fetch('/api/parents/pickup-notice', { credentials: 'include', cache: 'no-store' })
         .then(async (res) => (res.ok ? res.json() : { notices: [] }))
         .catch(() => ({ notices: [] })),
       fetchUnreadChatTotal().catch(() => {}),
-    ]).then(([notifRes, noticeData]) => {
+    ]).then(([notifRes, walletRes, noticeData]) => {
       setNotifications(notifRes?.notifications || []);
+      setWalletBalance(Number(walletRes?.balance || 0));
       setRecentNotices(noticeData?.notices || []);
     });
   };
@@ -328,7 +399,7 @@ export default function ParentDashboard() {
     const sess = getSession();
     setSession(sess);
     if (sess) {
-      setUserName(sess.full_name || 'Mr Osatohanmwen');
+      setUserName(sess.full_name || sess.username || 'Parent');
       setUserPhotoUrl(sess.photo_url || sess.avatar_url || null);
       loadData();
     } else {
@@ -485,7 +556,7 @@ export default function ParentDashboard() {
   const safeChildren = children || [];
   const safeNotices = recentNotices || [];
 
-  const unreadNotifsCount = safeNotifications.filter((n) => !n?.is_read).length || 3;
+  const unreadNotifsCount = safeNotifications.filter((n) => !n?.is_read).length;
 
   // Handle Quick Actions
   const handleQuickAction = (key: string) => {
@@ -539,11 +610,11 @@ export default function ParentDashboard() {
 
   // Safe time formatting helper
   const safeFormatTime = (timeStr?: string) => {
-    if (!timeStr) return '7:28 AM';
+    if (!timeStr) return '—';
     try {
       return formatTimeLagos(timeStr);
     } catch {
-      return '7:28 AM';
+      return '—';
     }
   };
 
@@ -671,6 +742,7 @@ export default function ParentDashboard() {
               <SafetyConnectView
                 initialTab={activeTab === 'edrive' ? 'edrive' : safetyPillar}
                 childrenList={safeChildren}
+                initialChildId={selectedChild || safeChildren[0]?.id}
                 onClose={() => setActiveTab('dashboard')}
               />
             </div>
@@ -810,8 +882,8 @@ export default function ParentDashboard() {
                       licensePlate={liveTrackingData?.vehicle?.licensePlate || liveTrackingData?.route?.licensePlate || '—'}
                       routeName={liveTrackingData?.route?.name || 'Designated Route'}
                       studentsCount={liveTrackingData?.route?.stopsCount || 0}
-                      etaMinutes={liveTrackingData?.hasActiveJourney ? 8 : 0}
-                      etaTime={liveTrackingData?.hasActiveJourney ? '07:42 AM' : '—'}
+                      etaMinutes={liveTrackingData?.hasActiveJourney ? liveTrackingData?.etaMinutes || 0 : 0}
+                      etaTime={liveTrackingData?.hasActiveJourney ? liveTrackingData?.etaTime || '—' : '—'}
                       sessionId={liveTrackingData?.sessionId}
                       targetStopName={liveTrackingData?.route?.stops?.[0]?.name || 'Designated Stop'}
                       targetStopLat={liveTrackingData?.route?.stops?.[0]?.lat}
@@ -827,8 +899,8 @@ export default function ParentDashboard() {
                   </div>
                   <div className="md:col-span-5 lg:col-span-5">
                     <PickupAuthCard
-                      personName={safeNotices[0]?.pickup_person_name || (session?.full_name || 'John Okafor')}
-                      relationship={safeNotices[0]?.relationship || 'Uncle'}
+                      personName={safeNotices[0]?.pickup_person_name || (pickupForm.is_self ? session?.full_name : '') || ''}
+                      relationship={safeNotices[0]?.relationship || pickupForm.relationship || ''}
                       onOpenPickupManager={() => setShowPickupModal(true)}
                     />
                   </div>
@@ -851,10 +923,16 @@ export default function ParentDashboard() {
                   </div>
                   <div className="md:col-span-5 lg:col-span-5">
                     <AttendanceWeekCard
-                      presentCount={safeChildren.filter((c) => c?.present_today).length || 4}
+                      presentCount={safeChildren.filter((c) => c?.present_today).length}
                       lateCount={0}
-                      absentCount={safeChildren.filter((c) => !c?.present_today).length || 1}
-                      attendanceRate={safeChildren.length > 0 ? Math.round((safeChildren.filter((c) => c?.present_today).length / safeChildren.length) * 100) : 80}
+                      absentCount={safeChildren.filter((c) => !c?.present_today).length}
+                      attendanceRate={
+                        safeChildren.length > 0
+                          ? Math.round(
+                              (safeChildren.filter((c) => c?.present_today).length / safeChildren.length) * 100
+                            )
+                          : 0
+                      }
                       onViewAll={() => setActiveTab('attendance')}
                     />
                   </div>
@@ -866,8 +944,11 @@ export default function ParentDashboard() {
                 {/* ROW 4: Quick Actions Grid (4 cols) + School Announcements (4 cols) + Upcoming Events (4 cols) */}
                 <div className="grid grid-cols-1 md:grid-cols-3 gap-5">
                   <QuickActionsGrid onActionClick={handleQuickAction} />
-                  <SchoolAnnouncementsCard onViewAll={() => toast.info('All announcements loaded')} />
-                  <UpcomingEventsCard onViewAll={() => toast.info('All events loaded')} />
+                  <SchoolAnnouncementsCard
+                    announcements={schoolAnnouncements}
+                    onViewAll={() => setActiveTab('notices')}
+                  />
+                  <UpcomingEventsCard events={upcomingEvents} onViewAll={() => setActiveTab('notices')} />
                 </div>
 
               </div>
