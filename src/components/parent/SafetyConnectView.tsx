@@ -264,9 +264,10 @@ export default function SafetyConnectView({
         ) : childrenList.length === 0 ? (
           <div className="py-16 text-center space-y-3 max-w-md mx-auto">
             <ShieldCheck className="w-10 h-10 text-slate-300 mx-auto" />
-            <p className="text-sm font-bold text-slate-700">No linked children yet</p>
+            <p className="text-sm font-bold text-slate-700">No children on this parent login</p>
             <p className="text-xs text-slate-500">
-              Ask your school admin to link your parent account to your child before using Safety Connect.
+              Your account is signed in, but no active student is linked to this login yet.
+              Ask school admin to open Parents → confirm your child is linked to this username, or re-provision the parent login.
             </p>
           </div>
         ) : loadError && !data ? (

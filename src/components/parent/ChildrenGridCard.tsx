@@ -50,9 +50,9 @@ export default function ChildrenGridCard({
 
       {displayKids.length === 0 ? (
         <div className="bg-white rounded-3xl p-8 border border-dashed border-slate-200 text-center">
-          <p className="text-sm font-bold text-slate-700">No linked children yet</p>
+          <p className="text-sm font-bold text-slate-700">No children on this parent login</p>
           <p className="text-xs text-slate-500 mt-1">
-            Ask your school admin to link your parent account to your child&apos;s profile.
+            Ask school admin to confirm this username is linked to your child under Parents / Student records.
           </p>
         </div>
       ) : (

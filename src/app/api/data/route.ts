@@ -607,33 +607,39 @@ export async function POST(request: NextRequest) {
       }
 
       case 'get_parent_children': {
-        const { data: links } = await supabase
+        const { data: links, error: linksErr } = await supabase
           .from('student_parents')
           .select('student_id, relationship, is_primary')
           .eq('parent_user_id', session.user_id);
+
+        if (linksErr) {
+          console.error('[get_parent_children] student_parents error:', linksErr.message);
+          return NextResponse.json({ children: [], error: linksErr.message }, { status: 500 });
+        }
 
         if (!links?.length) {
           return NextResponse.json({ children: [] });
         }
 
-        const ids = links.map((l: any) => l.student_id);
+        const ids = links.map((l: any) => l.student_id).filter(Boolean);
+        if (!ids.length) {
+          return NextResponse.json({ children: [] });
+        }
+
         const { startIso, endIso } = lagosDayBounds();
         const today = todayInLagos();
 
-        // Students + today's status tables in parallel (slim columns for faster home paint)
+        // Students columns must match the students table (house_address — not residential_address)
+        const studentSelect =
+          'id, first_name, last_name, photo_url, student_id_number, class_id, school_id, is_active, house_lat, house_lng, house_address, house_landmark, house_notes, class:school_classes(name, grade), school:schools(id, name, primary_color, logo_url, gps_lat, gps_lng, address, location_address, location_landmark, location_pinned_at)';
+
         const [
-          { data: students },
+          studentsRes,
           { data: arrivals },
           { data: dismissals },
           { data: extraLessons },
         ] = await Promise.all([
-          supabase
-            .from('students')
-            .select(
-              'id, first_name, last_name, photo_url, student_id_number, class_id, school_id, house_lat, house_lng, house_address, house_landmark, house_notes, residential_address, class:school_classes(name, grade), school:schools(id, name, primary_color, logo_url, gps_lat, gps_lng, address, location_address, location_landmark, location_pinned_at)'
-            )
-            .in('id', ids)
-            .eq('is_active', true),
+          supabase.from('students').select(studentSelect).in('id', ids).eq('is_active', true),
           supabase
             .from('attendance_records')
             .select('student_id, status, timestamp')
@@ -652,6 +658,22 @@ export async function POST(request: NextRequest) {
             .in('student_id', ids)
             .eq('date', today),
         ]);
+
+        let students = studentsRes.data;
+        if (studentsRes.error) {
+          console.error('[get_parent_children] students select error:', studentsRes.error.message);
+          // Fallback: still return linked students without joins so the portal never goes blank
+          const { data: plainStudents, error: plainErr } = await supabase
+            .from('students')
+            .select('id, first_name, last_name, photo_url, student_id_number, class_id, school_id, is_active, house_lat, house_lng, house_address, house_landmark, house_notes')
+            .in('id', ids)
+            .eq('is_active', true);
+          if (plainErr) {
+            console.error('[get_parent_children] students fallback error:', plainErr.message);
+            return NextResponse.json({ children: [], error: plainErr.message }, { status: 500 });
+          }
+          students = plainStudents;
+        }
 
         const arrivalMap = new Map(arrivals?.map((a: any) => [a.student_id, a]) || []);
         const dismissalMap = new Map(dismissals?.map((d: any) => [d.student_id, d]) || []);
