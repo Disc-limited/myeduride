@@ -79,6 +79,7 @@ export function CityManagerSidebar({
   const navItems = [
     { id: 'dashboard', label: 'Dashboard', icon: LayoutDashboard },
     { id: 'live-operations', label: 'Live Operations', icon: Radio },
+    { id: 'pricing', label: 'Pricing', icon: BadgePercent, badge: 'NEW', badgeColor: 'bg-emerald-500 text-white font-black' },
     { id: 'schools', label: 'Schools', icon: School, hasChildren: true },
     { id: 'escorts', label: 'Escorts', icon: UserCheck, hasChildren: true },
     { id: 'vehicles', label: 'Vehicles', icon: Car, hasChildren: true },
@@ -87,7 +88,6 @@ export function CityManagerSidebar({
     { id: 'safety-incidents', label: 'Safety & Incidents', icon: AlertTriangle, badge: '2', badgeColor: 'bg-red-500 text-white' },
     { id: 'assignments', label: 'Assignments', icon: ClipboardList },
     { id: 'communication', label: 'Communication', icon: MessageSquare, badge: 'NEW', badgeColor: 'bg-emerald-500 text-white font-black' },
-    { id: 'pricing', label: 'Pricing', icon: BadgePercent, badge: 'NEW', badgeColor: 'bg-emerald-500 text-white font-black' },
     { id: 'reports-analytics', label: 'Reports & Analytics', icon: BarChart3 },
     { id: 'tasks-approvals', label: 'Tasks & Approvals', icon: CheckSquare, badge: String(pendingCount), badgeColor: 'bg-amber-500 text-slate-950 font-extrabold' },
     { id: 'performance', label: 'Performance', icon: Award },

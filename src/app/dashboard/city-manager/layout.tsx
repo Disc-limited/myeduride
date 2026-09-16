@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { Suspense, useState } from 'react';
 import { RouteGuard } from '@/components/shared/RouteGuard';
 import { CityManagerSidebar } from '@/components/city-manager/CityManagerSidebar';
 import { CityManagerHeader } from '@/components/city-manager/CityManagerHeader';
@@ -13,12 +13,14 @@ export default function CityManagerLayout({ children }: { children: React.ReactN
     <RouteGuard requiredRole="city_manager">
       <div className="min-h-screen bg-[#071322] flex flex-col font-sans antialiased text-slate-100">
         {/* City Manager Sidebar */}
-        <CityManagerSidebar
-          mobileOpen={sidebarOpen}
-          onMobileClose={() => setSidebarOpen(false)}
-          isCollapsed={sidebarCollapsed}
-          onToggleCollapse={() => setSidebarCollapsed((prev) => !prev)}
-        />
+        <Suspense fallback={null}>
+          <CityManagerSidebar
+            mobileOpen={sidebarOpen}
+            onMobileClose={() => setSidebarOpen(false)}
+            isCollapsed={sidebarCollapsed}
+            onToggleCollapse={() => setSidebarCollapsed((prev) => !prev)}
+          />
+        </Suspense>
 
         {/* Main Content Area */}
         <div className={`${sidebarCollapsed ? 'lg:pl-20' : 'lg:pl-64'} flex-1 flex flex-col min-w-0 transition-all duration-300`}>

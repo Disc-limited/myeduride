@@ -47,6 +47,7 @@ import {
   Trash2,
   ClipboardList,
   UserMinus,
+  BadgePercent,
 } from 'lucide-react';
 import { toast } from 'sonner';
 import StudentAvatar from '@/components/shared/StudentAvatar';
@@ -544,7 +545,14 @@ function CityManagerDashboardContent() {
 
           <button
             type="button"
-            onClick={() => setActiveSection('assignments')}
+            onClick={() => {
+              setActiveSection('assignments');
+              if (typeof window !== 'undefined') {
+                const url = new URL(window.location.href);
+                url.searchParams.set('section', 'assignments');
+                window.history.pushState({}, '', url.toString());
+              }
+            }}
             className={`px-4 py-2 rounded-xl text-xs font-extrabold flex items-center gap-2 transition-all ${
               activeSection === 'assignments'
                 ? 'bg-brand-green text-white shadow-lg shadow-emerald-600/30'
@@ -553,6 +561,27 @@ function CityManagerDashboardContent() {
           >
             <ClipboardList className="w-4 h-4" />
             <span>Operations &amp; Escort Assignments</span>
+          </button>
+
+          <button
+            type="button"
+            onClick={() => {
+              setActiveSection('pricing');
+              if (typeof window !== 'undefined') {
+                const url = new URL(window.location.href);
+                url.searchParams.set('section', 'pricing');
+                window.history.pushState({}, '', url.toString());
+              }
+            }}
+            className={`px-4 py-2 rounded-xl text-xs font-extrabold flex items-center gap-2 transition-all ${
+              activeSection === 'pricing'
+                ? 'bg-brand-green text-white shadow-lg shadow-emerald-600/30'
+                : 'bg-slate-900 text-slate-400 hover:bg-slate-800 hover:text-white border border-slate-800'
+            }`}
+          >
+            <BadgePercent className="w-4 h-4" />
+            <span>Pricing</span>
+            <span className="px-2 py-0.5 rounded-full bg-emerald-500 text-white font-black text-[10px]">NEW</span>
           </button>
         </div>
 
