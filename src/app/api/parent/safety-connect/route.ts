@@ -117,8 +117,10 @@ export async function GET(request: NextRequest) {
             standard_daily_fare: assignFare.standardDailyFare,
             actual_amount_collected: assignFare.actualAmountCollected,
             is_discounted: assignFare.isDiscounted,
+            discount_details: assignFare.discountDetails,
             distance_km: assignFare.distanceKm,
             used_stored_fare: assignFare.usedStoredFare,
+            service_charge: assignFare.serviceCharge,
           };
         }
 
@@ -259,8 +261,8 @@ export async function GET(request: NextRequest) {
             fareAmount: b.fare_amount,
             notes: meta,
             assignmentNotes: matchedAssignment?.notes,
-            distanceKm: meta.distance_km,
-            tripType: meta.trip_type,
+            distanceKm: meta.distance_km || parseEscortNotes(matchedAssignment?.notes).distance_km,
+            tripType: meta.trip_type || parseEscortNotes(matchedAssignment?.notes).trip_type,
           });
           const distanceKm = fare.distanceKm;
           const tripType = fare.tripType;
@@ -464,11 +466,17 @@ export async function GET(request: NextRequest) {
       if (childBooking?.escort_name && !schoolEscort.full_name) {
         schoolEscort.full_name = childBooking.escort_name;
       }
-      // Prefer CM-corrected stored fare from booking OR assignment (never overwrite a stored correction with engine fare)
+      // Prefer CM-corrected fare: keep assignment amount when it is the latest correction
+      // (escort portal reads assignment notes). Only overwrite with booking when booking
+      // has a newer correction or assignment has no stored fare.
       if (childBooking) {
-        const bookingStored = Boolean(childBooking.used_stored_fare || childBooking.is_discounted);
-        const assignStored = Boolean(schoolEscort.used_stored_fare || schoolEscort.is_discounted);
-        if (bookingStored || !assignStored) {
+        const bookingApplied = Date.parse(String(childBooking.discount_details?.appliedAt || 0)) || 0;
+        const assignApplied = Date.parse(String(schoolEscort.discount_details?.appliedAt || 0)) || 0;
+        const preferAssignment =
+          Boolean(schoolEscort.used_stored_fare) &&
+          (!childBooking.used_stored_fare || assignApplied >= bookingApplied);
+
+        if (!preferAssignment) {
           schoolEscort.daily_fare = childBooking.daily_fare;
           schoolEscort.morning_fare = childBooking.morning_fare;
           schoolEscort.afternoon_fare = childBooking.afternoon_fare;

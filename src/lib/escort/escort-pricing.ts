@@ -191,46 +191,76 @@ export function resolveStoredEscortFare(input: {
   );
   const distanceKm = Number(input.distanceKm || meta.distance_km || assignMeta.distance_km || 4.5) || 4.5;
   const engine = calculateEscortFare(distanceKm, tripType);
+
+  // Prefer the newest City Manager fare_correction / discount by appliedAt
+  const correctionCandidates = [
+    meta.fare_correction,
+    assignMeta.fare_correction,
+    meta.discount,
+    assignMeta.discount,
+  ].filter((c) => c && (c.discountedFare != null || c.originalFare != null));
   const storedDiscount =
-    meta.discount ||
-    assignMeta.discount ||
-    meta.fare_correction ||
-    assignMeta.fare_correction ||
-    null;
-  const storedDaily = Number(
-    storedDiscount?.discountedFare ||
-      meta?.fare_correction?.discountedFare ||
-      assignMeta?.fare_correction?.discountedFare ||
-      meta?.fareResult?.dailyFare ||
-      meta?.daily_fare ||
+    correctionCandidates.sort(
+      (a, b) => Date.parse(String(b.appliedAt || 0)) - Date.parse(String(a.appliedAt || 0))
+    )[0] || null;
+
+  // Assignment notes are what the escort portal reads after CM correction — prefer them over
+  // a stale booking fareResult / fare_amount when no dated correction is present.
+  const assignStoredDaily = Number(
+    assignMeta?.fare_correction?.discountedFare ||
+      assignMeta?.discount?.discountedFare ||
       assignMeta?.fareResult?.dailyFare ||
       assignMeta?.daily_fare ||
+      assignMeta?.actual_amount_collected ||
+      0
+  );
+  const bookingStoredDaily = Number(
+    meta?.fare_correction?.discountedFare ||
+      meta?.discount?.discountedFare ||
+      meta?.fareResult?.dailyFare ||
+      meta?.daily_fare ||
+      meta?.actual_amount_collected ||
       input.fareAmount ||
       0
   );
+
+  const storedDaily = Number(
+    (storedDiscount?.discountedFare != null && Number(storedDiscount.discountedFare) > 0
+      ? storedDiscount.discountedFare
+      : 0) ||
+      (assignStoredDaily > 0 ? assignStoredDaily : 0) ||
+      bookingStoredDaily ||
+      0
+  );
+
   const standardDaily = Number(
-    meta?.fareResult?.originalDailyFare ||
-      assignMeta?.fareResult?.originalDailyFare ||
+    storedDiscount?.originalFare ||
       meta?.fare_correction?.originalFare ||
       assignMeta?.fare_correction?.originalFare ||
-      storedDiscount?.originalFare ||
+      meta?.fareResult?.originalDailyFare ||
+      assignMeta?.fareResult?.originalDailyFare ||
       engine.dailyFare
   );
   const dailyFare = storedDaily > 0 ? storedDaily : engine.dailyFare;
   const usedStored = storedDaily > 0;
   const morningFare = usedStored
     ? Number(
-        meta?.fareResult?.morningFare ||
-          meta?.morning_fare ||
+        (storedDiscount && assignMeta?.fare_correction === storedDiscount
+          ? assignMeta?.fareResult?.morningFare || assignMeta?.morning_fare
+          : null) ||
           assignMeta?.fareResult?.morningFare ||
+          assignMeta?.morning_fare ||
+          meta?.fareResult?.morningFare ||
+          meta?.morning_fare ||
           (tripType === 'afternoon_only' ? 0 : tripType === 'morning_only' ? dailyFare : Math.round(dailyFare / 2))
       )
     : engine.morningFare;
   const afternoonFare = usedStored
     ? Number(
-        meta?.fareResult?.afternoonFare ||
+        assignMeta?.fareResult?.afternoonFare ||
+          assignMeta?.afternoon_fare ||
+          meta?.fareResult?.afternoonFare ||
           meta?.afternoon_fare ||
-          assignMeta?.fareResult?.afternoonFare ||
           (tripType === 'morning_only' ? 0 : dailyFare - morningFare)
       )
     : engine.afternoonFare;
