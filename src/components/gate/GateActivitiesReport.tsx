@@ -54,7 +54,7 @@ export default function GateActivitiesReport({ schoolId, title = 'Gate activitie
       <div>
         <h2 className="text-lg font-bold text-slate-900">{title}</h2>
         <p className="text-xs text-slate-500">
-          From <code className="text-[10px] bg-slate-100 px-1 rounded">gate_activity_logs</code> — releases, check-ins, staff scans, overrides.
+          Sign-ins, sign-outs, releases, and overrides for the selected day (includes successful gate attendance even if the activity log write was delayed).
         </p>
       </div>
 

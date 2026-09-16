@@ -582,25 +582,32 @@ export async function POST(request: NextRequest) {
           )
         : null;
 
-    // Log gate activity
-    const actionLabel = is_override
-      ? `escort_batch_override_${mode}`
-      : `escort_batch_${mode}`;
+    // Log gate activity (one summary row for the batch)
+    const batchAction = is_override
+      ? 'manual_override'
+      : mode === 'arrival'
+        ? 'check_in'
+        : 'check_out';
 
     await logGateActivity(supabase, {
       school_id,
-      actor_user_id: session.user_id,
+      gate_officer_user_id: session.user_id,
       actor_name: session.full_name || 'Gate Officer',
-      action: actionLabel,
-      entity_type: 'escort_batch',
-      entity_id: escort_id || null,
+      action_type: batchAction as any,
+      student_id: releaseIds[0] || null,
       details: {
+        escort_batch: true,
+        escort_id: escort_id || null,
         escort_name: escort_name || 'Assigned Escort',
         vehicle_plate: vehicle_plate || 'Transit Bus',
         student_count: releaseIds.length,
+        student_ids: releaseIds,
         mode,
+        attendance_type: mode === 'arrival' ? 'arrival' : 'departure',
         is_override: Boolean(is_override),
-        override_reason: override_reason || (is_override ? 'Complete headcount verified by Gate Officer override' : null),
+        override_reason:
+          override_reason ||
+          (is_override ? 'Complete headcount verified by Gate Officer override' : null),
         timestamp,
         batch: finalBatch,
       },
@@ -611,7 +618,7 @@ export async function POST(request: NextRequest) {
     await writeAuditLog(supabase, {
       school_id,
       actor_user_id: session.user_id,
-      action: actionLabel,
+      action: is_override ? `escort_batch_override_${mode}` : `escort_batch_${mode}`,
       entity_type: 'escorts',
       details: {
         escort_id,

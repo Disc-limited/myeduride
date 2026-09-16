@@ -433,25 +433,30 @@ export async function POST(request: NextRequest) {
 
     const studentAction =
       type === 'departure'
-        ? isOverrideDeparture || usedAdminBypass
+        ? isOverrideDeparture
           ? 'manual_override'
-          : 'release'
+          : from_ready_queue
+            ? 'release'
+            : 'check_out'
         : isOverrideArrival
           ? 'manual_override'
           : 'check_in';
 
-    await writeGateActivityLog(supabase, {
+    const activityResult = await writeGateActivityLog(supabase, {
       school_id: schoolId,
       gate_officer_user_id: session.user_id,
       student_id,
       action_type: studentAction,
       pickup_person_name: type === 'departure' ? pickupName : null,
       pickup_person_phone: type === 'departure' ? pickupPhone : null,
+      actor_name: (session as any).full_name || (session as any).username || null,
       details: {
         attendance_record_id: data.id,
+        attendance_type: type,
         status: data.status,
         verification_method,
         from_ready_queue: !!from_ready_queue,
+        used_admin_bypass: !!usedAdminBypass,
         reason:
           bodyReason ||
           (isOverrideArrival
@@ -462,6 +467,14 @@ export async function POST(request: NextRequest) {
         override_type: isOverrideArrival ? 'arrival' : isOverrideDeparture ? 'departure' : undefined,
       },
     });
+
+    if (!activityResult.ok) {
+      console.error(
+        '[gate/accept] gate_activity_logs write failed after attendance saved:',
+        activityResult.error,
+        { student_id, type, studentAction }
+      );
+    }
 
     const notifyType = type === 'departure' ? 'departure' : 'arrival';
     const notifyResult = await notifyParentsOfAttendance({
@@ -479,6 +492,7 @@ export async function POST(request: NextRequest) {
       is_late: isLate,
       parents_notified: notifyResult.notified,
       notify_skipped: notifyResult.skipped,
+      activity_logged: activityResult.ok,
     });
   } catch (err: any) {
     console.error('[gate/accept] crash:', err);
