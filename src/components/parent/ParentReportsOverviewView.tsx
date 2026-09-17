@@ -10,6 +10,8 @@ import {
   Gift,
   Calendar,
   ChevronDown,
+  ChevronLeft,
+  ChevronRight,
   ExternalLink,
   ArrowUpRight,
   Filter,
@@ -34,12 +36,14 @@ interface ParentReportsOverviewViewProps {
   childrenList?: any[];
   activeSubReport?: string;
   className?: string;
+  onSelectTab?: (tab: string) => void;
 }
 
 export default function ParentReportsOverviewView({
   childrenList = [],
   activeSubReport,
   className = '',
+  onSelectTab,
 }: ParentReportsOverviewViewProps) {
   // Active Date Filter Range
   const [dateFilter, setDateFilter] = useState<'today' | 'week' | 'month' | 'year'>('month');
@@ -71,6 +75,7 @@ export default function ParentReportsOverviewView({
       const params = new URLSearchParams();
       if (dateFilter) params.set('date_filter', dateFilter);
       if (selectedStudentId) params.set('student_id', selectedStudentId);
+      if (escortFilter) params.set('escort_filter', escortFilter);
 
       const res = await fetch(`/api/parent/reports/overview?${params.toString()}`, {
         credentials: 'include',
@@ -90,7 +95,7 @@ export default function ParentReportsOverviewView({
 
   useEffect(() => {
     fetchReportsData();
-  }, [dateFilter, selectedStudentId]);
+  }, [dateFilter, selectedStudentId, escortFilter]);
 
   const selectedChild = useMemo(() => {
     return safeChildren.find((c) => c.id === selectedStudentId) || safeChildren[0] || null;
@@ -108,6 +113,45 @@ export default function ParentReportsOverviewView({
   const walletReport = reportsData?.wallet_report;
   const withdrawalReport = reportsData?.withdrawal_report || [];
   const referralReport = reportsData?.referral_report;
+
+  // Gate Activity Report Pagination
+  const [gatePage, setGatePage] = useState<number>(1);
+  const gatePageSize = 5;
+
+  const rawGateLogs = useMemo(() => {
+    return Array.isArray(gateReport?.logs) ? gateReport.logs : [];
+  }, [gateReport?.logs]);
+
+  const totalGateLogs = rawGateLogs.length;
+  const totalGatePages = Math.max(1, Math.ceil(totalGateLogs / gatePageSize));
+  const currentGatePage = Math.min(gatePage, totalGatePages);
+
+  const paginatedGateLogs = useMemo(() => {
+    const start = (currentGatePage - 1) * gatePageSize;
+    return rawGateLogs.slice(start, start + gatePageSize);
+  }, [rawGateLogs, currentGatePage, gatePageSize]);
+
+  // Escort Movement Timeline Pagination
+  const [escortPage, setEscortPage] = useState<number>(1);
+  const escortPageSize = 4;
+
+  const rawEscortTimeline = useMemo(() => {
+    return Array.isArray(escortReport?.timeline) ? escortReport.timeline : [];
+  }, [escortReport?.timeline]);
+
+  const totalEscortStops = rawEscortTimeline.length;
+  const totalEscortPages = Math.max(1, Math.ceil(totalEscortStops / escortPageSize));
+  const currentEscortPage = Math.min(escortPage, totalEscortPages);
+
+  const paginatedEscortStops = useMemo(() => {
+    const start = (currentEscortPage - 1) * escortPageSize;
+    return rawEscortTimeline.slice(start, start + escortPageSize);
+  }, [rawEscortTimeline, currentEscortPage, escortPageSize]);
+
+  useEffect(() => {
+    setGatePage(1);
+    setEscortPage(1);
+  }, [escortFilter, dateFilter, selectedStudentId]);
 
   return (
     <div className={`space-y-6 text-slate-800 text-xs font-sans ${className}`}>
@@ -305,7 +349,10 @@ export default function ParentReportsOverviewView({
               <div className="flex items-center justify-between">
                 <h3 className="font-extrabold text-sm text-slate-900">1. Gate Activity Report</h3>
                 <button
-                  onClick={() => toast.info('Full Gate Activity report view')}
+                  onClick={() => {
+                    if (onSelectTab) onSelectTab('attendance');
+                    else toast.info('Full gate attendance logs are available in the Attendance tab.');
+                  }}
                   className="text-[11px] font-bold text-sky-600 hover:text-sky-800 transition-colors flex items-center gap-1 cursor-pointer"
                 >
                   <span>View Full Report</span>
@@ -325,6 +372,9 @@ export default function ParentReportsOverviewView({
                     onChange={(e) => setSelectedStudentId(e.target.value)}
                     className="w-full bg-transparent text-xs font-bold text-slate-900 focus:outline-none cursor-pointer"
                   >
+                    {safeChildren.length > 1 && (
+                      <option value="">All Children (Aggregated)</option>
+                    )}
                     {safeChildren.map((c) => (
                       <option key={c.id} value={c.id}>
                         {c.first_name} {c.last_name} ({c.class?.name || c.class_name || 'Student'})
@@ -359,42 +409,83 @@ export default function ParentReportsOverviewView({
               </div>
 
               {/* Gate Departure Logs Table / Empty State */}
-              {(!gateReport?.logs || gateReport.logs.length === 0) ? (
+              {(!rawGateLogs || rawGateLogs.length === 0) ? (
                 <div className="p-8 text-center bg-slate-50/70 rounded-2xl border border-dashed border-slate-200 space-y-1">
                   <Camera size={22} className="mx-auto text-slate-300" />
                   <p className="font-bold text-slate-700 text-xs">No Gate Logs Yet</p>
                   <p className="text-[10px] text-slate-400">Gate entries and departures will appear here in real-time as gate officers scan passes.</p>
                 </div>
               ) : (
-                <div className="overflow-x-auto">
-                  <table className="w-full text-left text-[11px]">
-                    <thead>
-                      <tr className="border-b border-slate-100 text-[10px] font-bold uppercase text-slate-400">
-                        <th className="pb-2">Date</th>
-                        <th className="pb-2">Gate</th>
-                        <th className="pb-2">Entry Time</th>
-                        <th className="pb-2">Exit Time</th>
-                        <th className="pb-2 text-right">Status</th>
-                      </tr>
-                    </thead>
-                    <tbody className="divide-y divide-slate-50 font-medium">
-                      {gateReport.logs.map((log: any, idx: number) => (
-                        <tr key={idx} className="hover:bg-slate-50/60 transition-colors">
-                          <td className="py-2.5 font-bold text-slate-900">{log.date}</td>
-                          <td className="py-2.5 text-slate-500">{log.gate}</td>
-                          <td className="py-2.5 text-slate-700">{log.entry_time}</td>
-                          <td className="py-2.5 text-slate-700">{log.exit_time}</td>
-                          <td className="py-2.5 text-right">
-                            <span className={`px-2 py-0.5 rounded-full text-[9px] font-black uppercase ${
-                              log.status === 'On Time' ? 'bg-emerald-100 text-emerald-800' : 'bg-amber-100 text-amber-900'
-                            }`}>
-                              {log.status}
-                            </span>
-                          </td>
+                <div className="space-y-3">
+                  <div className="overflow-x-auto">
+                    <table className="w-full text-left text-[11px]">
+                      <thead>
+                        <tr className="border-b border-slate-100 text-[10px] font-bold uppercase text-slate-400">
+                          <th className="pb-2">Date</th>
+                          <th className="pb-2">Gate</th>
+                          <th className="pb-2">Entry Time</th>
+                          <th className="pb-2">Exit Time</th>
+                          <th className="pb-2 text-right">Status</th>
                         </tr>
-                      ))}
-                    </tbody>
-                  </table>
+                      </thead>
+                      <tbody className="divide-y divide-slate-50 font-medium">
+                        {paginatedGateLogs.map((log: any, idx: number) => (
+                          <tr key={idx} className="hover:bg-slate-50/60 transition-colors">
+                            <td className="py-2.5">
+                              <div className="font-bold text-slate-900">{log.date}</div>
+                              {!selectedStudentId && log.student_name && (
+                                <div className="text-[9px] text-slate-400 font-medium truncate max-w-[110px]">{log.student_name}</div>
+                              )}
+                            </td>
+                            <td className="py-2.5 text-slate-500">{log.gate}</td>
+                            <td className="py-2.5 text-slate-700">{log.entry_time}</td>
+                            <td className="py-2.5 text-slate-700">{log.exit_time}</td>
+                            <td className="py-2.5 text-right">
+                              <span className={`px-2 py-0.5 rounded-full text-[9px] font-black uppercase ${
+                                log.status === 'On Time' ? 'bg-emerald-100 text-emerald-800' : 'bg-amber-100 text-amber-900'
+                              }`}>
+                                {log.status}
+                              </span>
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+
+                  {/* Gate Pagination Controls */}
+                  {totalGatePages > 1 && (
+                    <div className="flex items-center justify-between pt-2 border-t border-slate-100 text-[10px] text-slate-500 font-bold">
+                      <span>
+                        Showing {(currentGatePage - 1) * gatePageSize + 1}–{Math.min(currentGatePage * gatePageSize, totalGateLogs)} of {totalGateLogs}
+                      </span>
+                      <div className="flex items-center gap-1.5">
+                        <button
+                          type="button"
+                          disabled={currentGatePage <= 1}
+                          onClick={() => setGatePage((p) => Math.max(1, p - 1))}
+                          className="px-2.5 py-1 rounded-xl border border-slate-200 bg-white hover:bg-slate-50 text-slate-700 disabled:opacity-35 disabled:cursor-not-allowed cursor-pointer flex items-center gap-1 transition-all shadow-2xs font-bold text-[10px]"
+                          title="Previous page"
+                        >
+                          <ChevronLeft size={12} />
+                          <span>Prev</span>
+                        </button>
+                        <span className="px-2 py-1 rounded-xl bg-slate-100 text-slate-700 font-mono text-[9px] font-black">
+                          {currentGatePage} / {totalGatePages}
+                        </span>
+                        <button
+                          type="button"
+                          disabled={currentGatePage >= totalGatePages}
+                          onClick={() => setGatePage((p) => Math.min(totalGatePages, p + 1))}
+                          className="px-2.5 py-1 rounded-xl border border-slate-200 bg-white hover:bg-slate-50 text-slate-700 disabled:opacity-35 disabled:cursor-not-allowed cursor-pointer flex items-center gap-1 transition-all shadow-2xs font-bold text-[10px]"
+                          title="Next page"
+                        >
+                          <span>Next</span>
+                          <ChevronRight size={12} />
+                        </button>
+                      </div>
+                    </div>
+                  )}
                 </div>
               )}
             </div>
@@ -406,7 +497,10 @@ export default function ParentReportsOverviewView({
               <div className="flex items-center justify-between">
                 <h3 className="font-extrabold text-sm text-slate-900">2. Escort Movement Report</h3>
                 <button
-                  onClick={() => toast.info('Full Escort Movement report view')}
+                  onClick={() => {
+                    if (onSelectTab) onSelectTab('live');
+                    else toast.info('Full Escort Movement telemetry is available in the Live tab.');
+                  }}
                   className="text-[11px] font-bold text-sky-600 hover:text-sky-800 transition-colors flex items-center gap-1 cursor-pointer"
                 >
                   <span>View Full Report</span>
@@ -498,25 +592,73 @@ export default function ParentReportsOverviewView({
               </div>
 
               {/* Timeline Details / Empty State */}
-              {(!escortReport?.timeline || escortReport.timeline.length === 0) ? (
+              {(!rawEscortTimeline || rawEscortTimeline.length === 0) ? (
                 <div className="p-6 text-center bg-slate-50/70 rounded-2xl border border-dashed border-slate-200 space-y-1">
                   <Car size={20} className="mx-auto text-slate-300" />
                   <p className="font-bold text-slate-700 text-xs">No Movement Trips Logged</p>
                   <p className="text-[10px] text-slate-400">Escort pickup and drop-off timeline stops will appear here when active.</p>
                 </div>
               ) : (
-                <div className="space-y-2 text-[11px] pt-1">
-                  {escortReport.timeline.map((stop: any, idx: number) => (
-                    <div key={idx} className="flex items-center justify-between p-2 rounded-xl bg-slate-50 border border-slate-100">
-                      <div className="flex items-center gap-2">
-                        <span className="font-mono font-bold text-slate-700 text-[10px]">{stop.time}</span>
-                        <span className="px-1.5 py-0.2 rounded-md bg-emerald-100 text-emerald-800 text-[9px] font-black uppercase">
-                          {stop.type}
-                        </span>
+                <div className="space-y-3 pt-1">
+                  <div className="space-y-2 text-[11px]">
+                    {paginatedEscortStops.map((stop: any, idx: number) => (
+                      <div key={idx} className="p-2.5 rounded-xl bg-slate-50 border border-slate-100 space-y-1 hover:border-slate-300 transition-colors">
+                        <div className="flex items-center justify-between">
+                          <div className="flex items-center gap-2">
+                            <span className="font-mono font-bold text-slate-800 text-[10px]">{stop.time}</span>
+                            <span className={`px-1.5 py-0.5 rounded-md text-[9px] font-black uppercase ${
+                              stop.type === 'Pickup' ? 'bg-amber-100 text-amber-800' : 'bg-emerald-100 text-emerald-800'
+                            }`}>
+                              {stop.type}
+                            </span>
+                          </div>
+                          {stop.date && (
+                            <span className="text-[9px] text-slate-400 font-medium">{stop.date}</span>
+                          )}
+                        </div>
+                        <div className="text-[10px] text-slate-700 font-medium truncate" title={stop.location}>
+                          📍 {stop.location}
+                        </div>
+                        {stop.description && (
+                          <p className="text-[9px] text-slate-500 font-medium italic truncate">{stop.description}</p>
+                        )}
                       </div>
-                      <span className="text-slate-600 font-medium truncate max-w-[180px]">{stop.location}</span>
+                    ))}
+                  </div>
+
+                  {/* Pagination Controls */}
+                  {totalEscortPages > 1 && (
+                    <div className="flex items-center justify-between pt-2 border-t border-slate-100 text-[10px] text-slate-500 font-bold">
+                      <span>
+                        Showing {(currentEscortPage - 1) * escortPageSize + 1}–{Math.min(currentEscortPage * escortPageSize, totalEscortStops)} of {totalEscortStops}
+                      </span>
+                      <div className="flex items-center gap-1.5">
+                        <button
+                          type="button"
+                          disabled={currentEscortPage <= 1}
+                          onClick={() => setEscortPage((p) => Math.max(1, p - 1))}
+                          className="px-2.5 py-1 rounded-xl border border-slate-200 bg-white hover:bg-slate-50 text-slate-700 disabled:opacity-35 disabled:cursor-not-allowed cursor-pointer flex items-center gap-1 transition-all shadow-2xs font-bold text-[10px]"
+                          title="Previous page"
+                        >
+                          <ChevronLeft size={12} />
+                          <span>Prev</span>
+                        </button>
+                        <span className="px-2 py-1 rounded-xl bg-slate-100 text-slate-700 font-mono text-[9px] font-black">
+                          {currentEscortPage} / {totalEscortPages}
+                        </span>
+                        <button
+                          type="button"
+                          disabled={currentEscortPage >= totalEscortPages}
+                          onClick={() => setEscortPage((p) => Math.min(totalEscortPages, p + 1))}
+                          className="px-2.5 py-1 rounded-xl border border-slate-200 bg-white hover:bg-slate-50 text-slate-700 disabled:opacity-35 disabled:cursor-not-allowed cursor-pointer flex items-center gap-1 transition-all shadow-2xs font-bold text-[10px]"
+                          title="Next page"
+                        >
+                          <span>Next</span>
+                          <ChevronRight size={12} />
+                        </button>
+                      </div>
                     </div>
-                  ))}
+                  )}
                 </div>
               )}
             </div>
@@ -857,7 +999,10 @@ export default function ParentReportsOverviewView({
               {/* Notifications Report */}
               <div
                 id="notifications_report"
-                onClick={() => toast.info('Opening Notifications Report...')}
+                onClick={() => {
+                  if (onSelectTab) onSelectTab('notices');
+                  else toast.info('Opening Notifications Report...');
+                }}
                 className="p-3.5 rounded-2xl bg-slate-50 hover:bg-slate-100 border border-slate-200/80 cursor-pointer transition-all space-y-1.5"
               >
                 <Bell size={18} className="text-sky-600" />
@@ -867,7 +1012,10 @@ export default function ParentReportsOverviewView({
 
               {/* Service & Booking History */}
               <div
-                onClick={() => toast.info('Opening Booking History Report...')}
+                onClick={() => {
+                  if (onSelectTab) onSelectTab('live');
+                  else toast.info('Opening Booking History Report...');
+                }}
                 className="p-3.5 rounded-2xl bg-slate-50 hover:bg-slate-100 border border-slate-200/80 cursor-pointer transition-all space-y-1.5"
               >
                 <History size={18} className="text-purple-600" />
@@ -877,7 +1025,7 @@ export default function ParentReportsOverviewView({
 
               {/* Escrow & Settlement Report */}
               <div
-                onClick={() => toast.info('Opening Escrow Report...')}
+                onClick={() => toast.info('Escrow balances are secured within the transport smart contract.')}
                 className="p-3.5 rounded-2xl bg-slate-50 hover:bg-slate-100 border border-slate-200/80 cursor-pointer transition-all space-y-1.5"
               >
                 <ShieldCheck size={18} className="text-amber-600" />
@@ -887,7 +1035,10 @@ export default function ParentReportsOverviewView({
 
               {/* Attendance Report */}
               <div
-                onClick={() => toast.info('Opening Attendance Report...')}
+                onClick={() => {
+                  if (onSelectTab) onSelectTab('attendance');
+                  else toast.info('Opening Attendance Report...');
+                }}
                 className="p-3.5 rounded-2xl bg-slate-50 hover:bg-slate-100 border border-slate-200/80 cursor-pointer transition-all space-y-1.5"
               >
                 <UserCheck size={18} className="text-emerald-600" />
@@ -897,7 +1048,7 @@ export default function ParentReportsOverviewView({
 
               {/* Support & Complaints Report */}
               <div
-                onClick={() => toast.info('Opening Support Report...')}
+                onClick={() => toast.info('For complaints or immediate assistance, contact support via chat.')}
                 className="p-3.5 rounded-2xl bg-slate-50 hover:bg-slate-100 border border-slate-200/80 cursor-pointer transition-all space-y-1.5"
               >
                 <HelpCircle size={18} className="text-blue-600" />
