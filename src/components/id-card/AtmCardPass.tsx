@@ -303,7 +303,7 @@ export default function AtmCardPass({
                         {formattedName.toLowerCase()}
                       </span>
                       <span className="font-mono text-[8px] text-slate-400 tracking-widest select-none">
-                        /// SECURE ///
+                        {'/// SECURE ///'}
                       </span>
                     </div>
 
