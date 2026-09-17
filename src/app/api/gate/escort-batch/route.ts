@@ -223,7 +223,6 @@ export async function GET(request: NextRequest) {
           student_id_number,
           photo_url,
           house_address,
-          pickup_address,
           class_id,
           class:school_classes(name)
         )
@@ -354,7 +353,7 @@ export async function GET(request: NextRequest) {
         student_id_number: st.student_id_number || 'N/A',
         photo_url: st.photo_url || null,
         class_name: cls,
-        pickup_address: st.house_address || st.pickup_address || 'Designated Stop',
+        pickup_address: st.house_address || 'Designated Stop',
         was_picked_up_by_escort: morningPickedUpStudentIds.has(st.id),
         ready_for_pickup: readyStudentIds.has(st.id),
         today_status: {
