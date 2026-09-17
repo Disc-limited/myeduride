@@ -19,8 +19,9 @@ type PricingPayload = {
   city_key: string;
   city_label: string;
   currency: string;
-  rate_per_half_km: number;
-  rate_per_tenth_km: number;
+  rate_per_km: number;
+  rate_per_half_km?: number;
+  rate_per_tenth_km?: number;
   service_charge_percent: number;
   shared_ride_base_fare_round: number;
   shared_ride_base_fare_single: number;
@@ -30,6 +31,7 @@ type PricingPayload = {
   last_adjusted_at?: string | null;
   pending_effective_from?: string | null;
   pending_reason?: string | null;
+  formula?: string;
 };
 
 function formatNgn(n: number) {
@@ -85,7 +87,8 @@ export function CityPricingReadOnlyPanel({
             <div>
               <h2 className="text-lg font-extrabold text-slate-900 tracking-tight">{title}</h2>
               <p className="text-xs text-slate-500 font-medium mt-0.5">
-                Active city rate card set by City Manager. Personal student discounts remain overlays on top of these bases.
+                Formula: One-way = Base + service % · Complete trip = One-way × 2 · Base = ₦/km × each 0–1 km band.
+                Personal student discounts remain overlays on top of these bases.
               </p>
             </div>
           </div>
@@ -122,12 +125,28 @@ export function CityPricingReadOnlyPanel({
           <>
             <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
               {[
-                { label: 'Per 0.5 km', value: formatNgn(pricing.rate_per_half_km) },
-                { label: 'Per extra 0.1 km', value: formatNgn(pricing.rate_per_tenth_km) },
+                { label: 'Per km (0–1 km band)', value: formatNgn(pricing.rate_per_km ?? pricing.rate_per_half_km) },
                 { label: 'Service charge', value: `${pricing.service_charge_percent}%` },
+                {
+                  label: 'Example 1 km one-way',
+                  value: formatNgn(
+                    Math.round(
+                      Number(pricing.rate_per_km ?? pricing.rate_per_half_km) *
+                        (1 + Number(pricing.service_charge_percent) / 100)
+                    )
+                  ),
+                },
+                {
+                  label: 'Example 1 km complete',
+                  value: formatNgn(
+                    Math.round(
+                      Number(pricing.rate_per_km ?? pricing.rate_per_half_km) *
+                        (1 + Number(pricing.service_charge_percent) / 100)
+                    ) * 2
+                  ),
+                },
                 { label: 'Shared ride (round)', value: formatNgn(pricing.shared_ride_base_fare_round) },
                 { label: 'Shared ride (single)', value: formatNgn(pricing.shared_ride_base_fare_single) },
-                { label: 'Shared ride fee', value: formatNgn(pricing.shared_ride_service_fee) },
               ].map((item) => (
                 <div key={item.label} className="rounded-2xl border border-slate-100 bg-slate-50/80 p-3.5">
                   <p className="text-[10px] font-bold uppercase tracking-wider text-slate-500">{item.label}</p>
@@ -200,8 +219,7 @@ export function CityManagerPricingView({
   const [config, setConfig] = useState<PricingPayload | null>(null);
   const [history, setHistory] = useState<any[]>([]);
   const [form, setForm] = useState({
-    rate_per_half_km: 300,
-    rate_per_tenth_km: 30,
+    rate_per_km: 500,
     service_charge_percent: 6,
     shared_ride_base_fare_round: 1500,
     shared_ride_base_fare_single: 850,
@@ -226,8 +244,7 @@ export function CityManagerPricingView({
       if (data.config) {
         setForm((prev) => ({
           ...prev,
-          rate_per_half_km: Number(data.config.rate_per_half_km),
-          rate_per_tenth_km: Number(data.config.rate_per_tenth_km),
+          rate_per_km: Number(data.config.rate_per_km ?? data.config.rate_per_half_km ?? 500),
           service_charge_percent: Number(data.config.service_charge_percent),
           shared_ride_base_fare_round: Number(data.config.shared_ride_base_fare_round),
           shared_ride_base_fare_single: Number(data.config.shared_ride_base_fare_single),
@@ -311,8 +328,8 @@ export function CityManagerPricingView({
             <div>
               <h2 className="text-lg font-extrabold text-white">City Pricing Adjuster</h2>
               <p className="text-xs text-slate-400 mt-0.5 max-w-xl">
-                Per-city global rate card. Publishing broadcasts in-app notifications and school notice banners to parents with
-                active escort bookings, schools, and escorts.
+                Formula: One-way = Base + service % · Complete trip = One-way × 2 · Base = ₦/km for every 0–1 km.
+                Publishing notifies parents with active bookings, schools, and escorts.
               </p>
             </div>
           </div>
@@ -339,8 +356,7 @@ export function CityManagerPricingView({
               <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
                 {(
                   [
-                    ['rate_per_half_km', '₦ per 0.5 km'],
-                    ['rate_per_tenth_km', '₦ per extra 0.1 km'],
+                    ['rate_per_km', '₦ per km (0–1 km band)'],
                     ['service_charge_percent', 'Service charge %'],
                     ['shared_ride_base_fare_round', 'Shared ride round (₦)'],
                     ['shared_ride_base_fare_single', 'Shared ride single (₦)'],
@@ -359,6 +375,22 @@ export function CityManagerPricingView({
                     />
                   </label>
                 ))}
+              </div>
+
+              <div className="rounded-xl border border-emerald-500/30 bg-emerald-500/10 px-3 py-2.5 text-[11px] text-emerald-200">
+                Preview 1 km: one-way{' '}
+                <strong>
+                  {formatNgn(
+                    Math.round(Number(form.rate_per_km) * (1 + Number(form.service_charge_percent) / 100))
+                  )}
+                </strong>
+                {' · '}
+                complete trip{' '}
+                <strong>
+                  {formatNgn(
+                    Math.round(Number(form.rate_per_km) * (1 + Number(form.service_charge_percent) / 100)) * 2
+                  )}
+                </strong>
               </div>
 
               <div className="space-y-2">
@@ -428,8 +460,8 @@ export function CityManagerPricingView({
                 <div className="rounded-xl border border-slate-700 bg-slate-900/50 p-4 space-y-2">
                   <p className="text-[10px] font-extrabold uppercase text-slate-400">Active card · v{config.version}</p>
                   <p className="text-sm text-slate-200">
-                    {formatNgn(config.rate_per_half_km)} / 0.5 km · {formatNgn(config.rate_per_tenth_km)} / 0.1 km ·{' '}
-                    {config.service_charge_percent}% service
+                    {formatNgn(config.rate_per_km ?? config.rate_per_half_km)} / km + {config.service_charge_percent}%
+                    service · complete = one-way × 2
                   </p>
                   {config.last_reason && (
                     <p className="text-xs text-slate-400">Last: {config.last_reason}</p>

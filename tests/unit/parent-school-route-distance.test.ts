@@ -150,22 +150,29 @@ parentSchoolRouteDistanceSuite.test('Invariant 5: Filter and sort parent pinned 
   expect(sortedAll[3].distanceKm).toBe(14.2);
 });
 
-parentSchoolRouteDistanceSuite.test('Invariant 6: Parent fare is ₦300 per 0.5 km, ₦30 per extra 0.1 km, plus 6% service charge', () => {
-  const halfKm = calculateEscortFare(0.5, 'both');
-  expect(halfKm.distanceCharge).toBe(300);
-  expect(halfKm.serviceCharge).toBe(18);
-  expect(halfKm.morningFare).toBe(318);
-  expect(halfKm.dailyFare).toBe(636);
+parentSchoolRouteDistanceSuite.test('Invariant 6: One-way = ₦500/km band + 6%; complete trip = one-way × 2', () => {
+  // 0–1 km band → base 500 + 6% (30) = 530 one-way; complete = 1060
+  const oneKm = calculateEscortFare(0.5, 'both');
+  expect(oneKm.billableKm).toBe(1);
+  expect(oneKm.distanceCharge).toBe(500);
+  expect(oneKm.serviceCharge).toBe(30);
+  expect(oneKm.oneWayFare).toBe(530);
+  expect(oneKm.morningFare).toBe(530);
+  expect(oneKm.dailyFare).toBe(1060);
 
-  const extraTenth = calculateEscortFare(0.6, 'morning_only');
-  expect(extraTenth.distanceCharge).toBe(330);
-  expect(extraTenth.serviceCharge).toBe(20);
-  expect(extraTenth.morningFare).toBe(350);
-  expect(extraTenth.afternoonFare).toBe(0);
+  const morningOnly = calculateEscortFare(0.6, 'morning_only');
+  expect(morningOnly.billableKm).toBe(1);
+  expect(morningOnly.distanceCharge).toBe(500);
+  expect(morningOnly.serviceCharge).toBe(30);
+  expect(morningOnly.morningFare).toBe(530);
+  expect(morningOnly.afternoonFare).toBe(0);
+  expect(morningOnly.dailyFare).toBe(530);
 
+  // 4.2 km → 5 bands → base 2500 + 6% (150) = 2650 one-way; complete = 5300
   const fourPointTwo = calculateEscortFare(4.2, 'both');
-  expect(fourPointTwo.distanceCharge).toBe(2460);
-  expect(fourPointTwo.serviceCharge).toBe(148);
-  expect(fourPointTwo.morningFare).toBe(2608);
-  expect(fourPointTwo.dailyFare).toBe(5216);
+  expect(fourPointTwo.billableKm).toBe(5);
+  expect(fourPointTwo.distanceCharge).toBe(2500);
+  expect(fourPointTwo.serviceCharge).toBe(150);
+  expect(fourPointTwo.morningFare).toBe(2650);
+  expect(fourPointTwo.dailyFare).toBe(5300);
 });

@@ -78,8 +78,9 @@ export async function POST(request: NextRequest) {
       authorUserId: session.user_id,
       authorName: session.full_name || session.username,
       rates: {
-        rate_per_half_km: body.rate_per_half_km,
-        rate_per_tenth_km: body.rate_per_tenth_km,
+        rate_per_km: body.rate_per_km ?? body.rate_per_half_km,
+        rate_per_half_km: body.rate_per_km ?? body.rate_per_half_km,
+        rate_per_tenth_km: 0,
         service_charge_percent: body.service_charge_percent,
         shared_ride_base_fare_round: body.shared_ride_base_fare_round,
         shared_ride_base_fare_single: body.shared_ride_base_fare_single,

@@ -113,22 +113,22 @@ schoolEscortAssignmentSuite.test('Invariant 2: Haversine distance and tiered far
   expect(distance > 5 && distance < 8).toBe(true);
 
   const faresTwoWay = calculateTripFares(5.0, 'two_way');
-  // 5.0 km = 10 x ₦300 = ₦3,000 + 6% (₦180) = ₦3,180 per trip
-  expect(faresTwoWay.distanceCharge).toBe(3000);
-  expect(faresTwoWay.serviceCharge).toBe(180);
-  expect(faresTwoWay.morning).toBe(3180);
-  expect(faresTwoWay.afternoon).toBe(3180);
-  expect(faresTwoWay.dailyTotal).toBe(6360);
+  // 5.0 km = 5 × ₦500 = ₦2,500 + 6% (₦150) = ₦2,650 one-way; complete = ₦5,300
+  expect(faresTwoWay.distanceCharge).toBe(2500);
+  expect(faresTwoWay.serviceCharge).toBe(150);
+  expect(faresTwoWay.morning).toBe(2650);
+  expect(faresTwoWay.afternoon).toBe(2650);
+  expect(faresTwoWay.dailyTotal).toBe(5300);
 
   const faresMorningOnly = calculateTripFares(5.0, 'morning_only');
-  expect(faresMorningOnly.morning).toBe(3180);
+  expect(faresMorningOnly.morning).toBe(2650);
   expect(faresMorningOnly.afternoon).toBe(0);
-  expect(faresMorningOnly.dailyTotal).toBe(3180);
+  expect(faresMorningOnly.dailyTotal).toBe(2650);
 
   const faresPointSix = calculateTripFares(0.6, 'two_way');
-  // 0.5 km = ₦300, extra 0.1 km = ₦30 → ₦330 + 6% (₦20) = ₦350
-  expect(faresPointSix.distanceCharge).toBe(330);
-  expect(faresPointSix.morning).toBe(350);
+  // 0–1 km band → ₦500 + 6% (₦30) = ₦530 one-way
+  expect(faresPointSix.distanceCharge).toBe(500);
+  expect(faresPointSix.morning).toBe(530);
 });
 
 // 3. School Admin Assignment Creation and Immediate CM Approval Flow

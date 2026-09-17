@@ -62,8 +62,8 @@ export default function AssignStudentToEscortModal({
   const [startDate, setStartDate] = useState('');
   const [notes, setNotes] = useState('');
   const [cityRates, setCityRates] = useState<{
+    rate_per_km?: number;
     rate_per_half_km?: number;
-    rate_per_tenth_km?: number;
     service_charge_percent?: number;
   } | null>(null);
 
@@ -81,8 +81,7 @@ export default function AssignStudentToEscortModal({
       .then((data) => {
         if (data?.pricing) {
           setCityRates({
-            rate_per_half_km: Number(data.pricing.rate_per_half_km),
-            rate_per_tenth_km: Number(data.pricing.rate_per_tenth_km),
+            rate_per_km: Number(data.pricing.rate_per_km ?? data.pricing.rate_per_half_km),
             service_charge_percent: Number(data.pricing.service_charge_percent),
           });
         }

@@ -1,7 +1,6 @@
 import { getAdminClient } from '@/lib/supabase/admin';
 import {
-  RATE_PER_HALF_KM,
-  RATE_PER_TENTH_KM,
+  RATE_PER_KM,
   SERVICE_CHARGE_PERCENT,
   type EscortFareRateOverrides,
 } from '@/lib/escort/escort-pricing';
@@ -9,17 +8,27 @@ import { nowUtcIso } from '@/lib/utils/time';
 
 /** Map city config knobs into the fare engine override shape. */
 export function toEscortFareOverrides(
-  config: Pick<CityFareRates, 'rate_per_half_km' | 'rate_per_tenth_km' | 'service_charge_percent'>
+  config: Pick<CityFareRates, 'rate_per_km' | 'rate_per_half_km' | 'service_charge_percent'>
 ): EscortFareRateOverrides {
+  const ratePerKm = Number(
+    config.rate_per_km != null && Number(config.rate_per_km) > 0
+      ? config.rate_per_km
+      : config.rate_per_half_km === 300
+        ? RATE_PER_KM
+        : config.rate_per_half_km ?? RATE_PER_KM
+  );
   return {
-    rate_per_half_km: Number(config.rate_per_half_km),
-    rate_per_tenth_km: Number(config.rate_per_tenth_km),
-    service_charge_percent: Number(config.service_charge_percent),
+    rate_per_km: ratePerKm,
+    service_charge_percent: Number(config.service_charge_percent ?? SERVICE_CHARGE_PERCENT),
   };
 }
 
 export type CityFareRates = {
+  /** ₦ per whole km band (0–1 km, 1–2 km, …) — primary fare knob */
+  rate_per_km: number;
+  /** Legacy column; mirrored from rate_per_km for older rows */
   rate_per_half_km: number;
+  /** Deprecated; unused under per-km formula */
   rate_per_tenth_km: number;
   service_charge_percent: number;
   shared_ride_base_fare_round: number;
@@ -58,8 +67,9 @@ export const CITY_OPTIONS: { key: string; label: string }[] = [
 
 export function defaultCityFareRates(): CityFareRates {
   return {
-    rate_per_half_km: RATE_PER_HALF_KM,
-    rate_per_tenth_km: RATE_PER_TENTH_KM,
+    rate_per_km: RATE_PER_KM,
+    rate_per_half_km: RATE_PER_KM,
+    rate_per_tenth_km: 0,
     service_charge_percent: SERVICE_CHARGE_PERCENT,
     shared_ride_base_fare_round: 1500,
     shared_ride_base_fare_single: 850,
@@ -80,14 +90,36 @@ export function cityLabelForKey(cityKey: string): string {
 }
 
 function ratesFromRow(row: any): CityFareRates {
+  const half = Number(row.rate_per_half_km);
+  const fromCol = row.rate_per_km != null ? Number(row.rate_per_km) : NaN;
+  let ratePerKm = Number.isFinite(fromCol) && fromCol > 0 ? fromCol : NaN;
+  if (!Number.isFinite(ratePerKm)) {
+    // Migrate old default 300 → new 500; keep CM-custom values otherwise
+    ratePerKm = half === 300 || !Number.isFinite(half) || half <= 0 ? RATE_PER_KM : half;
+  }
   return {
-    rate_per_half_km: Number(row.rate_per_half_km ?? RATE_PER_HALF_KM),
-    rate_per_tenth_km: Number(row.rate_per_tenth_km ?? RATE_PER_TENTH_KM),
+    rate_per_km: ratePerKm,
+    rate_per_half_km: ratePerKm,
+    rate_per_tenth_km: Number(row.rate_per_tenth_km ?? 0),
     service_charge_percent: Number(row.service_charge_percent ?? SERVICE_CHARGE_PERCENT),
     shared_ride_base_fare_round: Number(row.shared_ride_base_fare_round ?? 1500),
     shared_ride_base_fare_single: Number(row.shared_ride_base_fare_single ?? 850),
     shared_ride_service_fee: Number(row.shared_ride_service_fee ?? 100),
     currency: String(row.currency || 'NGN'),
+  };
+}
+
+/** Columns that exist on city_pricing_config today (rate_per_km optional until migration). */
+function toDbRateColumns(rates: CityFareRates) {
+  return {
+    rate_per_km: rates.rate_per_km,
+    rate_per_half_km: rates.rate_per_km,
+    rate_per_tenth_km: 0,
+    service_charge_percent: rates.service_charge_percent,
+    shared_ride_base_fare_round: rates.shared_ride_base_fare_round,
+    shared_ride_base_fare_single: rates.shared_ride_base_fare_single,
+    shared_ride_service_fee: rates.shared_ride_service_fee,
+    currency: rates.currency || 'NGN',
   };
 }
 
@@ -124,8 +156,8 @@ export async function ensureCityPricingRow(cityKeyRaw?: string | null) {
   const payload = {
     city_key: cityKey,
     city_label: cityLabelForKey(cityKey),
-    ...defaults,
-    last_reason: 'Initial platform rates',
+    ...toDbRateColumns(defaults),
+    last_reason: 'Initial rates: ₦500/km + 6% service; complete trip = one-way × 2',
   };
 
   const { data: created, error } = await supabase
@@ -133,6 +165,32 @@ export async function ensureCityPricingRow(cityKeyRaw?: string | null) {
     .upsert(payload, { onConflict: 'city_key' })
     .select('*')
     .maybeSingle();
+
+  if (error && /rate_per_km/i.test(error.message)) {
+    const { rate_per_km: _drop, ...withoutKm } = payload as any;
+    const retry = await supabase
+      .from('city_pricing_config')
+      .upsert(withoutKm, { onConflict: 'city_key' })
+      .select('*')
+      .maybeSingle();
+    if (retry.error) {
+      console.warn('[city-pricing] ensure row notice:', retry.error.message);
+      return {
+        city_key: cityKey,
+        city_label: cityLabelForKey(cityKey),
+        version: 1,
+        last_reason: 'Initial platform rates (fallback)',
+        last_adjusted_at: null,
+        last_adjusted_by: null,
+        pending_rates: null,
+        pending_effective_from: null,
+        pending_reason: null,
+        pending_adjustment_id: null,
+        ...defaults,
+      } as CityPricingConfig;
+    }
+    return configFromRow(retry.data);
+  }
 
   if (error) {
     console.warn('[city-pricing] ensure row notice:', error.message);
@@ -173,7 +231,7 @@ export async function activateDuePendingRates(cityKeyRaw?: string | null): Promi
   const { data: updated, error } = await supabase
     .from('city_pricing_config')
     .update({
-      ...pending,
+      ...toDbRateColumns(pending),
       version: nextVersion,
       last_reason: config.pending_reason || 'Scheduled rate change activated',
       last_adjusted_at: nowUtcIso(),
@@ -272,9 +330,13 @@ export type PublishPricingResult = {
 };
 
 function mergeRates(base: CityFareRates, patch: Partial<CityFareRates>): CityFareRates {
+  const ratePerKm = Number(
+    patch.rate_per_km ?? patch.rate_per_half_km ?? base.rate_per_km ?? RATE_PER_KM
+  );
   return {
-    rate_per_half_km: Number(patch.rate_per_half_km ?? base.rate_per_half_km),
-    rate_per_tenth_km: Number(patch.rate_per_tenth_km ?? base.rate_per_tenth_km),
+    rate_per_km: ratePerKm,
+    rate_per_half_km: ratePerKm,
+    rate_per_tenth_km: Number(patch.rate_per_tenth_km ?? 0),
     service_charge_percent: Number(patch.service_charge_percent ?? base.service_charge_percent),
     shared_ride_base_fare_round: Number(patch.shared_ride_base_fare_round ?? base.shared_ride_base_fare_round),
     shared_ride_base_fare_single: Number(patch.shared_ride_base_fare_single ?? base.shared_ride_base_fare_single),
@@ -325,11 +387,13 @@ export async function rewriteStoredFaresForCity(
         billableKm: engine.billableKm,
         distanceCharge: engine.distanceCharge,
         serviceCharge: engine.serviceCharge,
-        ratePerHalfKm: newRates.rate_per_half_km,
-        ratePerTenthKm: newRates.rate_per_tenth_km,
+        ratePerKm: newRates.rate_per_km,
+        ratePerHalfKm: newRates.rate_per_km,
+        ratePerTenthKm: 0,
         serviceChargePercent: newRates.service_charge_percent,
         city_rate_rebase_at: nowUtcIso(),
         city_key: cityKey,
+        formula: 'one_way = base + service%; complete = one_way × 2; base = ₦/km × ceil(km)',
       };
       if (correction) {
         nextNotes.fare_correction = {
@@ -407,7 +471,7 @@ export async function broadcastCityPricingChange(opts: {
         ? 'Effective immediately; active trip base fares were recalculated (personal discounts kept).'
         : 'Effective immediately for new quotes.';
 
-  const summary = `Half-km ₦${opts.ratesAfter.rate_per_half_km} (was ₦${opts.ratesBefore.rate_per_half_km}); tenth-km ₦${opts.ratesAfter.rate_per_tenth_km}; service ${opts.ratesAfter.service_charge_percent}%.`;
+  const summary = `₦${opts.ratesAfter.rate_per_km}/km (was ₦${opts.ratesBefore.rate_per_km}/km) + ${opts.ratesAfter.service_charge_percent}% service. One-way = base + service; complete trip = one-way × 2.`;
   const message = `${opts.reason}\n\n${whenText}\n${summary}`;
 
   const expiresAt = new Date();
@@ -578,7 +642,8 @@ export async function publishCityPricing(input: PublishPricingInput): Promise<Pu
   const cityKey = normalizeCityKey(input.cityKey);
   const current = await getActiveCityPricing(cityKey);
   const ratesBefore: CityFareRates = {
-    rate_per_half_km: current.rate_per_half_km,
+    rate_per_km: current.rate_per_km,
+    rate_per_half_km: current.rate_per_km,
     rate_per_tenth_km: current.rate_per_tenth_km,
     service_charge_percent: current.service_charge_percent,
     shared_ride_base_fare_round: current.shared_ride_base_fare_round,
@@ -650,10 +715,11 @@ export async function publishCityPricing(input: PublishPricingInput): Promise<Pu
     nextConfig = configFromRow(updated);
   } else {
     const nextVersion = current.version + 1;
-    const { data: updated, error } = await supabase
+    const dbRates = toDbRateColumns(ratesAfter);
+    let { data: updated, error } = await supabase
       .from('city_pricing_config')
       .update({
-        ...ratesAfter,
+        ...dbRates,
         version: nextVersion,
         last_reason: reason,
         last_adjusted_at: nowUtcIso(),
@@ -667,6 +733,28 @@ export async function publishCityPricing(input: PublishPricingInput): Promise<Pu
       .eq('city_key', cityKey)
       .select('*')
       .maybeSingle();
+    if (error && /rate_per_km/i.test(error.message)) {
+      const { rate_per_km: _drop, ...withoutKm } = dbRates as any;
+      const retry = await supabase
+        .from('city_pricing_config')
+        .update({
+          ...withoutKm,
+          version: nextVersion,
+          last_reason: reason,
+          last_adjusted_at: nowUtcIso(),
+          last_adjusted_by: input.authorUserId || null,
+          pending_rates: null,
+          pending_effective_from: null,
+          pending_reason: null,
+          pending_adjustment_id: null,
+          updated_at: nowUtcIso(),
+        })
+        .eq('city_key', cityKey)
+        .select('*')
+        .maybeSingle();
+      updated = retry.data;
+      error = retry.error;
+    }
     if (error) return { success: false, error: error.message };
     nextConfig = configFromRow(updated);
 
