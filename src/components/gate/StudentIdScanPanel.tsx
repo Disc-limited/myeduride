@@ -161,20 +161,25 @@ export default function StudentIdScanPanel({
       const vw = videoRef.current.videoWidth;
       const vh = videoRef.current.videoHeight;
       if (!vw || !vh) return;
+      // Downscale for faster jsQR decode (keeps scan snappy on mobile)
+      const maxW = 480;
+      const scale = vw > maxW ? maxW / vw : 1;
+      const cw = Math.max(1, Math.round(vw * scale));
+      const ch = Math.max(1, Math.round(vh * scale));
       const canvas = document.createElement('canvas');
-      canvas.width = vw;
-      canvas.height = vh;
-      const ctx = canvas.getContext('2d');
+      canvas.width = cw;
+      canvas.height = ch;
+      const ctx = canvas.getContext('2d', { willReadFrequently: true } as any);
       if (!ctx) return;
-      ctx.drawImage(videoRef.current, 0, 0);
-      const imageData = ctx.getImageData(0, 0, vw, vh);
+      ctx.drawImage(videoRef.current, 0, 0, cw, ch);
+      const imageData = ctx.getImageData(0, 0, cw, ch);
       try {
         if (!jsQRRef.current) return;
         const code = jsQRRef.current(imageData.data, imageData.width, imageData.height);
         if (code?.data) {
           const lastScanned = lastScannedRef.current;
           const now = Date.now();
-          if (lastScanned.has(code.data) && now - lastScanned.get(code.data) < 3000) {
+          if (lastScanned.has(code.data) && now - lastScanned.get(code.data) < 2000) {
             return;
           }
           lastScanned.set(code.data, now);
@@ -188,7 +193,7 @@ export default function StudentIdScanPanel({
       } catch {
         /* skip */
       }
-    }, 400);
+    }, 220);
   };
 
   useEffect(() => {

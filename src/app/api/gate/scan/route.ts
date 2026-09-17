@@ -37,7 +37,8 @@ export async function POST(request: NextRequest) {
     }
 
     const supabase = getAdminClient();
-    await ensureAutoReadyForPickup(supabase, school_id);
+    // Don't block scan latency on auto-ready side effects
+    void ensureAutoReadyForPickup(supabase, school_id).catch(() => {});
     const scan = String(scan_data).trim();
 
     const gateDay = sessionHasRole(session, 'super_admin')
@@ -55,6 +56,9 @@ export async function POST(request: NextRequest) {
       );
     }
 
+    // Resolve student first (fast path) — school-scoped only
+    const studentId = await resolveStudentId(supabase, school_id, scan);
+
     const { data: schoolRow } = await supabase
       .from('schools')
       .select('id, name, address, gps_lat, gps_lng, location_address, location_landmark')
@@ -70,27 +74,27 @@ export async function POST(request: NextRequest) {
       geofence_radius: 200,
     };
 
-    const studentId = await resolveStudentId(supabase, school_id, scan);
     if (studentId) {
       const { data: student } = await supabase
         .from('students')
-        .select('id, first_name, last_name, student_id_number, photo_url, class_id')
+        .select('id, first_name, last_name, student_id_number, photo_url, class_id, school_id, is_active, class:school_classes(name)')
         .eq('id', studentId)
-        .single();
+        .eq('school_id', school_id)
+        .maybeSingle();
 
-      if (!student) {
-        return NextResponse.json({ error: 'Student not found' }, { status: 404 });
+      if (!student || student.is_active === false) {
+        return NextResponse.json({ error: 'Student not found at this school' }, { status: 404 });
       }
 
-      let className = '';
-      if (student.class_id) {
-        const { data: cls } = await supabase
-          .from('school_classes')
-          .select('name')
-          .eq('id', student.class_id)
-          .maybeSingle();
-        className = cls?.name || '';
+      if (student.school_id && student.school_id !== school_id) {
+        return NextResponse.json(
+          { error: 'This student ID is not registered at your school', code: 'wrong_school' },
+          { status: 403 }
+        );
       }
+
+      const classRel = Array.isArray(student.class) ? student.class[0] : student.class;
+      const className = classRel?.name || '';
 
       const today = await getStudentTodayStatus(supabase, school_id, studentId);
       const checkIn = validateStudentGateAction(today, 'arrival');

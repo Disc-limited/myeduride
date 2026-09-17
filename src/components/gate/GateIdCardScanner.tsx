@@ -104,9 +104,13 @@ export default function GateIdCardScanner({
       const vh = video.videoHeight;
       if (!vw || !vh) return;
 
-      canvas.width = vw;
-      canvas.height = vh;
-      ctx.drawImage(video, 0, 0, vw, vh);
+      const maxW = 480;
+      const scale = vw > maxW ? maxW / vw : 1;
+      const cw = Math.max(1, Math.round(vw * scale));
+      const ch = Math.max(1, Math.round(vh * scale));
+      canvas.width = cw;
+      canvas.height = ch;
+      ctx.drawImage(video, 0, 0, cw, ch);
 
       if (detectorRef.current) {
         try {
@@ -121,10 +125,10 @@ export default function GateIdCardScanner({
         }
       }
 
-      const imageData = ctx.getImageData(0, 0, vw, vh);
+      const imageData = ctx.getImageData(0, 0, cw, ch);
       const fromQr = detectFromJsQR(jsQRRef.current, imageData);
       if (fromQr) emitDetected(fromQr);
-    }, 350);
+    }, 220);
   };
 
   const startCamera = async (facing: FacingMode = facingMode) => {

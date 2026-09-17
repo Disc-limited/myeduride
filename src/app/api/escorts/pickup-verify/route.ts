@@ -3,15 +3,18 @@ import { getSessionFromRequest } from '@/lib/session';
 import { getAdminClient } from '@/lib/supabase/admin';
 import { todayInLagos } from '@/lib/timezone';
 import { nowUtcIso } from '@/lib/utils/time';
-import { getEscortApplications } from '@/lib/escort/escort-db';
 import { findEscortApplicationForSession } from '@/lib/escort/escort-category';
-import { resolveStudentIdAny } from '@/lib/attendance/resolve-student';
+import {
+  resolveStudentId,
+  resolveStudentIdForEscort,
+} from '@/lib/attendance/resolve-student';
 import { extractHandoverPin, isTodayHandoverPin, normalizePin } from '@/lib/escort/handover-pin';
 import { assertCanBoardStudent, getEscortBatchStatus } from '@/lib/escort/batch-capacity';
 
 export const dynamic = 'force-dynamic';
 
-const LIVE_ASSIGNMENT_STATUSES = ['active', 'completed', 'pending_confirmation', 'pending'];
+/** Live assignments that authorize escort ID-card access */
+const LIVE_ASSIGNMENT_STATUSES = ['active', 'pending_confirmation', 'pending'];
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 
 function escortScheduleKeys(profile: any, session: any): string[] {
@@ -43,43 +46,120 @@ function assignmentBelongsToEscort(row: any, keys: string[]): boolean {
   return candidates.some((id) => keys.includes(id));
 }
 
+/** Fast escort profile resolve — no full getEscortApplications() dump */
 async function resolveEscortProfile(supabase: any, session: any) {
-  const allApps = await getEscortApplications();
-  let profile = session ? findEscortApplicationForSession(allApps, session) : null;
+  if (!session) return null;
 
-  if (!profile && session?.user_id) {
+  if (session.user_id) {
     const { data } = await supabase
       .from('escort_applications')
-      .select('id, user_id, email, full_name, escort_code, status')
+      .select('id, user_id, email, full_name, escort_code, status, school_id, primary_school_id')
       .or(`id.eq.${session.user_id},user_id.eq.${session.user_id}`)
+      .order('updated_at', { ascending: false })
       .limit(1)
       .maybeSingle();
-    if (data) profile = data;
+    if (data) return data;
   }
 
-  if (!profile && session?.email) {
+  if (session.email) {
     const { data } = await supabase
       .from('escort_applications')
-      .select('id, user_id, email, full_name, escort_code, status')
+      .select('id, user_id, email, full_name, escort_code, status, school_id, primary_school_id')
       .ilike('email', session.email)
+      .order('updated_at', { ascending: false })
       .limit(1)
       .maybeSingle();
-    if (data) profile = data;
+    if (data) return data;
   }
 
-  return profile;
+  if (session.username) {
+    const { data } = await supabase
+      .from('escort_applications')
+      .select('id, user_id, email, full_name, escort_code, status, school_id, primary_school_id')
+      .or(`escort_code.ilike.${session.username},email.ilike.${session.username}@%`)
+      .limit(3);
+    const hit = findEscortApplicationForSession(data || [], session);
+    if (hit) return hit;
+  }
+
+  return null;
+}
+
+/** Load student IDs on this escort's live roster (assignments + route stops). */
+async function getEscortAssignedStudentIds(
+  supabase: any,
+  escortKeys: string[]
+): Promise<{ studentIds: string[]; schoolIds: string[] }> {
+  const studentIds = new Set<string>();
+  const schoolIds = new Set<string>();
+  if (!escortKeys.length) return { studentIds: [], schoolIds: [] };
+
+  const { data: byAppId } = await supabase
+    .from('escort_assignments')
+    .select('student_id, school_id, escort_application_id, status')
+    .in('escort_application_id', escortKeys)
+    .in('status', LIVE_ASSIGNMENT_STATUSES)
+    .limit(200);
+
+  (byAppId || []).forEach((row: any) => {
+    if (row.student_id) studentIds.add(String(row.student_id));
+    if (row.school_id) schoolIds.add(String(row.school_id));
+  });
+
+  // School-escort route roster
+  const { data: routes } = await supabase
+    .from('transport_routes')
+    .select('id, school_id, assigned_escort_id')
+    .in('assigned_escort_id', escortKeys)
+    .limit(40);
+
+  const uuidKeys = escortKeys.filter((id) => UUID_RE.test(id));
+  let routesByUser: any[] = [];
+  if (uuidKeys.length > 0) {
+    const { data } = await supabase
+      .from('transport_routes')
+      .select('id, school_id, assigned_escort_user_id')
+      .in('assigned_escort_user_id', uuidKeys)
+      .limit(40);
+    routesByUser = data || [];
+  }
+
+  const allRoutes = [...(routes || []), ...routesByUser];
+  const routeIds = allRoutes.map((r) => r.id).filter(Boolean);
+  allRoutes.forEach((r) => {
+    if (r.school_id) schoolIds.add(String(r.school_id));
+  });
+
+  if (routeIds.length > 0) {
+    const { data: routeStudents } = await supabase
+      .from('student_route_assignments')
+      .select('student_id, morning_route_id, afternoon_route_id, status')
+      .or(
+        `morning_route_id.in.(${routeIds.join(',')}),afternoon_route_id.in.(${routeIds.join(',')})`
+      )
+      .limit(300);
+    (routeStudents || []).forEach((row: any) => {
+      const st = String(row.status || '').toLowerCase();
+      if (st === 'cancelled' || st === 'paused') return;
+      if (row.student_id) studentIds.add(String(row.student_id));
+    });
+  }
+
+  return { studentIds: [...studentIds], schoolIds: [...schoolIds] };
 }
 
 async function studentIsOnEscortSchedule(
   supabase: any,
   studentId: string,
-  escortKeys: string[]
+  escortKeys: string[],
+  rosterStudentIds?: string[]
 ): Promise<boolean> {
   if (!studentId || escortKeys.length === 0) return false;
+  if (rosterStudentIds?.includes(studentId)) return true;
 
   const { data: assignmentRows } = await supabase
     .from('escort_assignments')
-    .select('id, status, escort_application_id')
+    .select('id, status, escort_application_id, escort_id')
     .eq('student_id', studentId)
     .in('status', LIVE_ASSIGNMENT_STATUSES)
     .limit(20);
@@ -119,7 +199,11 @@ async function studentIsOnEscortSchedule(
       .limit(10);
 
     const onRoute = (byRoute || []).some((row: any) => {
-      const live = row.status ? String(row.status).toLowerCase() !== 'cancelled' && String(row.status).toLowerCase() !== 'paused' : true;
+      const live =
+        row.status
+          ? String(row.status).toLowerCase() !== 'cancelled' &&
+            String(row.status).toLowerCase() !== 'paused'
+          : true;
       if (!live) return false;
       return routeIds.has(row.morning_route_id) || routeIds.has(row.afternoon_route_id);
     });
@@ -133,37 +217,95 @@ async function studentIsOnEscortSchedule(
  * POST /api/escorts/pickup-verify
  * Escort records doorstep pickup (morning) or doorstep drop-off (afternoon)
  * for a student, updating escort_student_daily_trips and notifying parents.
+ * Only students assigned to this escort can be scanned or verified.
  */
 export async function POST(request: NextRequest) {
   try {
     const session = getSessionFromRequest(request);
-    const supabase = getAdminClient();
-
-    let escortProfile: any = await resolveEscortProfile(supabase, session);
-
-    if (!escortProfile && (process.env.NODE_ENV === 'development' || !session)) {
-      const allApps = await getEscortApplications();
-      if (allApps.length > 0) escortProfile = allApps[0];
-    }
-
-    if (!escortProfile && !session) {
+    if (!session) {
       return NextResponse.json({ error: 'Unauthorized escort session' }, { status: 401 });
     }
 
-    const escortId = escortProfile?.id || session?.user_id;
-    const escortName = escortProfile?.full_name || escortProfile?.fullName || session?.full_name || 'Assigned Escort';
+    const supabase = getAdminClient();
+    const escortProfile = await resolveEscortProfile(supabase, session);
+    if (!escortProfile) {
+      return NextResponse.json(
+        { error: 'No escort profile linked to this login. Contact City Manager.' },
+        { status: 403 }
+      );
+    }
+
+    const escortId = escortProfile.id || session.user_id;
+    const escortName =
+      escortProfile.full_name || escortProfile.fullName || session.full_name || 'Assigned Escort';
 
     const body = await request.json();
     const { school_id, action = 'morning_pickup', pin_code, scan_data, student_id_number } = body || {};
     let student_id = body?.student_id as string | undefined;
     const enteredPin = normalizePin(pin_code);
     const escortIdentifiers = escortScheduleKeys(escortProfile, session);
+    if (escortIdentifiers.length === 0) {
+      return NextResponse.json({ error: 'Escort identity could not be verified' }, { status: 403 });
+    }
+
     const today = todayInLagos();
+    const roster = await getEscortAssignedStudentIds(supabase, escortIdentifiers);
+    const allowedStudentIds = roster.studentIds;
 
     if (scan_data || student_id_number) {
-      const resolved = await resolveStudentIdAny(supabase, String(scan_data || student_id_number));
+      const scanRaw = String(scan_data || student_id_number);
+      // Prefer school-scoped lookup when escort has a single school, else roster filter
+      const preferredSchool =
+        school_id ||
+        escortProfile.primary_school_id ||
+        escortProfile.school_id ||
+        (roster.schoolIds.length === 1 ? roster.schoolIds[0] : null);
+
+      let resolved =
+        preferredSchool && allowedStudentIds.length > 0
+          ? await resolveStudentIdForEscort(supabase, scanRaw, {
+              allowedStudentIds,
+              schoolId: preferredSchool,
+            })
+          : null;
+
+      if (!resolved && allowedStudentIds.length > 0) {
+        resolved = await resolveStudentIdForEscort(supabase, scanRaw, {
+          allowedStudentIds,
+        });
+      }
+
+      // If school known but roster empty (edge), still refuse global open resolve
+      if (!resolved && preferredSchool) {
+        const schoolHit = await resolveStudentId(supabase, preferredSchool, scanRaw);
+        if (schoolHit && allowedStudentIds.includes(schoolHit)) {
+          resolved = { id: schoolHit, school_id: preferredSchool };
+        }
+      }
+
       if (!resolved) {
-        return NextResponse.json({ error: 'Student ID card or number not recognized' }, { status: 404 });
+        // Distinguish "unknown card" vs "not on your list" when possible
+        if (preferredSchool) {
+          const schoolOnly = await resolveStudentId(supabase, preferredSchool, scanRaw);
+          if (schoolOnly) {
+            return NextResponse.json(
+              {
+                error:
+                  'This student is not assigned to you. You can only scan students on your City Manager / school roster.',
+                code: 'not_assigned',
+              },
+              { status: 403 }
+            );
+          }
+        }
+        return NextResponse.json(
+          {
+            error:
+              'Student ID not recognized for your assigned students. Check the card or select from your trip list.',
+            code: 'not_found_or_not_assigned',
+          },
+          { status: 404 }
+        );
       }
       student_id = resolved.id;
     }
@@ -174,7 +316,7 @@ export async function POST(request: NextRequest) {
         .from('escort_assignments')
         .select('id, student_id, booking_id, school_id, status')
         .in('escort_application_id', escortIdentifiers)
-        .in('status', ['active', 'completed', 'pending_confirmation', 'pending']);
+        .in('status', LIVE_ASSIGNMENT_STATUSES);
 
       const bookingIds = (assignments || []).map((a: any) => a.booking_id).filter(Boolean);
       let pinBookings: any[] = [];
@@ -189,7 +331,10 @@ export async function POST(request: NextRequest) {
       const pinMatches = pinBookings.filter((b: any) => isTodayHandoverPin(b.notes, enteredPin, today));
       if (pinMatches.length > 1) {
         return NextResponse.json(
-          { error: 'This parent phone code matches more than one student. Scan the ID or select the student from your list.' },
+          {
+            error:
+              'This parent phone code matches more than one student. Scan the ID or select the student from your list.',
+          },
           { status: 409 }
         );
       }
@@ -197,7 +342,10 @@ export async function POST(request: NextRequest) {
         student_id = pinMatches[0].student_id;
       } else if (pinBookings.some((b: any) => extractHandoverPin(b.notes) === enteredPin)) {
         return NextResponse.json(
-          { error: 'This code expired at midnight. Ask the parent to open Safety Connect and show today\'s code.' },
+          {
+            error:
+              "This code expired at midnight. Ask the parent to open Safety Connect and show today's code.",
+          },
           { status: 403 }
         );
       }
@@ -206,9 +354,10 @@ export async function POST(request: NextRequest) {
     if (!student_id) {
       return NextResponse.json(
         {
-          error: enteredPin.length >= 4
-            ? 'Parent phone code not recognized for your assigned students. Ask the parent to open Safety Connect and show the 4-digit code.'
-            : 'Scan a student ID card, enter the student ID number, or enter the parent phone code',
+          error:
+            enteredPin.length >= 4
+              ? 'Parent phone code not recognized for your assigned students. Ask the parent to open Safety Connect and show the 4-digit code.'
+              : 'Scan a student ID card, enter the student ID number, or enter the parent phone code',
         },
         { status: 400 }
       );
@@ -219,28 +368,39 @@ export async function POST(request: NextRequest) {
     // Fetch student for school_id and name
     const { data: student } = await supabase
       .from('students')
-      .select('id, first_name, last_name, school_id, student_id_number')
+      .select('id, first_name, last_name, school_id, student_id_number, is_active')
       .eq('id', student_id)
       .maybeSingle();
+
+    if (!student || student.is_active === false) {
+      return NextResponse.json({ error: 'Student not found or inactive' }, { status: 404 });
+    }
 
     const targetSchoolId = school_id || student?.school_id;
     if (!targetSchoolId) {
       return NextResponse.json({ error: 'school_id could not be resolved' }, { status: 400 });
     }
 
-    if (escortIdentifiers.length > 0) {
-      const onEscortRoute = await studentIsOnEscortSchedule(supabase, student_id, escortIdentifiers);
-
-      if (!onEscortRoute) {
-        console.warn('[pickup-verify] schedule miss', {
-          student_id,
-          escort_keys: escortIdentifiers,
-        });
-        return NextResponse.json(
-          { error: 'This student is not on your City Manager-approved schedule' },
-          { status: 403 }
-        );
-      }
+    // Fail closed: every path (scan, 1-tap student_id, PIN) must be on escort roster
+    const onEscortRoute = await studentIsOnEscortSchedule(
+      supabase,
+      student_id,
+      escortIdentifiers,
+      allowedStudentIds
+    );
+    if (!onEscortRoute) {
+      console.warn('[pickup-verify] schedule miss', {
+        student_id,
+        escort_keys: escortIdentifiers,
+      });
+      return NextResponse.json(
+        {
+          error:
+            'This student is not assigned to you. Only City Manager / school-assigned students can be scanned.',
+          code: 'not_assigned',
+        },
+        { status: 403 }
+      );
     }
 
     if (enteredPin.length >= 4) {
@@ -249,7 +409,7 @@ export async function POST(request: NextRequest) {
         .select('booking_id')
         .in('escort_application_id', escortIdentifiers.length ? escortIdentifiers : [escortId])
         .eq('student_id', student_id)
-        .in('status', ['active', 'completed', 'pending_confirmation', 'pending'])
+        .in('status', LIVE_ASSIGNMENT_STATUSES)
         .order('created_at', { ascending: false })
         .limit(1)
         .maybeSingle();
@@ -274,7 +434,10 @@ export async function POST(request: NextRequest) {
       }
       if (!extractHandoverPin(pinNotes)) {
         return NextResponse.json(
-          { error: 'No parent phone code is on file for this student. Use scan, student ID, or 1-tap confirm.' },
+          {
+            error:
+              'No parent phone code is on file for this student. Use scan, student ID, or 1-tap confirm.',
+          },
           { status: 400 }
         );
       }
