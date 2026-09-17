@@ -930,11 +930,49 @@ export async function GET(request: NextRequest) {
     const batchPhase = hour < 12 ? 'morning' : 'afternoon';
     const batch = await getEscortBatchStatus(supabase, escortBatchIds as string[], batchPhase);
 
+    // Active live GPS session for this escort (if any)
+    let activeSession: any = null;
+    try {
+      const sessionOrFilters: string[] = [];
+      if (escortProfile?.id) sessionOrFilters.push(`escort_id.eq.${escortProfile.id}`);
+      if (escortProfile?.user_id) sessionOrFilters.push(`escort_user_id.eq.${escortProfile.user_id}`);
+      if (session?.user_id) sessionOrFilters.push(`escort_user_id.eq.${session.user_id}`);
+      if (sessionOrFilters.length > 0) {
+        const { data: sessionRows } = await supabase
+          .from('vehicle_active_sessions')
+          .select('id, school_id, escort_id, escort_user_id, trip_type, status, current_lat, current_lng, current_speed_kmh, current_heading, battery_level, started_at, last_ping_at')
+          .eq('status', 'in_progress')
+          .or(sessionOrFilters.join(','))
+          .order('started_at', { ascending: false })
+          .limit(1);
+        activeSession = sessionRows?.[0] || null;
+      }
+    } catch (sessionErr) {
+      console.warn('[dashboard-live] active session lookup notice:', sessionErr);
+    }
+
     return NextResponse.json({
       success: true,
       last_sync: nowUtcIso(),
       earnings_summary: earningsSummary,
       batch,
+      activeSession: activeSession
+        ? {
+            id: activeSession.id,
+            school_id: activeSession.school_id,
+            escort_id: activeSession.escort_id,
+            escort_user_id: activeSession.escort_user_id,
+            trip_type: activeSession.trip_type,
+            status: activeSession.status,
+            current_lat: activeSession.current_lat != null ? Number(activeSession.current_lat) : null,
+            current_lng: activeSession.current_lng != null ? Number(activeSession.current_lng) : null,
+            current_speed_kmh: activeSession.current_speed_kmh != null ? Number(activeSession.current_speed_kmh) : 0,
+            current_heading: activeSession.current_heading != null ? Number(activeSession.current_heading) : 0,
+            battery_level: activeSession.battery_level ?? null,
+            started_at: activeSession.started_at,
+            last_ping_at: activeSession.last_ping_at,
+          }
+        : null,
       escort: {
         id: escortProfile?.id || session?.user_id || null,
         name: displayName,
@@ -1236,19 +1274,41 @@ export async function POST(request: NextRequest) {
           const initialLat = appRow?.house_lat ? Number(appRow.house_lat) : 6.4474;
           const initialLng = appRow?.house_lng ? Number(appRow.house_lng) : 3.4731;
 
-          await supabase.from('vehicle_active_sessions').insert({
-            school_id: schoolForSession,
-            escort_id: escortAppId,
-            escort_user_id: session.user_id,
-            trip_type: 'morning_pickup',
-            status: 'in_progress',
-            current_lat: initialLat,
-            current_lng: initialLng,
-            current_speed_kmh: 0,
-            current_heading: 0,
-            battery_level: 95,
-            started_at: nowUtcIso(),
-            last_ping_at: nowUtcIso(),
+          // Close prior live sessions before opening a new ready session
+          await supabase
+            .from('vehicle_active_sessions')
+            .update({ status: 'completed', completed_at: nowUtcIso() })
+            .eq('escort_user_id', session.user_id)
+            .eq('status', 'in_progress');
+
+          const { data: insertedReady } = await supabase
+            .from('vehicle_active_sessions')
+            .insert({
+              school_id: schoolForSession,
+              escort_id: escortAppId,
+              escort_user_id: session.user_id,
+              trip_type: 'morning_pickup',
+              status: 'in_progress',
+              current_lat: initialLat,
+              current_lng: initialLng,
+              current_speed_kmh: 0,
+              current_heading: 0,
+              battery_level: 95,
+              started_at: nowUtcIso(),
+              last_ping_at: nowUtcIso(),
+            })
+            .select('id')
+            .single();
+
+          const { getEscortBatchStatus } = await import('@/lib/escort/batch-capacity');
+          const batch = await getEscortBatchStatus(supabase, [escortAppId, session.user_id], 'morning');
+
+          return NextResponse.json({
+            success: true,
+            ready_for_pickup: isReady,
+            sessionId: insertedReady?.id || null,
+            batch,
+            message: `Ready for Pickup active. Show your assigned students and board up to ${batch.max_batch} before school drop-off (${batch.message}).`,
           });
         }
 
@@ -1277,6 +1337,8 @@ export async function POST(request: NextRequest) {
     if (action === 'start_trip') {
       const { trip_type } = body;
       const tripKind = trip_type === 'afternoon' ? 'afternoon_dropoff' : 'morning_pickup';
+      let createdSessionId: string | null = null;
+      let createdSchoolId: string | null = null;
 
       if (session?.user_id) {
         await supabase
@@ -1288,28 +1350,65 @@ export async function POST(request: NextRequest) {
           })
           .eq('user_id', session.user_id);
 
-        if (primarySchoolId) {
-          const { data: appRow } = await supabase
-            .from('escort_applications')
-            .select('id, house_lat, house_lng')
-            .eq('user_id', session.user_id)
-            .maybeSingle();
+        const { data: appRow } = await supabase
+          .from('escort_applications')
+          .select('id, house_lat, house_lng, school_id, primary_school_id')
+          .eq('user_id', session.user_id)
+          .maybeSingle();
 
-          const escortAppId = appRow?.id || session.user_id;
+        const escortAppId = appRow?.id || session.user_id;
+        const schoolForSession =
+          primarySchoolId || appRow?.primary_school_id || appRow?.school_id || null;
+        createdSchoolId = schoolForSession;
+
+        // Close any prior in-progress sessions for this escort
+        await supabase
+          .from('vehicle_active_sessions')
+          .update({
+            status: 'completed',
+            completed_at: nowUtcIso(),
+          })
+          .eq('escort_user_id', session.user_id)
+          .eq('status', 'in_progress');
+
+        if (appRow?.id) {
+          await supabase
+            .from('vehicle_active_sessions')
+            .update({
+              status: 'completed',
+              completed_at: nowUtcIso(),
+            })
+            .eq('escort_id', appRow.id)
+            .eq('status', 'in_progress');
+        }
+
+        if (schoolForSession) {
           const initialLat = appRow?.house_lat != null ? Number(appRow.house_lat) : null;
           const initialLng = appRow?.house_lng != null ? Number(appRow.house_lng) : null;
 
-          await supabase.from('vehicle_active_sessions').insert({
-            school_id: primarySchoolId,
-            escort_id: escortAppId,
-            escort_user_id: session.user_id,
-            trip_type: tripKind,
-            status: 'in_progress',
-            current_lat: initialLat,
-            current_lng: initialLng,
-            started_at: nowUtcIso(),
-            last_ping_at: nowUtcIso(),
-          });
+          const { data: insertedSession, error: insertErr } = await supabase
+            .from('vehicle_active_sessions')
+            .insert({
+              school_id: schoolForSession,
+              escort_id: escortAppId,
+              escort_user_id: session.user_id,
+              trip_type: tripKind,
+              status: 'in_progress',
+              current_lat: initialLat,
+              current_lng: initialLng,
+              current_speed_kmh: 0,
+              current_heading: 0,
+              started_at: nowUtcIso(),
+              last_ping_at: nowUtcIso(),
+            })
+            .select('id')
+            .single();
+
+          if (insertErr) {
+            console.warn('[dashboard-live] start_trip session insert notice:', insertErr);
+          } else {
+            createdSessionId = insertedSession?.id || null;
+          }
         }
       }
 
@@ -1317,6 +1416,10 @@ export async function POST(request: NextRequest) {
         success: true,
         trip_type: trip_type || 'morning',
         started_at: nowUtcIso(),
+        sessionId: createdSessionId,
+        activeSession: createdSessionId
+          ? { id: createdSessionId, school_id: createdSchoolId, trip_type: tripKind, status: 'in_progress' }
+          : null,
         message: `${trip_type === 'afternoon' ? 'Afternoon drop-off' : 'Morning pickup'} trip started successfully. Live tracking enabled.`,
       });
     }

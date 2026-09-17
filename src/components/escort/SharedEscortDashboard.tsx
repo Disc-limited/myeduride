@@ -1,7 +1,7 @@
 // @ts-nocheck
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import {
   ShieldCheck,
   Navigation,
@@ -48,11 +48,14 @@ import {
   Radio,
   Battery,
   Zap,
-  MapPinOff
+  MapPinOff,
+  Maximize2,
+  X,
 } from 'lucide-react';
 import { toast } from 'sonner';
 import SchoolNoticeBanner from '@/components/shared/SchoolNoticeBanner';
 import LocationPermissionModal from '@/components/shared/LocationPermissionModal';
+import LiveVehicleMap from '@/components/shared/LiveVehicleMap';
 import { useEscortTelemetryTracker } from '@/hooks/useEscortTelemetryTracker';
 
 interface SharedEscortDashboardProps {
@@ -92,11 +95,47 @@ export default function SharedEscortDashboard({
   const [afternoonTripStarted, setAfternoonTripStarted] = useState(false);
   const [isManualMode, setIsManualMode] = useState(false);
   const [showLocationModal, setShowLocationModal] = useState(false);
+  const [activeSessionId, setActiveSessionId] = useState<string | null>(null);
+  const [mapExpanded, setMapExpanded] = useState(false);
+  const [liveGps, setLiveGps] = useState<{
+    lat: number | null;
+    lng: number | null;
+    heading: number;
+    speedKmh: number;
+  }>({ lat: null, lng: null, heading: 0, speedKmh: 0 });
   const [checklist, setChecklist] = useState({
     seatStudents: false,
     ensureSeatbelts: false,
     checkBelongings: false,
   });
+
+  // Keep local trip/session state aligned with live dashboard payload
+  useEffect(() => {
+    const remoteSessionId = liveDashboardData?.activeSession?.id || null;
+    if (remoteSessionId) setActiveSessionId(remoteSessionId);
+
+    const status = liveDashboardData?.escort?.today_trip_status;
+    const tripType = liveDashboardData?.activeSession?.trip_type;
+    if (status === 'in_progress') {
+      if (tripType === 'afternoon_dropoff') {
+        setAfternoonTripStarted(true);
+      } else {
+        setMorningTripStarted(true);
+      }
+    } else if (status === 'completed' || status === 'pending' || status === 'accepted') {
+      if (status !== 'accepted') {
+        setMorningTripStarted(false);
+        setAfternoonTripStarted(false);
+      }
+      if (status === 'completed' || status === 'pending') {
+        setActiveSessionId(null);
+      }
+    }
+  }, [
+    liveDashboardData?.activeSession?.id,
+    liveDashboardData?.activeSession?.trip_type,
+    liveDashboardData?.escort?.today_trip_status,
+  ]);
 
   // Dynamic Live Database Bindings
   const escortName = liveDashboardData?.escort?.name || escortData?.name || escortData?.fullName || session?.full_name || 'Escort';
@@ -126,11 +165,25 @@ export default function SharedEscortDashboard({
   const schoolLat = liveDashboardData?.school?.gps_lat;
   const schoolLng = liveDashboardData?.school?.gps_lng;
   const mapPins = morningList.filter((s: any) => s.house_lat && s.house_lng);
-  const mapEmbedUrl = schoolLat != null && schoolLng != null
-    ? `https://www.openstreetmap.org/export/embed.html?bbox=${Number(schoolLng) - 0.04},${Number(schoolLat) - 0.04},${Number(schoolLng) + 0.04},${Number(schoolLat) + 0.04}&layer=mapnik&marker=${schoolLat},${schoolLng}`
-    : mapPins[0]
-      ? `https://www.openstreetmap.org/export/embed.html?bbox=${Number(mapPins[0].house_lng) - 0.04},${Number(mapPins[0].house_lat) - 0.04},${Number(mapPins[0].house_lng) + 0.04},${Number(mapPins[0].house_lat) + 0.04}&layer=mapnik&marker=${mapPins[0].house_lat},${mapPins[0].house_lng}`
-      : null;
+  const liveMapPins = [
+    ...(schoolLat != null && schoolLng != null
+      ? [{
+          lat: Number(schoolLat),
+          lng: Number(schoolLng),
+          label: String(schoolName).length > 28 ? `${String(schoolName).slice(0, 26)}…` : schoolName,
+          kind: 'school' as const,
+        }]
+      : []),
+    ...mapPins.slice(0, 6).map((s: any) => {
+      const name = String(s.name || 'Stop');
+      return {
+        lat: Number(s.house_lat),
+        lng: Number(s.house_lng),
+        label: name.length > 22 ? `${name.slice(0, 20)}…` : name,
+        kind: 'home' as const,
+      };
+    }),
+  ];
   const dismissalClocks = assignedSchools
     .map((s: any) => {
       const clock = String(s?.dismissal_start_time || s?.student_gate_end || '').slice(0, 5);
@@ -146,7 +199,8 @@ export default function SharedEscortDashboard({
 
   // Active Trip & Real-Time Telemetry Broadcaster
   const isTripActive = morningTripStarted || afternoonTripStarted || morningTripActive;
-  const currentTripSessionId = liveDashboardData?.activeSession?.id || `trip-${escortCode}-${new Date().toISOString().slice(0, 10)}`;
+  const currentTripSessionId =
+    activeSessionId || liveDashboardData?.activeSession?.id || null;
 
   const handleTelemetryError = (err: string, code?: number) => {
     // If permission was denied, prompt user with helper modal instead of throwing repeated alerts
@@ -165,14 +219,64 @@ export default function SharedEscortDashboard({
     batteryLevel,
     retryLocationAccess,
   } = useEscortTelemetryTracker({
-    sessionId: currentTripSessionId,
-    schoolId: liveDashboardData?.escort?.school_id || escortData?.school_id,
+    sessionId: currentTripSessionId || undefined,
+    schoolId: liveDashboardData?.activeSession?.school_id || liveDashboardData?.escort?.school_id || escortData?.school_id,
     vehicleId: liveDashboardData?.vehicle?.id || escortData?.vehicle_id,
-    isActive: isTripActive && !isManualMode,
+    escortId: liveDashboardData?.escort?.id || escortData?.id || undefined,
+    isActive: Boolean(isTripActive && !isManualMode && currentTripSessionId),
     onError: handleTelemetryError,
+    onPositionUpdate: (point) => {
+      setLiveGps({
+        lat: point.lat,
+        lng: point.lng,
+        heading: point.heading || 0,
+        speedKmh: point.speedKmh || 0,
+      });
+    },
   });
 
-  // Handle Morning Trip Start / Stop Action
+  // Lock body scroll while map is expanded for driving focus
+  useEffect(() => {
+    if (!mapExpanded) return;
+    const prev = document.body.style.overflow;
+    document.body.style.overflow = 'hidden';
+    return () => {
+      document.body.style.overflow = prev;
+    };
+  }, [mapExpanded]);
+
+  const formatPickupAddress = (student: any) => {
+    const raw = student?.house_address || student?.pickup_address || student?.address || '';
+    if (!raw) return 'Home address on file';
+    const text = String(raw).trim();
+    if (text.startsWith('{') && text.includes('discount')) return 'Home address on file';
+    return text;
+  };
+
+  const renderLiveRouteMap = (opts?: { expanded?: boolean }) => {
+    const expanded = Boolean(opts?.expanded);
+    return (
+      <LiveVehicleMap
+        key={expanded ? 'escort-map-expanded' : 'escort-map-inline'}
+        heightClassName={
+          expanded
+            ? 'h-[calc(100vh-5.5rem)] sm:h-[calc(100vh-6rem)]'
+            : 'h-[280px] sm:h-[320px] lg:h-[380px]'
+        }
+        className={expanded ? 'rounded-2xl border-0 shadow-none' : 'rounded-xl border-0 shadow-none'}
+        pins={liveMapPins}
+        vehicleLat={isTripActive ? liveGps.lat : null}
+        vehicleLng={isTripActive ? liveGps.lng : null}
+        vehicleHeading={liveGps.heading || currentHeading || 0}
+        vehicleSpeedKmh={liveGps.speedKmh || currentSpeedKmh || 0}
+        vehicleLabel={liveDashboardData?.vehicle?.plate_number || 'You'}
+        followVehicle={Boolean(isTripActive && liveGps.lat != null && liveGps.lng != null)}
+        showZoom={expanded}
+        hideAttribution
+        emptyMessage="Route GPS is not pinned yet. School or house coordinates will draw the live map."
+      />
+    );
+  };
   const handleStartMorningTrip = async () => {
     if (morningList.length === 0) {
       toast.info('No morning student pickups scheduled.');
@@ -192,6 +296,10 @@ export default function SharedEscortDashboard({
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || 'Could not update trip');
       setMorningTripStarted(!completing);
+      if (!completing && data.sessionId) {
+        setActiveSessionId(data.sessionId);
+      }
+      if (completing) setActiveSessionId(null);
       toast.success(data.message || (completing ? 'Morning trip completed.' : 'Morning trip started. Live tracking enabled.'));
       onRefreshData?.();
     } catch (err: any) {
@@ -226,7 +334,12 @@ export default function SharedEscortDashboard({
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || 'Could not update trip');
       setAfternoonTripStarted(!completing);
-      if (completing) setIsManualMode(false);
+      if (completing) {
+        setIsManualMode(false);
+        setActiveSessionId(null);
+      } else if (data.sessionId) {
+        setActiveSessionId(data.sessionId);
+      }
       toast.success(data.message || (completing ? 'Afternoon trip completed.' : 'Afternoon trip started. Live tracking enabled.'));
       onRefreshData?.();
     } catch (err: any) {
@@ -471,97 +584,135 @@ export default function SharedEscortDashboard({
       </div>
 
       {/* ========================================================================= */}
-      {/* 2. ROW 1: NEXT PICKUP + LIVE MAP & ROUTE + TRIP PROGRESS */}
+      {/* 2. ROW 1: NEXT PICKUP + TRIP PROGRESS, then tall LIVE MAP */}
       {/* ========================================================================= */}
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-12 gap-5">
-        
-        {/* Card 1: NEXT PICKUP (3.5 Cols) */}
-        <div className="lg:col-span-4 bg-white rounded-2xl p-4 shadow-sm border border-slate-200/90 flex flex-col justify-between space-y-3">
-          <div className="flex items-center justify-between">
-            <span className="font-extrabold text-slate-900 text-xs uppercase tracking-wider">
-              NEXT PICKUP
-            </span>
-            <span className="px-2.5 py-0.5 rounded-full bg-emerald-100 text-emerald-700 text-[10px] font-extrabold">
-              {nextPickup?.time || nextPickup?.estimated_transit_mins != null ? `${nextPickup.estimated_transit_mins} min` : (nextPickup ? 'Queued' : 'Standby')}
-            </span>
+      <div className="space-y-5">
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
+          {/* Card 1: NEXT PICKUP */}
+          <div className="bg-white rounded-2xl p-4 shadow-sm border border-slate-200/90 flex flex-col justify-between space-y-3">
+            <div className="flex items-center justify-between">
+              <span className="font-extrabold text-slate-900 text-xs uppercase tracking-wider">
+                NEXT PICKUP
+              </span>
+              <span className="px-2.5 py-0.5 rounded-full bg-emerald-100 text-emerald-700 text-[10px] font-extrabold">
+                {nextPickup?.time || nextPickup?.estimated_transit_mins != null ? `${nextPickup.estimated_transit_mins} min` : (nextPickup ? 'Queued' : 'Standby')}
+              </span>
+            </div>
+
+            {nextPickup ? (
+              <div className="flex items-start gap-3 bg-slate-50 p-3 rounded-xl border border-slate-100">
+                <div className="w-10 h-10 rounded-full bg-purple-600 text-white font-extrabold flex items-center justify-center text-sm shadow-sm shrink-0 overflow-hidden">
+                  {nextPickup.photo_url || nextPickup.avatar ? (
+                    <img src={nextPickup.photo_url || nextPickup.avatar} alt="" className="w-full h-full object-cover" />
+                  ) : (
+                    nextPickup.name?.substring(0, 2)?.toUpperCase() || 'ST'
+                  )}
+                </div>
+                <div className="min-w-0 space-y-0.5">
+                  <span className="text-[10px] font-medium text-slate-400 block uppercase">First Pickup</span>
+                  <h4 className="font-extrabold text-slate-900 text-sm truncate">{nextPickup.name}</h4>
+                  <p className="text-[11px] text-slate-600 font-medium flex items-center gap-1 leading-snug">
+                    <MapPin className="w-3.5 h-3.5 text-emerald-600 shrink-0" />
+                    <span className="truncate">{formatPickupAddress(nextPickup)}</span>
+                  </p>
+                </div>
+              </div>
+            ) : morningList.length > 0 ? (
+              <div className="p-5 text-center bg-emerald-50 rounded-xl border border-emerald-100 space-y-1">
+                <CheckCircle2 className="w-6 h-6 text-emerald-600 mx-auto mb-1" />
+                <p className="text-emerald-800 font-bold text-xs">All morning pickups complete</p>
+                <p className="text-emerald-700 text-[10px]">Start the trip to school when you are ready.</p>
+              </div>
+            ) : (
+              <div className="p-5 text-center bg-slate-50 rounded-xl border border-slate-100 space-y-1">
+                <Clock className="w-6 h-6 text-slate-400 mx-auto mb-1" />
+                <p className="text-slate-700 font-bold text-xs">No Pickups Scheduled</p>
+                <p className="text-slate-400 text-[10px]">Assigned students appear here after City Manager approval.</p>
+              </div>
+            )}
+
+            <button
+              type="button"
+              disabled={!nextPickup && morningList.length === 0}
+              onClick={() => {
+                const target = nextPickup || morningList[0];
+                if (!target) return;
+                if (onNavigateStudent) onNavigateStudent(target);
+                else if (target.google_maps_nav_url) window.open(target.google_maps_nav_url, '_blank');
+              }}
+              className="w-full py-2.5 px-4 rounded-xl bg-[#00A859] hover:bg-emerald-600 disabled:opacity-50 text-white font-extrabold text-xs transition-all shadow-md shadow-emerald-600/20 flex items-center justify-center gap-2 cursor-pointer"
+            >
+              <span>Navigate</span>
+              <ArrowRight className="w-4 h-4" />
+            </button>
           </div>
 
-          {nextPickup ? (
-            <div className="flex items-start gap-3 bg-slate-50 p-3 rounded-xl border border-slate-100">
-              <div className="w-10 h-10 rounded-full bg-purple-600 text-white font-extrabold flex items-center justify-center text-sm shadow-sm shrink-0 overflow-hidden">
-                {nextPickup.photo_url || nextPickup.avatar ? (
-                  <img src={nextPickup.photo_url || nextPickup.avatar} alt="" className="w-full h-full object-cover" />
-                ) : (
-                  nextPickup.name?.substring(0, 2)?.toUpperCase() || 'ST'
-                )}
-              </div>
-              <div className="min-w-0 space-y-0.5">
-                <span className="text-[10px] font-medium text-slate-400 block uppercase">First Pickup</span>
-                <h4 className="font-extrabold text-slate-900 text-sm truncate">{nextPickup.name}</h4>
-                <p className="text-[11px] text-slate-600 font-medium flex items-center gap-1 leading-snug">
-                  <MapPin className="w-3.5 h-3.5 text-emerald-600 shrink-0" />
-                  <span className="truncate">{nextPickup.address || nextPickup.house_address || 'Home address on file'}</span>
+          {/* Card 3: TRIP PROGRESS */}
+          <div className="bg-white rounded-2xl p-4 shadow-sm border border-slate-200/90 space-y-3 flex flex-col justify-between">
+            <h4 className="font-extrabold text-slate-900 text-xs uppercase tracking-wider">
+              TRIP PROGRESS
+            </h4>
+
+            <div className="space-y-3 relative pl-4 border-l-2 border-slate-200 text-xs">
+              <div className="relative">
+                <span className={`absolute -left-[21px] top-0.5 w-3.5 h-3.5 rounded-full ${morningPickedCount > 0 ? 'bg-blue-600 text-white' : 'bg-slate-300 text-slate-600'} flex items-center justify-center text-[8px] font-bold`}>1</span>
+                <h5 className="font-extrabold text-blue-900 text-xs">Pickup in Progress</h5>
+                <p className="text-[10px] text-blue-700 font-medium">
+                  {morningPickedCount} of {morningList.length} Completed
                 </p>
               </div>
-            </div>
-          ) : morningList.length > 0 ? (
-            <div className="p-5 text-center bg-emerald-50 rounded-xl border border-emerald-100 space-y-1">
-              <CheckCircle2 className="w-6 h-6 text-emerald-600 mx-auto mb-1" />
-              <p className="text-emerald-800 font-bold text-xs">All morning pickups complete</p>
-              <p className="text-emerald-700 text-[10px]">Start the trip to school when you are ready.</p>
-            </div>
-          ) : (
-            <div className="p-5 text-center bg-slate-50 rounded-xl border border-slate-100 space-y-1">
-              <Clock className="w-6 h-6 text-slate-400 mx-auto mb-1" />
-              <p className="text-slate-700 font-bold text-xs">No Pickups Scheduled</p>
-              <p className="text-slate-400 text-[10px]">Assigned students appear here after City Manager approval.</p>
-            </div>
-          )}
 
-          <button
-            type="button"
-            disabled={!nextPickup && morningList.length === 0}
-            onClick={() => {
-              const target = nextPickup || morningList[0];
-              if (!target) return;
-              if (onNavigateStudent) onNavigateStudent(target);
-              else if (target.google_maps_nav_url) window.open(target.google_maps_nav_url, '_blank');
-            }}
-            className="w-full py-2.5 px-4 rounded-xl bg-[#00A859] hover:bg-emerald-600 disabled:opacity-50 text-white font-extrabold text-xs transition-all shadow-md shadow-emerald-600/20 flex items-center justify-center gap-2 cursor-pointer"
-          >
-            <span>Navigate</span>
-            <ArrowRight className="w-4 h-4" />
-          </button>
+              <div className="relative">
+                <span className={`absolute -left-[21px] top-0.5 w-3.5 h-3.5 rounded-full ${droppedOffList.length > 0 ? 'bg-amber-500 text-white' : 'bg-slate-300 text-slate-600'} flex items-center justify-center text-[8px] font-bold`}>2</span>
+                <h5 className="font-bold text-slate-700 text-xs">Drop-off to School</h5>
+                <p className="text-[10px] text-slate-500">{droppedOffList.length > 0 ? `${droppedOffList.length} of ${morningList.length} at school` : 'Pending'}</p>
+              </div>
+
+              <div className="relative">
+                <span className={`absolute -left-[21px] top-0.5 w-3.5 h-3.5 rounded-full ${afternoonReleased > 0 ? 'bg-purple-600 text-white' : 'bg-slate-300 text-slate-600'} flex items-center justify-center text-[8px] font-bold`}>3</span>
+                <h5 className="font-bold text-slate-700 text-xs">Afternoon Pickup</h5>
+                <p className="text-[10px] text-slate-500">{afternoonReleased > 0 ? `${afternoonReleased} released` : 'Pending'}</p>
+              </div>
+
+              <div className="relative">
+                <span className={`absolute -left-[21px] top-0.5 w-3.5 h-3.5 rounded-full ${allHome ? 'bg-emerald-600 text-white' : 'bg-slate-300 text-slate-600'} flex items-center justify-center text-[8px] font-bold`}>4</span>
+                <h5 className={`font-medium text-xs ${allHome ? 'text-emerald-800' : 'text-slate-400'}`}>Return Trip</h5>
+                <p className="text-[10px] text-slate-400">{allHome ? 'Completed' : 'Pending'}</p>
+              </div>
+            </div>
+          </div>
         </div>
 
-        {/* Card 2: LIVE MAP & ROUTE (4.5 Cols) */}
-        <div className="lg:col-span-5 bg-white rounded-2xl p-4 shadow-sm border border-slate-200/90 space-y-3 flex flex-col justify-between">
-          <div className="flex items-center justify-between">
+        {/* Full-width LIVE MAP & ROUTE — taller for clear driving view */}
+        <div className="bg-white rounded-2xl p-4 shadow-sm border border-slate-200/90 space-y-3">
+          <div className="flex items-center justify-between gap-2">
             <h4 className="font-extrabold text-slate-900 text-xs uppercase tracking-wider flex items-center gap-1.5">
               <Compass className="w-4 h-4 text-emerald-600" /> LIVE MAP & ROUTE
             </h4>
-            <span className="text-[10px] text-slate-400 font-medium">Real-time Route</span>
+            <div className="flex items-center gap-2">
+              {isTripActive && isBroadcasting ? (
+                <span className="text-[10px] font-bold text-emerald-700 bg-emerald-50 border border-emerald-200 px-2 py-0.5 rounded-lg">
+                  Live GPS{liveGps.speedKmh ? ` · ${Math.round(liveGps.speedKmh)} km/h` : ''}
+                </span>
+              ) : (
+                <span className="text-[10px] text-slate-400 font-medium">Route overview</span>
+              )}
+              <button
+                type="button"
+                onClick={() => setMapExpanded(true)}
+                className="inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-xl bg-slate-900 hover:bg-slate-800 text-white text-[10px] font-bold transition-all cursor-pointer"
+                title="Expand map for driving"
+              >
+                <Maximize2 className="w-3.5 h-3.5" />
+                <span className="hidden sm:inline">Expand</span>
+              </button>
+            </div>
           </div>
 
-          {/* Live map from school / house GPS when pinned */}
-          <div className="relative w-full h-36 rounded-xl bg-slate-100 border border-slate-200 overflow-hidden shadow-inner">
-            {mapEmbedUrl ? (
-              <iframe
-                title="Live route map"
-                src={mapEmbedUrl}
-                className="absolute inset-0 w-full h-full border-0"
-                loading="lazy"
-              />
-            ) : (
-              <div className="absolute inset-0 flex flex-col items-center justify-center text-slate-400 p-4 text-center">
-                <MapPinOff className="w-6 h-6 mb-1" />
-                <p className="text-[11px] font-semibold">Route GPS is not pinned yet</p>
-                <p className="text-[10px]">School campus or student house coordinates will draw the live map.</p>
-              </div>
-            )}
+          <div className="relative w-full rounded-xl overflow-hidden border border-slate-200 shadow-inner">
+            {renderLiveRouteMap()}
           </div>
 
-          {/* Map Legend Pills */}
           <div className="flex flex-wrap items-center justify-between gap-1.5 text-[10px] font-semibold text-slate-600 pt-1">
             {morningList.length > 0 ? (
               morningList.slice(0, 2).map((stu, i) => (
@@ -581,43 +732,34 @@ export default function SharedEscortDashboard({
             </span>
           </div>
         </div>
+      </div>
 
-        {/* Card 3: TRIP PROGRESS (3 Cols) */}
-        <div className="lg:col-span-3 bg-white rounded-2xl p-4 shadow-sm border border-slate-200/90 space-y-3 flex flex-col justify-between">
-          <h4 className="font-extrabold text-slate-900 text-xs uppercase tracking-wider">
-            TRIP PROGRESS
-          </h4>
-
-          <div className="space-y-3 relative pl-4 border-l-2 border-slate-200 text-xs">
-            <div className="relative">
-              <span className={`absolute -left-[21px] top-0.5 w-3.5 h-3.5 rounded-full ${morningPickedCount > 0 ? 'bg-blue-600 text-white' : 'bg-slate-300 text-slate-600'} flex items-center justify-center text-[8px] font-bold`}>1</span>
-              <h5 className="font-extrabold text-blue-900 text-xs">Pickup in Progress</h5>
-              <p className="text-[10px] text-blue-700 font-medium">
-                {morningPickedCount} of {morningList.length} Completed
+      {/* Fullscreen driving map */}
+      {mapExpanded && (
+        <div className="fixed inset-0 z-[90] bg-slate-950/95 p-3 sm:p-5 flex flex-col gap-3">
+          <div className="flex items-center justify-between gap-3 shrink-0">
+            <div className="min-w-0">
+              <p className="text-white font-black text-sm tracking-tight">Live Route Map</p>
+              <p className="text-[11px] text-slate-300 font-medium truncate">
+                {isBroadcasting
+                  ? `Broadcasting GPS${liveGps.speedKmh ? ` · ${Math.round(liveGps.speedKmh)} km/h` : ''}`
+                  : 'Expanded view for clear on-road navigation'}
               </p>
             </div>
-
-            <div className="relative">
-              <span className={`absolute -left-[21px] top-0.5 w-3.5 h-3.5 rounded-full ${droppedOffList.length > 0 ? 'bg-amber-500 text-white' : 'bg-slate-300 text-slate-600'} flex items-center justify-center text-[8px] font-bold`}>2</span>
-              <h5 className="font-bold text-slate-700 text-xs">Drop-off to School</h5>
-              <p className="text-[10px] text-slate-500">{droppedOffList.length > 0 ? `${droppedOffList.length} of ${morningList.length} at school` : 'Pending'}</p>
-            </div>
-
-            <div className="relative">
-              <span className={`absolute -left-[21px] top-0.5 w-3.5 h-3.5 rounded-full ${afternoonReleased > 0 ? 'bg-purple-600 text-white' : 'bg-slate-300 text-slate-600'} flex items-center justify-center text-[8px] font-bold`}>3</span>
-              <h5 className="font-bold text-slate-700 text-xs">Afternoon Pickup</h5>
-              <p className="text-[10px] text-slate-500">{afternoonReleased > 0 ? `${afternoonReleased} released` : 'Pending'}</p>
-            </div>
-
-            <div className="relative">
-              <span className={`absolute -left-[21px] top-0.5 w-3.5 h-3.5 rounded-full ${allHome ? 'bg-emerald-600 text-white' : 'bg-slate-300 text-slate-600'} flex items-center justify-center text-[8px] font-bold`}>4</span>
-              <h5 className={`font-medium text-xs ${allHome ? 'text-emerald-800' : 'text-slate-400'}`}>Return Trip</h5>
-              <p className="text-[10px] text-slate-400">{allHome ? 'Completed' : 'Pending'}</p>
-            </div>
+            <button
+              type="button"
+              onClick={() => setMapExpanded(false)}
+              className="inline-flex items-center gap-1.5 px-3 py-2 rounded-xl bg-white text-slate-900 text-xs font-bold shrink-0 cursor-pointer"
+            >
+              <X className="w-4 h-4" />
+              Close
+            </button>
+          </div>
+          <div className="flex-1 min-h-0 rounded-2xl overflow-hidden border border-white/10 shadow-2xl">
+            {renderLiveRouteMap({ expanded: true })}
           </div>
         </div>
-
-      </div>
+      )}
 
       {/* ========================================================================= */}
       {/* 3. ROW 2: PICKUP LISTS (MORNING, DROPPED OFF, AFTERNOON AT SCHOOL) */}

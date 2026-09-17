@@ -9,6 +9,8 @@ export const dynamic = 'force-dynamic';
 
 export interface EscortMovementTelemetry {
   escortId: string;
+  sessionId: string | null;
+  escortUserId: string | null;
   escortName: string;
   escortPhone: string;
   escortPhoto: string | null;
@@ -290,20 +292,20 @@ export async function GET(request: NextRequest) {
           lat = Number(app.house_lat);
           lng = Number(app.house_lng);
         } else {
-          lat = schoolLat + (Math.random() * 0.012 - 0.006);
-          lng = schoolLng + (Math.random() * 0.012 - 0.006);
+          lat = schoolLat;
+          lng = schoolLng;
         }
       }
 
       const speedKmh = sessionRow?.current_speed_kmh != null
         ? Number(sessionRow.current_speed_kmh)
-        : (active ? Math.round(18 + Math.random() * 22) : 0);
+        : 0;
 
       const heading = sessionRow?.current_heading != null
         ? Number(sessionRow.current_heading)
-        : (active ? Math.round(Math.random() * 360) : 0);
+        : 0;
 
-      const batteryLevel = sessionRow?.battery_level ?? app.battery_level ?? 88;
+      const batteryLevel = sessionRow?.battery_level ?? app.battery_level ?? null;
       const lastPing = sessionRow?.last_ping_at || app.last_location_updated_at || app.updated_at || nowUtcIso();
 
       const students = getEscortStudents(app.id, app.user_id);
@@ -314,6 +316,8 @@ export async function GET(request: NextRequest) {
 
       trackedEscorts.push({
         escortId: app.id,
+        sessionId: sessionRow?.id || null,
+        escortUserId: app.user_id || sessionRow?.escort_user_id || null,
         escortName: app.fullName || app.name || 'Assigned Escort',
         escortPhone: app.phone || '+234 800 000 0000',
         escortPhoto: app.photo || null,
@@ -332,7 +336,7 @@ export async function GET(request: NextRequest) {
         speedKmh,
         heading,
         batteryLevel,
-        gpsAccuracyMeters: sessionRow?.gps_accuracy_meters ? Number(sessionRow.gps_accuracy_meters) : 12,
+        gpsAccuracyMeters: sessionRow?.gps_accuracy_meters ? Number(sessionRow.gps_accuracy_meters) : null,
         lastPingAt: lastPing,
         lastPingHuman: formatRelativeTime(lastPing),
         studentsCount: students.length,
@@ -356,6 +360,8 @@ export async function GET(request: NextRequest) {
 
       trackedEscorts.push({
         escortId: roleStaff.user_id,
+        sessionId: sessionRow?.id || null,
+        escortUserId: roleStaff.user_id,
         escortName: user?.full_name || 'Staff Escort',
         escortPhone: user?.phone || '',
         escortPhoto: user?.avatar_url || null,
@@ -371,8 +377,8 @@ export async function GET(request: NextRequest) {
         currentLng: lng,
         speedKmh: sessionRow?.current_speed_kmh ? Number(sessionRow.current_speed_kmh) : 0,
         heading: sessionRow?.current_heading ? Number(sessionRow.current_heading) : 0,
-        batteryLevel: sessionRow?.battery_level ?? 90,
-        gpsAccuracyMeters: 10,
+        batteryLevel: sessionRow?.battery_level ?? null,
+        gpsAccuracyMeters: sessionRow?.gps_accuracy_meters ? Number(sessionRow.gps_accuracy_meters) : null,
         lastPingAt: sessionRow?.last_ping_at || nowUtcIso(),
         lastPingHuman: formatRelativeTime(sessionRow?.last_ping_at),
         studentsCount: students.length,

@@ -1,7 +1,7 @@
 // @ts-nocheck
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import {
   Car,
   MapPin,
@@ -18,9 +18,12 @@ import {
   Search,
   ChevronRight,
   Shield,
-  Navigation
+  Navigation,
+  MapPinOff,
+  Radio,
 } from 'lucide-react';
 import { toast } from 'sonner';
+import { useEscortTelemetryTracker } from '@/hooks/useEscortTelemetryTracker';
 
 interface EscortTripsViewProps {
   liveDashboardData: any;
@@ -40,6 +43,7 @@ export default function EscortTripsView({
   const [isProcessing, setIsProcessing] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
   const [statusFilter, setStatusFilter] = useState<'all' | 'pending' | 'active' | 'completed'>('all');
+  const [activeSessionId, setActiveSessionId] = useState<string | null>(null);
 
   const route = liveDashboardData?.route || {};
   const vehicle = liveDashboardData?.vehicle || {};
@@ -58,6 +62,43 @@ export default function EscortTripsView({
 
   const studentsList = liveDashboardData?.students?.manifest || [];
   const stops = route.stops || [];
+
+  useEffect(() => {
+    const remoteSessionId = liveDashboardData?.activeSession?.id || null;
+    if (remoteSessionId) setActiveSessionId(remoteSessionId);
+
+    const status = liveDashboardData?.escort?.today_trip_status;
+    if (status === 'in_progress') {
+      setTripStarted(true);
+    } else if (status === 'completed' || status === 'pending') {
+      setTripStarted(false);
+      if (!remoteSessionId) setActiveSessionId(null);
+    }
+  }, [
+    liveDashboardData?.activeSession?.id,
+    liveDashboardData?.escort?.today_trip_status,
+  ]);
+
+  const currentTripSessionId = activeSessionId || liveDashboardData?.activeSession?.id || null;
+  const isTripActive = tripStarted || liveDashboardData?.escort?.today_trip_status === 'in_progress';
+
+  const {
+    isBroadcasting,
+    hasPermissionError,
+    currentSpeedKmh,
+    pingCount,
+    retryLocationAccess,
+  } = useEscortTelemetryTracker({
+    sessionId: currentTripSessionId || undefined,
+    schoolId:
+      liveDashboardData?.activeSession?.school_id ||
+      liveDashboardData?.school?.id ||
+      escort?.school_id ||
+      escort?.primary_school_id,
+    vehicleId: vehicle?.id,
+    escortId: escort?.id,
+    isActive: Boolean(isTripActive && currentTripSessionId),
+  });
 
   const handleToggleReady = async () => {
     setIsProcessing(true);
@@ -88,12 +129,20 @@ export default function EscortTripsView({
       const res = await fetch('/api/escorts/dashboard-live', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ action: 'start_trip', trip_type: activeTab }),
+        body: JSON.stringify({
+          action: 'start_trip',
+          trip_type: activeTab,
+          school_id: liveDashboardData?.school?.id || escort?.school_id || escort?.primary_school_id,
+        }),
       });
+      const data = await res.json().catch(() => ({}));
       if (res.ok) {
         setTripStarted(true);
+        if (data.sessionId) setActiveSessionId(data.sessionId);
         toast.success(`${activeTab === 'morning' ? 'Morning Home Pickup' : 'Afternoon School Drop-off'} Trip Started! Live tracking active.`);
         onRefreshData();
+      } else {
+        toast.error(data.error || 'Failed to start trip');
       }
     } catch (err: any) {
       toast.error(err.message || 'Failed to start trip');
@@ -112,6 +161,7 @@ export default function EscortTripsView({
       });
       if (res.ok) {
         setTripStarted(false);
+        setActiveSessionId(null);
         toast.success(`Trip completed successfully! Attendance and custody logs archived.`);
         onRefreshData();
       }
@@ -170,6 +220,51 @@ export default function EscortTripsView({
 
   return (
     <div className="space-y-6">
+      {isTripActive && (
+        <div
+          className={`rounded-2xl p-3.5 border flex flex-col sm:flex-row sm:items-center justify-between gap-3 ${
+            hasPermissionError
+              ? 'bg-amber-50 border-amber-300 text-amber-950'
+              : isBroadcasting
+                ? 'bg-emerald-50 border-emerald-200 text-emerald-950'
+                : 'bg-slate-50 border-slate-200 text-slate-700'
+          }`}
+        >
+          <div className="flex items-center gap-3 min-w-0">
+            <div
+              className={`w-9 h-9 rounded-xl text-white flex items-center justify-center shrink-0 ${
+                hasPermissionError ? 'bg-amber-500' : isBroadcasting ? 'bg-emerald-600' : 'bg-slate-500'
+              }`}
+            >
+              {hasPermissionError ? <MapPinOff className="w-4 h-4" /> : <Radio className="w-4 h-4" />}
+            </div>
+            <div className="min-w-0">
+              <p className="text-xs font-black">
+                {hasPermissionError
+                  ? 'Location permission blocked — parents and school cannot see live GPS'
+                  : isBroadcasting
+                    ? `Live GPS broadcasting${currentSpeedKmh ? ` · ${Math.round(currentSpeedKmh)} km/h` : ''}${pingCount ? ` · ${pingCount} pings` : ''}`
+                    : currentTripSessionId
+                      ? 'Starting live GPS…'
+                      : 'Trip active — waiting for tracking session'}
+              </p>
+              <p className="text-[11px] font-medium opacity-80 truncate">
+                Session {currentTripSessionId ? String(currentTripSessionId).slice(0, 8) : 'pending'} · allow precise location while driving
+              </p>
+            </div>
+          </div>
+          {hasPermissionError && (
+            <button
+              type="button"
+              onClick={retryLocationAccess}
+              className="px-3 py-1.5 rounded-xl bg-amber-600 text-white text-xs font-bold shrink-0"
+            >
+              Retry Location
+            </button>
+          )}
+        </div>
+      )}
+
       {/* 1. ROUTE & TRIP HEADER CONSOLE */}
       <div className="bg-white rounded-3xl p-5 md:p-6 border border-slate-200 shadow-sm space-y-4">
         <div className="flex flex-col lg:flex-row items-start lg:items-center justify-between gap-4">

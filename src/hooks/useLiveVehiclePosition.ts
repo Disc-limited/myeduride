@@ -50,6 +50,24 @@ export function useLiveVehiclePosition({
 
   const supabase = createClient();
 
+  // Seed / refresh from polled session snapshot when realtime hasn't moved yet
+  useEffect(() => {
+    if (initialLat == null || initialLng == null) return;
+    if (!Number.isFinite(initialLat) || !Number.isFinite(initialLng)) return;
+
+    targetPosRef.current = {
+      lat: initialLat,
+      lng: initialLng,
+      heading: targetPosRef.current.heading,
+    };
+    setCurrentPosition((prev) => ({
+      ...prev,
+      lat: initialLat,
+      lng: initialLng,
+      timestamp: prev.timestamp || new Date().toISOString(),
+    }));
+  }, [initialLat, initialLng, sessionId]);
+
   // Smooth Marker Animation Loop (lerp)
   useEffect(() => {
     let currentL = displayLat;

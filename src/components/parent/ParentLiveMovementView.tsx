@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useMemo, useRef } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import {
   Bus,
   Navigation,
@@ -12,10 +12,8 @@ import {
   Compass,
   AlertTriangle,
   Radio,
-  Layers,
   Sparkles,
   CheckCircle2,
-  Maximize2,
   RefreshCw,
   Home,
   School,
@@ -28,6 +26,8 @@ import {
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { photoSrc } from '@/lib/photo';
+import LiveVehicleMap from '@/components/shared/LiveVehicleMap';
+import { useLiveVehiclePosition } from '@/hooks/useLiveVehiclePosition';
 
 interface ParentLiveMovementViewProps {
   childrenList?: any[];
@@ -51,7 +51,6 @@ export default function ParentLiveMovementView({
   const [refreshing, setRefreshing] = useState(false);
   const [liveData, setLiveData] = useState<any>(null);
   const [mapType, setMapType] = useState<'roadmap' | 'satellite'>('roadmap');
-  const [showTraffic, setShowTraffic] = useState(true);
   const [autoRefresh, setAutoRefresh] = useState(true);
 
   // Sync selected child if props change
@@ -106,6 +105,89 @@ export default function ParentLiveMovementView({
   const escort = liveData?.escort;
   const vehicle = liveData?.vehicle;
   const child = liveData?.child || activeChild;
+  const sessionId = liveData?.sessionId || null;
+
+  const livePosition = useLiveVehiclePosition({
+    sessionId: hasActive ? sessionId : null,
+    targetStopLat: child?.houseLat ?? undefined,
+    targetStopLng: child?.houseLng ?? undefined,
+    initialLat: telemetry?.currentLat ?? child?.houseLat ?? child?.schoolLat ?? 6.5244,
+    initialLng: telemetry?.currentLng ?? child?.houseLng ?? child?.schoolLng ?? 3.3792,
+    onApproachingStop: (distanceMeters) => {
+      toast.info(`Escort vehicle approaching — about ${Math.max(1, Math.round(distanceMeters))} m away`);
+    },
+  });
+
+  const vehicleLat =
+    livePosition.isConnected && livePosition.displayLat
+      ? livePosition.displayLat
+      : telemetry?.currentLat ?? null;
+  const vehicleLng =
+    livePosition.isConnected && livePosition.displayLng
+      ? livePosition.displayLng
+      : telemetry?.currentLng ?? null;
+  const vehicleHeading = livePosition.isConnected
+    ? livePosition.displayHeading
+    : telemetry?.heading ?? 0;
+  const vehicleSpeed = livePosition.isConnected
+    ? livePosition.speedKmh
+    : telemetry?.speedKmh ?? 0;
+  const etaMinutes = livePosition.etaMinutes;
+  const remainingKm =
+    livePosition.distanceToStopMeters != null
+      ? Math.round((livePosition.distanceToStopMeters / 1000) * 10) / 10
+      : null;
+
+  const mapPins = useMemo(() => {
+    const pins: Array<{ lat: number; lng: number; label?: string; kind?: 'home' | 'school' | 'stop' }> = [];
+
+    const houseLat = Number(
+      child?.houseLat ?? child?.house_lat ?? activeChild?.house_lat ?? activeChild?.houseLat
+    );
+    const houseLng = Number(
+      child?.houseLng ?? child?.house_lng ?? activeChild?.house_lng ?? activeChild?.houseLng
+    );
+    const schoolLat = Number(
+      child?.schoolLat ?? child?.school_lat ?? activeChild?.school_lat ?? activeChild?.schoolLat
+    );
+    const schoolLng = Number(
+      child?.schoolLng ?? child?.school_lng ?? activeChild?.school_lng ?? activeChild?.schoolLng
+    );
+
+    if (Number.isFinite(houseLat) && Number.isFinite(houseLng)) {
+      pins.push({
+        lat: houseLat,
+        lng: houseLng,
+        label: child?.name || activeChild?.first_name
+          ? `${child?.name || activeChild?.first_name}'s Home`
+          : 'Doorstep',
+        kind: 'home',
+      });
+    }
+    if (Number.isFinite(schoolLat) && Number.isFinite(schoolLng)) {
+      pins.push({
+        lat: schoolLat,
+        lng: schoolLng,
+        label: child?.schoolName || child?.school_name || 'School',
+        kind: 'school',
+      });
+    }
+    return pins;
+  }, [child, activeChild]);
+
+  // Prefer live GPS; otherwise keep vehicle visible on map from last API snapshot
+  const mapVehicleLat =
+    vehicleLat != null
+      ? vehicleLat
+      : telemetry?.currentLat != null
+        ? Number(telemetry.currentLat)
+        : null;
+  const mapVehicleLng =
+    vehicleLng != null
+      ? vehicleLng
+      : telemetry?.currentLng != null
+        ? Number(telemetry.currentLng)
+        : null;
 
   // Derive stage
   const stage = (liveData?.journeyStage || 'scheduled') as string;
@@ -157,9 +239,9 @@ export default function ParentLiveMovementView({
 
   // Google Maps external link
   const openInGoogleMaps = () => {
-    if (telemetry?.currentLat && telemetry?.currentLng) {
+    if (vehicleLat != null && vehicleLng != null) {
       window.open(
-        `https://www.google.com/maps?q=${telemetry.currentLat},${telemetry.currentLng}`,
+        `https://www.google.com/maps?q=${vehicleLat},${vehicleLng}`,
         '_blank'
       );
     } else if (child?.houseLat && child?.houseLng) {
@@ -182,17 +264,17 @@ export default function ParentLiveMovementView({
           <div>
             <div className="flex items-center gap-2 flex-wrap">
               <h1 className="text-xl sm:text-2xl font-black text-slate-900 tracking-tight">
-                Live Child Movement Radar
+                Live Child Movement
               </h1>
               <span
                 className={`inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-[11px] font-black uppercase tracking-wider border ${stageConfig.badgeColor}`}
               >
                 <span className={`w-2 h-2 rounded-full ${stageConfig.dotColor}`} />
-                {hasActive ? 'LIVE GPS ACTIVE' : 'CORRIDOR READY'}
+                {hasActive ? 'LIVE GPS ACTIVE' : 'MAP READY'}
               </span>
             </div>
             <p className="text-xs text-slate-500 font-medium mt-0.5">
-              Real-time student transit telemetry, vehicle corridor radar, and escort movement verification.
+              Live street map of your child&apos;s escort between doorstep and school.
             </p>
           </div>
         </div>
@@ -306,20 +388,23 @@ export default function ParentLiveMovementView({
             <div className="space-y-0.5">
               <p className="text-[10px] uppercase tracking-wider font-bold text-slate-400">Current Speed</p>
               <p className="text-xl sm:text-2xl font-black text-white">
-                {hasActive ? `${telemetry?.speedKmh || 34}` : '0'}{' '}
+                {hasActive ? `${Math.round(vehicleSpeed || 0)}` : '0'}{' '}
                 <span className="text-xs font-normal text-slate-400">km/h</span>
               </p>
-              <p className="text-[10px] text-emerald-400 font-bold">GPS Verified</p>
+              <p className="text-[10px] text-emerald-400 font-bold">
+                {livePosition.isConnected ? 'Live GPS Stream' : hasActive ? 'Session Snapshot' : 'Standby'}
+              </p>
             </div>
 
             {/* ETA */}
             <div className="space-y-0.5">
               <p className="text-[10px] uppercase tracking-wider font-bold text-slate-400">Est. Arrival</p>
               <p className="text-xl sm:text-2xl font-black text-emerald-400">
-                {hasActive ? '8' : '—'} <span className="text-xs font-normal text-slate-400">mins</span>
+                {hasActive && etaMinutes != null ? etaMinutes : '—'}{' '}
+                <span className="text-xs font-normal text-slate-400">mins</span>
               </p>
               <p className="text-[10px] text-slate-300 font-medium">
-                {hasActive ? '07:42 AM' : route?.departureMorning || '07:00 AM'}
+                {route?.departureMorning || '07:00 AM'}
               </p>
             </div>
 
@@ -327,10 +412,10 @@ export default function ParentLiveMovementView({
             <div className="space-y-0.5">
               <p className="text-[10px] uppercase tracking-wider font-bold text-slate-400">Remaining Dist</p>
               <p className="text-xl sm:text-2xl font-black text-white">
-                {hasActive ? '1.8' : '4.2'}{' '}
+                {remainingKm != null ? remainingKm : '—'}{' '}
                 <span className="text-xs font-normal text-slate-400">km</span>
               </p>
-              <p className="text-[10px] text-slate-400 font-medium">To Destination</p>
+              <p className="text-[10px] text-slate-400 font-medium">To Doorstep</p>
             </div>
 
             {/* Heading */}
@@ -338,9 +423,9 @@ export default function ParentLiveMovementView({
               <p className="text-[10px] uppercase tracking-wider font-bold text-slate-400">Heading</p>
               <p className="text-xl sm:text-2xl font-black text-white flex items-center gap-1">
                 <Compass className="w-4 h-4 text-emerald-400 shrink-0" />
-                <span>{hasActive ? `${telemetry?.heading || 85}°` : 'NE'}</span>
+                <span>{hasActive ? `${Math.round(vehicleHeading || 0)}°` : '—'}</span>
               </p>
-              <p className="text-[10px] text-slate-400 font-medium">Lagos Corridor</p>
+              <p className="text-[10px] text-slate-400 font-medium">Live Bearing</p>
             </div>
           </div>
         </div>
@@ -361,10 +446,10 @@ export default function ParentLiveMovementView({
                 </div>
                 <div>
                   <h3 className="font-extrabold text-slate-900 text-sm">
-                    Interactive Corridor Transit Radar
+                    Live Map
                   </h3>
                   <p className="text-[11px] text-slate-500 font-medium">
-                    Tracking vehicle movement between Home Doorstep and School Campus
+                    Real streets — doorstep, school, and escort vehicle GPS
                   </p>
                 </div>
               </div>
@@ -404,85 +489,47 @@ export default function ParentLiveMovementView({
               </div>
             </div>
 
-            {/* Radar Canvas / Map Screen */}
-            <div className="relative h-[340px] sm:h-[420px] rounded-2xl overflow-hidden border border-slate-200 bg-slate-950 shadow-inner">
-              {/* Stylized Street Grid Overlay */}
-              <div
-                className="absolute inset-0 opacity-25"
-                style={{
-                  backgroundImage: `radial-gradient(#10b981 1px, transparent 1px), radial-gradient(#0ea5e9 1px, #030712 1px)`,
-                  backgroundSize: '36px 36px',
-                  backgroundPosition: '0 0, 18px 18px',
-                }}
-              />
+            {/* Real Leaflet street map */}
+            <LiveVehicleMap
+              key={`parent-live-map-${selectedChildId || 'child'}`}
+              mapType={mapType}
+              heightClassName="h-[360px] sm:h-[440px]"
+              vehicleLat={mapVehicleLat}
+              vehicleLng={mapVehicleLng}
+              vehicleHeading={vehicleHeading}
+              vehicleSpeedKmh={vehicleSpeed}
+              vehicleLabel={vehicle?.licensePlate || 'Escort'}
+              pins={mapPins}
+              followVehicle={Boolean(hasActive && mapVehicleLat != null && mapVehicleLng != null)}
+              hideAttribution
+              emptyMessage={
+                mapPins.length === 0
+                  ? 'Pin your house doorstep to centre the map. Street map is still live below.'
+                  : hasActive
+                    ? 'Waiting for escort GPS pings…'
+                    : 'No active trip — showing doorstep and school pins.'
+              }
+            />
 
-              {/* Transit Corridor SVG Route Polyline */}
-              <svg className="absolute inset-0 w-full h-full pointer-events-none">
-                <defs>
-                  <linearGradient id="routeGradient" x1="0%" y1="0%" x2="100%" y2="100%">
-                    <stop offset="0%" stopColor="#10b981" stopOpacity="0.8" />
-                    <stop offset="50%" stopColor="#38bdf8" stopOpacity="0.9" />
-                    <stop offset="100%" stopColor="#818cf8" stopOpacity="0.8" />
-                  </linearGradient>
-                </defs>
-                <path
-                  d="M 60 280 Q 220 250, 360 170 T 700 80"
-                  fill="none"
-                  stroke="url(#routeGradient)"
-                  strokeWidth="6"
-                  strokeDasharray="8 6"
-                  className="animate-pulse"
-                />
-              </svg>
-
-              {/* Point 1: Home Doorstep Pin */}
-              <div className="absolute left-[50px] bottom-[40px] flex flex-col items-center group cursor-pointer z-10">
-                <div className="w-10 h-10 rounded-2xl bg-emerald-500 text-white flex items-center justify-center shadow-lg shadow-emerald-500/40 ring-4 ring-emerald-500/30">
-                  <Home className="w-5 h-5" />
-                </div>
-                <div className="mt-1 bg-slate-900/90 border border-emerald-500/40 px-2.5 py-0.5 rounded-lg text-white text-[10px] font-black shadow-md">
-                  🏠 {child?.name ? `${child.name}'s Home` : 'Doorstep'}
-                </div>
-              </div>
-
-              {/* Point 2: Active Vehicle Position (Animated) */}
-              <div className="absolute left-[45%] top-[40%] -translate-x-1/2 -translate-y-1/2 flex flex-col items-center z-20">
-                {/* Radar Waves */}
-                <div className="absolute w-28 h-28 rounded-full border border-sky-400/40 animate-ping pointer-events-none" />
-                <div className="absolute w-16 h-16 rounded-full bg-sky-400/20 animate-pulse pointer-events-none" />
-
-                <div className="w-12 h-12 rounded-2xl bg-sky-500 text-white flex items-center justify-center shadow-2xl shadow-sky-500/50 ring-4 ring-white">
-                  <Bus className="w-6 h-6 animate-bounce" />
-                </div>
-                <div className="mt-1 bg-sky-950 border border-sky-400 px-3 py-1 rounded-xl text-white text-[11px] font-black shadow-xl flex items-center gap-1.5">
-                  <span className="w-2 h-2 rounded-full bg-sky-400 animate-ping" />
-                  <span>{vehicle?.licensePlate || 'LAG-894-XA'}</span>
-                  <span className="text-sky-300 font-normal">({hasActive ? `${telemetry?.speedKmh || 34} km/h` : 'Active'})</span>
-                </div>
-              </div>
-
-              {/* Point 3: School Campus Pin */}
-              <div className="absolute right-[50px] top-[40px] flex flex-col items-center group cursor-pointer z-10">
-                <div className="w-10 h-10 rounded-2xl bg-indigo-600 text-white flex items-center justify-center shadow-lg shadow-indigo-600/40 ring-4 ring-indigo-500/30">
-                  <School className="w-5 h-5" />
-                </div>
-                <div className="mt-1 bg-slate-900/90 border border-indigo-500/40 px-2.5 py-0.5 rounded-lg text-white text-[10px] font-black shadow-md">
-                  🏫 {child?.schoolName || 'School Campus'}
-                </div>
-              </div>
-
-              {/* Bottom Radar Controls Bar */}
-              <div className="absolute bottom-3 left-3 right-3 flex items-center justify-between pointer-events-auto">
-                <div className="bg-slate-900/80 backdrop-blur-md px-3 py-1.5 rounded-xl border border-white/10 text-white text-[10px] font-medium flex items-center gap-2">
-                  <span className="w-2 h-2 rounded-full bg-emerald-400" />
-                  <span>Route: {route?.name || 'Lagos Transit Corridor'}</span>
-                </div>
-
-                <div className="bg-slate-900/80 backdrop-blur-md px-3 py-1.5 rounded-xl border border-white/10 text-white text-[10px] font-mono flex items-center gap-1.5">
-                  <Clock className="w-3 h-3 text-emerald-400" />
-                  <span>GPS Ping: Just now</span>
-                </div>
-              </div>
+            <div className="flex items-center justify-between gap-2 text-[10px] text-slate-500 font-medium px-1">
+              <span className="flex items-center gap-1.5">
+                <span className={`w-2 h-2 rounded-full ${livePosition.isConnected ? 'bg-emerald-500 animate-pulse' : hasActive ? 'bg-amber-500' : 'bg-slate-400'}`} />
+                {livePosition.isConnected
+                  ? 'Realtime GPS connected'
+                  : hasActive
+                    ? 'Polling session snapshot'
+                    : 'Corridor standby'}
+              </span>
+              <span className="font-mono">
+                GPS Ping:{' '}
+                {livePosition.lastPingAt || telemetry?.lastPingAt
+                  ? new Date(livePosition.lastPingAt || telemetry.lastPingAt).toLocaleTimeString('en-NG', {
+                      hour: '2-digit',
+                      minute: '2-digit',
+                      second: '2-digit',
+                    })
+                  : '—'}
+              </span>
             </div>
 
             {/* Quick Map Legend */}
@@ -498,10 +545,10 @@ export default function ParentLiveMovementView({
                 </span>
                 <span className="flex items-center gap-1.5">
                   <span className="w-3 h-3 rounded-md bg-indigo-600 inline-block" />
-                  <span>School Destination Gate</span>
+                  <span>School Campus</span>
                 </span>
               </div>
-              <span className="text-slate-400">Sub-meter GPS accuracy enabled</span>
+              <span className="text-slate-400">Live Leaflet GPS</span>
             </div>
           </div>
         </div>
@@ -517,78 +564,126 @@ export default function ParentLiveMovementView({
                   Assigned Escort &amp; Vehicle
                 </h3>
               </div>
-              <span className="px-2 py-0.5 rounded-full bg-emerald-50 text-emerald-700 font-bold text-[10px] border border-emerald-200">
-                Verified
-              </span>
-            </div>
-
-            {/* Escort Bio */}
-            <div className="flex items-center gap-3.5">
-              <div className="w-14 h-14 rounded-2xl bg-slate-100 border border-slate-200 overflow-hidden shrink-0 flex items-center justify-center font-black text-slate-600 text-lg">
-                {escort?.photo ? (
-                  <img
-                    src={photoSrc(escort.photo) || escort.photo}
-                    alt={escort?.name || 'Escort'}
-                    className="w-full h-full object-cover"
-                  />
-                ) : (
-                  <User className="w-7 h-7 text-slate-400" />
-                )}
-              </div>
-              <div className="space-y-0.5">
-                <p className="font-extrabold text-slate-900 text-sm leading-tight">
-                  {escort?.name || 'Officer Assigned'}
-                </p>
-                <p className="text-xs text-slate-500 font-medium">
-                  Badge: <span className="font-mono font-bold text-slate-700">{escort?.code || 'ESC-4089'}</span>
-                </p>
-                <p className="text-[10px] text-emerald-700 font-bold flex items-center gap-1">
-                  <ShieldCheck className="w-3 h-3" />
-                  City Manager Approved Escort
-                </p>
-              </div>
-            </div>
-
-            {/* Action Buttons: Direct Call & Chat */}
-            <div className="grid grid-cols-2 gap-2 pt-1">
-              <a
-                href={`tel:${escort?.phone || '+2348000000000'}`}
-                className="py-2.5 px-3 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs flex items-center justify-center gap-1.5 shadow-xs transition-all text-center"
-              >
-                <Phone className="w-3.5 h-3.5" />
-                <span>Call Escort</span>
-              </a>
-
-              <button
-                type="button"
-                onClick={() => {
-                  if (onOpenChat) onOpenChat();
-                  else toast.info('Direct messaging channel ready');
-                }}
-                className="py-2.5 px-3 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-800 font-bold text-xs flex items-center justify-center gap-1.5 transition-all cursor-pointer"
-              >
-                <MessageSquare className="w-3.5 h-3.5" />
-                <span>Message</span>
-              </button>
-            </div>
-
-            {/* Vehicle Details */}
-            <div className="bg-slate-50 p-3.5 rounded-2xl border border-slate-100 space-y-2 text-xs">
-              <div className="flex items-center justify-between">
-                <span className="text-slate-500">Vehicle Model:</span>
-                <span className="font-bold text-slate-800">{vehicle?.model || 'Toyota HiAce'}</span>
-              </div>
-              <div className="flex items-center justify-between">
-                <span className="text-slate-500">Registration Plate:</span>
-                <span className="font-mono font-black text-slate-900 bg-white px-2 py-0.5 rounded-md border border-slate-200">
-                  {vehicle?.licensePlate || 'LAG-894-XA'}
+              {escort?.name ? (
+                <span className="px-2 py-0.5 rounded-full bg-emerald-50 text-emerald-700 font-bold text-[10px] border border-emerald-200">
+                  {escort.approvalBadge || 'Verified'}
                 </span>
-              </div>
-              <div className="flex items-center justify-between">
-                <span className="text-slate-500">Air-Conditioning:</span>
-                <span className="text-emerald-700 font-bold">Active &amp; Tested</span>
-              </div>
+              ) : (
+                <span className="px-2 py-0.5 rounded-full bg-slate-100 text-slate-500 font-bold text-[10px] border border-slate-200">
+                  Unassigned
+                </span>
+              )}
             </div>
+
+            {escort?.name ? (
+              <>
+                {/* Escort Bio — real portal profile */}
+                <div className="flex items-center gap-3.5">
+                  <div className="w-14 h-14 rounded-2xl bg-slate-100 border border-slate-200 overflow-hidden shrink-0 flex items-center justify-center font-black text-slate-600 text-lg">
+                    {escort.photo ? (
+                      <img
+                        src={photoSrc(escort.photo) || escort.photo}
+                        alt={escort.name}
+                        className="w-full h-full object-cover"
+                      />
+                    ) : (
+                      <span className="text-sm font-black text-slate-500">
+                        {String(escort.name)
+                          .split(/\s+/)
+                          .map((p: string) => p[0])
+                          .join('')
+                          .slice(0, 2)
+                          .toUpperCase()}
+                      </span>
+                    )}
+                  </div>
+                  <div className="space-y-0.5 min-w-0">
+                    <p className="font-extrabold text-slate-900 text-sm leading-tight truncate">
+                      {escort.name}
+                    </p>
+                    <p className="text-xs text-slate-500 font-medium">
+                      {escort.code ? (
+                        <>
+                          Badge:{' '}
+                          <span className="font-mono font-bold text-slate-700">{escort.code}</span>
+                        </>
+                      ) : (
+                        <span className="text-slate-400">Badge pending</span>
+                      )}
+                    </p>
+                    <p className="text-[10px] text-emerald-700 font-bold flex items-center gap-1">
+                      <ShieldCheck className="w-3 h-3 shrink-0" />
+                      <span className="truncate">
+                        {escort.escortTypeLabel || 'MyEduRide Escort'}
+                        {escort.approvalBadge ? ` · ${escort.approvalBadge}` : ''}
+                      </span>
+                    </p>
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-2 gap-2 pt-1">
+                  {escort.phone ? (
+                    <a
+                      href={`tel:${escort.phone}`}
+                      className="py-2.5 px-3 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs flex items-center justify-center gap-1.5 shadow-xs transition-all text-center"
+                    >
+                      <Phone className="w-3.5 h-3.5" />
+                      <span>Call Escort</span>
+                    </a>
+                  ) : (
+                    <button
+                      type="button"
+                      disabled
+                      className="py-2.5 px-3 rounded-xl bg-slate-100 text-slate-400 font-bold text-xs flex items-center justify-center gap-1.5 cursor-not-allowed"
+                    >
+                      <Phone className="w-3.5 h-3.5" />
+                      <span>No Phone</span>
+                    </button>
+                  )}
+
+                  <button
+                    type="button"
+                    onClick={() => {
+                      if (onOpenChat) onOpenChat();
+                      else toast.info('Direct messaging channel ready');
+                    }}
+                    className="py-2.5 px-3 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-800 font-bold text-xs flex items-center justify-center gap-1.5 transition-all cursor-pointer"
+                  >
+                    <MessageSquare className="w-3.5 h-3.5" />
+                    <span>Message</span>
+                  </button>
+                </div>
+
+                <div className="bg-slate-50 p-3.5 rounded-2xl border border-slate-100 space-y-2 text-xs">
+                  <div className="flex items-center justify-between gap-2">
+                    <span className="text-slate-500 shrink-0">Vehicle Model:</span>
+                    <span className="font-bold text-slate-800 text-right">
+                      {vehicle?.model || 'Not listed on escort profile'}
+                    </span>
+                  </div>
+                  <div className="flex items-center justify-between gap-2">
+                    <span className="text-slate-500 shrink-0">Registration Plate:</span>
+                    <span className="font-mono font-black text-slate-900 bg-white px-2 py-0.5 rounded-md border border-slate-200">
+                      {vehicle?.licensePlate || '—'}
+                    </span>
+                  </div>
+                  {escort.phone ? (
+                    <div className="flex items-center justify-between gap-2">
+                      <span className="text-slate-500 shrink-0">Escort Phone:</span>
+                      <span className="font-bold text-slate-800">{escort.phone}</span>
+                    </div>
+                  ) : null}
+                </div>
+              </>
+            ) : (
+              <div className="rounded-2xl border border-dashed border-slate-200 bg-slate-50 p-4 text-center space-y-1">
+                <User className="w-8 h-8 text-slate-300 mx-auto" />
+                <p className="text-xs font-bold text-slate-700">No escort assigned yet</p>
+                <p className="text-[11px] text-slate-500 leading-relaxed">
+                  When City Manager or school assigns an escort to this child, their real name, photo, badge, and vehicle will appear here.
+                </p>
+              </div>
+            )}
           </div>
 
           {/* Card 2: Turn-by-Turn Transit Checkpoints */}
@@ -634,7 +729,12 @@ export default function ParentLiveMovementView({
                     <span className="text-[10px] text-sky-600 font-bold font-mono">In Progress</span>
                   </div>
                   <p className="text-[11px] text-slate-500">
-                    Express Corridor junction • 32 km/h
+                    Express Corridor junction
+                    {hasActive && vehicleSpeed
+                      ? ` • ${Math.round(vehicleSpeed)} km/h`
+                      : hasActive
+                        ? ' • In transit'
+                        : ''}
                   </p>
                 </div>
               </div>

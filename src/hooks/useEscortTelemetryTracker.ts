@@ -16,6 +16,7 @@ interface UseEscortTelemetryOptions {
   sessionId?: string;
   schoolId?: string;
   vehicleId?: string;
+  escortId?: string;
   isActive: boolean;
   currentStopIndex?: number;
   onPositionUpdate?: (point: TelemetryPoint) => void;
@@ -26,6 +27,7 @@ export function useEscortTelemetryTracker({
   sessionId,
   schoolId,
   vehicleId,
+  escortId,
   isActive,
   currentStopIndex = 0,
   onPositionUpdate,
@@ -210,6 +212,7 @@ export function useEscortTelemetryTracker({
           ...telemetryPoint,
           sessionId,
           vehicleId,
+          escortId,
           currentStopIndex,
         },
       });
@@ -222,6 +225,7 @@ export function useEscortTelemetryTracker({
             ...telemetryPoint,
             sessionId,
             vehicleId,
+            escortId,
             currentStopIndex,
           },
         });
@@ -327,6 +331,7 @@ export function useEscortTelemetryTracker({
     sessionId,
     schoolId,
     vehicleId,
+    escortId,
     currentStopIndex,
     batteryLevel,
     retryTrigger,

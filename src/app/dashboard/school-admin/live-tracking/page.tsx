@@ -44,6 +44,8 @@ interface StudentManifestItem {
 
 interface EscortTelemetryItem {
   escortId: string;
+  sessionId?: string | null;
+  escortUserId?: string | null;
   escortName: string;
   escortPhone: string;
   escortPhoto: string | null;
@@ -151,43 +153,62 @@ export default function LiveEscortMovementTrackingPage() {
   useEffect(() => {
     if (!schoolData?.id) return;
 
+    const applyPing = (payload: any) => {
+      if (!payload) return;
+      const matchEscort = (e: EscortTelemetryItem) =>
+        (payload.sessionId && e.sessionId && e.sessionId === payload.sessionId) ||
+        (payload.escortId && e.escortId === payload.escortId) ||
+        (payload.escortId && e.escortUserId && e.escortUserId === payload.escortId) ||
+        (payload.vehiclePlate && e.vehiclePlate === payload.vehiclePlate);
+
+      const patch = (e: EscortTelemetryItem): EscortTelemetryItem =>
+        matchEscort(e)
+          ? {
+              ...e,
+              sessionId: payload.sessionId || e.sessionId,
+              currentLat: payload.lat ?? e.currentLat,
+              currentLng: payload.lng ?? e.currentLng,
+              speedKmh: payload.speedKmh ?? e.speedKmh,
+              heading: payload.heading ?? e.heading,
+              batteryLevel: payload.batteryLevel ?? e.batteryLevel,
+              lastPingAt: payload.timestamp || new Date().toISOString(),
+              lastPingHuman: 'Just now',
+              isActive: true,
+              operationalStatus: 'Active On Duty',
+            }
+          : e;
+
+      setActiveEscorts((prev) => prev.map(patch));
+      setStandbyEscorts((prev) => {
+        const staying: EscortTelemetryItem[] = [];
+        const promoted: EscortTelemetryItem[] = [];
+        for (const e of prev) {
+          const next = patch(e);
+          if (matchEscort(e)) promoted.push({ ...next, isActive: true });
+          else staying.push(next);
+        }
+        if (promoted.length > 0) {
+          setActiveEscorts((activePrev) => {
+            const ids = new Set(activePrev.map((a) => a.escortId));
+            return [
+              ...activePrev.map(patch),
+              ...promoted.filter((p) => !ids.has(p.escortId)),
+            ];
+          });
+        }
+        return staying;
+      });
+      setAllAssignedEscorts((prev) => prev.map(patch));
+      setSelectedEscort((prev) => (prev ? patch(prev) : prev));
+    };
+
     const channel = supabase
       .channel(`tracking:school_${schoolData.id}`)
       .on('broadcast', { event: 'fleet_vehicle_ping' }, ({ payload }) => {
-        if (!payload) return;
-        setActiveEscorts((prev) =>
-          prev.map((e) =>
-            e.escortId === payload.sessionId || e.vehiclePlate === payload.vehiclePlate
-              ? {
-                  ...e,
-                  currentLat: payload.lat ?? e.currentLat,
-                  currentLng: payload.lng ?? e.currentLng,
-                  speedKmh: payload.speedKmh ?? e.speedKmh,
-                  heading: payload.heading ?? e.heading,
-                  batteryLevel: payload.batteryLevel ?? e.batteryLevel,
-                  lastPingHuman: 'Just now',
-                }
-              : e
-          )
-        );
+        applyPing(payload);
       })
       .on('broadcast', { event: 'telemetry_ping' }, ({ payload }) => {
-        if (!payload) return;
-        setActiveEscorts((prev) =>
-          prev.map((e) =>
-            e.escortId === payload.sessionId
-              ? {
-                  ...e,
-                  currentLat: payload.lat ?? e.currentLat,
-                  currentLng: payload.lng ?? e.currentLng,
-                  speedKmh: payload.speedKmh ?? e.speedKmh,
-                  heading: payload.heading ?? e.heading,
-                  batteryLevel: payload.batteryLevel ?? e.batteryLevel,
-                  lastPingHuman: 'Just now',
-                }
-              : e
-          )
-        );
+        applyPing(payload);
       })
       .subscribe();
 
@@ -217,6 +238,7 @@ export default function LiveEscortMovementTrackingPage() {
           center: [centerLat, centerLng],
           zoom: 13,
           zoomControl: false,
+          attributionControl: false,
         });
 
         // Add Zoom Control at top right
@@ -225,14 +247,9 @@ export default function LiveEscortMovementTrackingPage() {
         const tileUrl =
           mapType === 'satellite'
             ? 'https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}'
-            : 'https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png';
+            : 'https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png';
 
-        const attribution =
-          mapType === 'satellite'
-            ? '© Esri — DigitalGlobe, Earthstar Geographics'
-            : '© OpenStreetMap contributors, © CARTO';
-
-        L.tileLayer(tileUrl, { attribution, maxZoom: 19 }).addTo(map);
+        L.tileLayer(tileUrl, { attribution: '', maxZoom: 19 }).addTo(map);
 
         const markersGroup = L.layerGroup().addTo(map);
         markersGroupRef.current = markersGroup;
