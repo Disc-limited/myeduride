@@ -68,12 +68,12 @@ export async function POST(request: NextRequest) {
           .insert({
             student_id: studentId,
             school_id: school_id,
-            date: day,
             timestamp: nowIso,
             type: 'arrival',
-            status: 'present',
-            verification_method: 'parent_card_scan',
-            verified_by: verifiedBy,
+            status: 'on_time',
+            verification_method: 'id_card_scan',
+            verified_by_user_id: verifiedBy,
+            source: 'gate',
           })
           .select()
           .single();
@@ -126,12 +126,12 @@ export async function POST(request: NextRequest) {
           .insert({
             student_id: studentId,
             school_id: school_id,
-            date: day,
             timestamp: nowIso,
             type: 'departure',
-            status: 'released',
-            verification_method: 'parent_card_scan',
-            verified_by: verifiedBy,
+            status: 'on_time',
+            verification_method: 'id_card_scan',
+            verified_by_user_id: verifiedBy,
+            source: 'gate',
           })
           .select()
           .single();

@@ -3,7 +3,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { getAdminClient } from '@/lib/supabase/admin';
 import { getSessionFromRequest } from '@/lib/session';
 import { canAccessGateOperations } from '@/lib/gate/access';
-import { todayInLagos } from '@/lib/timezone';
+import { todayInLagos, isLateByThreshold, minutesAfterThreshold } from '@/lib/timezone';
 import { nowUtcIso } from '@/lib/utils/time';
 import { logGateActivity } from '@/lib/gate/activity-log';
 import { notifyParentsOfAttendance } from '@/lib/notifications/parent-notify';
@@ -444,7 +444,26 @@ export async function POST(request: NextRequest) {
       await ensureAutoReadyForPickup(supabase, school_id);
     }
 
-    const escortTokens = [escort_id].filter(Boolean);
+    let escortTokens = [escort_id].filter(Boolean);
+    let targetEscortId = escort_id;
+    if (escort_id) {
+      try {
+        const { data: escMatch } = await supabase
+          .from('escort_applications')
+          .select('id, user_id')
+          .or(`id.eq.${escort_id},user_id.eq.${escort_id}`)
+          .maybeSingle();
+        if (escMatch) {
+          targetEscortId = escMatch.id;
+          escortTokens = Array.from(
+            new Set([escMatch.id, escMatch.user_id, escort_id].filter(Boolean))
+          );
+        }
+      } catch (escErr) {
+        console.warn('[gate/escort-batch] escort lookup note:', escErr);
+      }
+    }
+
     let releaseIds = [...student_ids];
 
     if (mode === 'departure' && escortTokens.length > 0) {
@@ -482,6 +501,23 @@ export async function POST(request: NextRequest) {
     const alreadyRecorded = new Set((existingToday || []).map((r: any) => r.student_id));
     const newStudentIds = releaseIds.filter((sId: string) => !alreadyRecorded.has(sId));
 
+    let isLateArrival = false;
+    let minutesLateVal: number | null = null;
+    if (mode === 'arrival') {
+      try {
+        const { data: schoolRow } = await supabase
+          .from('schools')
+          .select('late_threshold_time')
+          .eq('id', school_id)
+          .maybeSingle();
+        const lateThreshold = schoolRow?.late_threshold_time || '08:15:00';
+        isLateArrival = isLateByThreshold(lateThreshold);
+        minutesLateVal = isLateArrival ? minutesAfterThreshold(lateThreshold) : null;
+      } catch (lateErr) {
+        console.warn('[gate/escort-batch] late threshold check note:', lateErr);
+      }
+    }
+
     let insertedRecords: any[] = [];
     if (newStudentIds.length > 0) {
       const attendanceRows = newStudentIds.map((sId: string) => ({
@@ -490,7 +526,9 @@ export async function POST(request: NextRequest) {
         type: mode,
         verified_by_user_id: session.user_id,
         verification_method: verificationMethod,
-        status: 'present',
+        status: mode === 'arrival' ? (isLateArrival ? 'late' : 'on_time') : 'on_time',
+        source: 'gate',
+        minutes_late: minutesLateVal,
         timestamp,
       }));
 
@@ -532,14 +570,14 @@ export async function POST(request: NextRequest) {
     }
 
     // If afternoon departure, immediately convert students to PICKED UP for the escort
-    if (mode === 'departure' && escort_id) {
+    if (mode === 'departure' && targetEscortId) {
       try {
         for (const sId of releaseIds) {
           const { data: existingTrip } = await supabase
             .from('escort_student_daily_trips')
             .select('id')
             .eq('trip_date', todayDate)
-            .eq('escort_id', escort_id)
+            .in('escort_id', escortTokens)
             .eq('student_id', sId)
             .maybeSingle();
 
@@ -557,7 +595,7 @@ export async function POST(request: NextRequest) {
               .from('escort_student_daily_trips')
               .insert({
                 trip_date: todayDate,
-                escort_id,
+                escort_id: targetEscortId,
                 student_id: sId,
                 school_id,
                 afternoon_picked_up: true,
