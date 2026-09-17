@@ -207,18 +207,19 @@ export async function GET(request: NextRequest) {
             : 'check_in';
 
       const ts = new Date(a.timestamp).getTime();
+      const attendanceStudent = Array.isArray(a.student) ? a.student[0] : a.student;
       const dup = entries.some((e) => {
         const sameStudent =
           (a.student_id && e.student_id && String(e.student_id) === String(a.student_id)) ||
           (e.student_id_number &&
-            a.student?.student_id_number &&
-            e.student_id_number === (Array.isArray(a.student) ? a.student[0]?.student_id_number : a.student?.student_id_number));
+            attendanceStudent?.student_id_number &&
+            e.student_id_number === attendanceStudent.student_id_number);
         if (!sameStudent) return false;
         return Math.abs(new Date(e.timestamp).getTime() - ts) < 90_000;
       });
       if (dup) continue;
 
-      const st = Array.isArray(a.student) ? a.student[0] : a.student;
+      const st = attendanceStudent;
       const officer = a.verified_by_user_id ? officerById[a.verified_by_user_id] || {} : {};
       const studentName = st ? `${st.first_name} ${st.last_name}`.trim() : 'Student';
       const details = {
