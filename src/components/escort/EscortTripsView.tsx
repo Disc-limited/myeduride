@@ -183,6 +183,7 @@ export default function EscortTripsView({
       const tripAction = actionName === 'afternoon_home_dropoff' ? 'afternoon_dropoff' : 'morning_pickup';
       const res = await fetch('/api/escorts/pickup-verify', {
         method: 'POST',
+        credentials: 'include',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ action: tripAction, student_id: studentId }),
       });

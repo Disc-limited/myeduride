@@ -13,9 +13,7 @@ interface ParentRoutePinningWidgetProps {
 
 export default function ParentRoutePinningWidget({ schoolId, studentId }: ParentRoutePinningWidgetProps) {
   const [routes, setRoutes] = useState([]);
-  const [pinnedStops, setPinnedStops] = useState<Record<string, boolean>>({
-    'RT-01:1': true,
-  });
+  const [pinnedStops, setPinnedStops] = useState<Record<string, boolean>>({});
   const [loading, setLoading] = useState(true);
   const [childrenLocations, setChildrenLocations] = useState<any[]>([]);
   const [showHousePinModal, setShowHousePinModal] = useState(false);
@@ -23,9 +21,12 @@ export default function ParentRoutePinningWidget({ schoolId, studentId }: Parent
 
   const loadData = async () => {
     try {
+      const houseUrl = studentId
+        ? `/api/parent/house-location?student_id=${encodeURIComponent(studentId)}`
+        : '/api/parent/house-location';
       const [routesRes, houseRes] = await Promise.all([
         fetch('/api/school-admin/routes'),
-        fetch('/api/parent/house-location').catch(() => null),
+        fetch(houseUrl).catch(() => null),
       ]);
 
       const json = await routesRes.json();

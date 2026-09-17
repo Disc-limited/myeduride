@@ -46,14 +46,15 @@ function assignmentBelongsToEscort(row: any, keys: string[]): boolean {
   return candidates.some((id) => keys.includes(id));
 }
 
-/** Fast escort profile resolve — no full getEscortApplications() dump */
-async function resolveEscortProfile(supabase: any, session: any) {
+/** Fast and robust escort profile resolve matching dashboard-live */
+async function resolveEscortProfile(supabase: any, session: any, studentId?: string) {
   if (!session) return null;
 
+  // 1. Direct user_id match
   if (session.user_id) {
     const { data } = await supabase
       .from('escort_applications')
-      .select('id, user_id, email, full_name, escort_code, status, school_id, primary_school_id')
+      .select('id, user_id, email, full_name, escort_code, status, school_id, primary_school_id, phone')
       .or(`id.eq.${session.user_id},user_id.eq.${session.user_id}`)
       .order('updated_at', { ascending: false })
       .limit(1)
@@ -61,10 +62,11 @@ async function resolveEscortProfile(supabase: any, session: any) {
     if (data) return data;
   }
 
+  // 2. Direct email match
   if (session.email) {
     const { data } = await supabase
       .from('escort_applications')
-      .select('id, user_id, email, full_name, escort_code, status, school_id, primary_school_id')
+      .select('id, user_id, email, full_name, escort_code, status, school_id, primary_school_id, phone')
       .ilike('email', session.email)
       .order('updated_at', { ascending: false })
       .limit(1)
@@ -72,14 +74,110 @@ async function resolveEscortProfile(supabase: any, session: any) {
     if (data) return data;
   }
 
-  if (session.username) {
-    const { data } = await supabase
+  // 3. User profile attributes match (phone, username, email)
+  if (session.user_id) {
+    try {
+      const { data: userProf } = await supabase
+        .from('user_profiles')
+        .select('email, phone, full_name, username')
+        .eq('id', session.user_id)
+        .maybeSingle();
+
+      if (userProf) {
+        const orFilters: string[] = [];
+        if (userProf.email) orFilters.push(`email.ilike.${userProf.email}`);
+        if (userProf.username) orFilters.push(`escort_code.ilike.${userProf.username}`);
+        if (userProf.phone) {
+          const cleanPhone = userProf.phone.replace(/[^0-9]/g, '');
+          if (cleanPhone.length >= 8) orFilters.push(`phone.ilike.%${cleanPhone.slice(-8)}%`);
+        }
+        if (orFilters.length > 0) {
+          const { data: profMatches } = await supabase
+            .from('escort_applications')
+            .select('id, user_id, email, full_name, escort_code, status, school_id, primary_school_id, phone')
+            .or(orFilters.join(','))
+            .limit(5);
+          const hit = findEscortApplicationForSession(profMatches || [], session);
+          if (hit) {
+            if (session.user_id && hit.user_id !== session.user_id) {
+              try {
+                await supabase.from('escort_applications').update({ user_id: session.user_id, updated_at: nowUtcIso() }).eq('id', hit.id);
+              } catch {}
+            }
+            return hit;
+          }
+        }
+      }
+    } catch (profErr) {
+      console.warn('[pickup-verify] user_profile lookup note:', profErr);
+    }
+  }
+
+  // 4. Target student assignment lookup
+  if (studentId) {
+    try {
+      const { data: assignments } = await supabase
+        .from('escort_assignments')
+        .select('escort_application_id, status')
+        .eq('student_id', studentId)
+        .in('status', LIVE_ASSIGNMENT_STATUSES)
+        .limit(5);
+
+      const candidateAppIds = (assignments || []).map((a: any) => a.escort_application_id).filter(Boolean);
+      if (candidateAppIds.length > 0) {
+        const { data: assignedApps } = await supabase
+          .from('escort_applications')
+          .select('id, user_id, email, full_name, escort_code, status, school_id, primary_school_id, phone')
+          .in('id', candidateAppIds);
+
+        const hit = findEscortApplicationForSession(assignedApps || [], session);
+        if (hit) {
+          if (session.user_id && hit.user_id !== session.user_id) {
+            try {
+              await supabase.from('escort_applications').update({ user_id: session.user_id, updated_at: nowUtcIso() }).eq('id', hit.id);
+            } catch {}
+          }
+          return hit;
+        }
+
+        if (assignedApps && assignedApps.length === 1) {
+          const singleApp = assignedApps[0];
+          const appNameFold = (singleApp.full_name || '').toLowerCase().replace(/[^a-z0-9]/g, '');
+          const sessNameFold = (session.full_name || '').toLowerCase().replace(/[^a-z0-9]/g, '');
+          if (appNameFold && sessNameFold && (appNameFold.includes(sessNameFold) || sessNameFold.includes(appNameFold))) {
+            if (session.user_id && singleApp.user_id !== session.user_id) {
+              try {
+                await supabase.from('escort_applications').update({ user_id: session.user_id, updated_at: nowUtcIso() }).eq('id', singleApp.id);
+              } catch {}
+            }
+            return singleApp;
+          }
+        }
+      }
+    } catch (assignErr) {
+      console.warn('[pickup-verify] student assignment lookup note:', assignErr);
+    }
+  }
+
+  // 5. Comprehensive fallback matching across active applications (same as dashboard-live)
+  try {
+    const { data: allApps } = await supabase
       .from('escort_applications')
-      .select('id, user_id, email, full_name, escort_code, status, school_id, primary_school_id')
-      .or(`escort_code.ilike.${session.username},email.ilike.${session.username}@%`)
-      .limit(3);
-    const hit = findEscortApplicationForSession(data || [], session);
-    if (hit) return hit;
+      .select('id, user_id, email, full_name, escort_code, status, school_id, primary_school_id, phone')
+      .in('status', ['CITY_MANAGER_APPROVED', 'ACTIVE', 'ACTIVATED'])
+      .limit(100);
+
+    const hit = findEscortApplicationForSession(allApps || [], session);
+    if (hit) {
+      if (session.user_id && hit.user_id !== session.user_id) {
+        try {
+          await supabase.from('escort_applications').update({ user_id: session.user_id, updated_at: nowUtcIso() }).eq('id', hit.id);
+        } catch {}
+      }
+      return hit;
+    }
+  } catch (err) {
+    console.warn('[pickup-verify] fallback escort lookup error:', err);
   }
 
   return null;
@@ -226,8 +324,12 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Unauthorized escort session' }, { status: 401 });
     }
 
+    const body = await request.json().catch(() => ({}));
+    const { school_id, action = 'morning_pickup', pin_code, scan_data, student_id_number } = body || {};
+    let student_id = body?.student_id as string | undefined;
+
     const supabase = getAdminClient();
-    const escortProfile = await resolveEscortProfile(supabase, session);
+    const escortProfile = await resolveEscortProfile(supabase, session, student_id);
     if (!escortProfile) {
       return NextResponse.json(
         { error: 'No escort profile linked to this login. Contact City Manager.' },
@@ -239,9 +341,6 @@ export async function POST(request: NextRequest) {
     const escortName =
       escortProfile.full_name || escortProfile.fullName || session.full_name || 'Assigned Escort';
 
-    const body = await request.json();
-    const { school_id, action = 'morning_pickup', pin_code, scan_data, student_id_number } = body || {};
-    let student_id = body?.student_id as string | undefined;
     const enteredPin = normalizePin(pin_code);
     const escortIdentifiers = escortScheduleKeys(escortProfile, session);
     if (escortIdentifiers.length === 0) {

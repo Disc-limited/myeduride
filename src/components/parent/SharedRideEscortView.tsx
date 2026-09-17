@@ -49,7 +49,7 @@ export default function SharedRideEscortView({
   const [showFullRouteModal, setShowFullRouteModal] = useState(false);
 
   // Address edit state
-  const [pinnedAddress, setPinnedAddress] = useState('23, Silver Estate Road, Idimu, Lagos');
+  const [pinnedAddress, setPinnedAddress] = useState('');
   const [isEditingAddress, setIsEditingAddress] = useState(false);
 
   useEffect(() => {
@@ -63,7 +63,11 @@ export default function SharedRideEscortView({
       if (current && childrenList.some((c) => c.id === current)) return current;
       return childrenList[0].id;
     });
-  }, [childrenList]);
+    const target = childrenList.find((c) => c.id === selectedStudentId) || childrenList[0];
+    if (target) {
+      setPinnedAddress(target.house_address || target.custom_fields?.address || '');
+    }
+  }, [childrenList, selectedStudentId]);
 
   const fetchParentWallet = async () => {
     try {

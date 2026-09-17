@@ -620,12 +620,33 @@ export async function GET(request: NextRequest) {
 
       const discountInfo = extractDiscountInfo(st.id);
 
+      const matchBooking = liveBookings.find(
+        (b) => b.student_id === st.id || b.student?.id === st.id || b.id === matchAssignment?.booking_id
+      );
+
+      let tripType = 'both';
+      if (matchBooking?.notes) {
+        try {
+          const pb = typeof matchBooking.notes === 'string' ? JSON.parse(matchBooking.notes) : matchBooking.notes;
+          if (pb?.trip_type) tripType = pb.trip_type;
+        } catch {}
+      }
+      if (matchAssignment?.notes && tripType === 'both') {
+        try {
+          const pa = typeof matchAssignment.notes === 'string' ? JSON.parse(matchAssignment.notes) : matchAssignment.notes;
+          if (pa?.trip_type) tripType = pa.trip_type;
+        } catch {}
+      }
+
+      const resolvedHouseAddr = st.house_address || (st.custom_fields?.address ? String(st.custom_fields.address) : null) || st.pickup_address || null;
+
       return {
         id: st.id,
         name: st.name || `${st.first_name || ''} ${st.last_name || ''}`.trim() || 'Assigned Student',
         student_id_number: st.student_id_number || null,
         class_name: cls,
         photo_url: st.photo_url || null,
+        trip_type: tripType,
         school_id: matchAssignment?.school_id || st.school_id || rowSchool?.id || null,
         school_name: assignedSchoolName,
         school_lat: schoolLat,
@@ -644,12 +665,12 @@ export async function GET(request: NextRequest) {
         discount_amount: discountInfo?.variance || null,
         accountant_ref: discountInfo?.accountantApprovalRef || null,
         discount_note: discountInfo ? (discountInfo.discountReason || `Accountant Approved Concession (Ref: ${discountInfo.accountantApprovalRef || 'ACC'})`) : null,
-        pickup_address: st.house_address || st.pickup_address || null,
-        house_address: st.house_address || null,
+        pickup_address: resolvedHouseAddr,
+        house_address: resolvedHouseAddr,
         house_lat: houseLat,
         house_lng: houseLng,
-        house_landmark: st.house_landmark || null,
-        house_notes: st.house_notes || null,
+        house_landmark: st.house_landmark || st.custom_fields?.landmark || null,
+        house_notes: st.house_notes || st.custom_fields?.notes || null,
         house_pinned_at: st.house_pinned_at || null,
         is_house_pinned: hasHousePin,
         distance_km: distanceKm,
@@ -673,10 +694,10 @@ export async function GET(request: NextRequest) {
     });
 
     // Compute Today's Total Earnings Summary for Escort
-    const totalDailyEarnings = studentManifest.reduce((acc, s) => acc + (s.city_manager_approved && s.daily_fare ? s.daily_fare : 0), 0);
-    const morningProjected = studentManifest.reduce((acc, s) => acc + (s.city_manager_approved && s.morning_fare ? s.morning_fare : 0), 0);
-    const afternoonProjected = studentManifest.reduce((acc, s) => acc + (s.city_manager_approved && s.afternoon_fare ? s.afternoon_fare : 0), 0);
     const approvedStudentsCount = studentManifest.filter((s) => s.city_manager_approved).length;
+    const totalDailyEarnings = studentManifest.reduce((acc, s) => acc + (s.city_manager_approved && s.daily_fare ? s.daily_fare : 0), 0);
+    const morningProjected = studentManifest.reduce((acc, s) => acc + (s.city_manager_approved && s.trip_type !== 'afternoon_only' && s.morning_fare ? s.morning_fare : 0), 0);
+    const afternoonProjected = studentManifest.reduce((acc, s) => acc + (s.city_manager_approved && s.trip_type !== 'morning_only' && s.afternoon_fare ? s.afternoon_fare : 0), 0);
 
     const earningsSummary = isSchoolEscort
       ? {
@@ -705,26 +726,30 @@ export async function GET(request: NextRequest) {
         };
 
     const operationalManifest = studentManifest.filter((s) => s.city_manager_approved);
-    const morningStudents = operationalManifest.map((s) => ({
-      ...s,
-      status: s.morning_status === 'DROPPED_OFF_AT_SCHOOL' ? 'DROPPED_OFF' : (s.morning_status === 'PICKED_UP_FROM_HOME' ? 'ON_BOARD' : 'SCHEDULED'),
-      picked: s.morning_status === 'PICKED_UP_FROM_HOME' || s.morning_status === 'DROPPED_OFF_AT_SCHOOL',
-      dropped: s.morning_status === 'DROPPED_OFF_AT_SCHOOL',
-      address: s.house_address || s.pickup_address,
-      time: s.pickup_time,
-      avatar: s.photo_url,
-      distance: s.distance_km != null ? `${s.distance_km} km` : null,
-    }));
+    const morningStudents = operationalManifest
+      .filter((s) => s.trip_type !== 'afternoon_only')
+      .map((s) => ({
+        ...s,
+        status: s.morning_status === 'DROPPED_OFF_AT_SCHOOL' ? 'DROPPED_OFF' : (s.morning_status === 'PICKED_UP_FROM_HOME' ? 'ON_BOARD' : 'SCHEDULED'),
+        picked: s.morning_status === 'PICKED_UP_FROM_HOME' || s.morning_status === 'DROPPED_OFF_AT_SCHOOL',
+        dropped: s.morning_status === 'DROPPED_OFF_AT_SCHOOL',
+        address: s.house_address || s.pickup_address,
+        time: s.pickup_time,
+        avatar: s.photo_url,
+        distance: s.distance_km != null ? `${s.distance_km} km` : null,
+      }));
 
-    const afternoonStudents = operationalManifest.map((s) => ({
-      ...s,
-      status: s.afternoon_status === 'SAFE_AT_HOME' ? 'DROPPED_OFF' : (s.afternoon_status === 'PICKED_UP_FROM_GATE' ? 'ON_BOARD' : 'SCHEDULED'),
-      picked: s.afternoon_status === 'PICKED_UP_FROM_GATE' || s.afternoon_status === 'SAFE_AT_HOME',
-      dropped: s.afternoon_status === 'SAFE_AT_HOME',
-      note: s.school_name ? `Pick from ${s.school_name} Gate` : 'Pick from school gate',
-      address: s.house_address || s.pickup_address,
-      avatar: s.photo_url,
-    }));
+    const afternoonStudents = operationalManifest
+      .filter((s) => s.trip_type !== 'morning_only')
+      .map((s) => ({
+        ...s,
+        status: s.afternoon_status === 'SAFE_AT_HOME' ? 'DROPPED_OFF' : (s.afternoon_status === 'PICKED_UP_FROM_GATE' ? 'ON_BOARD' : 'SCHEDULED'),
+        picked: s.afternoon_status === 'PICKED_UP_FROM_GATE' || s.afternoon_status === 'SAFE_AT_HOME',
+        dropped: s.afternoon_status === 'SAFE_AT_HOME',
+        note: s.school_name ? `Pick from ${s.school_name} Gate` : 'Pick from school gate',
+        address: s.house_address || s.pickup_address,
+        avatar: s.photo_url,
+      }));
 
     // 6. Fetch Emergency Deputising Dispatches
     let activeEmergencyDispatches: any[] = [];

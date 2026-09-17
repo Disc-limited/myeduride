@@ -144,6 +144,7 @@ export default function SchoolEscortView({
       toast.loading(`Boarding ${name}...`);
       const res = await fetch('/api/escorts/pickup-verify', {
         method: 'POST',
+        credentials: 'include',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           action: tripType === 'afternoon' ? 'afternoon_dropoff' : 'morning_pickup',

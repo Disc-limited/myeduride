@@ -77,6 +77,13 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Could not assign a class. Create classes first.' }, { status: 400 });
     }
 
+    const initialAddress = (custom_fields?.address || (request as any).house_address || '').trim() || null;
+    const rawLat = custom_fields?.house_lat ?? (request as any).house_lat;
+    const rawLng = custom_fields?.house_lng ?? (request as any).house_lng;
+    const initialLat = rawLat != null && !isNaN(Number(rawLat)) ? Number(rawLat) : null;
+    const initialLng = rawLng != null && !isNaN(Number(rawLng)) ? Number(rawLng) : null;
+    const initialLandmark = (custom_fields?.landmark || (request as any).house_landmark || '').trim() || null;
+
     const { data, error } = await supabase.from('students').insert({
       school_id,
       class_id: finalClassId,
@@ -87,6 +94,11 @@ export async function POST(request: NextRequest) {
       photo_url: photoUrl,
       face_descriptor: face_descriptor || null,
       custom_fields: custom_fields || {},
+      house_address: initialAddress,
+      house_lat: initialLat,
+      house_lng: initialLng,
+      house_landmark: initialLandmark,
+      house_pinned_at: initialLat && initialLng ? nowUtcIso() : null,
       is_active: true,
       created_at: nowUtcIso(),
       updated_at: nowUtcIso(),

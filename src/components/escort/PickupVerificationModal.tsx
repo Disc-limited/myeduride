@@ -64,6 +64,7 @@ export default function PickupVerificationModal({
     try {
       const res = await fetch('/api/escorts/pickup-verify', {
         method: 'POST',
+        credentials: 'include',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           student_id: studentId || undefined,

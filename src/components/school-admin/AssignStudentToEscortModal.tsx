@@ -22,6 +22,7 @@ import {
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { calculateEscortFare } from '@/lib/escort/escort-pricing';
+import InteractiveLocationPickerModal from '@/components/shared/InteractiveLocationPickerModal';
 
 interface AssignStudentToEscortModalProps {
   isOpen: boolean;
@@ -54,6 +55,7 @@ export default function AssignStudentToEscortModal({
   const [schoolEscorts, setSchoolEscorts] = useState<any[]>([]);
   const [myedurideEscorts, setMyedurideEscorts] = useState<any[]>([]);
   const [schoolInfo, setSchoolInfo] = useState<any>(null);
+  const [pinningStudent, setPinningStudent] = useState<any>(null);
 
   // Trip details
   const [tripType, setTripType] = useState<'two_way' | 'morning_only' | 'afternoon_only'>('two_way');
@@ -108,20 +110,15 @@ export default function AssignStudentToEscortModal({
     });
   }, [defaultStudentId]);
 
-  // Load data on open
-  useEffect(() => {
-    if (!isOpen) return;
-
-    let isMounted = true;
+  // Load data function
+  const loadAssignmentData = () => {
     setLoading(true);
-
     fetch('/api/school-admin/escort/assign-student')
       .then((res) => {
         if (!res.ok) throw new Error('Failed to load assignment data');
         return res.json();
       })
       .then((data) => {
-        if (!isMounted) return;
         if (data.success) {
           const pinned = data.pinned_students || [];
           setPinnedStudents(pinned);
@@ -153,12 +150,14 @@ export default function AssignStudentToEscortModal({
         toast.error('Failed to load students and escorts roster.');
       })
       .finally(() => {
-        if (isMounted) setLoading(false);
+        setLoading(false);
       });
+  };
 
-    return () => {
-      isMounted = false;
-    };
+  // Load data on open
+  useEffect(() => {
+    if (!isOpen) return;
+    loadAssignmentData();
   }, [isOpen]);
 
   // When escortType toggles, ensure selectedEscortId updates to an escort of that type
@@ -539,14 +538,39 @@ export default function AssignStudentToEscortModal({
                 </div>
               )}
 
-              {/* UNPINNED NOTICE (IF ANY) */}
+              {/* UNPINNED STUDENTS & DIRECT PIN ACTION */}
               {unpinnedStudents.length > 0 && (
-                <div className="px-3 py-2 rounded-xl bg-amber-50/60 border border-amber-200/60 text-[11px] text-amber-800 flex items-center justify-between">
-                  <span className="flex items-center gap-1.5">
-                    <Info size={14} className="text-amber-600 shrink-0" />
-                    <span>{unpinnedStudents.length} student(s) currently awaiting parent address pinning.</span>
-                  </span>
-                  <span className="text-[10px] font-bold text-amber-900 underline">Parent Reminder Ready</span>
+                <div className="p-3 rounded-2xl bg-amber-50/80 border border-amber-200/80 space-y-2">
+                  <div className="flex items-center justify-between text-[11px] text-amber-900 font-bold">
+                    <span className="flex items-center gap-1.5">
+                      <Info size={14} className="text-amber-600 shrink-0" />
+                      <span>{unpinnedStudents.length} student(s) with unpinned house coordinates:</span>
+                    </span>
+                    <span className="text-[10px] text-amber-700 font-medium">Pin below to make eligible</span>
+                  </div>
+                  <div className="max-h-36 overflow-y-auto space-y-1.5">
+                    {unpinnedStudents.map((s) => (
+                      <div
+                        key={s.id}
+                        className="p-2 rounded-xl bg-white border border-amber-200/90 flex items-center justify-between gap-2 text-xs shadow-2xs"
+                      >
+                        <div className="min-w-0 flex-1">
+                          <strong className="block text-slate-900 truncate">{s.name}</strong>
+                          <span className="block text-[10px] text-slate-500 truncate">
+                            {s.house_address || 'No address typed yet'}
+                          </span>
+                        </div>
+                        <button
+                          type="button"
+                          onClick={() => setPinningStudent(s)}
+                          className="px-2.5 py-1 rounded-lg bg-teal-700 hover:bg-teal-800 text-white font-bold text-[10px] flex items-center gap-1 shrink-0 cursor-pointer shadow-xs transition-all"
+                        >
+                          <MapPin size={11} />
+                          <span>Pin Address</span>
+                        </button>
+                      </div>
+                    ))}
+                  </div>
                 </div>
               )}
             </div>
@@ -690,6 +714,31 @@ export default function AssignStudentToEscortModal({
           </form>
         )}
       </div>
+
+      {/* Interactive House Location Pinning Modal for Admin Pinning */}
+      <InteractiveLocationPickerModal
+        isOpen={Boolean(pinningStudent)}
+        onClose={() => setPinningStudent(null)}
+        mode="parent"
+        child={
+          pinningStudent
+            ? {
+                id: pinningStudent.id,
+                name: pinningStudent.name,
+                class_name: pinningStudent.class_name,
+              }
+            : null
+        }
+        initialAddress={pinningStudent?.house_address}
+        initialLat={pinningStudent?.house_lat}
+        initialLng={pinningStudent?.house_lng}
+        initialLandmark={pinningStudent?.house_landmark}
+        initialNotes={pinningStudent?.house_notes}
+        onLocationSaved={() => {
+          loadAssignmentData();
+          setPinningStudent(null);
+        }}
+      />
     </div>
   );
 }

@@ -67,6 +67,7 @@ export async function GET(request: NextRequest) {
         house_landmark,
         house_notes,
         house_pinned_at,
+        custom_fields,
         class:school_classes(id, name)
       `)
       .eq('school_id', primarySchoolId)
@@ -75,19 +76,21 @@ export async function GET(request: NextRequest) {
 
     if (stuErr) throw stuErr;
 
-    const formattedStudents = (studentsData || []).map((s) => {
+    const formattedStudents = (studentsData || []).map((s: any) => {
       const cls = Array.isArray(s.class) ? s.class[0] : s.class;
+      const resolvedAddress = (s.house_address && s.house_address.trim()) || (s.custom_fields?.address && String(s.custom_fields.address).trim()) || '';
+      const rawLat = s.house_lat != null && !isNaN(Number(s.house_lat)) ? Number(s.house_lat) : (s.custom_fields?.house_lat != null && !isNaN(Number(s.custom_fields.house_lat)) ? Number(s.custom_fields.house_lat) : null);
+      const rawLng = s.house_lng != null && !isNaN(Number(s.house_lng)) ? Number(s.house_lng) : (s.custom_fields?.house_lng != null && !isNaN(Number(s.custom_fields.house_lng)) ? Number(s.custom_fields.house_lng) : null);
+
       const isPinned =
-        s.house_lat != null &&
-        s.house_lng != null &&
-        !isNaN(Number(s.house_lat)) &&
-        !isNaN(Number(s.house_lng)) &&
-        Boolean(s.house_address && s.house_address.trim());
+        rawLat != null &&
+        rawLng != null &&
+        Boolean(resolvedAddress);
 
       const distance = isPinned
         ? calculateSchoolToHomeDistance(
             { gps_lat: school?.gps_lat, gps_lng: school?.gps_lng, address: school?.address },
-            { house_lat: s.house_lat, house_lng: s.house_lng, house_address: s.house_address }
+            { house_lat: rawLat, house_lng: rawLng, house_address: resolvedAddress }
           )
         : null;
 
@@ -99,11 +102,11 @@ export async function GET(request: NextRequest) {
         student_id_number: s.student_id_number || '',
         photo_url: s.photo_url || null,
         class_name: cls?.name || 'Class N/A',
-        house_address: s.house_address || '',
-        house_lat: isPinned ? Number(s.house_lat) : null,
-        house_lng: isPinned ? Number(s.house_lng) : null,
-        house_landmark: s.house_landmark || '',
-        house_notes: s.house_notes || '',
+        house_address: resolvedAddress,
+        house_lat: isPinned ? rawLat : null,
+        house_lng: isPinned ? rawLng : null,
+        house_landmark: s.house_landmark || s.custom_fields?.landmark || '',
+        house_notes: s.house_notes || s.custom_fields?.notes || '',
         house_pinned_at: s.house_pinned_at || null,
         is_house_pinned: isPinned,
         estimated_distance_km: distance?.distanceKm ?? null,

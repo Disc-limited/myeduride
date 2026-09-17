@@ -272,7 +272,7 @@ export default function SchoolEscortView({
           <div className="space-y-1 min-w-0 pr-1">
             <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">Picking Up From</span>
             <strong className="text-sm font-extrabold text-slate-900 truncate block">
-              {escortData?.pinned_address ? 'Pinned Address' : primaryChild ? `${primaryChild.first_name}'s Home` : 'Pinned Address'}
+              {primaryChild?.house_address || escortData?.pinned_address || (primaryChild?.house_lat ? `${primaryChild.first_name}'s Home` : 'Doorstep Unpinned')}
             </strong>
             <span className="text-[10px] text-purple-600 font-bold block">Tap to view on map</span>
           </div>

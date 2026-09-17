@@ -5,6 +5,7 @@ import { useEffect, useState } from 'react';
 import { ClipboardList, RefreshCw, Search, UserPlus, Sparkles, CheckCircle2, ShieldCheck, Clock, MapPin, Phone, Car, Users, ArrowRightLeft, Footprints, AlertTriangle, Zap, CheckCheck, Info, ChevronLeft, ChevronRight, Pencil } from 'lucide-react';
 import { toast } from 'sonner';
 import StudentAvatar from '@/components/shared/StudentAvatar';
+import InteractiveLocationPickerModal from '@/components/shared/InteractiveLocationPickerModal';
 
 type Operations = {
   schools: any[];
@@ -35,7 +36,9 @@ const BOOKING_PAGE_SIZE = 5;
 export function CityManagerOperationsPanel() {
   const [data, setData] = useState<Operations>(empty);
   const [loading, setLoading] = useState(true);
-  const [search, setSearch] = useState('');
+  const [filter, setFilter] = useState('');
+  const [activeTab, setActiveTab] = useState<'all' | 'requests' | 'active' | 'cleared' | 'deputising' | 'walk_home'>('all');
+  const [pinningRequest, setPinningRequest] = useState<any>(null);
   const [selectedStudent, setSelectedStudent] = useState<any>(null);
   const [booking, setBooking] = useState<any>({ source: 'parent', schoolId: '', pickupAddress: '', pickupAt: '', notes: '' });
   const [dispatch, setDispatch] = useState<any>({ bookingId: '', escortApplicationId: '', schoolId: '', studentId: '', assignmentType: 'standard', notes: '' });
@@ -761,9 +764,15 @@ export function CityManagerOperationsPanel() {
                       📍 Pinned ({Number(req.house_lat ?? req.lat).toFixed(4)}, {Number(req.house_lng ?? req.lng).toFixed(4)})
                     </span>
                   ) : (
-                    <span className="px-2 py-0.5 rounded-md text-[10px] font-bold bg-amber-500/20 text-amber-300 border border-amber-500/30">
-                      📍 Address Not Pinned
-                    </span>
+                    <button
+                      type="button"
+                      onClick={() => setPinningRequest(req)}
+                      className="px-2 py-0.5 rounded-md text-[10px] font-bold bg-amber-500/20 hover:bg-amber-500/30 text-amber-300 border border-amber-500/40 flex items-center gap-1 cursor-pointer transition-all"
+                      title="Click to drop doorstep pin on map"
+                    >
+                      <span>📍 Address Not Pinned</span>
+                      <span className="underline text-amber-200">Pin Now</span>
+                    </button>
                   )}
                 </div>
                 <p className="text-sm font-black text-white break-words">{req.child_name}</p>
@@ -1732,6 +1741,30 @@ export function CityManagerOperationsPanel() {
           </div>
         </div>
       )}
+
+      {/* Interactive House Location Pinning Modal for City Manager */}
+      <InteractiveLocationPickerModal
+        isOpen={Boolean(pinningRequest)}
+        onClose={() => setPinningRequest(null)}
+        mode="parent"
+        child={
+          pinningRequest
+            ? {
+                id: pinningRequest.student_id,
+                name: pinningRequest.child_name,
+                class_name: pinningRequest.class_name,
+              }
+            : null
+        }
+        initialAddress={pinningRequest?.pickup_location || pinningRequest?.house_address}
+        initialLat={pinningRequest?.house_lat ?? pinningRequest?.lat}
+        initialLng={pinningRequest?.house_lng ?? pinningRequest?.lng}
+        initialLandmark={pinningRequest?.landmark}
+        onLocationSaved={() => {
+          fetchData();
+          setPinningRequest(null);
+        }}
+      />
     </div>
   );
 }
