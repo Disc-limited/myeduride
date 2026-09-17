@@ -11,6 +11,13 @@ import EscortBatchReceptionModal from '@/components/gate/EscortBatchReceptionMod
 import ParentReceptionModal from '@/components/gate/ParentReceptionModal';
 import { applyScanHints, isActionBlocked } from '@/lib/gate/scan-hints-client';
 import { triggerHapticNotification } from '@/lib/platform/haptics';
+import {
+  cameraVideoConstraints,
+  createBarcodeDetector,
+  decodeScanFromVideo,
+  type BarcodeDetectorLike,
+  type JsQRFn,
+} from '@/lib/gate/decode-scan-frame';
 
 function splitName(fullName) {
   const parts = (fullName || '').trim().split(/\s+/).filter(Boolean);
@@ -62,6 +69,8 @@ export default function StudentIdScanPanel({
   const streamRef = useRef(null);
   const scanIntervalRef = useRef(null);
   const jsQRRef = useRef(null);
+  const detectorRef = useRef(null);
+  const canvasRef = useRef(null);
   const lastScannedRef = useRef(new Map());
 
   useEffect(() => {
@@ -70,6 +79,7 @@ export default function StudentIdScanPanel({
         jsQRRef.current = m.default;
       })
       .catch((err) => console.error('[StudentIdScanPanel] Failed to load jsqr:', err));
+    detectorRef.current = createBarcodeDetector();
   }, []);
 
   const stopCamera = () => {
@@ -100,14 +110,14 @@ export default function StudentIdScanPanel({
 
     try {
       stream = await navigator.mediaDevices.getUserMedia({
-        video: { facingMode: facing },
+        video: cameraVideoConstraints(facing),
         audio: false,
       });
     } catch {
       try {
         const altFacing = facing === 'environment' ? 'user' : 'environment';
         stream = await navigator.mediaDevices.getUserMedia({
-          video: { facingMode: altFacing },
+          video: cameraVideoConstraints(altFacing),
           audio: false,
         });
         setFacingMode(altFacing);
@@ -156,44 +166,33 @@ export default function StudentIdScanPanel({
 
   const startQrScanning = () => {
     if (scanIntervalRef.current) clearInterval(scanIntervalRef.current);
+    if (!canvasRef.current) canvasRef.current = document.createElement('canvas');
     scanIntervalRef.current = setInterval(async () => {
       if (!videoRef.current || saving || scanning || (scanned && !autoConfirm)) return;
-      const vw = videoRef.current.videoWidth;
-      const vh = videoRef.current.videoHeight;
-      if (!vw || !vh) return;
-      // Downscale for faster jsQR decode (keeps scan snappy on mobile)
-      const maxW = 480;
-      const scale = vw > maxW ? maxW / vw : 1;
-      const cw = Math.max(1, Math.round(vw * scale));
-      const ch = Math.max(1, Math.round(vh * scale));
-      const canvas = document.createElement('canvas');
-      canvas.width = cw;
-      canvas.height = ch;
-      const ctx = canvas.getContext('2d', { willReadFrequently: true } as any);
-      if (!ctx) return;
-      ctx.drawImage(videoRef.current, 0, 0, cw, ch);
-      const imageData = ctx.getImageData(0, 0, cw, ch);
       try {
-        if (!jsQRRef.current) return;
-        const code = jsQRRef.current(imageData.data, imageData.width, imageData.height);
-        if (code?.data) {
+        const code = await decodeScanFromVideo(videoRef.current, {
+          jsQR: jsQRRef.current,
+          detector: detectorRef.current,
+          canvas: canvasRef.current || undefined,
+        });
+        if (code) {
           const lastScanned = lastScannedRef.current;
           const now = Date.now();
-          if (lastScanned.has(code.data) && now - lastScanned.get(code.data) < 2000) {
+          if (lastScanned.has(code) && now - lastScanned.get(code) < 2000) {
             return;
           }
-          lastScanned.set(code.data, now);
+          lastScanned.set(code, now);
 
           if (!autoConfirm) {
             clearInterval(scanIntervalRef.current);
             scanIntervalRef.current = null;
           }
-          await lookupScan(code.data);
+          await lookupScan(code);
         }
       } catch {
         /* skip */
       }
-    }, 220);
+    }, 200);
   };
 
   useEffect(() => {

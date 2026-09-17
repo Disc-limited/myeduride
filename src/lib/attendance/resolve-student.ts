@@ -58,14 +58,43 @@ async function lookupActiveStudent(
     query = query.eq('school_id', opts.schoolId);
   }
 
-  const { data: rows } = await query;
+  let { data: rows } = await query;
+
+  // Case-insensitive fallback if exact match query returns empty
+  if (!rows?.length) {
+    const ilikeParts: string[] = [];
+    for (const value of candidates) {
+      const clean = value.replace(/[%,]/g, '').trim();
+      if (clean.length >= 3) {
+        ilikeParts.push(`student_id_number.ilike.${clean}`);
+        ilikeParts.push(`qr_code_data.ilike.%${clean}%`);
+      }
+    }
+    if (ilikeParts.length > 0) {
+      let fallbackQuery = supabase
+        .from('students')
+        .select('id, school_id, qr_code_data, student_id_number')
+        .eq('is_active', true)
+        .or(ilikeParts.join(','))
+        .limit(5);
+
+      if (opts?.schoolId) {
+        fallbackQuery = fallbackQuery.eq('school_id', opts.schoolId);
+      }
+      const fallbackResult = await fallbackQuery;
+      rows = fallbackResult.data || null;
+    }
+  }
+
   if (!rows?.length) return null;
 
   // Prefer exact candidate order (first scanLookupValues wins)
   for (const value of candidates) {
+    const valLower = value.toLowerCase();
     const hit = rows.find(
       (r: any) =>
-        String(r.qr_code_data || '') === value || String(r.student_id_number || '') === value
+        String(r.qr_code_data || '').toLowerCase() === valLower ||
+        String(r.student_id_number || '').toLowerCase() === valLower
     );
     if (!hit?.id) continue;
     if (allowed && !allowed.has(String(hit.id))) return null;

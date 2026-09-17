@@ -31,7 +31,7 @@ export async function POST(request: NextRequest) {
 
     const { data: school, error: schoolErr } = await supabase
       .from('schools')
-      .select('name, address, logo_url, principal_signature_url, primary_color')
+      .select('name, address, location_address, location_landmark, logo_url, principal_signature_url, primary_color')
       .eq('id', school_id)
       .single();
 
@@ -45,6 +45,8 @@ export async function POST(request: NextRequest) {
     const branding: SchoolBranding = {
       name: school.name,
       address: school.address,
+      locationAddress: school.location_address,
+      locationLandmark: school.location_landmark,
       logoUrl: logoDataUrl || school.logo_url,
       signatureUrl: signatureDataUrl || school.principal_signature_url,
       primaryColor: primary_color || school.primary_color || '#0D4A71',

@@ -23,6 +23,8 @@ import {
   FileBadge2,
   Image as ImageIcon,
 } from 'lucide-react';
+import { photoSrc } from '@/lib/photo';
+import QRCode from 'qrcode';
 import { toast } from 'sonner';
 
 const STAFF_ACCESS_ROLES = ['staff', 'teacher', 'gate_officer', 'school_admin'];
@@ -66,6 +68,24 @@ export default function SuperAdminIdCardsPage() {
 
   // Live Card Preview Modal
   const [previewPerson, setPreviewPerson] = useState<any | null>(null);
+  const [previewSide, setPreviewSide] = useState<'front' | 'back'>('front');
+  const [previewQrDataUrl, setPreviewQrDataUrl] = useState<string>('');
+
+  useEffect(() => {
+    if (previewPerson?.qrData) {
+      QRCode.toDataURL(previewPerson.qrData, {
+        width: 384,
+        margin: 1,
+        errorCorrectionLevel: 'M',
+        color: { dark: '#000000', light: '#ffffff' },
+      })
+        .then((url) => setPreviewQrDataUrl(url))
+        .catch(() => setPreviewQrDataUrl(''));
+    } else {
+      setPreviewQrDataUrl('');
+    }
+    setPreviewSide('front');
+  }, [previewPerson]);
 
   useEffect(() => {
     loadData();
@@ -493,8 +513,10 @@ export default function SuperAdminIdCardsPage() {
                       fullName: `${student.first_name} ${student.last_name}`,
                       idNumber: student.student_id_number,
                       schoolName: student.school?.name,
-                      schoolAddress: student.school?.address,
+                      schoolAddress: student.school?.location_address || student.school?.address || 'Main Campus Gate',
+                      schoolLandmark: student.school?.location_landmark,
                       logoUrl: student.school?.logo_url,
+                      signatureUrl: student.school?.principal_signature_url,
                       photoUrl: student.photo_url,
                       className: student.class?.name || 'Class Assigned',
                       qrData: student.qr_code_data || `MYEDURIDE:${student.student_id_number}`,
@@ -565,8 +587,10 @@ export default function SuperAdminIdCardsPage() {
                       idNumber: member.staff?.staff_id_number || 'STAFF-1001',
                       roleLabel: member.job_title || member.role.replace('_', ' ').toUpperCase(),
                       schoolName: member.school?.name,
-                      schoolAddress: member.school?.address,
+                      schoolAddress: member.school?.location_address || member.school?.address || 'Main Campus Gate',
+                      schoolLandmark: member.school?.location_landmark,
                       logoUrl: member.school?.logo_url,
+                      signatureUrl: member.school?.principal_signature_url,
                       photoUrl: member.staff?.photo_url,
                       qrData: member.staff?.qr_code_data || `MYEDURIDE:STAFF:${member.staff?.staff_id_number || '1001'}`,
                     });
@@ -593,12 +617,15 @@ export default function SuperAdminIdCardsPage() {
       {/* LIVE HIGH-DEFINITION ID CARD PREVIEW MODAL */}
       {previewPerson && (
         <div className="fixed inset-0 z-50 bg-slate-950/80 backdrop-blur-md flex items-center justify-center p-4">
-          <div className="bg-slate-900 border border-slate-800 rounded-3xl p-6 max-w-lg w-full shadow-2xl space-y-5 animate-in fade-in zoom-in-95 relative">
+          <div className="bg-slate-900 border border-slate-800 rounded-3xl p-6 max-w-xl w-full shadow-2xl space-y-5 animate-in fade-in zoom-in-95 relative">
             
             <div className="flex items-center justify-between border-b border-slate-800 pb-3">
               <div className="flex items-center gap-2">
                 <Sparkles className="w-5 h-5 text-emerald-400" />
-                <h3 className="text-lg font-bold text-white">Digital Brand ID Card Preview</h3>
+                <div>
+                  <h3 className="text-lg font-bold text-white">Digital Brand ID Card Studio</h3>
+                  <p className="text-[11px] text-slate-400">Live Scannable QR & Physical Print Layout</p>
+                </div>
               </div>
               <button
                 type="button"
@@ -609,85 +636,207 @@ export default function SuperAdminIdCardsPage() {
               </button>
             </div>
 
-            {/* Front Card Live Canvas Container */}
-            <div className="space-y-2">
-              <span className="text-xs font-bold text-slate-400 uppercase tracking-wider">Front Card Layout</span>
-              
-              <div
-                className="w-full aspect-[85.6/54] rounded-2xl p-4 flex flex-col justify-between relative overflow-hidden shadow-2xl border border-white/20 text-white"
-                style={{ backgroundColor: primaryColor }}
-              >
-                {/* Header Banner */}
-                <div className="flex items-center justify-between border-b border-white/20 pb-2">
-                  <div>
-                    <h4 className="text-sm sm:text-base font-extrabold uppercase tracking-tight">
-                      {previewPerson.schoolName || 'MYEDURIDE SCHOOL'}
-                    </h4>
-                    <p className="text-[10px] text-white/80">{previewPerson.schoolAddress || 'Student Safety Platform'}</p>
-                  </div>
-                  <span className="text-[10px] font-extrabold bg-white text-slate-900 px-2 py-0.5 rounded-full uppercase">
-                    {previewPerson.kind === 'staff' ? 'STAFF ID' : 'STUDENT ID'}
-                  </span>
-                </div>
-
-                {/* Card Content Row */}
-                <div className="flex items-center gap-4 py-2">
-                  
-                  {/* Photo Avatar Box with Customized Photo Backdrop */}
-                  <div
-                    className="w-20 h-24 rounded-xl border-2 border-white/80 overflow-hidden flex items-center justify-center shrink-0 shadow-md relative"
-                    style={{ backgroundColor: activePhotoBgHex }}
-                  >
-                    <StudentAvatar
-                      photoUrl={previewPerson.photoUrl}
-                      firstName={previewPerson.fullName.split(' ')[0]}
-                      lastName={previewPerson.fullName.split(' ').slice(1).join(' ')}
-                      size="lg"
-                    />
-                  </div>
-
-                  {/* Student/Staff Details */}
-                  <div className="flex-1 space-y-1 text-xs">
-                    <div>
-                      <span className="text-[9px] uppercase tracking-wider text-white/70 font-bold block">Full Name</span>
-                      <strong className="text-sm font-extrabold block text-white">{previewPerson.fullName}</strong>
-                    </div>
-                    <div>
-                      <span className="text-[9px] uppercase tracking-wider text-white/70 font-bold block">ID Number</span>
-                      <span className="text-xs font-mono font-extrabold text-emerald-300">{previewPerson.idNumber}</span>
-                    </div>
-                    {previewPerson.kind === 'student' ? (
-                      <div>
-                        <span className="text-[9px] uppercase tracking-wider text-white/70 font-bold block">Class</span>
-                        <span className="text-xs font-semibold">{previewPerson.className}</span>
-                      </div>
-                    ) : (
-                      <div>
-                        <span className="text-[9px] uppercase tracking-wider text-white/70 font-bold block">Role</span>
-                        <span className="text-xs font-semibold">{previewPerson.roleLabel}</span>
-                      </div>
-                    )}
-                  </div>
-
-                  {/* QR Code Indicator */}
-                  <div className="w-14 h-14 bg-white p-1 rounded-xl flex items-center justify-center shrink-0 shadow-md">
-                    <QrCode className="w-full h-full text-slate-900" />
-                  </div>
-                </div>
-
-                {/* Card Footer Verification Bar */}
-                <div className="flex items-center justify-between border-t border-white/20 pt-1 text-[10px] text-white/80 font-mono">
-                  <span>DISCL Gate Verified</span>
-                  <span>MyEduRide Protection</span>
-                </div>
+            {/* Side Switcher Tabs */}
+            <div className="flex items-center justify-between">
+              <div className="flex bg-slate-950 p-1 rounded-xl border border-slate-800 gap-1">
+                <button
+                  type="button"
+                  onClick={() => setPreviewSide('front')}
+                  className={`px-4 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer ${
+                    previewSide === 'front'
+                      ? 'bg-emerald-600 text-white shadow-xs'
+                      : 'text-slate-400 hover:text-white'
+                  }`}
+                >
+                  Front Card
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setPreviewSide('back')}
+                  className={`px-4 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer ${
+                    previewSide === 'back'
+                      ? 'bg-emerald-600 text-white shadow-xs'
+                      : 'text-slate-400 hover:text-white'
+                  }`}
+                >
+                  Back Card (School & Signature)
+                </button>
               </div>
+              <span className="text-[11px] text-emerald-400 font-mono font-bold bg-emerald-950/60 border border-emerald-500/30 px-2.5 py-1 rounded-full">
+                Standard CR80 (85.6 × 54mm)
+              </span>
             </div>
 
-            <div className="pt-2 flex justify-end">
+            {/* FRONT CARD VIEW */}
+            {previewSide === 'front' && (
+              <div className="space-y-2">
+                <div
+                  className="w-full aspect-[85.6/54] rounded-2xl p-4 sm:p-5 flex flex-col justify-between relative overflow-hidden shadow-2xl border border-white/20 text-white"
+                  style={{ backgroundColor: primaryColor }}
+                >
+                  {/* Header Banner */}
+                  <div className="flex items-center justify-between border-b border-white/20 pb-2">
+                    <div className="min-w-0 flex-1 pr-2">
+                      <h4 className="text-sm sm:text-base font-extrabold uppercase tracking-tight truncate">
+                        {previewPerson.schoolName || 'MYEDURIDE SCHOOL'}
+                      </h4>
+                      <p className="text-[10px] text-white/80 truncate">{previewPerson.schoolAddress || 'Student Safety Platform'}</p>
+                    </div>
+                    <span className="text-[10px] font-extrabold bg-white text-slate-900 px-2.5 py-0.5 rounded-full uppercase shrink-0 shadow-xs">
+                      {previewPerson.kind === 'staff' ? 'STAFF ID' : 'STUDENT ID'}
+                    </span>
+                  </div>
+
+                  {/* Card Content Row */}
+                  <div className="flex items-center gap-4 py-1">
+                    
+                    {/* Enlarged Photo Box */}
+                    <div
+                      className="w-24 sm:w-28 h-32 sm:h-36 rounded-2xl border-2 border-white/80 overflow-hidden flex items-center justify-center shrink-0 shadow-lg relative"
+                      style={{ backgroundColor: activePhotoBgHex }}
+                    >
+                      <StudentAvatar
+                        photoUrl={previewPerson.photoUrl}
+                        firstName={previewPerson.fullName.split(' ')[0]}
+                        lastName={previewPerson.fullName.split(' ').slice(1).join(' ')}
+                        size="xl"
+                        className="!w-full !h-full !rounded-2xl object-cover"
+                      />
+                    </div>
+
+                    {/* Student/Staff Details */}
+                    <div className="flex-1 space-y-1.5 text-xs min-w-0">
+                      <div>
+                        <span className="text-[9px] uppercase tracking-wider text-white/70 font-bold block">Full Name</span>
+                        <strong className="text-sm sm:text-base font-extrabold block text-white truncate">{previewPerson.fullName}</strong>
+                      </div>
+                      <div>
+                        <span className="text-[9px] uppercase tracking-wider text-white/70 font-bold block">ID Number</span>
+                        <span className="text-xs sm:text-sm font-mono font-extrabold text-emerald-300 block">{previewPerson.idNumber}</span>
+                      </div>
+                      {previewPerson.kind === 'student' ? (
+                        <div>
+                          <span className="text-[9px] uppercase tracking-wider text-white/70 font-bold block">Class</span>
+                          <span className="text-xs font-bold text-white/90">{previewPerson.className}</span>
+                        </div>
+                      ) : (
+                        <div>
+                          <span className="text-[9px] uppercase tracking-wider text-white/70 font-bold block">Role</span>
+                          <span className="text-xs font-bold text-white/90">{previewPerson.roleLabel}</span>
+                        </div>
+                      )}
+                    </div>
+
+                    {/* Extended Scannable QR Code / Barcode Indicator */}
+                    <div className="flex flex-col items-center shrink-0">
+                      <div className="w-20 sm:w-24 h-20 sm:h-24 bg-white p-1.5 rounded-2xl flex items-center justify-center shadow-lg border border-white">
+                        {previewQrDataUrl ? (
+                          /* eslint-disable-next-line @next/next/no-img-element */
+                          <img src={previewQrDataUrl} alt="Live Scannable QR" className="w-full h-full object-contain" />
+                        ) : (
+                          <QrCode className="w-full h-full text-slate-900" />
+                        )}
+                      </div>
+                      <span className="text-[9px] font-mono font-bold text-white/90 mt-1">Gate Scannable</span>
+                    </div>
+                  </div>
+
+                  {/* Card Footer Verification Bar */}
+                  <div className="flex items-center justify-between border-t border-white/20 pt-1.5 text-[10px] text-white/80 font-mono">
+                    <span>DISCL Gate Verified</span>
+                    <span>MyEduRide Protection Network</span>
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {/* BACK CARD VIEW */}
+            {previewSide === 'back' && (
+              <div className="space-y-2">
+                <div className="w-full aspect-[85.6/54] rounded-2xl p-4 sm:p-5 flex flex-col justify-between relative overflow-hidden shadow-2xl border border-slate-700 bg-white text-slate-900">
+                  
+                  {/* Top Brand Banner */}
+                  <div
+                    className="flex items-center justify-between -mx-4 -mt-4 sm:-mx-5 sm:-mt-5 px-4 sm:px-5 py-2.5 text-white"
+                    style={{ backgroundColor: primaryColor }}
+                  >
+                    <span className="text-xs font-black uppercase tracking-wider">
+                      {previewPerson.schoolName || 'SCHOOL INFORMATION'}
+                    </span>
+                    <span className="text-[10px] font-bold text-white/80 uppercase">Card Back</span>
+                  </div>
+
+                  {/* Middle Information */}
+                  <div className="space-y-2 py-1">
+                    <div>
+                      <span className="text-[9px] font-black uppercase tracking-wider text-slate-500 block">Campus Full Address</span>
+                      <p className="text-xs font-bold text-slate-800 leading-snug">
+                        {previewPerson.schoolAddress || 'Official School Campus Address'}
+                      </p>
+                      {previewPerson.schoolLandmark && (
+                        <p className="text-[10px] text-emerald-700 font-semibold">📍 Landmark: {previewPerson.schoolLandmark}</p>
+                      )}
+                    </div>
+
+                    {/* Dual Box: Authorised Signature & If Found */}
+                    <div className="grid grid-cols-2 gap-3 pt-1">
+                      
+                      {/* Authorised Signature Box */}
+                      <div className="border border-slate-300 rounded-xl p-2.5 bg-slate-50/70 flex flex-col justify-between min-h-[70px]">
+                        <span className="text-[9px] font-bold uppercase tracking-wider text-slate-500 block">Authorised Signature</span>
+                        <div className="flex-1 flex items-center justify-center py-1">
+                          {previewPerson.signatureUrl ? (
+                            <div className="text-center">
+                              {/* eslint-disable-next-line @next/next/no-img-element */}
+                              <img
+                                src={photoSrc(previewPerson.signatureUrl)}
+                                alt="Principal Signature"
+                                className="h-9 max-h-9 object-contain mx-auto"
+                              />
+                              <span className="text-[9px] font-serif italic text-slate-600 block">Principal / Director</span>
+                            </div>
+                          ) : (
+                            <div className="text-center">
+                              <span className="text-xs font-black tracking-wider text-emerald-800 uppercase block">
+                                Authorised by school
+                              </span>
+                              <span className="text-[8px] text-slate-400 font-medium">Official Campus Validation</span>
+                            </div>
+                          )}
+                        </div>
+                      </div>
+
+                      {/* If Found Return Instructions */}
+                      <div className="border border-slate-300 rounded-xl p-2.5 bg-slate-50/70 flex flex-col justify-between min-h-[70px]">
+                        <span className="text-[9px] font-bold uppercase tracking-wider text-slate-500 block">If Found</span>
+                        <p className="text-[10px] text-slate-700 leading-tight">
+                          Please return this card to <strong className="font-extrabold">{previewPerson.schoolName || 'the school'}</strong> at the campus address shown.
+                        </p>
+                      </div>
+
+                    </div>
+                  </div>
+
+                  {/* Bottom Security Notice Bar */}
+                  <div
+                    className="-mx-4 -mb-4 sm:-mx-5 sm:-mb-5 px-4 sm:px-5 py-1.5 text-center text-white text-[9px] font-bold uppercase tracking-wide"
+                    style={{ backgroundColor: primaryColor }}
+                  >
+                    Official ID · Must be carried on campus at all times · Property of the school
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {/* Modal Actions */}
+            <div className="pt-2 flex items-center justify-between">
+              <span className="text-[11px] text-slate-400">
+                💡 Point phone camera or gate scanner at screen to test scan
+              </span>
               <button
                 type="button"
                 onClick={() => setPreviewPerson(null)}
-                className="px-5 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-white text-xs font-bold cursor-pointer"
+                className="px-5 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-white text-xs font-bold cursor-pointer transition-colors"
               >
                 Close Preview
               </button>
@@ -696,6 +845,7 @@ export default function SuperAdminIdCardsPage() {
           </div>
         </div>
       )}
+
 
     </div>
   );

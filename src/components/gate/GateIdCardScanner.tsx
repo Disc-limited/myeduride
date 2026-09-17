@@ -4,6 +4,13 @@ import { useEffect, useRef, useState } from 'react';
 import { Camera, ScanLine } from 'lucide-react';
 import { toast } from 'sonner';
 import { triggerHapticNotification } from '@/lib/platform/haptics';
+import {
+  cameraVideoConstraints,
+  createBarcodeDetector,
+  decodeScanFromVideo,
+  type BarcodeDetectorLike,
+  type JsQRFn,
+} from '@/lib/gate/decode-scan-frame';
 
 interface GateIdCardScannerProps {
   active: boolean;
@@ -13,19 +20,6 @@ interface GateIdCardScannerProps {
 }
 
 type FacingMode = 'environment' | 'user';
-
-function detectFromJsQR(
-  jsQR: ((data: Uint8ClampedArray, width: number, height: number) => { data?: string } | null) | null,
-  imageData: ImageData
-): string | null {
-  if (!jsQR) return null;
-  try {
-    const code = jsQR(imageData.data, imageData.width, imageData.height);
-    return code?.data?.trim() || null;
-  } catch {
-    return null;
-  }
-}
 
 export default function GateIdCardScanner({
   active,
@@ -39,8 +33,9 @@ export default function GateIdCardScanner({
   const videoRef = useRef<HTMLVideoElement | null>(null);
   const streamRef = useRef<MediaStream | null>(null);
   const scanIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
-  const jsQRRef = useRef<((data: Uint8ClampedArray, width: number, height: number) => { data?: string } | null) | null>(null);
-  const detectorRef = useRef<{ detect: (source: CanvasImageSource) => Promise<Array<{ rawValue?: string }>> } | null>(null);
+  const jsQRRef = useRef<JsQRFn | null>(null);
+  const detectorRef = useRef<BarcodeDetectorLike | null>(null);
+  const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const lastScannedRef = useRef(new Map<string, number>());
   const busyRef = useRef(busy);
   const onDetectedRef = useRef(onDetected);
@@ -51,20 +46,11 @@ export default function GateIdCardScanner({
   useEffect(() => {
     import('jsqr')
       .then((m) => {
-        jsQRRef.current = m.default;
+        jsQRRef.current = m.default as JsQRFn;
       })
       .catch((err) => console.error('[GateIdCardScanner] Failed to load jsqr:', err));
 
-    const Detector = (typeof window !== 'undefined' && (window as unknown as { BarcodeDetector?: new (opts: { formats: string[] }) => typeof detectorRef.current }).BarcodeDetector) || null;
-    if (Detector) {
-      try {
-        detectorRef.current = new Detector({
-          formats: ['qr_code', 'code_128', 'code_39', 'code_93', 'ean_13', 'ean_8', 'upc_a', 'upc_e', 'codabar', 'itf'],
-        });
-      } catch {
-        detectorRef.current = null;
-      }
-    }
+    detectorRef.current = createBarcodeDetector();
   }, []);
 
   const stopCamera = () => {
@@ -94,41 +80,18 @@ export default function GateIdCardScanner({
 
   const startQrLoop = () => {
     if (scanIntervalRef.current) clearInterval(scanIntervalRef.current);
-    const canvas = document.createElement('canvas');
-    const ctx = canvas.getContext('2d');
+    if (!canvasRef.current) canvasRef.current = document.createElement('canvas');
 
     scanIntervalRef.current = setInterval(async () => {
       const video = videoRef.current;
-      if (!video || !ctx || busyRef.current) return;
-      const vw = video.videoWidth;
-      const vh = video.videoHeight;
-      if (!vw || !vh) return;
-
-      const maxW = 480;
-      const scale = vw > maxW ? maxW / vw : 1;
-      const cw = Math.max(1, Math.round(vw * scale));
-      const ch = Math.max(1, Math.round(vh * scale));
-      canvas.width = cw;
-      canvas.height = ch;
-      ctx.drawImage(video, 0, 0, cw, ch);
-
-      if (detectorRef.current) {
-        try {
-          const codes = await detectorRef.current.detect(canvas);
-          const raw = codes?.[0]?.rawValue?.trim();
-          if (raw) {
-            emitDetected(raw);
-            return;
-          }
-        } catch {
-          /* fall through to jsQR */
-        }
-      }
-
-      const imageData = ctx.getImageData(0, 0, cw, ch);
-      const fromQr = detectFromJsQR(jsQRRef.current, imageData);
-      if (fromQr) emitDetected(fromQr);
-    }, 220);
+      if (!video || busyRef.current) return;
+      const raw = await decodeScanFromVideo(video, {
+        jsQR: jsQRRef.current,
+        detector: detectorRef.current,
+        canvas: canvasRef.current || undefined,
+      });
+      if (raw) emitDetected(raw);
+    }, 200);
   };
 
   const startCamera = async (facing: FacingMode = facingMode) => {
@@ -138,14 +101,14 @@ export default function GateIdCardScanner({
 
     try {
       stream = await navigator.mediaDevices.getUserMedia({
-        video: { facingMode: facing },
+        video: cameraVideoConstraints(facing),
         audio: false,
       });
     } catch {
       try {
         const altFacing: FacingMode = facing === 'environment' ? 'user' : 'environment';
         stream = await navigator.mediaDevices.getUserMedia({
-          video: { facingMode: altFacing },
+          video: cameraVideoConstraints(altFacing),
           audio: false,
         });
         setFacingMode(altFacing);

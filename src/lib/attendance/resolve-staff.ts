@@ -38,8 +38,33 @@ export async function resolveStaffProfile(
     if (byNum?.id) return mapStaffRow(byNum);
   }
 
+  // Case-insensitive ilike fallback
+  for (const value of candidates) {
+    const clean = value.replace(/[%,]/g, '').trim();
+    if (clean.length < 3) continue;
+
+    const { data: byIlikeNum } = await supabase
+      .from('teacher_profiles')
+      .select('id, user_id, staff_id_number, photo_url, user:user_profiles(full_name, avatar_url, photo_url)')
+      .eq('school_id', schoolId)
+      .ilike('staff_id_number', clean)
+      .maybeSingle();
+
+    if (byIlikeNum?.id) return mapStaffRow(byIlikeNum);
+
+    const { data: byIlikeQr } = await supabase
+      .from('teacher_profiles')
+      .select('id, user_id, staff_id_number, photo_url, user:user_profiles(full_name, avatar_url, photo_url)')
+      .eq('school_id', schoolId)
+      .ilike('qr_code_data', `%${clean}%`)
+      .maybeSingle();
+
+    if (byIlikeQr?.id) return mapStaffRow(byIlikeQr);
+  }
+
   return null;
 }
+
 
 function mapStaffRow(row: {
   id: string;

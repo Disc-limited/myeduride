@@ -20,6 +20,7 @@ export default function StudentsListPage() {
   const [classFilter, setClassFilter] = useState('');
   const [dateFilter, setDateFilter] = useState('');
   const [schoolId, setSchoolId] = useState('');
+  const [schoolInfo, setSchoolInfo] = useState<any>(null);
   const [editingStudent, setEditingStudent] = useState(null);
   const [editFaceData, setEditFaceData] = useState({ photos: [], face_descriptor: null });
   const [clearingPhoto, setClearingPhoto] = useState(false);
@@ -40,6 +41,7 @@ export default function StudentsListPage() {
       const schoolData = await fetchData('get_school_admin_data', { role: 'school_admin' });
       if (!schoolData.school_id) { setLoading(false); return; }
       setSchoolId(schoolData.school_id);
+      if (schoolData.school) setSchoolInfo(schoolData.school);
       const [studentsRes, classesRes] = await Promise.all([
         fetchData('get_students', { school_id: schoolData.school_id }),
         fetch(`/api/classes?school_id=${schoolData.school_id}`, { credentials: 'include' }),
@@ -173,6 +175,12 @@ export default function StudentsListPage() {
       className: student.class?.name || 'Class',
       photoUrl: student.photo_url,
       qrData: student.qr_code_data || `MYEDURIDE:${student.student_id_number}`,
+      schoolName: schoolInfo?.name,
+      schoolAddress: schoolInfo?.location_address || schoolInfo?.address,
+      schoolLandmark: schoolInfo?.location_landmark,
+      signatureUrl: schoolInfo?.principal_signature_url,
+      logoUrl: schoolInfo?.logo_url,
+      primaryColor: schoolInfo?.primary_color,
     });
     setCardPreviewOpen(true);
   };

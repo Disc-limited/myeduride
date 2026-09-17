@@ -7,6 +7,11 @@ import { toast } from 'sonner';
 import StudentAvatar from '@/components/shared/StudentAvatar';
 import TodayScanStatusBanner from '@/components/gate/TodayScanStatusBanner';
 import { applyScanHints, isActionBlocked } from '@/lib/gate/scan-hints-client';
+import {
+  cameraVideoConstraints,
+  createBarcodeDetector,
+  decodeScanFromVideo,
+} from '@/lib/gate/decode-scan-frame';
 
 function splitName(fullName) {
   const parts = (fullName || '').trim().split(/\s+/).filter(Boolean);
@@ -39,6 +44,8 @@ export default function StaffIdScanPanel({
   const streamRef = useRef(null);
   const scanIntervalRef = useRef(null);
   const jsQRRef = useRef(null);
+  const detectorRef = useRef(null);
+  const canvasRef = useRef(null);
   const lastScannedRef = useRef(new Map());
 
   useEffect(() => {
@@ -47,6 +54,7 @@ export default function StaffIdScanPanel({
         jsQRRef.current = m.default;
       })
       .catch((err) => console.error('[StaffIdScanPanel] Failed to load jsqr:', err));
+    detectorRef.current = createBarcodeDetector();
   }, []);
 
   const [cameraError, setCameraError] = useState(false);
@@ -79,14 +87,14 @@ export default function StaffIdScanPanel({
 
     try {
       stream = await navigator.mediaDevices.getUserMedia({
-        video: { facingMode: facing },
+        video: cameraVideoConstraints(facing),
         audio: false,
       });
     } catch {
       try {
         const altFacing = facing === 'environment' ? 'user' : 'environment';
         stream = await navigator.mediaDevices.getUserMedia({
-          video: { facingMode: altFacing },
+          video: cameraVideoConstraints(altFacing),
           audio: false,
         });
         setFacingMode(altFacing);

@@ -77,14 +77,14 @@ const generateLandscapeIdCard = (cardData: any) => {
   doc.setFontSize(6.5);
   doc.text(bannerLabel, CARD_W / 2, bannerTop + 3.7, { align: 'center' });
 
-  // FIXED: Reduced passport photo box by 15% (from 23x27 down to 19.5x23)
-  const photoX = 4;
-  const photoY = bannerTop + 7.5;
-  const photoW = 19.5;
-  const photoH = 23.0;
+  // Enlarged photo space for clearly visible faces (26.5mm x 32mm)
+  const photoX = 3.5;
+  const photoY = bannerTop + 5.5;
+  const photoW = 26.5;
+  const photoH = 32.0;
   doc.setDrawColor(navy[0], navy[1], navy[2]);
   doc.setLineWidth(0.35);
-  doc.roundedRect(photoX, photoY, photoW, photoH, 2, 2, 'S');
+  doc.roundedRect(photoX, photoY, photoW, photoH, 1.8, 1.8, 'S');
 
   if (cardData.photo_url) {
     try {
@@ -98,39 +98,51 @@ const generateLandscapeIdCard = (cardData: any) => {
     doc.roundedRect(photoX + 0.5, photoY + 0.5, photoW - 1, photoH - 1, 1.5, 1.5, 'F');
   }
 
-  const tx = 29;
-  let ty = bannerTop + 11.5; 
-  const maxTextWidth = 32;
+  const tx = 31.0;
+  let ty = bannerTop + 8.5; 
+  const maxTextWidth = 24;
 
   const details = [
     { label: "NAME", val: cardData.name ? cardData.name.toUpperCase() : '—', bold: true },
-    { label: cardData.type === 'student' ? "BIRTH" : "EMAIL", val: cardData.dob || cardData.email || '—', bold: false },
-    { label: cardData.type === 'student' ? "ADDRESS" : "ADDRESS", val: cardData.school_address || '—', bold: false },
     { label: "ID NO", val: cardData.id_number || '—', bold: true },
-    { label: cardData.type === 'student' ? "CLASS" : "ROLE", val: cardData.class_name || cardData.role_label || '—', bold: false }
+    { label: cardData.type === 'student' ? "CLASS" : "ROLE", val: cardData.class_name || cardData.role_label || '—', bold: true },
+    { label: cardData.type === 'student' ? "BIRTH" : "EMAIL", val: cardData.dob || cardData.email || '—', bold: false },
+    { label: "ADDRESS", val: cardData.school_address || '—', bold: false }
   ];
 
   details.forEach(item => {
     doc.setFont('helvetica', 'bold');
-    doc.setFontSize(5);
+    doc.setFontSize(4.6);
     doc.setTextColor(navy[0], navy[1], navy[2]);
     doc.text(`${item.label}:`, tx, ty);
     
     doc.setFont('helvetica', item.bold ? 'bold' : 'normal');
     doc.setTextColor(35, 35, 35);
     const splitLines = doc.splitTextToSize(String(item.val), maxTextWidth);
-    doc.text(splitLines, tx + 14, ty);
+    doc.text(splitLines, tx + 12, ty);
     
     const linesCount = splitLines.length;
-    ty += (linesCount * 2.8) + 1.0;
+    ty += (linesCount * 2.5) + 0.8;
   });
 
   if (cardData.qr_code_data) {
     try {
-      doc.addImage(cardData.qr_code_data, 'PNG', CARD_W - 20.5, 35, 16, 16);
+      const qrSize = 24.5;
+      const qrX = CARD_W - qrSize - 3.2;
+      const qrY = bannerTop + 5.5;
+      doc.setFillColor(255, 255, 255);
+      doc.roundedRect(qrX - 0.8, qrY - 0.8, qrSize + 1.6, qrSize + 1.6, 1.2, 1.2, 'F');
+      doc.setDrawColor(210, 218, 230);
+      doc.setLineWidth(0.2);
+      doc.roundedRect(qrX - 0.8, qrY - 0.8, qrSize + 1.6, qrSize + 1.6, 1.2, 1.2, 'S');
+      doc.addImage(cardData.qr_code_data, 'PNG', qrX, qrY, qrSize, qrSize);
+      doc.setFont('helvetica', 'bold');
+      doc.setFontSize(4.2);
+      doc.setTextColor(navy[0], navy[1], navy[2]);
+      doc.text(cardData.id_number || '', qrX + qrSize / 2, qrY + qrSize + 3.0, { align: 'center' });
     } catch (e) {
       doc.setDrawColor(navy[0], navy[1], navy[2]);
-      doc.rect(CARD_W - 20.5, 35, 16, 16, 'S');
+      doc.rect(CARD_W - 27.5, bannerTop + 5.5, 24.5, 24.5, 'S');
     }
   }
 
@@ -183,14 +195,24 @@ const generateLandscapeIdCard = (cardData: any) => {
       doc.setFontSize(4.5);
       doc.text('Principal / Director', 5, 36);
     } catch {
+      doc.setFont('helvetica', 'bold');
+      doc.setFontSize(5);
+      doc.setTextColor(navy[0], navy[1], navy[2]);
+      doc.text('Authorised by school', 22, 30, { align: 'center' });
       doc.setFont('helvetica', 'normal');
-      doc.setFontSize(4.5);
-      doc.text('Authorized by School', 5, 36);
+      doc.setFontSize(3.5);
+      doc.setTextColor(90, 90, 90);
+      doc.text('Official Campus Validation', 22, 34, { align: 'center' });
     }
   } else {
+    doc.setFont('helvetica', 'bold');
+    doc.setFontSize(5);
+    doc.setTextColor(navy[0], navy[1], navy[2]);
+    doc.text('Authorised by school', 22, 30, { align: 'center' });
     doc.setFont('helvetica', 'normal');
-    doc.setFontSize(4.5);
-    doc.text('Authorized by School', 5, 36);
+    doc.setFontSize(3.5);
+    doc.setTextColor(90, 90, 90);
+    doc.text('Official Campus Validation', 22, 34, { align: 'center' });
   }
 
   doc.roundedRect(45, 18, 37, 22, 2, 2, 'FD');
