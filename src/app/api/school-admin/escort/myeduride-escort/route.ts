@@ -79,34 +79,39 @@ export async function GET(request: NextRequest) {
     // 3. Fetch Registered Students of this school
     const { data: studentsData } = await supabase
       .from('students')
-      .select('id, first_name, last_name, student_id_number, photo_url, house_address, house_lat, house_lng, house_landmark, class:school_classes(name)')
+      .select('id, first_name, last_name, student_id_number, photo_url, house_address, house_lat, house_lng, house_landmark, custom_fields, class:school_classes(name)')
       .eq('school_id', primarySchoolId)
       .order('first_name');
 
-    const students = (studentsData || []).map((s) => ({
-      id: s.id,
-      name: `${s.first_name} ${s.last_name}`,
-      student_id_number: s.student_id_number,
-      class_name: s.class?.name || 'Class N/A',
-      photo_url: s.photo_url,
-      house_address: s.house_address || 'Address on file',
-      house_lat: s.house_lat ? Number(s.house_lat) : null,
-      house_lng: s.house_lng ? Number(s.house_lng) : null,
-      is_house_pinned:
-        s.house_lat != null &&
-        s.house_lng != null &&
-        Boolean(s.house_address && String(s.house_address).trim()),
-    }));
+    const students = (studentsData || []).map((s: any) => {
+      const resolvedAddress = (s.house_address && s.house_address.trim()) || (s.custom_fields?.address && String(s.custom_fields.address).trim()) || '';
+      const rawLat = s.house_lat != null && !isNaN(Number(s.house_lat)) ? Number(s.house_lat) : (s.custom_fields?.house_lat != null && !isNaN(Number(s.custom_fields.house_lat)) ? Number(s.custom_fields.house_lat) : null);
+      const rawLng = s.house_lng != null && !isNaN(Number(s.house_lng)) ? Number(s.house_lng) : (s.custom_fields?.house_lng != null && !isNaN(Number(s.custom_fields.house_lng)) ? Number(s.custom_fields.house_lng) : null);
+      const isPinned = rawLat != null && rawLng != null && Boolean(resolvedAddress);
+
+      return {
+        id: s.id,
+        name: `${s.first_name} ${s.last_name}`,
+        student_id_number: s.student_id_number,
+        class_name: s.class?.name || 'Class N/A',
+        photo_url: s.photo_url,
+        house_address: resolvedAddress || 'Address on file',
+        house_lat: rawLat,
+        house_lng: rawLng,
+        house_landmark: s.house_landmark || s.custom_fields?.landmark || '',
+        is_house_pinned: isPinned,
+      };
+    });
 
     // 4. Fetch Connected Transport Bookings for this school
     const { data: bookingsData } = await supabase
       .from('transport_bookings')
-      .select('*, student:students(id, first_name, last_name, student_id_number, photo_url, house_address, house_lat, house_lng)')
+      .select('*, student:students(id, first_name, last_name, student_id_number, photo_url, house_address, house_lat, house_lng, house_landmark, custom_fields)')
       .eq('school_id', primarySchoolId)
       .order('created_at', { ascending: false });
 
-    const connectedBookings = (bookingsData || []).map((b) => {
-      let meta = {};
+    const connectedBookings = (bookingsData || []).map((b: any) => {
+      let meta: any = {};
       try {
         if (b.notes && b.notes.startsWith('{')) {
           meta = JSON.parse(b.notes);
@@ -117,6 +122,19 @@ export async function GET(request: NextRequest) {
 
       const stu = b.student || {};
       const escortObj = finalApprovedEscorts.find((e) => e.id === meta.assigned_escort_id);
+      const tripType = meta.trip_type || 'both';
+      const rawPickupLat = b.pickup_lat != null && !isNaN(Number(b.pickup_lat)) ? Number(b.pickup_lat) : (stu.house_lat != null && !isNaN(Number(stu.house_lat)) ? Number(stu.house_lat) : (stu.custom_fields?.house_lat != null && !isNaN(Number(stu.custom_fields.house_lat)) ? Number(stu.custom_fields.house_lat) : null));
+      const rawPickupLng = b.pickup_lng != null && !isNaN(Number(b.pickup_lng)) ? Number(b.pickup_lng) : (stu.house_lng != null && !isNaN(Number(stu.house_lng)) ? Number(stu.house_lng) : (stu.custom_fields?.house_lng != null && !isNaN(Number(stu.custom_fields.house_lng)) ? Number(stu.custom_fields.house_lng) : null));
+      const isPinned = rawPickupLat != null && rawPickupLng != null;
+
+      const dailyFareNum = Number(meta.discount?.discountedFare || meta.daily_fare || meta.dailyFare || 0);
+      const formattedDaily = dailyFareNum > 0 ? `₦${dailyFareNum.toLocaleString()}` : (meta.formatted_daily_fare || '₦3,000');
+      const formattedMorning = tripType === 'afternoon_only'
+        ? '₦0'
+        : (dailyFareNum > 0 ? `₦${Math.round(dailyFareNum / 2).toLocaleString()}` : (meta.formatted_morning_fare || '₦1,500'));
+      const formattedAfternoon = tripType === 'morning_only'
+        ? '₦0'
+        : (dailyFareNum > 0 ? (tripType === 'afternoon_only' ? `₦${dailyFareNum.toLocaleString()}` : `₦${(dailyFareNum - Math.round(dailyFareNum / 2)).toLocaleString()}`) : (meta.formatted_afternoon_fare || '₦1,500'));
 
       return {
         id: b.id,
@@ -124,16 +142,19 @@ export async function GET(request: NextRequest) {
         studentId: b.student_id,
         studentName: stu.first_name ? `${stu.first_name} ${stu.last_name}` : 'Student',
         studentIdNumber: stu.student_id_number || '',
-        pickupAddress: b.pickup_address || stu.house_address || 'Designated Home Stop',
+        pickupAddress: b.pickup_address || stu.house_address || stu.custom_fields?.address || 'Designated Home Stop',
+        pickupLat: rawPickupLat,
+        pickupLng: rawPickupLng,
+        isHousePinned: isPinned,
         destination: school?.name || 'School Campus',
         assignedEscortId: meta.assigned_escort_id || null,
         assignedEscortName: meta.assigned_escort_name || escortObj?.fullName || 'Awaiting CM Assignment',
         assignedEscortPhone: meta.assigned_escort_phone || escortObj?.phone || '',
         distanceKm: meta.distance_km || 5.0,
-        fareDaily: meta.formatted_daily_fare || '₦3,000',
-        fareMorning: meta.formatted_morning_fare || '₦1,500',
-        fareAfternoon: meta.formatted_afternoon_fare || '₦1,500',
-        tripType: meta.trip_type || 'both',
+        fareDaily: formattedDaily,
+        fareMorning: formattedMorning,
+        fareAfternoon: formattedAfternoon,
+        tripType: tripType,
         status: b.status === 'assigned' ? 'ACTIVE_ASSIGNMENT' : b.status === 'pending' ? 'PENDING_CM_APPROVAL' : b.status.toUpperCase(),
         securityPin: meta.security_pin || null,
         createdAt: b.created_at,

@@ -135,36 +135,41 @@ export async function GET(request: NextRequest) {
         .eq('school_id', rosterSchoolId)
         .order('first_name')
         .limit(400);
-      const students = (rosterRows || []).map((st: any) => ({
-        id: st.id,
-        name: `${st.first_name || ''} ${st.last_name || ''}`.trim() || 'Student',
-        first_name: st.first_name,
-        last_name: st.last_name,
-        student_id_number: st.student_id_number || 'N/A',
-        photo_url: st.photo_url || null,
-        class_name: Array.isArray(st.class) ? st.class[0]?.name : (st.class?.name || 'Class N/A'),
-        parent_phone: st.custom_fields?.parent_phone || st.parent_phone || '—',
-        house_address: st.house_address || 'Designated Home Residence',
-        house_lat: st.house_lat,
-        house_lng: st.house_lng,
-        house_landmark: st.house_landmark,
-        is_house_pinned: Boolean(st.house_lat && st.house_lng),
-        status: st.is_active ? 'ACTIVE' : 'ENROLLED',
-      }));
+      const students = (rosterRows || []).map((st: any) => {
+        const rawLat = st.house_lat != null && !isNaN(Number(st.house_lat)) ? Number(st.house_lat) : (st.custom_fields?.house_lat != null && !isNaN(Number(st.custom_fields.house_lat)) ? Number(st.custom_fields.house_lat) : null);
+        const rawLng = st.house_lng != null && !isNaN(Number(st.house_lng)) ? Number(st.house_lng) : (st.custom_fields?.house_lng != null && !isNaN(Number(st.custom_fields.house_lng)) ? Number(st.custom_fields.house_lng) : null);
+        const isHousePinned = rawLat != null && rawLng != null;
+        return {
+          id: st.id,
+          name: `${st.first_name || ''} ${st.last_name || ''}`.trim() || 'Student',
+          first_name: st.first_name,
+          last_name: st.last_name,
+          student_id_number: st.student_id_number || 'N/A',
+          photo_url: st.photo_url || null,
+          class_name: Array.isArray(st.class) ? st.class[0]?.name : (st.class?.name || 'Class N/A'),
+          parent_phone: st.custom_fields?.parent_phone || st.parent_phone || '—',
+          house_address: st.house_address || st.custom_fields?.address || 'Designated Home Residence',
+          house_lat: rawLat,
+          house_lng: rawLng,
+          house_landmark: st.house_landmark || st.custom_fields?.landmark || null,
+          is_house_pinned: isHousePinned,
+          status: st.is_active ? 'ACTIVE' : 'ENROLLED',
+        };
+      });
       const payload = { students };
       writeOpsCache(cacheKey, payload);
       return NextResponse.json(payload, { headers: { 'Cache-Control': 'private, max-age=8' } });
     }
 
     const includeCensus = view === 'full';
-    const includePins = view === 'full' || view === 'pins';
+    const includePins = view === 'full' || view === 'pins' || view === 'tables';
     const includeWalkHome = view === 'full';
 
     const empty: any[] = [];
     const [schoolsRes, escortsRes, bookingsRes, assignmentsRes, auditRes, deputisingRes, vehiclesRes, routesRes, walkHomeRes, pinnedParentsRes, gateOfficersRes, gateActivitiesRes, allSchoolStudentsRes] = await Promise.all([
       db.from('schools').select('id, name, address, gps_lat, gps_lng, location_address, location_landmark, location_pinned_at').order('name').then((r: any) => r.data || [], () => []),
       db.from('escort_applications').select(ESCORT_TABLE_COLUMNS).in('status', ['CITY_MANAGER_APPROVED', 'ACTIVE']).then((r: any) => r.data || [], () => []),
-      db.from('transport_bookings').select('id, status, notes, fare_amount, source, student_id, school_id, parent_user_id, parent_phone, pickup_address, pickup_lat, pickup_lng, requested_pickup_at, created_at, school:schools(name), student:students(first_name,last_name,student_id_number,class_id,house_address,house_lat,house_lng,house_landmark,house_notes,house_pinned_at,custom_fields), parent:user_profiles!parent_user_id(full_name, phone)').not('status', 'in', '(cancelled,canceled,rejected,reassigned)').order('created_at', { ascending: false }).limit(100).then((r: any) => r.data || [], () => []),
+      db.from('transport_bookings').select('id, status, notes, source, student_id, school_id, parent_user_id, pickup_address, pickup_lat, pickup_lng, requested_pickup_at, created_at, school:schools(name), student:students(id,first_name,last_name,student_id_number,photo_url,class_id,house_address,house_lat,house_lng,house_landmark,house_notes,house_pinned_at,custom_fields), parent:user_profiles!parent_user_id(full_name, phone)').not('status', 'in', '(cancelled,canceled,rejected,reassigned)').order('created_at', { ascending: false }).limit(100).then((r: any) => r.data || [], () => []),
       db.from('escort_assignments').select('*, escort:escort_applications(id,full_name,phone,operating_area,status), school:schools(id,name,address,gps_lat,gps_lng), student:students(id,first_name,last_name,student_id_number,photo_url,class:school_classes(name),house_address,house_lat,house_lng,house_landmark,house_notes,house_pinned_at,custom_fields)').in('status', LIVE_ASSIGNMENT_STATUSES).order('created_at', { ascending: false }).limit(200).then((r: any) => r.data || [], () => []),
       db.from('city_manager_audit_log').select('*').order('created_at', { ascending: false }).limit(100).then((r: any) => r.data || [], () => []),
       db.from('emergency_deputising').select('*').order('created_at', { ascending: false }).limit(100).then((r: any) => r.data || [], () => []),
@@ -174,7 +179,7 @@ export async function GET(request: NextRequest) {
         ? db.from('attendance_records').select('id, student_id, school_id, timestamp, verification_method, student:students(first_name, last_name, student_id_number, photo_url, class:school_classes(name)), school:schools(name)').eq('type', 'departure').ilike('verification_method', '%walk_home%').order('timestamp', { ascending: false }).limit(50).then((r: any) => r.data || [], () => [])
         : Promise.resolve(empty),
       includePins
-        ? db.from('students').select('id, first_name, last_name, student_id_number, photo_url, school_id, school:schools(id, name, address, gps_lat, gps_lng, location_address), class:school_classes(name), house_address, house_lat, house_lng, house_landmark, house_notes, house_pinned_at, house_pinned_by').not('house_lat', 'is', null).order('house_pinned_at', { ascending: false }).limit(200).then((r: any) => r.data || [], () => [])
+        ? db.from('students').select('id, first_name, last_name, student_id_number, photo_url, school_id, school:schools(id, name, address, gps_lat, gps_lng, location_address), class:school_classes(name), house_address, house_lat, house_lng, house_landmark, house_notes, house_pinned_at, house_pinned_by, custom_fields').not('house_lat', 'is', null).order('house_pinned_at', { ascending: false }).limit(200).then((r: any) => r.data || [], () => [])
         : Promise.resolve(empty),
       db.from('user_school_roles').select('id, user_id, school_id, role, is_active, created_at, user:user_profiles(id, full_name, email, phone, avatar_url), school:schools(id, name, address)').eq('role', 'gate_officer').then((r: any) => r.data || [], () => []),
       db.from('attendance_records').select('id, student_id, school_id, timestamp, type, verification_method, verified_by_user_id, student:students(first_name, last_name, student_id_number, photo_url, class:school_classes(name)), school:schools(name)').order('timestamp', { ascending: false }).limit(60).then((r: any) => r.data || [], () => []),
@@ -354,10 +359,19 @@ export async function GET(request: NextRequest) {
       } catch {
         assignMeta = {};
       }
-      const storedAssignDaily = Number(assignMeta?.discount?.discountedFare || assignMeta?.fareResult?.dailyFare || 0);
+      const assignTripType = assignMeta?.trip_type === 'afternoon' || assignMeta?.trip_type === 'afternoon_only'
+        ? 'afternoon_only'
+        : assignMeta?.trip_type === 'morning' || assignMeta?.trip_type === 'morning_only'
+          ? 'morning_only'
+          : 'both';
+      const storedAssignDaily = Number(assignMeta?.discount?.discountedFare || assignMeta?.fareResult?.dailyFare || assignMeta?.daily_fare || 0);
       const assignDaily = storedAssignDaily > 0 ? storedAssignDaily : fallbackFare.dailyFare;
-      const assignMorning = storedAssignDaily > 0 ? Number(assignMeta?.fareResult?.morningFare || Math.round(assignDaily / 2)) : fallbackFare.morningFare;
-      const assignAfternoon = storedAssignDaily > 0 ? Number(assignMeta?.fareResult?.afternoonFare || assignDaily - assignMorning) : fallbackFare.afternoonFare;
+      const assignMorning = assignTripType === 'afternoon_only'
+        ? 0
+        : (storedAssignDaily > 0 ? Number(assignMeta?.fareResult?.morningFare || assignMeta?.morning_fare || Math.round(assignDaily / 2)) : fallbackFare.morningFare);
+      const assignAfternoon = assignTripType === 'morning_only'
+        ? 0
+        : (storedAssignDaily > 0 ? Number(assignMeta?.fareResult?.afternoonFare || assignMeta?.afternoon_fare || (assignDaily - assignMorning)) : fallbackFare.afternoonFare);
       parentRequests.push({
         booking_id: a.booking_id || null,
         assignment_id: a.id,
@@ -369,7 +383,7 @@ export async function GET(request: NextRequest) {
         school_id: a.school_id,
         school_name: sch?.name || 'School Campus',
         source: 'school',
-        distance_km: 4.2,
+        distance_km: Number(assignMeta?.distance_km || assignMeta?.distance || 4.2),
         morning_fare: assignMorning,
         afternoon_fare: assignAfternoon,
         daily_fare: assignDaily,
@@ -379,7 +393,7 @@ export async function GET(request: NextRequest) {
         is_discounted: Boolean(assignMeta?.discount) || assignDaily < fallbackFare.dailyFare,
         accountant_approval_ref: assignMeta?.discount?.accountantApprovalRef || null,
         accountant_name: assignMeta?.discount?.accountantName || null,
-        trip_type: 'both',
+        trip_type: assignTripType,
         escort_type: 'myeduride_escort',
         preferred_escort_id: a.escort_application_id,
         escort_id: escort?.id || a.escort_application_id || null,
@@ -572,8 +586,9 @@ export async function GET(request: NextRequest) {
         ? Number(matchedSchool.gps_lng)
         : (sch?.gps_lng != null ? Number(sch.gps_lng) : 3.4731);
       const schoolAddress = matchedSchool?.location_address || matchedSchool?.address || sch?.address || 'School Campus Grounds';
-      const houseLat = st.house_lat ? Number(st.house_lat) : null;
-      const houseLng = st.house_lng ? Number(st.house_lng) : null;
+      const houseLat = st.house_lat != null && !isNaN(Number(st.house_lat)) ? Number(st.house_lat) : (st.custom_fields?.house_lat != null && !isNaN(Number(st.custom_fields.house_lat)) ? Number(st.custom_fields.house_lat) : null);
+      const houseLng = st.house_lng != null && !isNaN(Number(st.house_lng)) ? Number(st.house_lng) : (st.custom_fields?.house_lng != null && !isNaN(Number(st.custom_fields.house_lng)) ? Number(st.custom_fields.house_lng) : null);
+      const resolvedHouseAddr = st.house_address || st.custom_fields?.address || 'Designated Home Residence';
 
       let distanceKm: number | null = null;
       let estimatedTransitMins: number | null = null;
@@ -596,9 +611,9 @@ export async function GET(request: NextRequest) {
         school_lat: schoolLat,
         school_lng: schoolLng,
         class_name: cls?.name || 'Class',
-        house_address: st.house_address || 'Designated Home Residence',
-        house_landmark: st.house_landmark || null,
-        house_notes: st.house_notes || null,
+        house_address: resolvedHouseAddr,
+        house_landmark: st.house_landmark || st.custom_fields?.landmark || null,
+        house_notes: st.house_notes || st.custom_fields?.notes || null,
         house_lat: houseLat,
         house_lng: houseLng,
         house_pinned_at: st.house_pinned_at || null,

@@ -339,7 +339,7 @@ export async function GET(request: NextRequest) {
         .from('transport_bookings')
         .select(`
           *,
-          student:students(id, first_name, last_name, photo_url, student_id_number, school_classes(name)),
+          student:students(id, first_name, last_name, photo_url, student_id_number, house_address, house_lat, house_lng, house_landmark, house_notes, custom_fields, school_classes(name)),
           parent:user_profiles!parent_user_id(full_name, phone)
         `);
 
@@ -376,7 +376,7 @@ export async function GET(request: NextRequest) {
         .from('students')
         .select(`
           id, first_name, last_name, student_id_number, photo_url, is_active, school_id,
-          house_address, house_lat, house_lng, house_landmark, house_notes, house_pinned_at,
+          house_address, house_lat, house_lng, house_landmark, house_notes, house_pinned_at, custom_fields,
           class:school_classes(name),
           school:schools(id, name, address, gps_lat, gps_lng, location_address)
         `)
@@ -389,10 +389,19 @@ export async function GET(request: NextRequest) {
     for (const b of liveBookings) {
       if (b.student) {
         const existingIdx = assignedStudents.findIndex((s) => s.id === b.student.id);
+        const pickupAddr = b.pickup_address || b.student?.house_address || null;
         if (existingIdx >= 0) {
           assignedStudents[existingIdx].parent_name = b.parent?.full_name || assignedStudents[existingIdx].parent_name;
           assignedStudents[existingIdx].parent_phone = b.parent?.phone || assignedStudents[existingIdx].parent_phone;
-          assignedStudents[existingIdx].pickup_address = b.notes || b.address || assignedStudents[existingIdx].pickup_address;
+          if (pickupAddr) {
+            assignedStudents[existingIdx].pickup_address = pickupAddr;
+          }
+          if (assignedStudents[existingIdx].house_lat == null && b.pickup_lat != null) {
+            assignedStudents[existingIdx].house_lat = b.pickup_lat;
+          }
+          if (assignedStudents[existingIdx].house_lng == null && b.pickup_lng != null) {
+            assignedStudents[existingIdx].house_lng = b.pickup_lng;
+          }
         } else {
           assignedStudents.push({
             id: b.student.id,
@@ -404,7 +413,13 @@ export async function GET(request: NextRequest) {
             class: b.student.school_classes || b.student.class,
             parent_name: b.parent?.full_name || null,
             parent_phone: b.parent?.phone || null,
-            pickup_address: b.pickup_address || null,
+            pickup_address: pickupAddr,
+            house_address: b.student.house_address || pickupAddr,
+            house_lat: b.student.house_lat ?? b.pickup_lat ?? null,
+            house_lng: b.student.house_lng ?? b.pickup_lng ?? null,
+            house_landmark: b.student.house_landmark || null,
+            house_notes: b.student.house_notes || null,
+            custom_fields: b.student.custom_fields || null,
           });
         }
       }
@@ -588,8 +603,10 @@ export async function GET(request: NextRequest) {
 
       const schoolLat = rowSchool?.gps_lat != null ? Number(rowSchool.gps_lat) : (schoolData?.gps_lat ? Number(schoolData.gps_lat) : null);
       const schoolLng = rowSchool?.gps_lng != null ? Number(rowSchool.gps_lng) : (schoolData?.gps_lng ? Number(schoolData.gps_lng) : null);
-      const houseLat = st.house_lat ? Number(st.house_lat) : null;
-      const houseLng = st.house_lng ? Number(st.house_lng) : null;
+      const rawHouseLat = st.house_lat != null && !isNaN(Number(st.house_lat)) ? Number(st.house_lat) : (st.custom_fields?.house_lat != null && !isNaN(Number(st.custom_fields.house_lat)) ? Number(st.custom_fields.house_lat) : null);
+      const rawHouseLng = st.house_lng != null && !isNaN(Number(st.house_lng)) ? Number(st.house_lng) : (st.custom_fields?.house_lng != null && !isNaN(Number(st.custom_fields.house_lng)) ? Number(st.custom_fields.house_lng) : null);
+      const houseLat = rawHouseLat;
+      const houseLng = rawHouseLng;
 
       let distanceKm: number | null = null;
       let estimatedTransitMins: number | null = null;
@@ -600,25 +617,6 @@ export async function GET(request: NextRequest) {
         estimatedTransitMins = Math.max(5, Math.round((distanceKm / 25) * 60));
         directionsUrl = `https://www.google.com/maps/dir/?api=1&origin=${schoolLat},${schoolLng}&destination=${houseLat},${houseLng}&travelmode=driving`;
       }
-
-      // MyEduRide Escort: sees location, address, AND price
-      // School Escort: DOES NOT see any price, but sees location, doorstep address, distance, and direction
-      const storedFare = extractStoredFare(st.id);
-      const gpsFare = !isSchoolEscort && storedFare == null && distanceKm != null
-        ? calculateEscortFare(distanceKm, 'both', fareRates).dailyFare
-        : null;
-      const rawDailyFare = storedFare != null ? storedFare : gpsFare;
-      const dailyFare = isSchoolEscort ? null : rawDailyFare;
-      const morningFare = dailyFare != null ? Math.round(dailyFare / 2) : null;
-      const afternoonFare = dailyFare != null ? Math.round(dailyFare / 2) : null;
-
-      const cls = Array.isArray(st.class) ? st.class[0]?.name : (st.class?.name || st.class_name || 'MyEduRide Transit');
-      const hasHousePin = houseLat != null && houseLng != null;
-      const navUrl = directionsUrl || (hasHousePin
-        ? `https://www.google.com/maps/dir/?api=1&destination=${houseLat},${houseLng}`
-        : null);
-
-      const discountInfo = extractDiscountInfo(st.id);
 
       const matchBooking = liveBookings.find(
         (b) => b.student_id === st.id || b.student?.id === st.id || b.id === matchAssignment?.booking_id
@@ -638,6 +636,28 @@ export async function GET(request: NextRequest) {
         } catch {}
       }
 
+      // MyEduRide Escort: sees location, address, AND price
+      // School Escort: DOES NOT see any price, but sees location, doorstep address, distance, and direction
+      const storedFare = extractStoredFare(st.id);
+      const gpsFare = !isSchoolEscort && storedFare == null && distanceKm != null
+        ? calculateEscortFare(distanceKm, tripType === 'afternoon_only' || tripType === 'morning_only' ? tripType : 'both', fareRates).dailyFare
+        : null;
+      const rawDailyFare = storedFare != null ? storedFare : gpsFare;
+      const dailyFare = isSchoolEscort ? null : rawDailyFare;
+      const morningFare = dailyFare != null
+        ? (tripType === 'afternoon_only' ? 0 : tripType === 'morning_only' ? dailyFare : Math.round(dailyFare / 2))
+        : null;
+      const afternoonFare = dailyFare != null
+        ? (tripType === 'morning_only' ? 0 : tripType === 'afternoon_only' ? dailyFare : dailyFare - (morningFare || 0))
+        : null;
+
+      const cls = Array.isArray(st.class) ? st.class[0]?.name : (st.class?.name || st.class_name || 'MyEduRide Transit');
+      const hasHousePin = houseLat != null && houseLng != null;
+      const navUrl = directionsUrl || (hasHousePin
+        ? `https://www.google.com/maps/dir/?api=1&destination=${houseLat},${houseLng}`
+        : null);
+
+      const discountInfo = extractDiscountInfo(st.id);
       const resolvedHouseAddr = st.house_address || (st.custom_fields?.address ? String(st.custom_fields.address) : null) || st.pickup_address || null;
 
       return {

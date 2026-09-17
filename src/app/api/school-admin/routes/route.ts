@@ -90,7 +90,9 @@ export async function GET(request: NextRequest) {
       if (dbAssignments.length > 0) {
         for (const sa of dbAssignments) {
           const stu = Array.isArray(sa.student) ? sa.student[0] : sa.student;
-          const isHousePinned = stu?.house_lat != null && stu?.house_lng != null;
+          const rawLat = stu?.house_lat != null && !isNaN(Number(stu.house_lat)) ? Number(stu.house_lat) : (stu?.custom_fields?.house_lat != null && !isNaN(Number(stu.custom_fields.house_lat)) ? Number(stu.custom_fields.house_lat) : null);
+          const rawLng = stu?.house_lng != null && !isNaN(Number(stu.house_lng)) ? Number(stu.house_lng) : (stu?.custom_fields?.house_lng != null && !isNaN(Number(stu.custom_fields.house_lng)) ? Number(stu.custom_fields.house_lng) : null);
+          const isHousePinned = rawLat != null && rawLng != null;
           const stuObj = {
             student_id: sa.student_id,
             name: stu ? `${stu.first_name} ${stu.last_name}` : 'Student',
@@ -98,11 +100,11 @@ export async function GET(request: NextRequest) {
             class: stu?.class?.name || 'Class',
             stop: 'Designated Stop',
             parent_phone: stu?.custom_fields?.parent_phone || null,
-            house_address: stu?.house_address || null,
-            house_lat: stu?.house_lat ? Number(stu.house_lat) : null,
-            house_lng: stu?.house_lng ? Number(stu.house_lng) : null,
-            house_landmark: stu?.house_landmark || null,
-            house_notes: stu?.house_notes || null,
+            house_address: stu?.house_address || stu?.custom_fields?.address || null,
+            house_lat: rawLat,
+            house_lng: rawLng,
+            house_landmark: stu?.house_landmark || stu?.custom_fields?.landmark || null,
+            house_notes: stu?.house_notes || stu?.custom_fields?.notes || null,
             house_pinned_at: stu?.house_pinned_at || null,
             is_house_pinned: isHousePinned,
           };
@@ -150,19 +152,22 @@ export async function GET(request: NextRequest) {
 
     const allPinnedStudents = (allSchoolPinnedData || []).map((stu: any) => {
       const assigned = studentAssignedRouteMap.get(stu.id);
+      const rawLat = stu.house_lat != null && !isNaN(Number(stu.house_lat)) ? Number(stu.house_lat) : (stu.custom_fields?.house_lat != null && !isNaN(Number(stu.custom_fields.house_lat)) ? Number(stu.custom_fields.house_lat) : null);
+      const rawLng = stu.house_lng != null && !isNaN(Number(stu.house_lng)) ? Number(stu.house_lng) : (stu.custom_fields?.house_lng != null && !isNaN(Number(stu.custom_fields.house_lng)) ? Number(stu.custom_fields.house_lng) : null);
+      const isPinned = rawLat != null && rawLng != null;
       return {
         student_id: stu.id,
         name: `${stu.first_name} ${stu.last_name}`.trim(),
         photo_url: stu.photo_url || null,
         class: stu.class?.name || 'Class',
         parent_phone: stu.custom_fields?.parent_phone || null,
-        house_address: stu.house_address || 'Pinned Residence',
-        house_lat: stu.house_lat ? Number(stu.house_lat) : null,
-        house_lng: stu.house_lng ? Number(stu.house_lng) : null,
-        house_landmark: stu.house_landmark || null,
-        house_notes: stu.house_notes || null,
+        house_address: stu.house_address || stu.custom_fields?.address || 'Pinned Residence',
+        house_lat: rawLat,
+        house_lng: rawLng,
+        house_landmark: stu.house_landmark || stu.custom_fields?.landmark || null,
+        house_notes: stu.house_notes || stu.custom_fields?.notes || null,
         house_pinned_at: stu.house_pinned_at || null,
-        is_house_pinned: true,
+        is_house_pinned: isPinned,
         route_id: assigned?.route_id || null,
         route_code: assigned?.route_code || 'UNASSIGNED',
         route_name: assigned?.route_name || 'Awaiting Corridor Assignment',

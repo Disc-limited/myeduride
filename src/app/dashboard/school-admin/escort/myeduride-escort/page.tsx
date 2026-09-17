@@ -479,9 +479,27 @@ export default function MyEduRideEscortManagementPage() {
                 </div>
 
                 <div className="p-3 rounded-2xl bg-white border border-slate-100 space-y-1.5 text-[11px]">
-                  <p className="text-slate-600 truncate">📍 <strong>Pickup:</strong> {b.pickupAddress}</p>
+                  <div className="flex items-center justify-between gap-1 flex-wrap">
+                    <p className="text-slate-600 truncate flex-1 min-w-0">📍 <strong>Pickup:</strong> {b.pickupAddress}</p>
+                    {b.isHousePinned ? (
+                      <span className="px-2 py-0.5 rounded-md bg-emerald-100 text-emerald-800 font-bold text-[10px] shrink-0">
+                        📍 Pinned ({Number(b.pickupLat).toFixed(4)}, {Number(b.pickupLng).toFixed(4)})
+                      </span>
+                    ) : (
+                      <span className="px-2 py-0.5 rounded-md bg-amber-100 text-amber-800 font-bold text-[10px] shrink-0">
+                        📍 Location Not Pinned
+                      </span>
+                    )}
+                  </div>
                   <p className="text-slate-600 truncate">🏁 <strong>Dropoff:</strong> {b.destination || school?.name || 'School Campus'}</p>
-                  <p className="font-bold text-slate-800">⏰ {b.scheduleTime}</p>
+                  <div className="flex items-center justify-between">
+                    <p className="font-bold text-slate-800">⏰ {b.scheduleTime || '07:00 / 15:30'}</p>
+                    {b.tripType && (
+                      <span className="px-2 py-0.5 rounded-md bg-indigo-100 text-indigo-800 font-black text-[10px] uppercase">
+                        {b.tripType === 'afternoon_only' || b.tripType === 'afternoon' ? '🌅 Afternoon Only' : b.tripType === 'morning_only' || b.tripType === 'morning' ? '🌄 Morning Only' : '🔄 Both Trips'}
+                      </span>
+                    )}
+                  </div>
                 </div>
 
                 {/* TRIP FARE BREAKDOWN (MORNING / AFTERNOON / DAILY) */}
@@ -489,12 +507,12 @@ export default function MyEduRideEscortManagementPage() {
                   <div className="flex items-center justify-between text-[11px]">
                     <span className="text-emerald-800 font-bold">Daily Trip Total:</span>
                     <span className="font-black text-emerald-900 text-xs">
-                      {b.daily_fare ? `₦${Number(b.daily_fare).toLocaleString()}` : b.fare}
+                      {b.fareDaily || (b.daily_fare ? `₦${Number(b.daily_fare).toLocaleString()}` : b.fare)}
                     </span>
                   </div>
                   <div className="flex items-center justify-between text-[10px] text-emerald-700">
-                    <span>Morning Trip: ₦{Number(b.morning_fare || 1000).toLocaleString()}</span>
-                    <span>Afternoon Trip: ₦{Number(b.afternoon_fare || 1000).toLocaleString()}</span>
+                    <span>Morning Trip: {b.fareMorning || `₦${Number(b.morning_fare || 1000).toLocaleString()}`}</span>
+                    <span>Afternoon Trip: {b.fareAfternoon || `₦${Number(b.afternoon_fare || 1000).toLocaleString()}`}</span>
                   </div>
                 </div>
 

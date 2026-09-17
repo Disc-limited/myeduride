@@ -236,6 +236,12 @@ export async function POST(request: NextRequest) {
       const cf = { ...(st.custom_fields || {}) } as Record<string, any>;
       cf.address = house_address.trim();
       if (house_landmark?.trim()) cf.landmark = house_landmark.trim();
+      if (hasCoords) {
+        cf.house_lat = lat;
+        cf.house_lng = lng;
+        cf.is_pinned = true;
+        cf.location_pinned = true;
+      }
 
       const { error: updateErr } = await supabase
         .from('students')
