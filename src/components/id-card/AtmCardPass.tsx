@@ -32,6 +32,7 @@ export interface AtmCardPassProps {
   validThru?: string;
   securityPin?: string | null;
   primaryColor?: string;
+  accentColor?: string;
   onCardClick?: () => void;
   showFlipButton?: boolean;
 }
@@ -52,6 +53,7 @@ export default function AtmCardPass({
   validThru = '09/27',
   securityPin,
   primaryColor,
+  accentColor,
   onCardClick,
   showFlipButton = true,
 }: AtmCardPassProps) {
@@ -91,25 +93,20 @@ export default function AtmCardPass({
     cardType === 'escort'
       ? 'OFFICIAL TRANSIT ESCORT'
       : cardType === 'student'
-      ? 'VERIFIED STUDENT PASS'
-      : cardType === 'staff'
-      ? 'OFFICIAL STAFF PASS'
-      : 'PARENT / GUARDIAN PASS';
+        ? 'VERIFIED STUDENT PASS'
+        : cardType === 'staff'
+          ? 'OFFICIAL STAFF PASS'
+          : 'PARENT / GUARDIAN PASS';
 
-  const gradientBackground = primaryColor
-    ? `linear-gradient(135deg, ${primaryColor} 0%, ${primaryColor}cc 45%, #050811 100%)`
-    : cardType === 'escort'
-    ? 'linear-gradient(135deg, #070d1e 0%, #0d1a38 45%, #081126 100%)'
-    : cardType === 'student'
-    ? 'linear-gradient(135deg, #091e17 0%, #0f392c 45%, #071712 100%)'
-    : 'linear-gradient(135deg, #181329 0%, #291d47 45%, #120e21 100%)';
+  // MyEduRide Brand Color System:
+  // Primary Navy: #0C2340 (or custom school primary)
+  // Brand Green: #28A745 (or custom school accent)
+  // Brand Gold: #FBC02D
+  const activePrimary = primaryColor || '#0C2340';
+  const activeAccent = accentColor || '#28A745';
+  const brandGold = '#FBC02D';
 
-  const accentColor =
-    cardType === 'escort'
-      ? '#38bdf8' // Cyan
-      : cardType === 'student'
-      ? '#34d399' // Emerald
-      : '#a78bfa'; // Purple
+  const gradientBackground = `linear-gradient(135deg, ${activePrimary} 0%, #091a33 45%, #040d1a 100%)`;
 
   return (
     <div className="w-full max-w-[400px] mx-auto select-none">
@@ -149,9 +146,9 @@ export default function AtmCardPass({
               }}
             />
             <div
-              className="absolute -right-16 -bottom-16 w-56 h-56 rounded-full pointer-events-none opacity-15"
+              className="absolute -right-16 -bottom-16 w-56 h-56 rounded-full pointer-events-none opacity-25"
               style={{
-                background: `radial-gradient(circle, ${accentColor} 0%, transparent 70%)`,
+                background: `radial-gradient(circle, ${activeAccent} 0%, transparent 70%)`,
               }}
             />
 
@@ -171,7 +168,14 @@ export default function AtmCardPass({
                     <span className="font-black text-sm tracking-tight text-white drop-shadow-sm">
                       MyEduRide
                     </span>
-                    <span className="text-[8px] font-extrabold uppercase px-1.5 py-0.5 rounded bg-white/10 text-white/90 border border-white/15 tracking-wider">
+                    <span
+                      className="text-[8px] font-extrabold uppercase px-1.5 py-0.5 rounded border tracking-wider"
+                      style={{
+                        backgroundColor: `${activeAccent}25`,
+                        color: '#ffffff',
+                        borderColor: `${activeAccent}60`,
+                      }}
+                    >
                       SMART PASS
                     </span>
                   </div>
@@ -183,11 +187,11 @@ export default function AtmCardPass({
 
               <div className="text-right shrink-0">
                 <span
-                  className="inline-block text-[9px] font-black uppercase tracking-widest px-2 py-0.5 rounded-full border shadow-sm"
+                  className="inline-block text-[9px] font-black uppercase tracking-widest px-2.5 py-0.5 rounded-full border shadow-sm"
                   style={{
-                    backgroundColor: `${accentColor}25`,
-                    color: accentColor,
-                    borderColor: `${accentColor}50`,
+                    backgroundColor: `${activeAccent}25`,
+                    color: activeAccent === '#28A745' ? '#34ce57' : activeAccent,
+                    borderColor: `${activeAccent}60`,
                   }}
                 >
                   {roleBadge}
@@ -351,7 +355,7 @@ export default function AtmCardPass({
               </div>
               <div className="flex items-center gap-1 text-slate-300 font-mono">
                 <Phone size={9} />
-                <span>HOTLINE: 0800-MYEDURIDE</span>
+                <span>HOTLINE: 0814 521 7045</span>
               </div>
             </div>
           </div>

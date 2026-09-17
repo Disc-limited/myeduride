@@ -126,7 +126,8 @@ export function IdCardPreviewModal({ isOpen, onClose, data }: IdCardPreviewModal
                 schoolAddress={data.schoolAddress}
                 classNameOrRole={data.className || data.roleLabel || 'Student'}
                 validThru="09/27"
-                primaryColor={data.primaryColor}
+                primaryColor={data.primaryColor || '#0C2340'}
+                accentColor="#28A745"
               />
 
               <div className="p-3 rounded-2xl bg-emerald-50 border border-emerald-200 text-emerald-900 text-[11px] leading-relaxed flex items-start gap-2">

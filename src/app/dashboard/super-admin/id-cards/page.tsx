@@ -25,6 +25,7 @@ import {
   FileBadge2,
   Image as ImageIcon,
   CreditCard,
+  RefreshCw,
 } from 'lucide-react';
 import AtmCardPass from '@/components/id-card/AtmCardPass';
 import { photoSrc } from '@/lib/photo';
@@ -34,6 +35,7 @@ import { toast } from 'sonner';
 const STAFF_ACCESS_ROLES = ['staff', 'teacher', 'gate_officer', 'school_admin'];
 
 const COLOR_PRESETS = [
+  { label: 'MyEduRide Brand', primary: '#0C2340', accent: '#28A745' },
   { label: 'School Navy', primary: '#0D4A71', accent: '#28A745' },
   { label: 'Royal Blue', primary: '#1E3A8A', accent: '#3B82F6' },
   { label: 'Emerald Green', primary: '#065F46', accent: '#10B981' },
@@ -47,7 +49,7 @@ const PHOTO_BG_PRESETS = [
   { label: 'Pure White', value: '#FFFFFF', colorBox: 'bg-white border border-slate-300' },
   { label: 'Ice Blue', value: '#F0F9FF', colorBox: 'bg-sky-100' },
   { label: 'Light Slate', value: '#F1F5F9', colorBox: 'bg-slate-200' },
-  { label: 'Match Primary', value: 'PRIMARY_MATCH', colorBox: 'bg-gradient-to-r from-[#0D4A71] to-[#28A745]' },
+  { label: 'Match Primary', value: 'PRIMARY_MATCH', colorBox: 'bg-gradient-to-r from-[#0C2340] to-[#28A745]' },
   { label: 'Dark Navy', value: '#0F172A', colorBox: 'bg-slate-900' },
 ];
 
@@ -63,8 +65,8 @@ export default function SuperAdminIdCardsPage() {
   const [selectedIds, setSelectedIds] = useState(new Set());
   const [generating, setGenerating] = useState(false);
 
-  // ID Card Styling Studio State
-  const [primaryColor, setPrimaryColor] = useState('#0D4A71');
+  // ID Card Styling Studio State (Defaults to MyEduRide Brand Navy and Green)
+  const [primaryColor, setPrimaryColor] = useState('#0C2340');
   const [accentColor, setAccentColor] = useState('#28A745');
   const [photoBgColor, setPhotoBgColor] = useState('#FFFFFF');
   const [removePhotoBg, setRemovePhotoBg] = useState(false);
@@ -102,6 +104,8 @@ export default function SuperAdminIdCardsPage() {
     setSearchQuery('');
   }, [entityTab]);
 
+  const [loadError, setLoadError] = useState<string | null>(null);
+
   // When a school is selected, auto-load its primary color if set
   useEffect(() => {
     if (selectedSchool !== 'all') {
@@ -113,45 +117,29 @@ export default function SuperAdminIdCardsPage() {
   }, [selectedSchool, schools]);
 
   const loadData = async () => {
+    setLoading(true);
+    setLoadError(null);
     try {
-      const schoolRes = await fetch('/api/schools/list', { cache: 'no-store', credentials: 'include' });
-      const schoolData = await schoolRes.json();
-      const schoolList = schoolData.schools || [];
-      setSchools(schoolList);
-
-      const allStudents = [];
-      const allStaff = [];
-
-      for (const school of schoolList) {
-        const [studentRes, staffRes] = await Promise.all([
-          fetch(`/api/schools/students?school_id=${school.id}`, {
-            cache: 'no-store',
-            credentials: 'include',
-          }),
-          fetch(`/api/schools/staff?school_id=${school.id}&ensure_profiles=1`, {
-            cache: 'no-store',
-            credentials: 'include',
-          }),
-        ]);
-
-        const studentData = await studentRes.json();
-        (studentData.students || []).forEach((s) =>
-          allStudents.push({ ...s, school, school_id: school.id })
-        );
-
-        const staffData = await staffRes.json();
-        (staffData.staff || [])
-          .filter((s) => STAFF_ACCESS_ROLES.includes(s.role))
-          .forEach((s) => allStaff.push({ ...s, school, school_id: school.id }));
+      const res = await fetch('/api/super-admin/id-cards', {
+        cache: 'no-store',
+        credentials: 'include',
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        throw new Error(data.error || 'Failed to load ID card data');
       }
 
-      setStudents(allStudents);
-      setStaff(allStaff);
-    } catch (err) {
+      setSchools(data.schools || []);
+      setStudents(data.students || []);
+      setStaff(data.staff || []);
+    } catch (err: any) {
       console.error(err);
-      toast.error('Failed to load ID card data');
+      const msg = err?.message || 'Failed to load ID card data';
+      setLoadError(msg);
+      toast.error(msg);
+    } finally {
+      setLoading(false);
     }
-    setLoading(false);
   };
 
   const filteredStudents = students.filter((s) => {
@@ -249,6 +237,16 @@ export default function SuperAdminIdCardsPage() {
         </div>
 
         <div className="flex items-center gap-3">
+          {loadError && (
+            <button
+              type="button"
+              onClick={loadData}
+              className="px-3.5 py-2 rounded-xl bg-amber-500/20 border border-amber-500/40 text-amber-300 hover:bg-amber-500/30 text-xs font-bold flex items-center gap-2 transition-all cursor-pointer"
+            >
+              <RefreshCw className="w-4 h-4 animate-spin-reverse" />
+              <span>Retry Load</span>
+            </button>
+          )}
           <button
             type="button"
             onClick={() => setShowStudioPanel(!showStudioPanel)}
@@ -696,6 +694,7 @@ export default function SuperAdminIdCardsPage() {
                     classNameOrRole={previewPerson.className || previewPerson.roleLabel}
                     validThru="09/27"
                     primaryColor={primaryColor}
+                    accentColor={accentColor}
                   />
                 </div>
 

@@ -51,9 +51,11 @@ export default function ParentsManagementView() {
   const [selectedSchool, setSelectedSchool] = useState('all');
   const [selectedLoginStatus, setSelectedLoginStatus] = useState('all');
   const [editingParent, setEditingParent] = useState<SuperAdminParentRow | null>(null);
+  const [loadError, setLoadError] = useState<string | null>(null);
 
   const loadParents = useCallback(async () => {
     setLoading(true);
+    setLoadError(null);
     try {
       const url = selectedSchool !== 'all'
         ? `/api/super-admin/parents?school_id=${selectedSchool}`
@@ -65,13 +67,18 @@ export default function ParentsManagementView() {
       });
       const data = await res.json();
       if (!res.ok) {
-        toast.error(data.error || 'Failed to load parents');
+        const msg = data.error || 'Failed to load parents';
+        setLoadError(msg);
+        toast.error(msg);
         return;
       }
       setParents(data.parents || []);
       setSchools(data.schools || []);
-    } catch {
-      toast.error('Failed to load parents');
+      setLoadError(null);
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : 'Network error loading parents';
+      setLoadError(msg);
+      toast.error(msg);
     } finally {
       setLoading(false);
     }
@@ -153,6 +160,28 @@ export default function ParentsManagementView() {
         <p className="animate-pulse text-slate-600 font-semibold text-sm">
           Loading Parents Directory from backend...
         </p>
+      </div>
+    );
+  }
+
+  if (loadError && parents.length === 0) {
+    return (
+      <div className="min-h-[50vh] flex flex-col items-center justify-center p-6 text-center space-y-4">
+        <div className="w-14 h-14 rounded-2xl bg-rose-50 text-rose-600 flex items-center justify-center border border-rose-200">
+          <AlertCircle size={28} />
+        </div>
+        <div className="max-w-md space-y-1">
+          <h3 className="text-base font-extrabold text-slate-900">Failed to Load Parents Directory</h3>
+          <p className="text-xs text-slate-500 font-medium">{loadError}</p>
+        </div>
+        <button
+          type="button"
+          onClick={() => loadParents()}
+          className="px-4 py-2 rounded-xl bg-slate-900 hover:bg-slate-800 text-white font-bold text-xs flex items-center gap-2 transition-all cursor-pointer shadow-sm"
+        >
+          <RefreshCcw size={14} />
+          <span>Retry</span>
+        </button>
       </div>
     );
   }

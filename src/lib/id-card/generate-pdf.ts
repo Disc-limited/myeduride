@@ -143,8 +143,13 @@ async function drawFront(
   doc.setFillColor(navy[0], navy[1], navy[2]);
   doc.triangle(0, 0, CARD_W * 0.72, 0, 0, CARD_H * 0.55, 'F');
 
-  doc.setFillColor(Math.min(255, navy[0] + 25), Math.min(255, navy[1] + 25), Math.min(255, navy[2] + 40));
-  doc.triangle(0, 0, CARD_W * 0.40, 0, 0, CARD_H * 0.30, 'F');
+  // Dynamic Brand Green accent ribbon facet (#28A745)
+  doc.setFillColor(accent[0], accent[1], accent[2]);
+  doc.triangle(CARD_W * 0.28, 0, CARD_W * 0.44, 0, 0, CARD_H * 0.38, 'F');
+
+  // Brand Gold highlight pinstripe (#FBC02D)
+  doc.setFillColor(251, 192, 45);
+  doc.triangle(CARD_W * 0.44, 0, CARD_W * 0.46, 0, 0, CARD_H * 0.40, 'F');
 
   doc.setFillColor(Math.max(3, bgR - 4), Math.max(5, bgG - 4), Math.max(10, bgB - 6));
   doc.triangle(CARD_W * 0.35, CARD_H, CARD_W, CARD_H * 0.35, CARD_W, CARD_H, 'F');
@@ -182,13 +187,13 @@ async function drawFront(
   doc.setTextColor(190, 210, 235);
   doc.text((school.name || 'Official School Network').toUpperCase(), 10.2, 8.4, { maxWidth: 35 });
 
-  // Top Right Role Badge
+  // Top Right Role Badge with Brand Green & Gold accent
   const isStaff = person.kind === 'staff';
   const badgeText = isStaff
     ? person.roleLabel ? person.roleLabel.toUpperCase() : 'OFFICIAL STAFF PASS'
     : 'VERIFIED STUDENT PASS';
-  const badgeBg = isStaff ? [88, 28, 135] : [6, 95, 70];
-  const badgeBorder = isStaff ? [192, 132, 252] : [52, 211, 153];
+  const badgeBg = [Math.round(accent[0] * 0.22), Math.round(accent[1] * 0.22), Math.round(accent[2] * 0.22)];
+  const badgeBorder = [accent[0], accent[1], accent[2]];
 
   doc.setFillColor(badgeBg[0], badgeBg[1], badgeBg[2]);
   doc.setDrawColor(badgeBorder[0], badgeBorder[1], badgeBorder[2]);
@@ -271,7 +276,7 @@ async function drawFront(
 
   doc.setFont('helvetica', 'bold');
   doc.setFontSize(3.3);
-  doc.setTextColor(110, 231, 183);
+  doc.setTextColor(accent[0], accent[1], accent[2]);
   doc.text(subText, 6.0, 48.8);
 
   // Valid Thru (Right Aligned)
@@ -314,7 +319,8 @@ async function drawBack(
   doc: any,
   school: SchoolBranding,
   person: IdCardPerson,
-  navy: [number, number, number]
+  navy: [number, number, number],
+  accent: [number, number, number]
 ) {
   // 1. Dark base tone matching Front
   const bgR = Math.max(6, Math.min(26, Math.round(navy[0] * 0.35)));
@@ -446,13 +452,13 @@ async function drawBack(
 
   doc.setFont('helvetica', 'bold');
   doc.setFontSize(3.2);
-  doc.setTextColor(52, 211, 153);
+  doc.setTextColor(accent[0], accent[1], accent[2]);
   doc.text('DISCL GATE VERIFIED  ·  SECURE ACCESS', 9.5, 51.5);
 
   doc.setFont('courier', 'bold');
   doc.setFontSize(3.0);
   doc.setTextColor(160, 175, 195);
-  doc.text('HOTLINE: 0800-MYEDURIDE', CARD_W - 4.5, 51.5, { align: 'right' });
+  doc.text('HOTLINE: 0814 521 7045', CARD_W - 4.5, 51.5, { align: 'right' });
 }
 
 export async function buildIdCardsPdfBuffer(
@@ -466,7 +472,7 @@ export async function buildIdCardsPdfBuffer(
     format: [CARD_W, CARD_H],
   });
 
-  const navy = hexToRgb(school.primaryColor || '#0D4A71');
+  const navy = hexToRgb(school.primaryColor || '#0C2340');
   const accent = hexToRgb(school.accentColor || '#28A745');
 
   for (let i = 0; i < persons.length; i++) {
@@ -474,7 +480,7 @@ export async function buildIdCardsPdfBuffer(
     if (i > 0) doc.addPage();
     await drawFront(doc, person, school, navy, accent);
     doc.addPage();
-    await drawBack(doc, school, person, navy);
+    await drawBack(doc, school, person, navy, accent);
   }
 
   return doc.output('arraybuffer') as ArrayBuffer;
