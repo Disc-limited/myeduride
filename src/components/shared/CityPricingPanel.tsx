@@ -358,9 +358,9 @@ export function CityManagerPricingView({
                   [
                     ['rate_per_km', '₦ per km (0–1 km band)'],
                     ['service_charge_percent', 'Service charge %'],
-                    ['shared_ride_base_fare_round', 'Shared ride round (₦)'],
-                    ['shared_ride_base_fare_single', 'Shared ride single (₦)'],
-                    ['shared_ride_service_fee', 'Shared ride fee (₦)'],
+                    ['shared_ride_base_fare_round', 'Shared ride complete trip / round (₦)'],
+                    ['shared_ride_base_fare_single', 'Shared ride one-way single trip (₦)'],
+                    ['shared_ride_service_fee', 'Shared ride service fee (₦)'],
                   ] as const
                 ).map(([key, label]) => (
                   <label key={key} className="block rounded-xl border border-slate-700 bg-slate-900/60 p-3">
@@ -377,20 +377,38 @@ export function CityManagerPricingView({
                 ))}
               </div>
 
-              <div className="rounded-xl border border-emerald-500/30 bg-emerald-500/10 px-3 py-2.5 text-[11px] text-emerald-200">
-                Preview 1 km: one-way{' '}
-                <strong>
-                  {formatNgn(
-                    Math.round(Number(form.rate_per_km) * (1 + Number(form.service_charge_percent) / 100))
-                  )}
-                </strong>
-                {' · '}
-                complete trip{' '}
-                <strong>
-                  {formatNgn(
-                    Math.round(Number(form.rate_per_km) * (1 + Number(form.service_charge_percent) / 100)) * 2
-                  )}
-                </strong>
+              <div className="rounded-2xl border border-emerald-500/30 bg-emerald-500/10 p-3.5 space-y-2 text-xs text-emerald-200">
+                <div className="flex items-center justify-between font-bold border-b border-emerald-500/20 pb-1.5">
+                  <span className="flex items-center gap-1.5">
+                    <span>💡 Trip Rate Provisions (1 km corridor baseline)</span>
+                  </span>
+                  <span className="text-[10px] bg-emerald-500/20 px-2 py-0.5 rounded-md font-mono text-emerald-300">
+                    {form.service_charge_percent}% Service Charge
+                  </span>
+                </div>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-[11px]">
+                  <div className="p-2.5 rounded-xl bg-slate-950/70 border border-emerald-500/20">
+                    <span className="text-slate-400 block text-[10px] uppercase font-bold">One-Way Trip (Morning or Afternoon)</span>
+                    <strong className="text-base font-black text-emerald-300">
+                      {formatNgn(
+                        Math.round(Number(form.rate_per_km) * (1 + Number(form.service_charge_percent) / 100))
+                      )}
+                    </strong>
+                    <span className="block text-[9px] text-slate-400 mt-0.5">Base (₦{form.rate_per_km}) + {form.service_charge_percent}% service</span>
+                  </div>
+                  <div className="p-2.5 rounded-xl bg-slate-950/70 border border-emerald-500/20">
+                    <span className="text-slate-400 block text-[10px] uppercase font-bold">Complete Trip (Both Segments)</span>
+                    <strong className="text-base font-black text-emerald-300">
+                      {formatNgn(
+                        Math.round(Number(form.rate_per_km) * (1 + Number(form.service_charge_percent) / 100)) * 2
+                      )}
+                    </strong>
+                    <span className="block text-[9px] text-slate-400 mt-0.5">One-Way × 2 trips (Morning + Afternoon)</span>
+                  </div>
+                </div>
+                <p className="text-[10px] text-emerald-300/80 leading-relaxed">
+                  Parents paying for only a single leg (morning only or afternoon only) are charged the One-Way rate. Complete round trips are charged the Complete Trip rate.
+                </p>
               </div>
 
               <div className="space-y-2">

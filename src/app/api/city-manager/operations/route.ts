@@ -862,8 +862,11 @@ export async function GET(request: NextRequest) {
       assignment.is_discounted = Boolean(match?.is_discounted || assignMeta?.discount) || (assignment.standard_daily_fare > dailyFare);
       assignment.accountant_approval_ref = match?.accountant_approval_ref || assignMeta?.discount?.accountantApprovalRef || null;
       assignment.accountant_name = match?.accountant_name || assignMeta?.discount?.accountantName || null;
-      assignment.discount_details = match?.discount_details || assignMeta?.discount || null;
-      assignment.trip_type = match?.trip_type || 'both';
+      assignment.trip_type =
+        match?.trip_type ||
+        (assignMeta?.trip_type === 'morning_only' || assignMeta?.trip_type === 'afternoon_only'
+          ? assignMeta.trip_type
+          : assignMeta?.fareResult?.tripType || 'both');
     }
 
     const payload = {
@@ -1273,6 +1276,7 @@ export async function POST(request: NextRequest) {
             else if (bData?.notes && String(bData.notes).trim().startsWith('{')) currentNotes = JSON.parse(String(bData.notes));
           } catch {}
 
+          currentNotes.trip_type = resolvedTripType;
           currentNotes.discount = isDiscount ? discountPayload : null;
           currentNotes.fare_correction = discountPayload;
           currentNotes.daily_fare = rawCorrected;
@@ -1286,6 +1290,7 @@ export async function POST(request: NextRequest) {
             afternoonFare,
             originalDailyFare: rawOriginal || currentNotes.fareResult?.originalDailyFare || rawCorrected,
             discountVariance: variance,
+            tripType: resolvedTripType,
           };
 
           const notesPayload = JSON.stringify(currentNotes);
@@ -1364,7 +1369,9 @@ export async function POST(request: NextRequest) {
             morningFare,
             afternoonFare,
             originalDailyFare: rawOriginal || rawCorrected,
+            tripType: resolvedTripType,
           };
+          assignNotes.trip_type = resolvedTripType;
           assignNotes.fare_correction = discountPayload;
           assignNotes.daily_fare = rawCorrected;
           assignNotes.morning_fare = morningFare;

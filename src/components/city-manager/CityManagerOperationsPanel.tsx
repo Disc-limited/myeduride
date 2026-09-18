@@ -36,11 +36,12 @@ const BOOKING_PAGE_SIZE = 5;
 export function CityManagerOperationsPanel() {
   const [data, setData] = useState<Operations>(empty);
   const [loading, setLoading] = useState(true);
+  const [search, setSearch] = useState('');
   const [filter, setFilter] = useState('');
   const [activeTab, setActiveTab] = useState<'all' | 'requests' | 'active' | 'cleared' | 'deputising' | 'walk_home'>('all');
   const [pinningRequest, setPinningRequest] = useState<any>(null);
   const [selectedStudent, setSelectedStudent] = useState<any>(null);
-  const [booking, setBooking] = useState<any>({ source: 'parent', schoolId: '', pickupAddress: '', pickupAt: '', notes: '' });
+  const [booking, setBooking] = useState<any>({ source: 'parent', schoolId: '', pickupAddress: '', pickupAt: '', tripType: 'both', notes: '' });
   const [dispatch, setDispatch] = useState<any>({ bookingId: '', escortApplicationId: '', schoolId: '', studentId: '', assignmentType: 'standard', notes: '' });
   
   // Selected Escort Assignment Map for Parent Requests
@@ -75,6 +76,7 @@ export function CityManagerOperationsPanel() {
     accountantApprovalRef: string;
     accountantName: string;
     discountReason: string;
+    tripType: 'both' | 'morning_only' | 'afternoon_only';
     submitting: boolean;
   }>({
     open: false,
@@ -85,6 +87,7 @@ export function CityManagerOperationsPanel() {
     accountantApprovalRef: '',
     accountantName: 'City Manager',
     discountReason: 'Fare correction',
+    tripType: 'both',
     submitting: false,
   });
 
@@ -98,6 +101,13 @@ export function CityManagerOperationsPanel() {
     const standard = Number(req.standard_daily_fare || req.daily_fare || req.actual_amount_collected || 0);
     const current = Number(req.actual_amount_collected || req.daily_fare || standard);
     const savings = standard > current ? standard - current : 0;
+    const initialTripType: 'both' | 'morning_only' | 'afternoon_only' =
+      req.trip_type === 'morning_only' || req.trip_type === 'afternoon_only'
+        ? req.trip_type
+        : req.tripType === 'morning_only' || req.tripType === 'afternoon_only'
+          ? req.tripType
+          : 'both';
+
     setDiscountModal({
       open: true,
       booking: {
@@ -107,13 +117,15 @@ export function CityManagerOperationsPanel() {
         booking_id: req.booking_id || req.bookingId || null,
         assignment_id: req.assignment_id || req.id || null,
         child_id: req.child_id || req.student_id || req.student?.id || null,
+        trip_type: initialTripType,
       },
       originalFare: standard,
       discountedFare: String(current || standard),
       discountAmount: savings > 0 ? String(savings) : '',
       accountantApprovalRef: req.accountant_approval_ref || '',
       accountantName: req.accountant_name || 'City Manager',
-      discountReason: req.discount_details?.discountReason || 'Fare correction',
+      discountReason: req.discount_details?.discountReason || (initialTripType !== 'both' ? `One-way ${initialTripType === 'morning_only' ? 'morning' : 'afternoon'} trip` : 'Fare correction'),
+      tripType: initialTripType,
       submitting: false,
     });
   };
@@ -136,7 +148,7 @@ export function CityManagerOperationsPanel() {
           assignmentId: discountModal.booking?.assignment_id,
           studentId: discountModal.booking?.child_id,
           originalFare: discountModal.originalFare,
-          tripType: discountModal.booking?.trip_type || 'both',
+          tripType: discountModal.tripType,
           correctedFare: dFare,
           accountantApprovalRef: discountModal.accountantApprovalRef.trim(),
           accountantName: discountModal.accountantName.trim(),
@@ -585,6 +597,19 @@ export function CityManagerOperationsPanel() {
                           <p className="text-[10px] text-slate-400 font-mono">
                             {a.student?.student_id_number || a.student_id?.slice(0, 8)} · {typeof a.student?.class === 'object' ? (a.student?.class?.name || 'Class N/A') : (a.student?.class || a.student?.class_name || 'Class N/A')}
                           </p>
+                          {a.trip_type === 'morning_only' ? (
+                            <span className="inline-block mt-1 px-1.5 py-0.5 rounded text-[9px] font-black bg-amber-500/20 text-amber-300 border border-amber-400/30">
+                              🌅 Morning Only (1-Way)
+                            </span>
+                          ) : a.trip_type === 'afternoon_only' ? (
+                            <span className="inline-block mt-1 px-1.5 py-0.5 rounded text-[9px] font-black bg-orange-500/20 text-orange-300 border border-orange-400/30">
+                              🌇 Afternoon Only (1-Way)
+                            </span>
+                          ) : (
+                            <span className="inline-block mt-1 px-1.5 py-0.5 rounded text-[9px] font-bold bg-emerald-500/10 text-emerald-300 border border-emerald-500/20">
+                              🔄 Complete Trip
+                            </span>
+                          )}
                         </div>
                       </div>
                     </td>
@@ -757,6 +782,19 @@ export function CityManagerOperationsPanel() {
                         : 'bg-indigo-500/20 text-indigo-300 border-indigo-500/30'
                     }`}>
                       {req.escort_type === 'school_escort' ? '🏫 School Escort' : '✨ MyEduRide Escort'}
+                    </span>
+                  )}
+                  {req.trip_type === 'morning_only' ? (
+                    <span className="px-2 py-0.5 rounded-md text-[10px] font-black bg-amber-500/20 text-amber-300 border border-amber-400/30">
+                      🌅 One-Way (Morning Only)
+                    </span>
+                  ) : req.trip_type === 'afternoon_only' ? (
+                    <span className="px-2 py-0.5 rounded-md text-[10px] font-black bg-orange-500/20 text-orange-300 border border-orange-400/30">
+                      🌇 One-Way (Afternoon Only)
+                    </span>
+                  ) : (
+                    <span className="px-2 py-0.5 rounded-md text-[10px] font-bold bg-emerald-500/15 text-emerald-300 border border-emerald-500/25">
+                      🔄 Complete Trip
                     </span>
                   )}
                   {(req.house_lat ?? req.lat) != null && (req.house_lng ?? req.lng) != null ? (
@@ -1050,6 +1088,15 @@ export function CityManagerOperationsPanel() {
               <option value="sales">Sales</option>
               <option value="business_development">Business Development</option>
               <option value="school">School</option>
+            </select>
+            <select
+              value={booking.tripType || 'both'}
+              onChange={(e) => setBooking({ ...booking, tripType: e.target.value })}
+              className="rounded-xl bg-slate-900 p-2 text-xs text-white font-bold"
+            >
+              <option value="both">🔄 Complete Trip (Morning &amp; Afternoon)</option>
+              <option value="morning_only">🌅 One-Way: Morning Pickup Only</option>
+              <option value="afternoon_only">🌇 One-Way: Afternoon Drop-off Only</option>
             </select>
             <input
               value={booking.pickupAddress}
@@ -1617,6 +1664,132 @@ export function CityManagerOperationsPanel() {
               <div className="flex items-center justify-between">
                 <span className="text-slate-400">Standard Daily Fare:</span>
                 <span className="font-mono font-bold text-slate-300">₦{discountModal.originalFare.toLocaleString()}</span>
+              </div>
+            </div>
+
+            {/* TRIP COVERAGE / PROVISION SELECTOR */}
+            <div className="space-y-1.5">
+              <label className="block text-[10px] font-extrabold uppercase tracking-wider text-slate-400">
+                Trip Coverage / Service Provision *
+              </label>
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setDiscountModal((prev) => ({
+                      ...prev,
+                      tripType: 'both',
+                      discountReason: prev.discountReason.replace(/One-way (morning|afternoon) trip/gi, '').trim() || 'Fare adjustment',
+                    }));
+                  }}
+                  className={`p-2.5 rounded-xl border text-left flex flex-col justify-between gap-1 transition-all cursor-pointer ${
+                    discountModal.tripType === 'both'
+                      ? 'border-emerald-500 bg-emerald-500/20 text-emerald-200 ring-1 ring-emerald-500 shadow-sm'
+                      : 'border-slate-800 bg-slate-900 text-slate-400 hover:border-slate-700'
+                  }`}
+                >
+                  <span className="font-bold text-xs flex items-center gap-1.5">
+                    🔄 Complete Trip
+                  </span>
+                  <span className="text-[10px] opacity-75">Round Trip (Morning &amp; Afternoon)</span>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => {
+                    const halfStandard = Math.round(discountModal.originalFare / 2);
+                    setDiscountModal((prev) => {
+                      const shouldSuggestHalf = Number(prev.discountedFare) === prev.originalFare;
+                      return {
+                        ...prev,
+                        tripType: 'morning_only',
+                        discountedFare: shouldSuggestHalf ? String(halfStandard) : prev.discountedFare,
+                        discountAmount: shouldSuggestHalf ? String(halfStandard) : prev.discountAmount,
+                        discountReason: 'One-way morning trip',
+                      };
+                    });
+                  }}
+                  className={`p-2.5 rounded-xl border text-left flex flex-col justify-between gap-1 transition-all cursor-pointer ${
+                    discountModal.tripType === 'morning_only'
+                      ? 'border-amber-500 bg-amber-500/20 text-amber-200 ring-1 ring-amber-500 shadow-sm'
+                      : 'border-slate-800 bg-slate-900 text-slate-400 hover:border-slate-700'
+                  }`}
+                >
+                  <span className="font-bold text-xs flex items-center gap-1.5">
+                    🌅 Morning Only
+                  </span>
+                  <span className="text-[10px] opacity-75">One-Way to School (Pickup Only)</span>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => {
+                    const halfStandard = Math.round(discountModal.originalFare / 2);
+                    setDiscountModal((prev) => {
+                      const shouldSuggestHalf = Number(prev.discountedFare) === prev.originalFare;
+                      return {
+                        ...prev,
+                        tripType: 'afternoon_only',
+                        discountedFare: shouldSuggestHalf ? String(halfStandard) : prev.discountedFare,
+                        discountAmount: shouldSuggestHalf ? String(halfStandard) : prev.discountAmount,
+                        discountReason: 'One-way afternoon trip',
+                      };
+                    });
+                  }}
+                  className={`p-2.5 rounded-xl border text-left flex flex-col justify-between gap-1 transition-all cursor-pointer ${
+                    discountModal.tripType === 'afternoon_only'
+                      ? 'border-orange-500 bg-orange-500/20 text-orange-200 ring-1 ring-orange-500 shadow-sm'
+                      : 'border-slate-800 bg-slate-900 text-slate-400 hover:border-slate-700'
+                  }`}
+                >
+                  <span className="font-bold text-xs flex items-center gap-1.5">
+                    🌇 Afternoon Only
+                  </span>
+                  <span className="text-[10px] opacity-75">One-Way from School (Drop-off Only)</span>
+                </button>
+              </div>
+
+              {discountModal.tripType !== 'both' && (
+                <div className="p-2.5 rounded-xl bg-amber-500/10 border border-amber-500/25 text-amber-300 text-[11px] flex flex-wrap items-center justify-between gap-2">
+                  <span>
+                    ⚡ Single trip provision ({discountModal.tripType === 'morning_only' ? 'Morning Pickup Only' : 'Afternoon Drop-off Only'}).
+                    Standard 1-way baseline: ₦{Math.round(discountModal.originalFare / 2).toLocaleString()}.
+                  </span>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const half = Math.round(discountModal.originalFare / 2);
+                      setDiscountModal((prev) => ({
+                        ...prev,
+                        discountedFare: String(half),
+                        discountAmount: String(prev.originalFare - half),
+                      }));
+                    }}
+                    className="text-[10px] underline font-extrabold text-white hover:text-amber-200 cursor-pointer"
+                  >
+                    Set to ₦{Math.round(discountModal.originalFare / 2).toLocaleString()}
+                  </button>
+                </div>
+              )}
+            </div>
+
+            {/* SEGMENT FARE PREVIEW DECK */}
+            <div className="grid grid-cols-2 gap-2 text-xs bg-slate-900/90 p-2.5 rounded-2xl border border-slate-800">
+              <div className="text-center p-2 rounded-xl bg-slate-950/70 border border-slate-800/80">
+                <span className="text-slate-400 block text-[10px] uppercase font-bold">Morning Segment</span>
+                <span className={`font-mono font-black text-xs ${discountModal.tripType === 'afternoon_only' ? 'text-slate-600 line-through' : 'text-emerald-400'}`}>
+                  {discountModal.tripType === 'afternoon_only'
+                    ? '₦0 (Excluded)'
+                    : `₦${(discountModal.tripType === 'morning_only' ? Number(discountModal.discountedFare || 0) : Math.round(Number(discountModal.discountedFare || 0) / 2)).toLocaleString()}`}
+                </span>
+              </div>
+              <div className="text-center p-2 rounded-xl bg-slate-950/70 border border-slate-800/80">
+                <span className="text-slate-400 block text-[10px] uppercase font-bold">Afternoon Segment</span>
+                <span className={`font-mono font-black text-xs ${discountModal.tripType === 'morning_only' ? 'text-slate-600 line-through' : 'text-emerald-400'}`}>
+                  {discountModal.tripType === 'morning_only'
+                    ? '₦0 (Excluded)'
+                    : `₦${(discountModal.tripType === 'afternoon_only' ? Number(discountModal.discountedFare || 0) : Number(discountModal.discountedFare || 0) - Math.round(Number(discountModal.discountedFare || 0) / 2)).toLocaleString()}`}
+                </span>
               </div>
             </div>
 
