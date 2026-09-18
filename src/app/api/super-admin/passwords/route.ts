@@ -167,7 +167,7 @@ export async function GET(request: NextRequest) {
         school.id,
         profileById,
         authById,
-        { repairMissingParents: true }
+        { repairMissingParents: false, loadPasswords: true }
       );
       for (const s of students) {
         if (s.parent_user_id) studentParentIds.add(s.parent_user_id);

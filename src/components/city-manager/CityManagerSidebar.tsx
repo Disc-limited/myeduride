@@ -79,7 +79,7 @@ export function CityManagerSidebar({
   const navItems = [
     { id: 'dashboard', label: 'Dashboard', icon: LayoutDashboard },
     { id: 'live-operations', label: 'Live Operations', icon: Radio },
-    { id: 'pricing', label: 'Pricing', icon: BadgePercent, badge: 'NEW', badgeColor: 'bg-emerald-500 text-white font-black' },
+    { id: 'pricing', label: 'City Pricing Adjuster', icon: BadgePercent, badge: '1-WAY / ROUND', badgeColor: 'bg-emerald-500 text-white font-black' },
     { id: 'schools', label: 'Schools', icon: School, hasChildren: true },
     { id: 'escorts', label: 'Escorts', icon: UserCheck, hasChildren: true },
     { id: 'vehicles', label: 'Vehicles', icon: Car, hasChildren: true },

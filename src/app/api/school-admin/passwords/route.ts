@@ -128,7 +128,7 @@ export async function GET(request: NextRequest) {
         school.id,
         profileById,
         authById,
-        { repairMissingParents: true }
+        { repairMissingParents: false, loadPasswords: true }
       );
       const linkedStudentsByParent = new Map<string, string[]>();
       for (const s of students) {

@@ -151,7 +151,11 @@ export type UnifiedParentsSummary = {
 export async function getUnifiedSchoolParentsSummary(
   supabase: SupabaseClient,
   schoolId: string,
-  opts: { autoDeduplicate?: boolean } = { autoDeduplicate: true }
+  opts: { autoDeduplicate?: boolean; repairMissingParents?: boolean; loadPasswords?: boolean } = {
+    autoDeduplicate: false,
+    repairMissingParents: false,
+    loadPasswords: false,
+  }
 ): Promise<UnifiedParentsSummary> {
   if (opts.autoDeduplicate) {
     await deduplicateSchoolParents(supabase, schoolId).catch((err) =>
@@ -169,7 +173,11 @@ export async function getUnifiedSchoolParentsSummary(
     schoolId,
     profileById,
     authById,
-    { repairMissingParents: true }
+    {
+      repairMissingParents: opts.repairMissingParents ?? false,
+      loadPasswords: opts.loadPasswords ?? false,
+      loadPickups: false,
+    }
   );
 
   const parents = aggregateStudentParentRows(rows);

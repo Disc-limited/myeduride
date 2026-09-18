@@ -2,10 +2,11 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import { ClipboardList, RefreshCw, Search, UserPlus, Sparkles, CheckCircle2, ShieldCheck, Clock, MapPin, Phone, Car, Users, ArrowRightLeft, Footprints, AlertTriangle, Zap, CheckCheck, Info, ChevronLeft, ChevronRight, Pencil } from 'lucide-react';
+import { ClipboardList, RefreshCw, Search, UserPlus, Sparkles, CheckCircle2, ShieldCheck, Clock, MapPin, Phone, Car, Users, ArrowRightLeft, Footprints, AlertTriangle, Zap, CheckCheck, Info, ChevronLeft, ChevronRight, Pencil, BadgePercent, Sun, Moon } from 'lucide-react';
 import { toast } from 'sonner';
 import StudentAvatar from '@/components/shared/StudentAvatar';
 import InteractiveLocationPickerModal from '@/components/shared/InteractiveLocationPickerModal';
+import { CityManagerPricingView } from '@/components/shared/CityPricingPanel';
 
 type Operations = {
   schools: any[];
@@ -53,6 +54,7 @@ export function CityManagerOperationsPanel() {
   // Escort Rosters Filters & In-Place Reassignment Modal State
   const [rosterSchoolFilter, setRosterSchoolFilter] = useState('all');
   const [rosterEscortFilter, setRosterEscortFilter] = useState('all');
+  const [showCityPricing, setShowCityPricing] = useState(false);
   const [reassignModal, setReassignModal] = useState<{
     open: boolean;
     assignment: any | null;
@@ -473,13 +475,27 @@ export function CityManagerOperationsPanel() {
               Review parent ride requests, identify available area escorts, and execute 5-stage approved assignments.
             </p>
           </div>
-          <button
-            onClick={() => load()}
-            className="rounded-xl bg-slate-800 hover:bg-slate-700 p-2.5 text-slate-200 cursor-pointer transition-all"
-            title="Refresh operations"
-          >
-            <RefreshCw size={16} className={loading ? 'animate-spin' : ''} />
-          </button>
+          <div className="flex items-center gap-2">
+            <button
+              type="button"
+              onClick={() => setShowCityPricing((p) => !p)}
+              className={`px-3.5 py-2.5 rounded-xl text-xs font-black flex items-center gap-1.5 transition-all cursor-pointer ${
+                showCityPricing
+                  ? 'bg-emerald-500 text-slate-950 shadow-lg shadow-emerald-500/20'
+                  : 'bg-slate-800 hover:bg-slate-700 text-emerald-300 border border-emerald-500/30'
+              }`}
+            >
+              <BadgePercent size={16} />
+              <span>{showCityPricing ? 'Hide Pricing Adjuster' : 'City Pricing Adjuster (1-Way vs Round)'}</span>
+            </button>
+            <button
+              onClick={() => load()}
+              className="rounded-xl bg-slate-800 hover:bg-slate-700 p-2.5 text-slate-200 cursor-pointer transition-all"
+              title="Refresh operations"
+            >
+              <RefreshCw size={16} className={loading ? 'animate-spin' : ''} />
+            </button>
+          </div>
         </div>
 
         <div className="mt-5 grid gap-3 grid-cols-2 sm:grid-cols-3 lg:grid-cols-5">
@@ -513,6 +529,13 @@ export function CityManagerOperationsPanel() {
               )}
         </div>
       </div>
+
+      {/* EXPANDABLE CITY PRICING ADJUSTER PANEL */}
+      {showCityPricing && (
+        <div className="rounded-3xl border border-emerald-500/30 p-2 sm:p-4 bg-[#081729] shadow-2xl animate-in fade-in">
+          <CityManagerPricingView />
+        </div>
+      )}
 
       {/* ========================================================================= */}
       {/* ASSIGNED STUDENTS TO ESCORT ROSTER & REAL-TIME REASSIGNMENT               */}
@@ -1635,21 +1658,44 @@ export function CityManagerOperationsPanel() {
           <div className="bg-[#0b1c30] border border-slate-700 rounded-3xl max-w-md w-full p-6 shadow-2xl space-y-4 max-h-[92vh] overflow-y-auto">
             <div className="flex items-center justify-between pb-3 border-b border-slate-800">
               <div className="flex items-center gap-2.5">
-                <div className="w-10 h-10 rounded-xl bg-indigo-500/20 text-indigo-400 border border-indigo-500/30 flex items-center justify-center">
-                  <Pencil size={18} />
+                <div className="w-10 h-10 rounded-xl bg-emerald-500/20 text-emerald-400 border border-emerald-500/30 flex items-center justify-center">
+                  <BadgePercent size={20} />
                 </div>
                 <div>
-                  <h3 className="font-black text-white text-sm">Correct Fare / Apply Discount</h3>
-                  <p className="text-[11px] text-slate-400">Edit the collected daily fare. Discount is optional.</p>
+                  <h3 className="font-black text-white text-sm">Price Adjustment: One-Way vs Complete Trip</h3>
+                  <p className="text-[11px] text-slate-400">Specify whether student pays for One-Way Single Trip or Complete Round Trip.</p>
                 </div>
               </div>
               <button
                 type="button"
                 onClick={() => setDiscountModal({ ...discountModal, open: false })}
-                className="p-1 rounded-lg text-slate-400 hover:text-white"
+                className="p-1 rounded-lg text-slate-400 hover:text-white cursor-pointer"
               >
                 ✕
               </button>
+            </div>
+
+            {/* COMPARATIVE TRIP PREVIEW CARDS */}
+            <div className="grid grid-cols-2 gap-2 text-xs">
+              <div className={`p-2.5 rounded-2xl border text-center transition-all ${discountModal.tripType !== 'both' ? 'bg-amber-500/15 border-amber-500/50 text-amber-200' : 'bg-slate-900/70 border-slate-800 text-slate-400'}`}>
+                <div className="flex items-center justify-center gap-1 text-[10px] font-black uppercase tracking-wider">
+                  <Sun size={12} /> One-Way Single Trip
+                </div>
+                <div className="text-base font-mono font-black mt-1 text-amber-400">
+                  ₦{Math.round(discountModal.originalFare / 2).toLocaleString()}
+                </div>
+                <div className="text-[9px] text-slate-400 font-medium">50% Baseline (Single Leg)</div>
+              </div>
+
+              <div className={`p-2.5 rounded-2xl border text-center transition-all ${discountModal.tripType === 'both' ? 'bg-emerald-500/15 border-emerald-500/50 text-emerald-200' : 'bg-slate-900/70 border-slate-800 text-slate-400'}`}>
+                <div className="flex items-center justify-center gap-1 text-[10px] font-black uppercase tracking-wider">
+                  <ArrowRightLeft size={12} /> Complete Round Trip
+                </div>
+                <div className="text-base font-mono font-black mt-1 text-emerald-400">
+                  ₦{discountModal.originalFare.toLocaleString()}
+                </div>
+                <div className="text-[9px] text-slate-400 font-medium">100% Round Commute</div>
+              </div>
             </div>
 
             <div className="p-3 rounded-2xl bg-slate-900 border border-slate-800 space-y-1 text-xs">

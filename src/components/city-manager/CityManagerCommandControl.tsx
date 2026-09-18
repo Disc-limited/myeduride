@@ -69,6 +69,7 @@ import {
 import { toast } from 'sonner';
 import StudentAvatar from '@/components/shared/StudentAvatar';
 import { CityManagerOperationsPanel } from '@/components/city-manager/CityManagerOperationsPanel';
+import { CityManagerPricingView } from '@/components/shared/CityPricingPanel';
 import InteractiveRouteCorridorMap from '@/components/routes/InteractiveRouteCorridorMap';
 import SchoolHomeRouteMap from '@/components/routes/SchoolHomeRouteMap';
 import { resolveEscortCategory } from '@/lib/escort/escort-category';
@@ -817,6 +818,27 @@ export function CityManagerCommandControl({
             </span>
           </div>
         </div>
+
+        {/* Stat 9: City Pricing Adjuster */}
+        <div
+          onClick={() => switchTab('pricing')}
+          className={`cursor-pointer rounded-2xl border p-3 flex flex-col justify-between transition-all ${
+            currentTab === 'pricing' ? 'bg-[#0e2747] border-emerald-500 ring-1 ring-emerald-500' : 'bg-[#0b1c30] border-slate-800 hover:border-slate-700'
+          }`}
+        >
+          <div className="flex items-center justify-between">
+            <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">City Pricing</span>
+            <BadgePercent size={15} className="text-emerald-400" />
+          </div>
+          <div className="mt-2">
+            <div className="flex items-baseline gap-1.5">
+              <span className="text-xs font-black text-emerald-400">1-Way / Round</span>
+            </div>
+            <span className="inline-block mt-1 px-1.5 py-0.2 rounded text-[9px] font-extrabold bg-emerald-500/20 text-emerald-300">
+              Pricing Adjuster
+            </span>
+          </div>
+        </div>
       </div>
 
       {/* ========================================================================= */}
@@ -830,6 +852,7 @@ export function CityManagerCommandControl({
           { id: 'trips-management', label: 'Active Trips & Operational Timing', icon: Navigation, count: escorts.filter(e => e.status === 'ON_TRIP').length },
           { id: 'corridor-map', label: 'Transit Corridors & Pinned Houses', icon: MapPin, count: pinnedParentAddresses.length || corridorMetrics?.total_pinned_houses || 0 },
           { id: 'assignments', label: 'Bookings & Escort Assignments', icon: ClipboardList, count: parentRequests.length },
+          { id: 'pricing', label: 'City Pricing Adjuster', icon: BadgePercent },
           { id: 'safety-incidents', label: 'Safety Incidents & Panic Triage', icon: AlertTriangle, count: safetyIncidents.length, alert: safetyIncidents.length > 0 },
           { id: 'escalations', label: 'Parent & School Escalations', icon: AlertCircle, count: escalations.length },
           { id: 'communication', label: 'Approved Dispatch & Broadcasts', icon: MessageSquare },
@@ -873,7 +896,7 @@ export function CityManagerCommandControl({
       {/* ========================================================================= */}
       {/* VIEW 1: LIVE COMMAND RADAR & TACTICAL MAP (DASHBOARD / LIVE-OPERATIONS / DEFAULT) */}
       {/* ========================================================================= */}
-      {(currentTab === 'dashboard' || currentTab === 'live-operations' || (!['escorts', 'gate-monitor', 'trips-management', 'corridor-map', 'safety-incidents', 'escalations', 'communication', 'schools', 'vehicles', 'assignments', 'performance', 'reports-analytics', 'settings-access', 'audit-logs'].includes(currentTab))) && (
+      {(currentTab === 'dashboard' || currentTab === 'live-operations' || (!['escorts', 'gate-monitor', 'trips-management', 'corridor-map', 'safety-incidents', 'escalations', 'communication', 'schools', 'vehicles', 'assignments', 'pricing', 'performance', 'reports-analytics', 'settings-access', 'audit-logs'].includes(currentTab))) && (
         <div className="space-y-4">
           {loading && (
             <div className="rounded-xl border border-cyan-500/30 bg-cyan-500/10 px-4 py-2 text-xs font-semibold text-cyan-200">
@@ -2041,6 +2064,16 @@ export function CityManagerCommandControl({
       )}
 
       {currentTab === 'assignments' && <CityManagerOperationsPanel />}
+
+      {/* ========================================================================= */}
+      {/* VIEW: CITY PRICING ADJUSTER (ONE-WAY VS COMPLETE TRIP)                     */}
+      {/* ========================================================================= */}
+      {currentTab === 'pricing' && (
+        <CityManagerPricingView
+          selectedCity={selectedCity}
+          onCityChange={onCityChange}
+        />
+      )}
 
 
       {/* ========================================================================= */}

@@ -580,8 +580,10 @@ function CityManagerDashboardContent() {
             }`}
           >
             <BadgePercent className="w-4 h-4" />
-            <span>Pricing</span>
-            <span className="px-2 py-0.5 rounded-full bg-emerald-500 text-white font-black text-[10px]">NEW</span>
+            <span>City Pricing Adjuster</span>
+            <span className="px-2 py-0.5 rounded-full bg-emerald-500 text-slate-950 font-black text-[10px]">
+              1-WAY VS ROUND
+            </span>
           </button>
         </div>
 

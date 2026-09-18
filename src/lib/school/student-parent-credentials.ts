@@ -51,7 +51,7 @@ export async function fetchStudentParentCredentials(
   schoolId: string,
   profileById: Map<string, { id: string; username: string | null; full_name: string | null }>,
   authById: Map<string, string>,
-  opts?: { repairMissingParents?: boolean }
+  opts?: { repairMissingParents?: boolean; loadPasswords?: boolean; loadPickups?: boolean }
 ): Promise<StudentParentCredential[]> {
   const { data: students, error: studErr } = await supabase
     .from('students')
@@ -78,12 +78,21 @@ export async function fetchStudentParentCredentials(
   }
 
   const pickupByStudent = new Map<string, AuthorisedPickupPerson[]>();
-  const pickupRowsByStudent = await loadPickupPersonsByStudents(supabase, schoolId, studentIds);
-  for (const [studentId, rows] of Object.entries(pickupRowsByStudent)) {
-    pickupByStudent.set(studentId, mapPickupRows(rows));
+  if (opts?.loadPickups !== false) {
+    const pickupRowsByStudent = await loadPickupPersonsByStudents(supabase, schoolId, studentIds);
+    for (const [studentId, rows] of Object.entries(pickupRowsByStudent)) {
+      pickupByStudent.set(studentId, mapPickupRows(rows));
+    }
   }
 
   if (opts?.repairMissingParents) {
+    const linkedIds = parentLinks.map((l) => l.parent_user_id).filter(Boolean);
+    const missingProfiles = linkedIds.filter((id) => !profileById.has(id));
+    if (missingProfiles.length) {
+      const fetched = await fetchProfilesByIds(supabase, missingProfiles);
+      for (const [id, p] of fetched) profileById.set(id, p);
+    }
+
     for (const student of students) {
       const onFile = parentInfoFromCustomFields(
         student.custom_fields as Record<string, string> | null
@@ -96,12 +105,7 @@ export async function fetchStudentParentCredentials(
         !primaryLink &&
         (!!onFile.parent_name || !!onFile.parent_username || !!onFile.parent_email);
       if (primaryLink) {
-        let profile = profileById.get(primaryLink.parent_user_id);
-        if (!profile) {
-          const fetched = await fetchProfilesByIds(supabase, [primaryLink.parent_user_id]);
-          profile = fetched.get(primaryLink.parent_user_id);
-          if (profile) profileById.set(primaryLink.parent_user_id, profile);
-        }
+        const profile = profileById.get(primaryLink.parent_user_id);
         if (!profile?.username?.trim()) {
           needsProvision = true;
         }
@@ -153,8 +157,10 @@ export async function fetchStudentParentCredentials(
     const extraProfiles = await fetchProfilesByIds(supabase, parentIdsToLoad);
     for (const [id, p] of extraProfiles) profileById.set(id, p);
 
-    const extraPasswords = await loadAuthPasswordsForUsers(supabase, parentIdsToLoad);
-    for (const [id, pw] of extraPasswords) authById.set(id, pw);
+    if (opts?.loadPasswords) {
+      const extraPasswords = await loadAuthPasswordsForUsers(supabase, parentIdsToLoad);
+      for (const [id, pw] of extraPasswords) authById.set(id, pw);
+    }
   }
 
   const linksByStudent = new Map<string, typeof parentLinks>();

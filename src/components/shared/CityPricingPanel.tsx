@@ -10,6 +10,12 @@ import {
   Megaphone,
   RefreshCw,
   ShieldCheck,
+  Sun,
+  Moon,
+  ArrowRightLeft,
+  Sparkles,
+  CheckCircle2,
+  Calculator,
 } from 'lucide-react';
 import { toast } from 'sonner';
 
@@ -53,6 +59,8 @@ export function CityPricingReadOnlyPanel({
   const [cities, setCities] = useState<{ key: string; label: string }[]>([]);
   const [selectedCity, setSelectedCity] = useState(cityKey);
 
+  const [roDistance, setRoDistance] = useState(1);
+
   const load = useCallback(async () => {
     setLoading(true);
     try {
@@ -75,6 +83,14 @@ export function CityPricingReadOnlyPanel({
   useEffect(() => {
     load();
   }, [load]);
+
+  const roRatePerKm = Number(pricing?.rate_per_km ?? pricing?.rate_per_half_km ?? 500);
+  const roSvcPercent = Number(pricing?.service_charge_percent ?? 6);
+  const roBaseFare = roRatePerKm * roDistance;
+  const roSvcAmount = Math.round(roBaseFare * (roSvcPercent / 100));
+  const roOneWayFare = roBaseFare + roSvcAmount;
+  const roCompleteFare = roOneWayFare * 2;
+  const roSavings = roCompleteFare - roOneWayFare;
 
   return (
     <div className={`space-y-5 ${className}`}>
@@ -109,7 +125,7 @@ export function CityPricingReadOnlyPanel({
             <button
               type="button"
               onClick={load}
-              className="p-2 rounded-xl border border-slate-200 text-slate-600 hover:bg-slate-50"
+              className="p-2 rounded-xl border border-slate-200 text-slate-600 hover:bg-slate-50 cursor-pointer"
               title="Refresh"
             >
               <RefreshCw size={16} className={loading ? 'animate-spin' : ''} />
@@ -122,31 +138,145 @@ export function CityPricingReadOnlyPanel({
             <Loader2 className="animate-spin" size={18} /> Loading city rates…
           </div>
         ) : pricing ? (
-          <>
-            <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
+          <div className="space-y-5">
+            {/* TRIP RATE COMPARISON PREVIEW CARDS */}
+            <div className="rounded-2xl border border-slate-200 bg-slate-50/60 p-4 sm:p-5 space-y-4">
+              <div className="flex flex-wrap items-center justify-between gap-2 border-b border-slate-200 pb-3">
+                <div>
+                  <span className="text-[10px] uppercase font-black tracking-wider text-emerald-700 bg-emerald-100 px-2 py-0.5 rounded-md">
+                    Trip Provision Preview
+                  </span>
+                  <h3 className="text-sm sm:text-base font-black text-slate-900 mt-1">
+                    One-Way Single Trip vs. Complete Round Trip Comparison
+                  </h3>
+                </div>
+                <div className="flex items-center gap-1 bg-white p-1 rounded-xl border border-slate-200">
+                  <span className="text-[10px] font-bold text-slate-500 px-1.5 flex items-center gap-1">
+                    <Calculator size={12} /> Corridor:
+                  </span>
+                  {[1, 3, 5, 10].map((km) => (
+                    <button
+                      key={km}
+                      type="button"
+                      onClick={() => setRoDistance(km)}
+                      className={`px-2 py-0.5 rounded-lg text-xs font-bold transition-all cursor-pointer ${
+                        roDistance === km
+                          ? 'bg-emerald-600 text-white shadow-xs'
+                          : 'text-slate-600 hover:bg-slate-100'
+                      }`}
+                    >
+                      {km} km
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                {/* PREVIEW CARD 1: ONE-WAY SINGLE TRIP */}
+                <div className="rounded-2xl border-2 border-amber-200 bg-gradient-to-b from-amber-50/80 to-white p-4 sm:p-5 flex flex-col justify-between shadow-xs">
+                  <div>
+                    <div className="flex items-center justify-between">
+                      <span className="px-2.5 py-0.5 rounded-full bg-amber-100 text-amber-800 text-[10px] font-black uppercase tracking-wider border border-amber-200 flex items-center gap-1">
+                        <Sun size={11} /> 50% Baseline (Single Leg)
+                      </span>
+                      <span className="text-[11px] font-bold text-slate-500">{roDistance} km corridor</span>
+                    </div>
+
+                    <h4 className="text-base font-black text-slate-900 mt-2">
+                      One-Way Single Trip
+                    </h4>
+                    <p className="text-xs text-slate-600 mt-0.5">
+                      Morning Pickup Only OR Afternoon Drop-off Only
+                    </p>
+
+                    <div className="my-3">
+                      <span className="text-2xl sm:text-3xl font-black text-amber-600 tracking-tight font-mono">
+                        {formatNgn(roOneWayFare)}
+                      </span>
+                      <span className="text-xs text-slate-500 font-medium ml-1.5">/ day</span>
+                    </div>
+
+                    <div className="p-3 rounded-xl bg-amber-50/50 border border-amber-100 space-y-1 text-xs text-slate-700">
+                      <div className="flex justify-between text-[11px]">
+                        <span>Base Fare ({roDistance} km @ {formatNgn(roRatePerKm)}/km):</span>
+                        <span className="font-mono font-bold text-slate-900">{formatNgn(roBaseFare)}</span>
+                      </div>
+                      <div className="flex justify-between text-[11px]">
+                        <span>Service Charge ({roSvcPercent}%):</span>
+                        <span className="font-mono font-bold text-slate-900">{formatNgn(roSvcAmount)}</span>
+                      </div>
+                      <div className="pt-1 border-t border-amber-200/60 flex justify-between text-[11px] font-extrabold text-amber-900">
+                        <span>Single Leg Total:</span>
+                        <span className="font-mono">{formatNgn(roOneWayFare)}</span>
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="mt-4 pt-3 border-t border-amber-100 flex items-center justify-between text-[11px]">
+                    <span className="text-amber-800 font-bold flex items-center gap-1">
+                      <CheckCircle2 size={13} className="text-amber-600" /> Saves 50% vs Complete Trip
+                    </span>
+                    <span className="text-xs font-black text-amber-700">Save {formatNgn(roSavings)}</span>
+                  </div>
+                </div>
+
+                {/* PREVIEW CARD 2: COMPLETE ROUND TRIP */}
+                <div className="rounded-2xl border-2 border-emerald-200 bg-gradient-to-b from-emerald-50/80 to-white p-4 sm:p-5 flex flex-col justify-between shadow-xs">
+                  <div>
+                    <div className="flex items-center justify-between">
+                      <span className="px-2.5 py-0.5 rounded-full bg-emerald-100 text-emerald-800 text-[10px] font-black uppercase tracking-wider border border-emerald-200 flex items-center gap-1">
+                        <ArrowRightLeft size={11} /> 100% Full Commute (Two-Way)
+                      </span>
+                      <span className="text-[11px] font-bold text-slate-500">{roDistance} km corridor</span>
+                    </div>
+
+                    <h4 className="text-base font-black text-slate-900 mt-2">
+                      Complete Round Trip
+                    </h4>
+                    <p className="text-xs text-slate-600 mt-0.5">
+                      Both Morning Pickup &amp; Afternoon School Return
+                    </p>
+
+                    <div className="my-3">
+                      <span className="text-2xl sm:text-3xl font-black text-emerald-600 tracking-tight font-mono">
+                        {formatNgn(roCompleteFare)}
+                      </span>
+                      <span className="text-xs text-slate-500 font-medium ml-1.5">/ day</span>
+                    </div>
+
+                    <div className="p-3 rounded-xl bg-emerald-50/50 border border-emerald-100 space-y-1 text-xs text-slate-700">
+                      <div className="flex justify-between text-[11px]">
+                        <span>Morning Leg (Pickup):</span>
+                        <span className="font-mono font-bold text-slate-900">{formatNgn(roOneWayFare)}</span>
+                      </div>
+                      <div className="flex justify-between text-[11px]">
+                        <span>Afternoon Leg (Drop-off):</span>
+                        <span className="font-mono font-bold text-slate-900">{formatNgn(roOneWayFare)}</span>
+                      </div>
+                      <div className="pt-1 border-t border-emerald-200/60 flex justify-between text-[11px] font-extrabold text-emerald-900">
+                        <span>Round Trip Total:</span>
+                        <span className="font-mono">{formatNgn(roCompleteFare)}</span>
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="mt-4 pt-3 border-t border-emerald-100 flex items-center justify-between text-[11px]">
+                    <span className="text-emerald-800 font-bold flex items-center gap-1">
+                      <CheckCircle2 size={13} className="text-emerald-600" /> Full Door-to-Door Escort Care
+                    </span>
+                    <span className="text-xs font-black text-emerald-700">Morning + Afternoon</span>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            {/* BASELINE RATE SPECIFICATIONS */}
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
               {[
-                { label: 'Per km (0–1 km band)', value: formatNgn(pricing.rate_per_km ?? pricing.rate_per_half_km) },
-                { label: 'Service charge', value: `${pricing.service_charge_percent}%` },
-                {
-                  label: 'Example 1 km one-way',
-                  value: formatNgn(
-                    Math.round(
-                      Number(pricing.rate_per_km ?? pricing.rate_per_half_km) *
-                        (1 + Number(pricing.service_charge_percent) / 100)
-                    )
-                  ),
-                },
-                {
-                  label: 'Example 1 km complete',
-                  value: formatNgn(
-                    Math.round(
-                      Number(pricing.rate_per_km ?? pricing.rate_per_half_km) *
-                        (1 + Number(pricing.service_charge_percent) / 100)
-                    ) * 2
-                  ),
-                },
-                { label: 'Shared ride (round)', value: formatNgn(pricing.shared_ride_base_fare_round) },
-                { label: 'Shared ride (single)', value: formatNgn(pricing.shared_ride_base_fare_single) },
+                { label: 'Per km rate (0–1 km)', value: formatNgn(pricing.rate_per_km ?? pricing.rate_per_half_km) },
+                { label: 'Platform service charge', value: `${pricing.service_charge_percent}%` },
+                { label: 'Shared ride (complete round)', value: formatNgn(pricing.shared_ride_base_fare_round) },
+                { label: 'Shared ride (one-way single)', value: formatNgn(pricing.shared_ride_base_fare_single) },
               ].map((item) => (
                 <div key={item.label} className="rounded-2xl border border-slate-100 bg-slate-50/80 p-3.5">
                   <p className="text-[10px] font-bold uppercase tracking-wider text-slate-500">{item.label}</p>
@@ -181,7 +311,7 @@ export function CityPricingReadOnlyPanel({
                 </div>
               </div>
             )}
-          </>
+          </div>
         ) : (
           <p className="text-sm text-slate-500 text-center py-6">No pricing data available.</p>
         )}
@@ -218,6 +348,7 @@ export function CityManagerPricingView({
   const [city, setCity] = useState(selectedCity === 'ALL' || selectedCity === 'OTHER' ? 'LAGOS' : selectedCity);
   const [config, setConfig] = useState<PricingPayload | null>(null);
   const [history, setHistory] = useState<any[]>([]);
+  const [previewDistance, setPreviewDistance] = useState<number>(1);
   const [form, setForm] = useState({
     rate_per_km: 500,
     service_charge_percent: 6,
@@ -317,33 +448,224 @@ export function CityManagerPricingView({
     effective_from: 'Rates stay current until the scheduled date; then they activate automatically. Audience is notified now.',
   };
 
+  const cmRate = Number(form.rate_per_km || 0);
+  const cmSvc = Number(form.service_charge_percent || 0);
+  const cmBase = cmRate * previewDistance;
+  const cmSvcAmount = Math.round(cmBase * (cmSvc / 100));
+  const cmOneWay = cmBase + cmSvcAmount;
+  const cmComplete = cmOneWay * 2;
+  const cmSavings = cmComplete - cmOneWay;
+
   return (
     <div className="space-y-5 animate-in fade-in text-slate-100">
-      <div className="bg-[#0b1c30] rounded-2xl border border-slate-800 p-5 shadow-xl">
-        <div className="flex flex-wrap items-start justify-between gap-3 mb-5">
+      <div className="bg-[#0b1c30] rounded-3xl border border-slate-800 p-5 sm:p-6 shadow-xl space-y-6">
+        {/* Header Bar */}
+        <div className="flex flex-wrap items-start justify-between gap-3 pb-4 border-b border-slate-800">
           <div className="flex items-start gap-3">
-            <div className="w-11 h-11 rounded-2xl bg-emerald-500/20 border border-emerald-500/40 text-emerald-400 flex items-center justify-center">
-              <BadgePercent size={22} />
+            <div className="w-12 h-12 rounded-2xl bg-emerald-500/20 border border-emerald-500/40 text-emerald-400 flex items-center justify-center shrink-0">
+              <BadgePercent size={24} />
             </div>
             <div>
-              <h2 className="text-lg font-extrabold text-white">City Pricing Adjuster</h2>
-              <p className="text-xs text-slate-400 mt-0.5 max-w-xl">
+              <div className="flex items-center gap-2">
+                <h2 className="text-xl font-black text-white tracking-tight">City Pricing Adjuster &amp; Trip Fare Engine</h2>
+                <span className="px-2 py-0.5 rounded-full bg-emerald-500/20 text-emerald-300 text-[10px] font-black border border-emerald-500/40">
+                  LIVE RATE ENGINE
+                </span>
+              </div>
+              <p className="text-xs text-slate-400 mt-1 max-w-2xl">
                 Formula: One-way = Base + service % · Complete trip = One-way × 2 · Base = ₦/km for every 0–1 km.
-                Publishing notifies parents with active bookings, schools, and escorts.
+                Publishing broadcasts notices to parents with active bookings, schools, and escorts.
               </p>
             </div>
           </div>
-          <select
-            value={city}
-            onChange={(e) => handleCityPick(e.target.value)}
-            className="bg-slate-900 border border-slate-700 text-xs text-emerald-400 font-bold px-3 py-2 rounded-xl"
-          >
-            {(cities.length ? cities : [{ key: city, label: city }]).map((c) => (
-              <option key={c.key} value={c.key}>
-                {c.label}
-              </option>
-            ))}
-          </select>
+          <div className="flex items-center gap-2">
+            <span className="text-[11px] uppercase font-bold text-slate-400">Jurisdiction:</span>
+            <select
+              value={city}
+              onChange={(e) => handleCityPick(e.target.value)}
+              className="bg-slate-900 border border-slate-700 text-xs text-emerald-400 font-black px-3.5 py-2 rounded-xl"
+            >
+              {(cities.length ? cities : [{ key: city, label: city }]).map((c) => (
+                <option key={c.key} value={c.key}>
+                  {c.label}
+                </option>
+              ))}
+            </select>
+          </div>
+        </div>
+
+        {/* ========================================================================= */}
+        {/* PROMINENT LIVE PREVIEW: ONE-WAY SINGLE TRIP VS COMPLETE ROUND TRIP        */}
+        {/* ========================================================================= */}
+        <div className="rounded-2xl border-2 border-emerald-500/40 bg-gradient-to-br from-[#0c223a] via-[#091b30] to-[#061424] p-5 sm:p-6 shadow-2xl space-y-4">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-3 border-b border-slate-700/60">
+            <div>
+              <div className="flex items-center gap-2">
+                <span className="px-2.5 py-0.5 rounded-full bg-emerald-500/20 text-emerald-300 text-[10px] font-black uppercase tracking-wider border border-emerald-500/40 flex items-center gap-1">
+                  <Sparkles size={12} /> Live Rate Provisions &amp; Policy Preview
+                </span>
+                <span className="text-[11px] text-slate-400 font-mono">
+                  City: <strong className="text-white">{city}</strong>
+                </span>
+              </div>
+              <h3 className="text-base sm:text-lg font-black text-white mt-1 flex items-center gap-2">
+                Trip Rates: One-Way Single Trip vs. Complete Round Trip
+              </h3>
+              <p className="text-xs text-slate-300">
+                Distinct pricing model ensuring parents paying for only morning or afternoon transit are billed fairly.
+              </p>
+            </div>
+
+            {/* Distance Corridor Selector */}
+            <div className="flex items-center gap-1.5 bg-slate-950/80 p-1 rounded-2xl border border-slate-700 shrink-0">
+              <span className="text-[10px] uppercase font-extrabold text-slate-400 px-2 flex items-center gap-1">
+                <Calculator size={12} /> Corridor:
+              </span>
+              {[1, 3, 5, 10, 15].map((km) => (
+                <button
+                  key={km}
+                  type="button"
+                  onClick={() => setPreviewDistance(km)}
+                  className={`px-2.5 py-1 rounded-xl text-xs font-black transition-all cursor-pointer ${
+                    previewDistance === km
+                      ? 'bg-emerald-500 text-slate-950 shadow-md shadow-emerald-500/30'
+                      : 'text-slate-400 hover:text-white hover:bg-slate-800'
+                  }`}
+                >
+                  {km} km
+                </button>
+              ))}
+            </div>
+          </div>
+
+          {/* DUAL PREVIEW CARDS */}
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            {/* CARD 1: ONE-WAY SINGLE TRIP */}
+            <div className="rounded-2xl border-2 border-amber-500/50 bg-gradient-to-b from-amber-500/10 via-slate-900/95 to-slate-950 p-4 sm:p-5 relative overflow-hidden flex flex-col justify-between shadow-xl">
+              <div className="absolute top-0 right-0 px-3 py-1 bg-amber-500 text-slate-950 font-black text-[10px] rounded-bl-xl uppercase tracking-wider">
+                50% Base Fare
+              </div>
+              <div className="space-y-3">
+                <div className="flex items-center gap-2.5">
+                  <div className="w-10 h-10 rounded-xl bg-amber-500/20 text-amber-400 border border-amber-500/30 flex items-center justify-center font-black">
+                    <Sun size={20} />
+                  </div>
+                  <div>
+                    <div className="flex items-center gap-1.5">
+                      <span className="text-amber-400 font-black text-xs uppercase tracking-wider">Option A</span>
+                      <span className="text-[10px] text-slate-400">· Single Leg (Morning OR Afternoon)</span>
+                    </div>
+                    <h4 className="text-lg font-black text-white">One-Way Single Trip</h4>
+                  </div>
+                </div>
+
+                <div className="flex items-baseline gap-2 pt-1">
+                  <span className="text-3xl sm:text-4xl font-black text-amber-400 tracking-tight font-mono">
+                    {formatNgn(cmOneWay)}
+                  </span>
+                  <span className="text-xs text-slate-400 font-medium">/ day ({previewDistance} km corridor)</span>
+                </div>
+
+                <div className="p-3.5 rounded-xl bg-slate-950/90 border border-amber-500/20 space-y-1.5 text-xs">
+                  <div className="flex justify-between text-slate-300 text-[11px]">
+                    <span>Base Distance ({previewDistance} km @ {formatNgn(cmRate)}/km):</span>
+                    <span className="font-mono font-bold text-white">{formatNgn(cmBase)}</span>
+                  </div>
+                  <div className="flex justify-between text-slate-300 text-[11px]">
+                    <span>Platform Service Charge ({cmSvc}%):</span>
+                    <span className="font-mono font-bold text-white">{formatNgn(cmSvcAmount)}</span>
+                  </div>
+                  <div className="pt-1.5 border-t border-slate-800 flex justify-between text-[11px] font-bold text-amber-300">
+                    <span>Parent Single Trip Total:</span>
+                    <span className="font-mono font-extrabold text-sm">{formatNgn(cmOneWay)}</span>
+                  </div>
+                </div>
+
+                <div className="space-y-1.5 text-xs text-slate-300">
+                  <p className="flex items-start gap-1.5">
+                    <CheckCircle2 size={14} className="text-amber-400 shrink-0 mt-0.5" />
+                    <span><strong>Policy Coverage:</strong> Billed when parent selects morning pickup only or afternoon drop-off only.</span>
+                  </p>
+                  <p className="flex items-start gap-1.5">
+                    <CheckCircle2 size={14} className="text-amber-400 shrink-0 mt-0.5" />
+                    <span><strong>Shared Ride Single:</strong> {formatNgn(form.shared_ride_base_fare_single)} base fare.</span>
+                  </p>
+                </div>
+              </div>
+
+              <div className="mt-4 pt-3 border-t border-amber-500/20 flex items-center justify-between text-[11px]">
+                <span className="text-amber-300 font-bold flex items-center gap-1">
+                  <Sun size={13} /> Morning Pickup Only OR <Moon size={13} className="ml-1" /> Afternoon Drop-off Only
+                </span>
+                <span className="px-2.5 py-1 rounded-md bg-amber-500/20 text-amber-300 font-extrabold text-[10px]">
+                  Saves {formatNgn(cmSavings)} (50%)
+                </span>
+              </div>
+            </div>
+
+            {/* CARD 2: COMPLETE ROUND TRIP */}
+            <div className="rounded-2xl border-2 border-emerald-500/50 bg-gradient-to-b from-emerald-500/10 via-slate-900/95 to-slate-950 p-4 sm:p-5 relative overflow-hidden flex flex-col justify-between shadow-xl">
+              <div className="absolute top-0 right-0 px-3 py-1 bg-emerald-500 text-slate-950 font-black text-[10px] rounded-bl-xl uppercase tracking-wider">
+                100% Full Commute
+              </div>
+              <div className="space-y-3">
+                <div className="flex items-center gap-2.5">
+                  <div className="w-10 h-10 rounded-xl bg-emerald-500/20 text-emerald-400 border border-emerald-500/30 flex items-center justify-center font-black">
+                    <ArrowRightLeft size={20} />
+                  </div>
+                  <div>
+                    <div className="flex items-center gap-1.5">
+                      <span className="text-emerald-400 font-black text-xs uppercase tracking-wider">Option B</span>
+                      <span className="text-[10px] text-slate-400">· Full Commute (Both Morning &amp; Afternoon)</span>
+                    </div>
+                    <h4 className="text-lg font-black text-white">Complete Round Trip</h4>
+                  </div>
+                </div>
+
+                <div className="flex items-baseline gap-2 pt-1">
+                  <span className="text-3xl sm:text-4xl font-black text-emerald-400 tracking-tight font-mono">
+                    {formatNgn(cmComplete)}
+                  </span>
+                  <span className="text-xs text-slate-400 font-medium">/ day ({previewDistance} km corridor)</span>
+                </div>
+
+                <div className="p-3.5 rounded-xl bg-slate-950/90 border border-emerald-500/20 space-y-1.5 text-xs">
+                  <div className="flex justify-between text-slate-300 text-[11px]">
+                    <span>Morning Leg (Home to School):</span>
+                    <span className="font-mono font-bold text-white">{formatNgn(cmOneWay)}</span>
+                  </div>
+                  <div className="flex justify-between text-slate-300 text-[11px]">
+                    <span>Afternoon Leg (School to Home):</span>
+                    <span className="font-mono font-bold text-white">{formatNgn(cmOneWay)}</span>
+                  </div>
+                  <div className="pt-1.5 border-t border-slate-800 flex justify-between text-[11px] font-bold text-emerald-300">
+                    <span>Parent Complete Round Trip Total:</span>
+                    <span className="font-mono font-extrabold text-sm">{formatNgn(cmComplete)}</span>
+                  </div>
+                </div>
+
+                <div className="space-y-1.5 text-xs text-slate-300">
+                  <p className="flex items-start gap-1.5">
+                    <CheckCircle2 size={14} className="text-emerald-400 shrink-0 mt-0.5" />
+                    <span><strong>Policy Coverage:</strong> Standard full-day transport with morning pickup and afternoon return.</span>
+                  </p>
+                  <p className="flex items-start gap-1.5">
+                    <CheckCircle2 size={14} className="text-emerald-400 shrink-0 mt-0.5" />
+                    <span><strong>Shared Ride Round:</strong> {formatNgn(form.shared_ride_base_fare_round)} base fare.</span>
+                  </p>
+                </div>
+              </div>
+
+              <div className="mt-4 pt-3 border-t border-emerald-500/20 flex items-center justify-between text-[11px]">
+                <span className="text-emerald-300 font-bold flex items-center gap-1">
+                  <ArrowRightLeft size={13} /> Complete 2-Way Commute (Morning + Afternoon)
+                </span>
+                <span className="px-2.5 py-1 rounded-md bg-emerald-500/20 text-emerald-300 font-extrabold text-[10px]">
+                  Full Escort Care
+                </span>
+              </div>
+            </div>
+          </div>
         </div>
 
         {loading && !config ? (
@@ -353,13 +675,20 @@ export function CityManagerPricingView({
         ) : (
           <div className="grid grid-cols-1 xl:grid-cols-12 gap-5">
             <div className="xl:col-span-7 space-y-4">
+              <div className="flex items-center justify-between">
+                <h4 className="text-xs font-black uppercase tracking-wider text-slate-300">
+                  Base Rates Configuration Inputs
+                </h4>
+                <span className="text-[11px] text-slate-400">Values update live in preview above</span>
+              </div>
+
               <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
                 {(
                   [
                     ['rate_per_km', '₦ per km (0–1 km band)'],
                     ['service_charge_percent', 'Service charge %'],
-                    ['shared_ride_base_fare_round', 'Shared ride complete trip / round (₦)'],
-                    ['shared_ride_base_fare_single', 'Shared ride one-way single trip (₦)'],
+                    ['shared_ride_base_fare_round', 'Shared ride complete round (₦)'],
+                    ['shared_ride_base_fare_single', 'Shared ride one-way single (₦)'],
                     ['shared_ride_service_fee', 'Shared ride service fee (₦)'],
                   ] as const
                 ).map(([key, label]) => (
@@ -375,40 +704,6 @@ export function CityManagerPricingView({
                     />
                   </label>
                 ))}
-              </div>
-
-              <div className="rounded-2xl border border-emerald-500/30 bg-emerald-500/10 p-3.5 space-y-2 text-xs text-emerald-200">
-                <div className="flex items-center justify-between font-bold border-b border-emerald-500/20 pb-1.5">
-                  <span className="flex items-center gap-1.5">
-                    <span>💡 Trip Rate Provisions (1 km corridor baseline)</span>
-                  </span>
-                  <span className="text-[10px] bg-emerald-500/20 px-2 py-0.5 rounded-md font-mono text-emerald-300">
-                    {form.service_charge_percent}% Service Charge
-                  </span>
-                </div>
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-[11px]">
-                  <div className="p-2.5 rounded-xl bg-slate-950/70 border border-emerald-500/20">
-                    <span className="text-slate-400 block text-[10px] uppercase font-bold">One-Way Trip (Morning or Afternoon)</span>
-                    <strong className="text-base font-black text-emerald-300">
-                      {formatNgn(
-                        Math.round(Number(form.rate_per_km) * (1 + Number(form.service_charge_percent) / 100))
-                      )}
-                    </strong>
-                    <span className="block text-[9px] text-slate-400 mt-0.5">Base (₦{form.rate_per_km}) + {form.service_charge_percent}% service</span>
-                  </div>
-                  <div className="p-2.5 rounded-xl bg-slate-950/70 border border-emerald-500/20">
-                    <span className="text-slate-400 block text-[10px] uppercase font-bold">Complete Trip (Both Segments)</span>
-                    <strong className="text-base font-black text-emerald-300">
-                      {formatNgn(
-                        Math.round(Number(form.rate_per_km) * (1 + Number(form.service_charge_percent) / 100)) * 2
-                      )}
-                    </strong>
-                    <span className="block text-[9px] text-slate-400 mt-0.5">One-Way × 2 trips (Morning + Afternoon)</span>
-                  </div>
-                </div>
-                <p className="text-[10px] text-emerald-300/80 leading-relaxed">
-                  Parents paying for only a single leg (morning only or afternoon only) are charged the One-Way rate. Complete round trips are charged the Complete Trip rate.
-                </p>
               </div>
 
               <div className="space-y-2">

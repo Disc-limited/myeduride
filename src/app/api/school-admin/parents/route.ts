@@ -46,14 +46,25 @@ export async function GET(request: NextRequest) {
   try {
     let summary: any = null;
     try {
-      summary = await getUnifiedSchoolParentsSummary(supabase, schoolId, { autoDeduplicate: false });
+      // 5-second timeout safeguard to strictly prevent Vercel 504 FUNCTION_INVOCATION_TIMEOUT
+      const summaryPromise = getUnifiedSchoolParentsSummary(supabase, schoolId, {
+        autoDeduplicate: false,
+        repairMissingParents: false,
+        loadPasswords: false,
+      });
+
+      const timeoutPromise = new Promise((_, reject) =>
+        setTimeout(() => reject(new Error('Summary fetch timed out')), 5000)
+      );
+
+      summary = await Promise.race([summaryPromise, timeoutPromise]);
     } catch (e) {
       console.warn('[GET /api/school-admin/parents] unified summary notice:', e);
     }
 
     let parentsList = summary?.parents || [];
 
-    // Fallback: If no parents returned, aggregate from students & custom_fields directly
+    // Fallback: If no parents returned, aggregate from students, student_parents & custom_fields directly
     if (parentsList.length === 0) {
       const { data: students } = await supabase
         .from('students')
@@ -62,14 +73,38 @@ export async function GET(request: NextRequest) {
         .eq('is_active', true);
 
       if (students && students.length > 0) {
+        const studentIds = students.map((s) => s.id);
+        const { data: links } = await supabase
+          .from('student_parents')
+          .select('student_id, parent_user_id, is_primary')
+          .in('student_id', studentIds);
+
+        const parentUserIds = [...new Set((links || []).map((l) => l.parent_user_id).filter(Boolean))];
+        const profileById = new Map<string, any>();
+        if (parentUserIds.length > 0) {
+          const { data: profiles } = await supabase
+            .from('user_profiles')
+            .select('id, username, full_name, phone, email')
+            .in('id', parentUserIds);
+          for (const p of profiles || []) {
+            profileById.set(p.id, p);
+          }
+        }
+
         const fallbackMap = new Map<string, any>();
         for (const s of students) {
           const cf = (s.custom_fields || {}) as Record<string, any>;
-          const parentName = (cf.parent_name || cf.guardian_name || '').trim();
-          const parentPhone = (cf.parent_phone || cf.guardian_phone || '').trim();
+          const studentLink = (links || []).find((l) => l.student_id === s.id);
+          const profile = studentLink?.parent_user_id ? profileById.get(studentLink.parent_user_id) : null;
+
+          const parentName = (profile?.full_name || cf.parent_name || cf.guardian_name || '').trim();
+          const parentPhone = (profile?.phone || cf.parent_phone || cf.guardian_phone || '').trim();
+          const parentUsername = profile?.username?.trim() || cf.parent_username?.trim() || null;
+          const hasLogin = !!studentLink?.parent_user_id && !!parentUsername;
+
           const cls = Array.isArray(s.class) ? s.class[0]?.name : (s.class as any)?.name;
-          if (parentName) {
-            const key = `${parentName.toLowerCase()}|${parentPhone}`;
+          if (parentName || parentUsername || studentLink?.parent_user_id) {
+            const key = studentLink?.parent_user_id ? `user:${studentLink.parent_user_id}` : `${parentName.toLowerCase()}|${parentPhone}`;
             const childItem = {
               student_id: s.id,
               student_name: `${s.first_name} ${s.last_name}`.trim(),
@@ -80,11 +115,11 @@ export async function GET(request: NextRequest) {
               fallbackMap.get(key).children.push(childItem);
             } else {
               fallbackMap.set(key, {
-                id: null,
-                name: parentName,
+                id: studentLink?.parent_user_id || null,
+                name: parentName || parentUsername || 'Parent',
                 phone: parentPhone || null,
-                username: cf.parent_username || null,
-                has_login: false,
+                username: parentUsername,
+                has_login: hasLogin,
                 children: [childItem],
               });
             }
