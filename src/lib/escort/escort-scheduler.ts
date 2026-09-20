@@ -106,18 +106,27 @@ export function escortAllowsOverlappingPickup(escortType?: string | null): boole
   return t !== 'school_escort';
 }
 
+export interface EscortSchoolLimitOptions {
+  escortType?: string | null;
+  isMyEduRide?: boolean;
+  isCityManager?: boolean;
+  maxSchools?: number;
+}
+
 /**
- * Enforces the maximum assignment limit of 2 schools per escort.
- * Counts real assignment campuses only — not leftover application school_id.
+ * Validates escort school allocation limits.
+ * - School Escorts: strictly dedicated to their internal school fleet (limit = 1, or max 2 for emergency deputizing).
+ * - MyEduRide Escorts: platform escorts approved by City Manager across multi-school corridors (allows 3+ schools, up to 10 campuses).
  */
 export async function validateEscortSchoolLimit(
   supabase: SupabaseClient,
   escortId: string,
-  targetSchoolId: string
+  targetSchoolId: string,
+  options?: EscortSchoolLimitOptions
 ): Promise<{ allowed: boolean; error?: string; currentSchoolIds: string[] }> {
   const { data: escortApp } = await supabase
     .from('escort_applications')
-    .select('id, user_id, school_id, primary_school_id, secondary_school_id')
+    .select('id, user_id, school_id, primary_school_id, secondary_school_id, escort_type, application_data')
     .or(`id.eq.${escortId},user_id.eq.${escortId}`)
     .limit(1)
     .maybeSingle();
@@ -132,6 +141,24 @@ export async function validateEscortSchoolLimit(
   const schoolSet = new Set<string>();
   if (escortApp?.primary_school_id) schoolSet.add(escortApp.primary_school_id);
   if (escortApp?.secondary_school_id) schoolSet.add(escortApp.secondary_school_id);
+
+  // Parse application_data.allocated_school_ids
+  let appDataObj: any = {};
+  if (escortApp?.application_data) {
+    if (typeof escortApp.application_data === 'string') {
+      try {
+        appDataObj = JSON.parse(escortApp.application_data);
+      } catch {}
+    } else if (typeof escortApp.application_data === 'object') {
+      appDataObj = escortApp.application_data;
+    }
+  }
+  if (Array.isArray(appDataObj?.allocated_school_ids)) {
+    for (const sid of appDataObj.allocated_school_ids) {
+      if (sid) schoolSet.add(sid);
+    }
+  }
+
   for (const a of assignments || []) {
     if (a.school_id) schoolSet.add(a.school_id);
   }
@@ -140,10 +167,23 @@ export async function validateEscortSchoolLimit(
     return { allowed: true, currentSchoolIds: Array.from(schoolSet) };
   }
 
-  if (schoolSet.size >= 2) {
+  // Determine whether this escort is a MyEduRide escort
+  const isMyEduRide =
+    options?.isMyEduRide ??
+    options?.isCityManager ??
+    (escortApp?.escort_type === 'myeduride_escort' ||
+      escortAllowsOverlappingPickup(escortApp?.escort_type) ||
+      options?.escortType === 'myeduride_escort');
+
+  // Max limit: School Escorts = 2, MyEduRide Escorts = 10 (or options.maxSchools)
+  const maxLimit = options?.maxSchools ?? (isMyEduRide ? 10 : 2);
+
+  if (schoolSet.size >= maxLimit) {
     return {
       allowed: false,
-      error: `Escort is already assigned to the maximum of 2 schools. Assign a student from one of those schools, or pick another escort.`,
+      error: isMyEduRide
+        ? `Escort is already allocated to the maximum of ${maxLimit} schools. Reassign an existing school or contact City Management.`
+        : `School Escort is dedicated to their school fleet and cannot be assigned to more than 2 campuses. Pick a MyEduRide escort for multi-school coverage.`,
       currentSchoolIds: Array.from(schoolSet),
     };
   }

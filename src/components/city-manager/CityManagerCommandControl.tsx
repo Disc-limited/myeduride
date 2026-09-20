@@ -31,6 +31,7 @@ import {
   Slash,
   Eye,
   Check,
+  Plus,
   X,
   ChevronRight,
   TrendingUp,
@@ -210,6 +211,9 @@ export function CityManagerCommandControl({
                 status: e.availability_status === 'available' ? 'AVAILABLE' : e.status === 'ACTIVE' ? 'ON_TRIP' : 'STANDBY',
                 schoolName: e.assigned_school_name || e.school_name || e.operating_area || selectedCity,
                 schoolId: e.assigned_school_id || e.school_id || null,
+                allocatedSchoolIds: Array.isArray(e.allocated_school_ids) ? e.allocated_school_ids : (e.assigned_school_id || e.school_id ? [e.assigned_school_id || e.school_id] : []),
+                assignedSchools: Array.isArray(e.assigned_schools) ? e.assigned_schools : [],
+                assignedSchoolsCount: e.assigned_schools_count || (Array.isArray(e.assigned_schools) ? e.assigned_schools.length : (e.assigned_school_id ? 1 : 0)),
                 vehicle: e.application_data?.assignedVehicle || e.application_data?.regNumber || 'Verified Vehicle',
                 currentTripId: null,
                 route: e.operating_area ? `${e.operating_area} Corridor` : 'Designated Route',
@@ -313,23 +317,40 @@ export function CityManagerCommandControl({
     open: boolean;
     escort: any | null;
     schoolId: string;
+    selectedSchoolIds: string[];
     notes: string;
     submitting: boolean;
   }>({
     open: false,
     escort: null,
     schoolId: '',
+    selectedSchoolIds: [],
     notes: '',
     submitting: false,
   });
 
   const handleCommandAssignSchoolSubmit = async () => {
-    if (!assignSchoolModal.escort?.id || !assignSchoolModal.schoolId) {
-      toast.error('Please select a school to assign.');
+    if (!assignSchoolModal.escort?.id) return;
+    const isMyEduRide = assignSchoolModal.escort.type === 'myeduride';
+
+    const targetSchoolIds = isMyEduRide
+      ? (assignSchoolModal.selectedSchoolIds && assignSchoolModal.selectedSchoolIds.length > 0
+          ? assignSchoolModal.selectedSchoolIds
+          : (assignSchoolModal.schoolId ? [assignSchoolModal.schoolId] : []))
+      : (assignSchoolModal.schoolId ? [assignSchoolModal.schoolId] : []);
+
+    if (targetSchoolIds.length === 0) {
+      toast.error('Please select at least one school campus to allocate.');
       return;
     }
-    const matchedSchool = schools.find((s) => s.id === assignSchoolModal.schoolId);
-    const schoolName = matchedSchool?.name || 'Designated School Campus';
+
+    const matchedSchools = schools.filter((s) => targetSchoolIds.includes(s.id));
+    const schoolNames = matchedSchools.map((s) => s.name);
+    const primaryName = schoolNames[0] || 'Designated School Campus';
+    const displayLabel = schoolNames.length > 1
+      ? `${schoolNames[0]} (+${schoolNames.length - 1} campuses)`
+      : primaryName;
+
     setAssignSchoolModal((prev) => ({ ...prev, submitting: true }));
 
     try {
@@ -339,9 +360,10 @@ export function CityManagerCommandControl({
         body: JSON.stringify({
           action: 'quick_approve_and_assign_school',
           escortApplicationId: assignSchoolModal.escort.id,
-          schoolId: assignSchoolModal.schoolId,
-          schoolName,
-          notes: assignSchoolModal.notes || `Assigned to ${schoolName} by City Manager`,
+          schoolIds: targetSchoolIds,
+          schoolId: targetSchoolIds[0],
+          schoolName: schoolNames.join(', '),
+          notes: assignSchoolModal.notes || `Allocated to ${targetSchoolIds.length} campus(es) by City Manager`,
         }),
       });
       const d = await res.json();
@@ -350,13 +372,24 @@ export function CityManagerCommandControl({
       setEscorts((prev) =>
         prev.map((e) =>
           e.id === assignSchoolModal.escort.id
-            ? { ...e, schoolName, schoolId: assignSchoolModal.schoolId, type: 'school' }
+            ? {
+                ...e,
+                schoolName: displayLabel,
+                schoolId: targetSchoolIds[0],
+                allocatedSchoolIds: targetSchoolIds,
+                assignedSchools: matchedSchools.map((s) => ({ id: s.id, name: s.name, student_count: 0 })),
+                assignedSchoolsCount: targetSchoolIds.length,
+              }
             : e
         )
       );
 
-      toast.success(`Escort ${assignSchoolModal.escort.name} assigned to ${schoolName}!`);
-      setAssignSchoolModal({ open: false, escort: null, schoolId: '', notes: '', submitting: false });
+      toast.success(
+        targetSchoolIds.length > 1
+          ? `Escort ${assignSchoolModal.escort.name} allocated to ${targetSchoolIds.length} school campuses!`
+          : `Escort ${assignSchoolModal.escort.name} assigned to ${primaryName}!`
+      );
+      setAssignSchoolModal({ open: false, escort: null, schoolId: '', selectedSchoolIds: [], notes: '', submitting: false });
     } catch (err: any) {
       toast.error(err.message || 'Could not assign escort');
       setAssignSchoolModal((prev) => ({ ...prev, submitting: false }));
@@ -1286,9 +1319,14 @@ export function CityManagerCommandControl({
                                 <span>{escort.studentsCount} Students</span>
                               </button>
                             </div>
-                            <p className="text-[11px] text-slate-300 font-semibold flex items-center gap-1">
+                            <p className="text-[11px] text-slate-300 font-semibold flex items-center gap-1 flex-wrap">
                               <School size={12} className="text-amber-400 shrink-0" />
                               <span className="truncate">{escort.schoolName}</span>
+                              {(escort.allocatedSchoolIds?.length > 1 || escort.assignedSchoolsCount > 1) && (
+                                <span className="px-1.5 py-0.5 rounded-full text-[9px] font-black bg-purple-500/20 text-purple-300 border border-purple-500/30 shrink-0">
+                                  {escort.allocatedSchoolIds?.length || escort.assignedSchoolsCount} Campuses
+                                </span>
+                              )}
                             </p>
                           </div>
                         </td>
@@ -1338,24 +1376,33 @@ export function CityManagerCommandControl({
                         </td>
 
                         {/* Status */}
-                        <td className="p-3.5 text-center">
-                          <span
-                            className={`px-2.5 py-1 rounded-full text-[10px] font-extrabold uppercase border ${
-                              escort.status === 'ON_TRIP'
-                                ? 'bg-emerald-500/20 text-emerald-400 border-emerald-500/40'
-                                : escort.status === 'AVAILABLE'
-                                ? 'bg-blue-500/20 text-blue-300 border-blue-500/40'
-                                : escort.status === 'DELAYED'
-                                ? 'bg-amber-500/20 text-amber-300 border-amber-500/40 animate-pulse'
-                                : escort.status === 'FLAGGED'
-                                ? 'bg-red-500/20 text-red-400 border-red-500/40 font-black'
-                                : escort.status === 'SUSPENDED'
-                                ? 'bg-amber-950 text-amber-400 border-amber-500/50'
-                                : 'bg-red-950 text-red-400 border-red-500/50'
-                            }`}
-                          >
-                            {escort.status.replace(/_/g, ' ')}
-                          </span>
+                        <td className="p-3.5">
+                          <div className="flex items-center gap-2">
+                            <span
+                              className={`w-2 h-2 rounded-full ${
+                                escort.status === 'AVAILABLE'
+                                  ? 'bg-emerald-400 shadow-sm shadow-emerald-400'
+                                  : escort.status === 'ON_TRIP'
+                                  ? 'bg-blue-400 shadow-sm shadow-blue-400 animate-pulse'
+                                  : 'bg-slate-500'
+                              }`}
+                            />
+                            <span
+                              className={`text-[11px] font-bold ${
+                                escort.status === 'AVAILABLE'
+                                  ? 'text-emerald-400'
+                                  : escort.status === 'ON_TRIP'
+                                  ? 'text-blue-400'
+                                  : 'text-slate-400'
+                              }`}
+                            >
+                              {escort.status === 'AVAILABLE'
+                                ? 'Available'
+                                : escort.status === 'ON_TRIP'
+                                ? 'On Transit'
+                                : 'Standby'}
+                            </span>
+                          </div>
                         </td>
 
                         {/* Compliance & Rating */}
@@ -1385,9 +1432,21 @@ export function CityManagerCommandControl({
 
                             <button
                               type="button"
-                              onClick={() => setAssignSchoolModal({ open: true, escort, schoolId: escort.schoolId || '', notes: '', submitting: false })}
+                              onClick={() => {
+                                const currentIds = Array.isArray(escort.allocatedSchoolIds) && escort.allocatedSchoolIds.length > 0
+                                  ? [...escort.allocatedSchoolIds]
+                                  : (escort.schoolId ? [escort.schoolId] : []);
+                                setAssignSchoolModal({
+                                  open: true,
+                                  escort,
+                                  schoolId: escort.schoolId || (currentIds[0] || ''),
+                                  selectedSchoolIds: currentIds,
+                                  notes: '',
+                                  submitting: false,
+                                });
+                              }}
                               className="p-2 rounded-xl bg-slate-800 hover:bg-purple-600 text-slate-300 hover:text-white transition-colors cursor-pointer"
-                              title="Assign / Change School"
+                              title={escort.type === 'myeduride' ? 'Allocate Multiple School Campuses' : 'Assign / Change School'}
                             >
                               <School size={14} className="text-purple-300" />
                             </button>
@@ -2728,7 +2787,7 @@ export function CityManagerCommandControl({
       {/* ========================================================================= */}
       {assignSchoolModal.open && assignSchoolModal.escort && (
         <div className="fixed inset-0 z-[9999] bg-slate-950/85 backdrop-blur-sm flex items-center justify-center p-4 animate-in fade-in">
-          <div className="bg-[#0c1e36] border border-slate-700 rounded-3xl max-w-md w-full p-6 text-white shadow-2xl space-y-4">
+          <div className="bg-[#0c1e36] border border-slate-700 rounded-3xl max-w-lg w-full p-6 text-white shadow-2xl space-y-4">
             <div className="flex items-center justify-between border-b border-slate-800 pb-3">
               <div className="flex items-center gap-2.5">
                 <div className="w-10 h-10 rounded-xl bg-purple-500/20 border border-purple-500/30 flex items-center justify-center text-purple-300">
@@ -2736,45 +2795,151 @@ export function CityManagerCommandControl({
                 </div>
                 <div>
                   <h3 className="text-sm font-black text-white uppercase tracking-wider">
-                    Assign Escort to School
+                    {assignSchoolModal.escort.type === 'myeduride'
+                      ? 'Allocate Schools & Corridors'
+                      : 'Assign Escort to School'}
                   </h3>
                   <p className="text-[11px] text-slate-400">
-                    Set designated campus &amp; transport operations
+                    {assignSchoolModal.escort.type === 'myeduride'
+                      ? 'Allocate multiple campuses (3+ schools) along shared transit routes'
+                      : 'Set designated campus & transport operations'}
                   </p>
                 </div>
               </div>
               <button
                 type="button"
-                onClick={() => setAssignSchoolModal({ open: false, escort: null, schoolId: '', notes: '', submitting: false })}
+                onClick={() => setAssignSchoolModal({ open: false, escort: null, schoolId: '', selectedSchoolIds: [], notes: '', submitting: false })}
                 className="p-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-400 hover:text-white"
               >
                 <X size={16} />
               </button>
             </div>
 
-            <div className="p-3 rounded-xl bg-slate-900 border border-slate-800 text-xs">
-              <strong className="text-white block text-sm">{assignSchoolModal.escort.name}</strong>
+            <div className="p-3 rounded-xl bg-slate-900 border border-slate-800 text-xs space-y-1">
+              <div className="flex items-center justify-between">
+                <strong className="text-white block text-sm">{assignSchoolModal.escort.name}</strong>
+                <span className={`px-2 py-0.5 rounded-full text-[9px] font-extrabold uppercase ${
+                  assignSchoolModal.escort.type === 'myeduride'
+                    ? 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/30'
+                    : 'bg-purple-500/20 text-purple-300 border border-purple-500/30'
+                }`}>
+                  {assignSchoolModal.escort.type === 'myeduride' ? 'MyEduRide Platform Escort' : 'School Escort'}
+                </span>
+              </div>
               <p className="text-slate-400 font-mono text-[11px]">{assignSchoolModal.escort.id} • {assignSchoolModal.escort.phone}</p>
-              <p className="text-amber-400 mt-1 font-semibold">Current: {assignSchoolModal.escort.schoolName}</p>
+              <p className="text-amber-400 font-semibold">Current: {assignSchoolModal.escort.schoolName}</p>
             </div>
 
-            <div className="space-y-1.5">
-              <label className="text-[11px] font-bold text-slate-300 uppercase tracking-wider block">
-                Target School Campus <span className="text-red-400">*</span>
-              </label>
-              <select
-                value={assignSchoolModal.schoolId}
-                onChange={(e) => setAssignSchoolModal(prev => ({ ...prev, schoolId: e.target.value }))}
-                className="w-full p-3 rounded-xl bg-slate-950 border border-slate-700 text-xs font-bold text-emerald-400 focus:ring-2 focus:ring-brand-green"
-              >
-                <option value="">-- Choose a School Campus --</option>
-                {schools.map((s) => (
-                  <option key={s.id} value={s.id} className="text-white">
-                    {s.name}
-                  </option>
-                ))}
-              </select>
-            </div>
+            {/* MULTI-SCHOOL CAMPUS ALLOCATION FOR MYEDURIDE ESCORTS */}
+            {assignSchoolModal.escort.type === 'myeduride' ? (
+              <div className="space-y-3">
+                <div className="space-y-1.5">
+                  <div className="flex items-center justify-between">
+                    <label className="text-[11px] font-bold text-slate-300 uppercase tracking-wider block">
+                      Allocated Campuses ({assignSchoolModal.selectedSchoolIds.length}) <span className="text-red-400">*</span>
+                    </label>
+                    <span className="text-[10px] text-emerald-400 font-semibold">Allows 3+ Schools</span>
+                  </div>
+
+                  {/* Chips of currently selected schools */}
+                  {assignSchoolModal.selectedSchoolIds.length > 0 ? (
+                    <div className="flex flex-wrap gap-1.5 p-2 rounded-xl bg-slate-950/80 border border-slate-800 min-h-[44px]">
+                      {assignSchoolModal.selectedSchoolIds.map((sId) => {
+                        const sObj = schools.find((s) => s.id === sId);
+                        const sName = sObj?.name || 'School Campus';
+                        return (
+                          <span
+                            key={sId}
+                            className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-slate-800 border border-slate-700 text-xs text-white font-medium shadow-xs"
+                          >
+                            <School size={12} className="text-emerald-400 shrink-0" />
+                            <span className="truncate max-w-[200px]">{sName}</span>
+                            <button
+                              type="button"
+                              onClick={() =>
+                                setAssignSchoolModal((prev) => ({
+                                  ...prev,
+                                  selectedSchoolIds: prev.selectedSchoolIds.filter((id) => id !== sId),
+                                }))
+                              }
+                              className="p-0.5 rounded hover:bg-slate-700 text-slate-400 hover:text-red-400 transition-colors"
+                              title={`Remove ${sName}`}
+                            >
+                              <X size={12} />
+                            </button>
+                          </span>
+                        );
+                      })}
+                    </div>
+                  ) : (
+                    <div className="p-3 rounded-xl bg-slate-950/80 border border-dashed border-slate-800 text-center text-xs text-slate-500">
+                      No campuses currently allocated. Select a school below to add.
+                    </div>
+                  )}
+                </div>
+
+                {/* Dropdown to add another school */}
+                <div className="space-y-1.5">
+                  <label className="text-[11px] font-bold text-slate-300 uppercase tracking-wider block">
+                    Add School Campus
+                  </label>
+                  <select
+                    value=""
+                    onChange={(e) => {
+                      const newId = e.target.value;
+                      if (newId && !assignSchoolModal.selectedSchoolIds.includes(newId)) {
+                        setAssignSchoolModal((prev) => ({
+                          ...prev,
+                          selectedSchoolIds: [...prev.selectedSchoolIds, newId],
+                          schoolId: prev.schoolId || newId,
+                        }));
+                      }
+                      e.target.value = '';
+                    }}
+                    className="w-full p-3 rounded-xl bg-slate-950 border border-slate-700 text-xs font-bold text-emerald-400 focus:ring-2 focus:ring-brand-green"
+                  >
+                    <option value="">-- Click to Add a School Campus --</option>
+                    {schools
+                      .filter((s) => !assignSchoolModal.selectedSchoolIds.includes(s.id))
+                      .map((s) => (
+                        <option key={s.id} value={s.id} className="text-white">
+                          + {s.name}
+                        </option>
+                      ))}
+                  </select>
+                </div>
+
+                <div className="p-2.5 rounded-xl bg-emerald-950/40 border border-emerald-500/30 text-[11px] text-emerald-300 space-y-1">
+                  <p className="font-bold flex items-center gap-1.5">
+                    <CheckCircle2 size={13} className="text-emerald-400 shrink-0" />
+                    Multi-School Shared Transit Operations
+                  </p>
+                  <p className="text-slate-300 text-[10px] leading-relaxed">
+                    MyEduRide escorts operate across shared geographic corridors. Students from all allocated campuses are aggregated onto the escort’s live manifest without bell-time clash restrictions.
+                  </p>
+                </div>
+              </div>
+            ) : (
+              /* SINGLE SCHOOL SELECTOR FOR DEDICATED SCHOOL ESCORTS */
+              <div className="space-y-1.5">
+                <label className="text-[11px] font-bold text-slate-300 uppercase tracking-wider block">
+                  Target School Campus <span className="text-red-400">*</span>
+                </label>
+                <select
+                  value={assignSchoolModal.schoolId}
+                  onChange={(e) => setAssignSchoolModal(prev => ({ ...prev, schoolId: e.target.value }))}
+                  className="w-full p-3 rounded-xl bg-slate-950 border border-slate-700 text-xs font-bold text-emerald-400 focus:ring-2 focus:ring-brand-green"
+                >
+                  <option value="">-- Choose a School Campus --</option>
+                  {schools.map((s) => (
+                    <option key={s.id} value={s.id} className="text-white">
+                      {s.name}
+                    </option>
+                  ))}
+                </select>
+                <p className="text-[10px] text-slate-400">School escorts are dedicated internal staff members assigned to a single home campus.</p>
+              </div>
+            )}
 
             <div className="space-y-1.5">
               <label className="text-[11px] font-bold text-slate-300 uppercase tracking-wider block">
@@ -2784,7 +2949,7 @@ export function CityManagerCommandControl({
                 rows={2}
                 value={assignSchoolModal.notes}
                 onChange={(e) => setAssignSchoolModal(prev => ({ ...prev, notes: e.target.value }))}
-                placeholder="e.g. Assigned to School Fleet. Operational supervision confirmed."
+                placeholder="e.g. Approved across Lekki corridor campuses. Supervised transit enabled."
                 className="w-full p-3 rounded-xl bg-slate-950 border border-slate-800 text-xs text-white placeholder-slate-500 font-medium focus:ring-2 focus:ring-brand-green"
               />
             </div>
@@ -2792,7 +2957,7 @@ export function CityManagerCommandControl({
             <div className="flex items-center justify-end gap-2 pt-2 border-t border-slate-800">
               <button
                 type="button"
-                onClick={() => setAssignSchoolModal({ open: false, escort: null, schoolId: '', notes: '', submitting: false })}
+                onClick={() => setAssignSchoolModal({ open: false, escort: null, schoolId: '', selectedSchoolIds: [], notes: '', submitting: false })}
                 className="px-4 py-2.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 font-bold text-xs"
               >
                 Cancel
@@ -2803,7 +2968,7 @@ export function CityManagerCommandControl({
                 onClick={handleCommandAssignSchoolSubmit}
                 className="px-5 py-2.5 rounded-xl bg-brand-green hover:bg-emerald-600 text-white font-extrabold text-xs shadow-lg shadow-emerald-600/30 flex items-center gap-1.5 disabled:opacity-50 cursor-pointer"
               >
-                {assignSchoolModal.submitting ? 'Assigning...' : 'Confirm School Assignment'}
+                {assignSchoolModal.submitting ? 'Allocating...' : 'Confirm School Allocation'}
               </button>
             </div>
           </div>

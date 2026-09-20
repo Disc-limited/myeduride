@@ -45,8 +45,20 @@
     "status": "CITY_MANAGER_APPROVED",
     "createdAt": "2026-09-01T21:18:25.192Z",
     "registrationDate": "2026-09-01",
-    "notes": "School Admin Correction Submitted",
+    "notes": "Allocated to 2 campus(es) by City Manager",
     "escortType": "myeduride_escort",
-    "availableForOtherSchools": true
+    "availableForOtherSchools": true,
+    "allocatedSchoolIds": [
+      "c1ac8ead-c011-4f03-a216-28d6b354e12a",
+      "cc1928a7-caac-4b17-8142-57e11351a593"
+    ],
+    "allocated_school_ids": [
+      "c1ac8ead-c011-4f03-a216-28d6b354e12a",
+      "cc1928a7-caac-4b17-8142-57e11351a593"
+    ],
+    "schoolId": "c1ac8ead-c011-4f03-a216-28d6b354e12a",
+    "createdBySchoolId": "c1ac8ead-c011-4f03-a216-28d6b354e12a",
+    "schoolName": "Solid Stone Kiddies Academy",
+    "createdBySchoolName": "Solid Stone Kiddies Academy"
   }
 ]

@@ -326,15 +326,20 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // 1.5 Dual School Assignment & Timing Clash Verification
-    const limitCheck = await validateEscortSchoolLimit(supabase, escort_id, primarySchoolId);
+    // 1.5 School Assignment & Timing Clash Verification
+    const resolvedEscortType =
+      (escort ? resolveEscortCategory(escort) : null) || escort_type || 'myeduride_escort';
+    const isMyEduRide = resolvedEscortType === 'myeduride_escort';
+
+    const limitCheck = await validateEscortSchoolLimit(supabase, escort_id, primarySchoolId, {
+      isMyEduRide,
+      escortType: resolvedEscortType,
+    });
     if (!limitCheck.allowed) {
       console.warn('[assign-student] 400 school limit', limitCheck.error);
       return NextResponse.json({ error: limitCheck.error }, { status: 400 });
     }
 
-    const resolvedEscortType =
-      (escort ? resolveEscortCategory(escort) : null) || escort_type || 'myeduride_escort';
     const allowsSameTimePickup = escortAllowsOverlappingPickup(resolvedEscortType) || escortAllowsOverlappingPickup(escort_type);
 
     // Second school: school escorts still need a travel buffer. MyEduRide escorts may pick both at the same time.
@@ -476,19 +481,37 @@ export async function POST(request: NextRequest) {
 
     if (assignErr) throw assignErr;
 
-    // 5.5 Link primary or secondary school on escort application
+    // 5.5 Link school on escort application & application_data.allocated_school_ids
     try {
-      if (escort?.primary_school_id && escort.primary_school_id !== primarySchoolId) {
-        await supabase
-          .from('escort_applications')
-          .update({ secondary_school_id: primarySchoolId, updated_at: nowIso })
-          .eq('id', escort_id);
-      } else if (!escort?.primary_school_id) {
-        await supabase
-          .from('escort_applications')
-          .update({ primary_school_id: primarySchoolId, updated_at: nowIso })
-          .eq('id', escort_id);
+      let curAppData: any = {};
+      if (escort?.application_data) {
+        try {
+          curAppData = typeof escort.application_data === 'string'
+            ? JSON.parse(escort.application_data)
+            : escort.application_data;
+        } catch {}
       }
+      const curAllocated: string[] = Array.isArray(curAppData.allocated_school_ids)
+        ? [...curAppData.allocated_school_ids]
+        : [escort?.primary_school_id, escort?.secondary_school_id].filter(Boolean);
+      if (!curAllocated.includes(primarySchoolId)) {
+        curAllocated.push(primarySchoolId);
+      }
+      curAppData.allocated_school_ids = curAllocated;
+
+      const appUpdates: Record<string, any> = {
+        application_data: JSON.stringify(curAppData),
+        updated_at: nowIso,
+      };
+      if (escort?.primary_school_id && escort.primary_school_id !== primarySchoolId && !escort?.secondary_school_id) {
+        appUpdates.secondary_school_id = primarySchoolId;
+      } else if (!escort?.primary_school_id) {
+        appUpdates.primary_school_id = primarySchoolId;
+      }
+      await supabase
+        .from('escort_applications')
+        .update(appUpdates)
+        .eq('id', escort_id);
     } catch (eErr) {
       console.warn('[assign-student] escort school link note:', eErr);
     }

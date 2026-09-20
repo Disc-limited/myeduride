@@ -273,6 +273,27 @@ export async function GET(request: NextRequest) {
     if (escortProfile?.primary_school_id) distinctSchoolIds.add(escortProfile.primary_school_id);
     if (escortProfile?.secondary_school_id) distinctSchoolIds.add(escortProfile.secondary_school_id);
     if (escortProfile?.school_id) distinctSchoolIds.add(escortProfile.school_id);
+    if (escortProfile?.schoolId) distinctSchoolIds.add(escortProfile.schoolId);
+    if (Array.isArray(escortProfile?.allocatedSchoolIds)) {
+      escortProfile.allocatedSchoolIds.forEach((id: string) => { if (id) distinctSchoolIds.add(id); });
+    }
+    if (Array.isArray(escortProfile?.allocated_school_ids)) {
+      escortProfile.allocated_school_ids.forEach((id: string) => { if (id) distinctSchoolIds.add(id); });
+    }
+    let profileAppData: any = {};
+    if (escortProfile?.application_data) {
+      try {
+        profileAppData = typeof escortProfile.application_data === 'string'
+          ? JSON.parse(escortProfile.application_data)
+          : escortProfile.application_data;
+      } catch {}
+    }
+    if (Array.isArray(profileAppData?.allocated_school_ids)) {
+      profileAppData.allocated_school_ids.forEach((id: string) => { if (id) distinctSchoolIds.add(id); });
+    }
+    if (Array.isArray(profileAppData?.allocatedSchoolIds)) {
+      profileAppData.allocatedSchoolIds.forEach((id: string) => { if (id) distinctSchoolIds.add(id); });
+    }
     if (schoolId) distinctSchoolIds.add(schoolId);
 
     let assignedSchools: any[] = [];
@@ -297,15 +318,29 @@ export async function GET(request: NextRequest) {
           const clash = checkSchoolTimingClash(assignedSchools[0], assignedSchools[1], 45);
           dualSchoolSchedule = {
             is_dual_school: true,
+            is_multi_school: assignedSchools.length > 2,
+            total_schools: assignedSchools.length,
             school_a: assignedSchools[0],
             school_b: assignedSchools[1],
+            assigned_schools: assignedSchools.map((s: any) => ({
+              id: s.id,
+              name: s.name,
+              address: s.address,
+              student_gate_start: s.student_gate_start,
+              school_start_time: s.school_start_time,
+              student_gate_end: s.student_gate_end,
+              dismissal_start_time: s.dismissal_start_time,
+              dismissal_end_time: s.dismissal_end_time,
+            })),
             clash_detected: clash.hasClash,
             clash_reason: clash.reason || null,
             morning_gap_mins: clash.morningGapMins,
             afternoon_gap_mins: clash.afternoonGapMins,
             school_a_times: clash.schoolATimes,
             school_b_times: clash.schoolBTimes,
-            status_label: !clash.hasClash ? 'Dual-School Non-Clashing Schedule' : 'Schedule Clashing Alert',
+            status_label: assignedSchools.length > 2
+              ? `${assignedSchools.length}-Campus Transit Corridor`
+              : (!clash.hasClash ? 'Dual-School Non-Clashing Schedule' : 'Schedule Clashing Alert'),
           };
         }
       } catch (sErr) {
@@ -536,9 +571,11 @@ export async function GET(request: NextRequest) {
     if (dualSchoolSchedule) {
       dualSchoolSchedule.same_time_pickup_allowed = !isSchoolEscort;
       dualSchoolSchedule.status_label = !isSchoolEscort
-        ? dualSchoolSchedule.clash_detected
-          ? 'Dual-school same-time pickup'
-          : 'Dual-school coverage'
+        ? dualSchoolSchedule.is_multi_school
+          ? `${dualSchoolSchedule.total_schools}-Campus Transit Coverage`
+          : (dualSchoolSchedule.clash_detected
+            ? 'Dual-school same-time pickup'
+            : 'Dual-school coverage')
         : dualSchoolSchedule.status_label;
     }
 

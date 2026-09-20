@@ -41,7 +41,23 @@ export async function GET(request: NextRequest) {
 export async function PATCH(request: NextRequest) {
   try {
     const body = await request.json();
-    const { appId, status, notes, escortEmail, escortName, uploadedDocDetails, isResubmitted, nin, photo, schoolId, schoolName } = body;
+    const {
+      appId,
+      status,
+      notes,
+      escortEmail,
+      escortName,
+      uploadedDocDetails,
+      isResubmitted,
+      nin,
+      photo,
+      schoolId,
+      schoolName,
+      allocatedSchoolIds,
+      allocated_school_ids,
+      escortCategory,
+      escortType,
+    } = body;
 
     if (!appId || !status) {
       return NextResponse.json(
@@ -50,7 +66,24 @@ export async function PATCH(request: NextRequest) {
       );
     }
 
-    const result = await updateEscortApplicationStatus(appId, status, notes, { uploadedDocDetails, isResubmitted, nin, photo, schoolId, schoolName });
+    const schoolIds = Array.isArray(allocatedSchoolIds) && allocatedSchoolIds.length > 0
+      ? allocatedSchoolIds
+      : Array.isArray(allocated_school_ids) && allocated_school_ids.length > 0
+        ? allocated_school_ids
+        : schoolId
+          ? [schoolId]
+          : undefined;
+
+    const result = await updateEscortApplicationStatus(appId, status, notes, {
+      uploadedDocDetails,
+      isResubmitted,
+      nin,
+      photo,
+      schoolId,
+      schoolName,
+      allocatedSchoolIds: schoolIds,
+      escortCategory: escortCategory || escortType,
+    });
 
     // Keep City Manager approval decisions in the central accountability ledger.
     if (['CITY_MANAGER_APPROVED', 'REJECTED', 'CORRECTION_REQUESTED', 'ESCALATED'].includes(status)) {

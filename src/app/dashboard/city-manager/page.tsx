@@ -132,12 +132,14 @@ function CityManagerDashboardContent() {
     open: boolean;
     app: any;
     schoolId: string;
+    selectedSchoolIds: string[];
     notes: string;
     submitting: boolean;
   }>({
     open: false,
     app: null,
     schoolId: '',
+    selectedSchoolIds: [],
     notes: '',
     submitting: false,
   });
@@ -195,15 +197,29 @@ function CityManagerDashboardContent() {
     };
   }, [selectedAppId]);
 
-  // Handler for Quick Approve & Assign to School
+  // Handler for Quick Approve & Assign to School (supports 1, 2, 3+ campuses)
   const handleQuickApproveAndAssignSubmit = async () => {
     if (!quickAssignModal.app?.id) return;
-    if (!quickAssignModal.schoolId) {
-      toast.error('Please select a destination school to assign this escort.');
+    const schoolIds = quickAssignModal.selectedSchoolIds.length > 0
+      ? quickAssignModal.selectedSchoolIds
+      : quickAssignModal.schoolId
+        ? [quickAssignModal.schoolId]
+        : [];
+
+    if (schoolIds.length === 0) {
+      toast.error('Please select at least one destination school campus.');
       return;
     }
-    const matchedSchool = availableSchools.find((s) => s.id === quickAssignModal.schoolId);
-    const schoolName = matchedSchool?.name || 'Designated School Campus';
+
+    const matchedSchools = schoolIds.map((sid) => {
+      const found = availableSchools.find((s) => s.id === sid);
+      return { id: sid, name: found?.name || 'School Campus' };
+    });
+    const schoolNames = matchedSchools.map((s) => s.name);
+    const primarySchoolId = schoolIds[0];
+    const primarySchoolName = matchedSchools[0]?.name || 'Designated School Campus';
+    const isMyEduRide = resolveEscortCategory(quickAssignModal.app) !== 'school_escort';
+
     setQuickAssignModal((prev) => ({ ...prev, submitting: true }));
 
     try {
@@ -213,9 +229,12 @@ function CityManagerDashboardContent() {
         body: JSON.stringify({
           action: 'quick_approve_and_assign_school',
           escortApplicationId: quickAssignModal.app.id,
-          schoolId: quickAssignModal.schoolId,
-          schoolName,
-          notes: quickAssignModal.notes || `Approved & assigned to ${schoolName} by City Manager`,
+          schoolId: primarySchoolId,
+          schoolIds,
+          schoolName: primarySchoolName,
+          schoolNames,
+          escortCategory: isMyEduRide ? 'myeduride_escort' : 'school_escort',
+          notes: quickAssignModal.notes || `Approved & allocated to ${schoolNames.join(', ')} by City Manager`,
         }),
       });
       const d = await res.json();
@@ -228,25 +247,51 @@ function CityManagerDashboardContent() {
             ? {
                 ...a,
                 status: 'CITY_MANAGER_APPROVED',
-                schoolId: quickAssignModal.schoolId,
-                createdBySchoolId: quickAssignModal.schoolId,
-                schoolName,
-                createdBySchoolName: schoolName,
-                escortCategory: 'school_escort',
+                schoolId: primarySchoolId,
+                createdBySchoolId: primarySchoolId,
+                schoolName: primarySchoolName,
+                createdBySchoolName: primarySchoolName,
+                allocatedSchoolIds: schoolIds,
+                allocated_school_ids: schoolIds,
+                escortCategory: isMyEduRide ? 'myeduride_escort' : 'school_escort',
+                escortType: isMyEduRide ? 'myeduride_escort' : 'school_escort',
               }
             : a
         )
       );
 
+      // Also update selectedApp if it's currently open in view
+      if (selectedAppId === quickAssignModal.app.id) {
+        setSelectedApp((prev: any) =>
+          prev
+            ? {
+                ...prev,
+                status: 'CITY_MANAGER_APPROVED',
+                schoolId: primarySchoolId,
+                createdBySchoolId: primarySchoolId,
+                schoolName: primarySchoolName,
+                createdBySchoolName: primarySchoolName,
+                allocatedSchoolIds: schoolIds,
+                allocated_school_ids: schoolIds,
+                escortCategory: isMyEduRide ? 'myeduride_escort' : 'school_escort',
+                escortType: isMyEduRide ? 'myeduride_escort' : 'school_escort',
+              }
+            : prev
+        );
+      }
+
       // Trigger approval notification modal preview
       setApprovalModalTriggered({
         ...quickAssignModal.app,
-        schoolName,
-        createdBySchoolName: schoolName,
+        schoolName: primarySchoolName,
+        createdBySchoolName: primarySchoolName,
+        allocatedSchoolIds: schoolIds,
       });
 
-      toast.success(`Escort ${quickAssignModal.app.fullName || quickAssignModal.app.name || ''} approved and assigned to ${schoolName}!`);
-      setQuickAssignModal({ open: false, app: null, schoolId: '', notes: '', submitting: false });
+      toast.success(
+        `Escort ${quickAssignModal.app.fullName || quickAssignModal.app.name || ''} approved and allocated to ${schoolNames.length} campus(es): ${schoolNames.join(', ')}!`
+      );
+      setQuickAssignModal({ open: false, app: null, schoolId: '', selectedSchoolIds: [], notes: '', submitting: false });
     } catch (err: any) {
       toast.error(err.message || 'Could not complete quick approval and assignment');
       setQuickAssignModal((prev) => ({ ...prev, submitting: false }));
@@ -813,6 +858,16 @@ function CityManagerDashboardContent() {
                             </span>
                           )}
 
+                          {/* Multi-School Allocation Badge */}
+                          {((app.allocatedSchoolIds && app.allocatedSchoolIds.length > 0) || (app.allocated_school_ids && app.allocated_school_ids.length > 0)) && (
+                            <span className="px-2 py-0.5 rounded-md text-[9px] font-bold bg-emerald-500/20 text-emerald-300 border border-emerald-500/30 flex items-center gap-1">
+                              <School size={10} className="shrink-0 text-emerald-400" />
+                              <span>
+                                {(app.allocatedSchoolIds || app.allocated_school_ids).length} Campus{(app.allocatedSchoolIds || app.allocated_school_ids).length > 1 ? 'es' : ''}
+                              </span>
+                            </span>
+                          )}
+
                           {(app.assignedStudentsCount > 0 || app.assignedStudents?.length > 0) && (
                             <span className="px-2 py-0.5 rounded-md text-[9px] font-bold bg-emerald-500/20 text-emerald-300 border border-emerald-500/30 flex items-center gap-1">
                               <Users size={10} className="shrink-0" />
@@ -882,7 +937,7 @@ function CityManagerDashboardContent() {
                       {selectedApp.email || selectedApp.emailOrUsername ? ` • ${selectedApp.email || selectedApp.emailOrUsername}` : ''}
                       {selectedApp.phone ? ` • ${selectedApp.phone}` : ''}
                     </p>
-                    <p className={`text-[11px] font-bold flex items-center gap-1.5 mt-0.5 ${resolveEscortCategory(selectedApp) === 'school_escort' ? 'text-amber-300' : 'text-indigo-300'}`}>
+                    <p className={`text-[11px] font-bold flex flex-wrap items-center gap-1.5 mt-0.5 ${resolveEscortCategory(selectedApp) === 'school_escort' ? 'text-amber-300' : 'text-indigo-300'}`}>
                       {resolveEscortCategory(selectedApp) === 'school_escort' ? (
                         <>
                           <School size={13} className="text-amber-400 shrink-0" />
@@ -892,6 +947,12 @@ function CityManagerDashboardContent() {
                         <>
                           <ShieldCheck size={13} className="text-indigo-400 shrink-0" />
                           <span>MyEduRide Escort</span>
+                          {((selectedApp.allocatedSchoolIds && selectedApp.allocatedSchoolIds.length > 0) || (selectedApp.allocated_school_ids && selectedApp.allocated_school_ids.length > 0)) && (
+                            <span className="text-emerald-300 font-bold ml-1 flex items-center gap-1">
+                              • <School size={12} className="inline shrink-0 text-emerald-400" />
+                              {(selectedApp.allocatedSchoolIds || selectedApp.allocated_school_ids).length} Campus{(selectedApp.allocatedSchoolIds || selectedApp.allocated_school_ids).length > 1 ? 'es' : ''} Allocated
+                            </span>
+                          )}
                         </>
                       )}
                       {resolveEscortCategory(selectedApp) === 'school_escort' && (selectedApp.createdBySchoolId || selectedApp.schoolId) && (
@@ -1230,8 +1291,22 @@ function CityManagerDashboardContent() {
                       )}
                       <button
                         type="button"
-                        onClick={() => setQuickAssignModal({ open: true, app: selectedApp, schoolId: selectedApp.schoolId || availableSchools[0]?.id || '', notes: '', submitting: false })}
-                        className="px-2.5 py-1 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white text-[10px] font-extrabold flex items-center gap-1 shadow-sm"
+                        onClick={() => {
+                          const currentAllocated = Array.isArray(selectedApp.allocatedSchoolIds) && selectedApp.allocatedSchoolIds.length > 0
+                            ? selectedApp.allocatedSchoolIds
+                            : Array.isArray(selectedApp.allocated_school_ids) && selectedApp.allocated_school_ids.length > 0
+                              ? selectedApp.allocated_school_ids
+                              : [selectedApp.schoolId || selectedApp.primary_school_id || availableSchools[0]?.id || ''].filter(Boolean);
+                          setQuickAssignModal({
+                            open: true,
+                            app: selectedApp,
+                            schoolId: currentAllocated[0] || '',
+                            selectedSchoolIds: currentAllocated,
+                            notes: '',
+                            submitting: false,
+                          });
+                        }}
+                        className="px-2.5 py-1 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white text-[10px] font-extrabold flex items-center gap-1 shadow-sm cursor-pointer"
                       >
                         <School size={12} /> {selectedApp.createdBySchoolName ? 'Change School' : 'Assign to School'}
                       </button>
@@ -1316,9 +1391,23 @@ function CityManagerDashboardContent() {
                   {/* 0. QUICK APPROVE & ASSIGN TO SCHOOL */}
                   <button
                     type="button"
-                    onClick={() => setQuickAssignModal({ open: true, app: selectedApp, schoolId: selectedApp.schoolId || availableSchools[0]?.id || '', notes: '', submitting: false })}
-                    className="py-2.5 px-2 rounded-xl bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 text-white font-extrabold text-[11px] shadow-lg shadow-emerald-600/30 flex items-center justify-center gap-1.5 transition-all col-span-2 border border-emerald-400/40"
-                    title="Simultaneously approve escort and assign to school campus"
+                    onClick={() => {
+                      const currentAllocated = Array.isArray(selectedApp.allocatedSchoolIds) && selectedApp.allocatedSchoolIds.length > 0
+                        ? selectedApp.allocatedSchoolIds
+                        : Array.isArray(selectedApp.allocated_school_ids) && selectedApp.allocated_school_ids.length > 0
+                          ? selectedApp.allocated_school_ids
+                          : [selectedApp.schoolId || selectedApp.primary_school_id || availableSchools[0]?.id || ''].filter(Boolean);
+                      setQuickAssignModal({
+                        open: true,
+                        app: selectedApp,
+                        schoolId: currentAllocated[0] || '',
+                        selectedSchoolIds: currentAllocated,
+                        notes: '',
+                        submitting: false,
+                      });
+                    }}
+                    className="py-2.5 px-2 rounded-xl bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 text-white font-extrabold text-[11px] shadow-lg shadow-emerald-600/30 flex items-center justify-center gap-1.5 transition-all col-span-2 border border-emerald-400/40 cursor-pointer"
+                    title="Simultaneously approve escort and allocate to school campuses"
                   >
                     <School className="w-3.5 h-3.5 text-amber-300" />
                     <CheckCircle2 className="w-3.5 h-3.5" />
@@ -1477,7 +1566,7 @@ function CityManagerDashboardContent() {
               </div>
               <button
                 type="button"
-                onClick={() => setQuickAssignModal({ open: false, app: null, schoolId: '', notes: '', submitting: false })}
+                onClick={() => setQuickAssignModal({ open: false, app: null, schoolId: '', selectedSchoolIds: [], notes: '', submitting: false })}
                 className="p-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-400 hover:text-white"
               >
                 <X size={16} />
@@ -1498,7 +1587,12 @@ function CityManagerDashboardContent() {
                 </div>
               )}
               <div className="min-w-0 flex-1 text-xs">
-                <h4 className="font-extrabold text-white truncate">{quickAssignModal.app.fullName || quickAssignModal.app.name}</h4>
+                <div className="flex items-center gap-2">
+                  <h4 className="font-extrabold text-white truncate">{quickAssignModal.app.fullName || quickAssignModal.app.name}</h4>
+                  <span className={`px-2 py-0.5 rounded text-[9px] font-bold ${resolveEscortCategory(quickAssignModal.app) === 'school_escort' ? 'bg-amber-500/20 text-amber-300' : 'bg-indigo-500/20 text-indigo-300'}`}>
+                    {resolveEscortCategory(quickAssignModal.app) === 'school_escort' ? 'School Escort' : 'MyEduRide Escort'}
+                  </span>
+                </div>
                 <p className="text-[11px] text-slate-400 font-mono mt-0.5">
                   {quickAssignModal.app.phone || 'No phone'} • NIN: {quickAssignModal.app.nin || '—'}
                 </p>
@@ -1508,24 +1602,127 @@ function CityManagerDashboardContent() {
               </div>
             </div>
 
-            {/* Target School Selector */}
-            <div className="space-y-1.5">
-              <label className="text-[11px] font-bold text-slate-300 uppercase tracking-wider block">
-                Select Destination School <span className="text-red-400">*</span>
-              </label>
-              <select
-                value={quickAssignModal.schoolId}
-                onChange={(e) => setQuickAssignModal(prev => ({ ...prev, schoolId: e.target.value }))}
-                className="w-full p-3 rounded-xl bg-slate-950 border border-slate-700 text-xs font-bold text-emerald-400 focus:ring-2 focus:ring-brand-green"
-              >
-                <option value="">-- Choose a School Campus --</option>
-                {availableSchools.map((s) => (
-                  <option key={s.id} value={s.id} className="text-white">
-                    {s.name}
-                  </option>
-                ))}
-              </select>
-            </div>
+            {/* Target School Selector (Multi-School for MyEduRide, Single for School Escort) */}
+            {resolveEscortCategory(quickAssignModal.app) === 'school_escort' ? (
+              <div className="space-y-1.5">
+                <label className="text-[11px] font-bold text-slate-300 uppercase tracking-wider block">
+                  Select Destination School <span className="text-red-400">*</span>
+                </label>
+                <select
+                  value={quickAssignModal.schoolId}
+                  onChange={(e) => {
+                    const val = e.target.value;
+                    setQuickAssignModal((prev) => ({
+                      ...prev,
+                      schoolId: val,
+                      selectedSchoolIds: val ? [val] : [],
+                    }));
+                  }}
+                  className="w-full p-3 rounded-xl bg-slate-950 border border-slate-700 text-xs font-bold text-emerald-400 focus:ring-2 focus:ring-brand-green"
+                >
+                  <option value="">-- Choose a School Campus --</option>
+                  {availableSchools.map((s) => (
+                    <option key={s.id} value={s.id} className="text-white">
+                      {s.name}
+                    </option>
+                  ))}
+                </select>
+              </div>
+            ) : (
+              <div className="space-y-3">
+                <div className="space-y-1.5">
+                  <div className="flex items-center justify-between">
+                    <label className="text-[11px] font-bold text-slate-300 uppercase tracking-wider block">
+                      Allocated Campuses ({quickAssignModal.selectedSchoolIds.length}) <span className="text-red-400">*</span>
+                    </label>
+                    <span className="text-[10px] text-emerald-400 font-semibold bg-emerald-500/10 px-2 py-0.5 rounded-full border border-emerald-500/20">
+                      Allows 3+ Schools
+                    </span>
+                  </div>
+
+                  {/* Chips of currently selected schools */}
+                  {quickAssignModal.selectedSchoolIds.length > 0 ? (
+                    <div className="flex flex-wrap gap-1.5 p-2 rounded-xl bg-slate-950/80 border border-slate-800 min-h-[44px]">
+                      {quickAssignModal.selectedSchoolIds.map((sId) => {
+                        const sObj = availableSchools.find((s) => s.id === sId);
+                        const sName = sObj?.name || 'School Campus';
+                        return (
+                          <span
+                            key={sId}
+                            className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-slate-800 border border-slate-700 text-xs text-white font-medium shadow-xs"
+                          >
+                            <School size={12} className="text-emerald-400 shrink-0" />
+                            <span className="truncate max-w-[200px]">{sName}</span>
+                            <button
+                              type="button"
+                              onClick={() =>
+                                setQuickAssignModal((prev) => {
+                                  const nextIds = prev.selectedSchoolIds.filter((id) => id !== sId);
+                                  return {
+                                    ...prev,
+                                    selectedSchoolIds: nextIds,
+                                    schoolId: nextIds[0] || '',
+                                  };
+                                })
+                              }
+                              className="p-0.5 rounded hover:bg-slate-700 text-slate-400 hover:text-red-400 transition-colors cursor-pointer"
+                              title={`Remove ${sName}`}
+                            >
+                              <X size={12} />
+                            </button>
+                          </span>
+                        );
+                      })}
+                    </div>
+                  ) : (
+                    <div className="p-3 rounded-xl bg-slate-950/80 border border-dashed border-slate-800 text-center text-xs text-slate-500">
+                      No campuses currently allocated. Select a school below to add.
+                    </div>
+                  )}
+                </div>
+
+                {/* Dropdown to add another school */}
+                <div className="space-y-1.5">
+                  <label className="text-[11px] font-bold text-slate-300 uppercase tracking-wider block">
+                    Add School Campus
+                  </label>
+                  <select
+                    value=""
+                    onChange={(e) => {
+                      const newId = e.target.value;
+                      if (newId && !quickAssignModal.selectedSchoolIds.includes(newId)) {
+                        setQuickAssignModal((prev) => ({
+                          ...prev,
+                          selectedSchoolIds: [...prev.selectedSchoolIds, newId],
+                          schoolId: prev.schoolId || newId,
+                        }));
+                      }
+                      e.target.value = '';
+                    }}
+                    className="w-full p-3 rounded-xl bg-slate-950 border border-slate-700 text-xs font-bold text-emerald-400 focus:ring-2 focus:ring-brand-green"
+                  >
+                    <option value="">-- Click to Add a School Campus --</option>
+                    {availableSchools
+                      .filter((s) => !quickAssignModal.selectedSchoolIds.includes(s.id))
+                      .map((s) => (
+                        <option key={s.id} value={s.id} className="text-white">
+                          + {s.name}
+                        </option>
+                      ))}
+                  </select>
+                </div>
+
+                <div className="p-2.5 rounded-xl bg-emerald-950/40 border border-emerald-500/30 text-[11px] text-emerald-300 space-y-1">
+                  <p className="font-bold flex items-center gap-1.5">
+                    <CheckCircle2 size={13} className="text-emerald-400 shrink-0" />
+                    Multi-School Shared Transit Operations
+                  </p>
+                  <p className="text-[10px] text-emerald-300/80">
+                    MyEduRide Escorts can service morning and afternoon pickup/dropoffs across 3 or more schools.
+                  </p>
+                </div>
+              </div>
+            )}
 
             {/* Notes */}
             <div className="space-y-1.5">
@@ -1545,8 +1742,8 @@ function CityManagerDashboardContent() {
             <div className="flex items-center justify-end gap-2 pt-2 border-t border-slate-800">
               <button
                 type="button"
-                onClick={() => setQuickAssignModal({ open: false, app: null, schoolId: '', notes: '', submitting: false })}
-                className="px-4 py-2.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 font-bold text-xs"
+                onClick={() => setQuickAssignModal({ open: false, app: null, schoolId: '', selectedSchoolIds: [], notes: '', submitting: false })}
+                className="px-4 py-2.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 font-bold text-xs cursor-pointer"
               >
                 Cancel
               </button>

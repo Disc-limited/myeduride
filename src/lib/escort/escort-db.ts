@@ -64,7 +64,7 @@ export type EscortApplicationData = {
 const DATA_FILE = path.join(process.cwd(), 'src', 'lib', 'escort', 'escort-store.json');
 
 const ESCORT_LIST_COLUMNS =
-  'id, user_id, full_name, email, phone, nin, photo, status, city, lga, state, operating_area, school_id, primary_school_id, secondary_school_id, escort_type, escort_code, created_at, proposed_correction, passport_doc_url, drivers_licence_doc_url, police_clearance_doc_url, medical_fitness_doc_url, reg_number, vehicle_type';
+  'id, user_id, full_name, email, phone, nin, photo, status, city, lga, state, operating_area, school_id, primary_school_id, secondary_school_id, allocated_school_ids, escort_type, escort_code, created_at, notes, passport_doc_url, drivers_licence_doc_url, police_clearance_doc_url, medical_fitness_doc_url, reg_number, vehicle_type';
 
 function isHttpUrl(value: unknown): value is string {
   return typeof value === 'string' && (value.startsWith('http://') || value.startsWith('https://') || value.startsWith('/'));
@@ -107,7 +107,8 @@ function mapEscortApplicationRow(row: any, parsed: any = {}) {
     facialScanToken: row.facial_scan_token || parsed.facialScanToken,
     fingerprintToken: row.fingerprint_token || parsed.fingerprintToken,
     status: row.status || 'PENDING_CITY_MANAGER_REVIEW',
-    proposed_correction: row.proposed_correction || parsed.proposed_correction || null,
+    notes: row.notes || parsed.notes || null,
+    proposed_correction: row.notes || row.proposed_correction || parsed.proposed_correction || null,
     city: row.city || row.lga || parsed.city || 'Lagos',
     state: row.state || parsed.state || 'Lagos',
     operatingArea: row.operating_area || parsed.operatingArea || 'Lagos Mainland',
@@ -117,6 +118,22 @@ function mapEscortApplicationRow(row: any, parsed: any = {}) {
     createdBySchoolId: parsed.createdBySchoolId || row.school_id || row.primary_school_id || null,
     createdBySchoolName: parsed.createdBySchoolName || parsed.schoolName || null,
     createdRole: parsed.createdRole || null,
+    allocatedSchoolIds: Array.isArray(row.allocated_school_ids) && row.allocated_school_ids.length > 0
+      ? row.allocated_school_ids
+      : (Array.isArray(parsed.allocated_school_ids) && parsed.allocated_school_ids.length > 0)
+        ? parsed.allocated_school_ids
+        : (Array.isArray(parsed.allocatedSchoolIds) && parsed.allocatedSchoolIds.length > 0)
+          ? parsed.allocatedSchoolIds
+          : [row.primary_school_id, row.secondary_school_id, row.school_id].filter(Boolean),
+    allocated_school_ids: Array.isArray(row.allocated_school_ids) && row.allocated_school_ids.length > 0
+      ? row.allocated_school_ids
+      : (Array.isArray(parsed.allocated_school_ids) && parsed.allocated_school_ids.length > 0)
+        ? parsed.allocated_school_ids
+        : (Array.isArray(parsed.allocatedSchoolIds) && parsed.allocatedSchoolIds.length > 0)
+          ? parsed.allocatedSchoolIds
+          : [row.primary_school_id, row.secondary_school_id, row.school_id].filter(Boolean),
+    primarySchoolId: row.primary_school_id || parsed.primarySchoolId || row.school_id || null,
+    secondarySchoolId: row.secondary_school_id || parsed.secondarySchoolId || null,
     escortType: row.escort_type || parsed.escortType || parsed.escortCategory || null,
     escortCategory: parsed.escortCategory || row.escort_type || parsed.escortType || null,
     escort_code: row.escort_code || parsed.escort_code || parsed.escortIdCode || null,
@@ -413,7 +430,7 @@ export async function getEscortApplications(city?: string, options?: GetEscortAp
     if (!error && data && data.length > 0) {
       allApps = data.map((row: any) => {
         let parsed: any = {};
-        if ((includeDocuments || applicationId) && row.application_data) {
+        if (row.application_data) {
           if (typeof row.application_data === 'string') {
             try {
               parsed = JSON.parse(row.application_data);
@@ -784,6 +801,10 @@ export async function updateEscortApplicationStatus(
       if (extraData.isResubmitted !== undefined) (found as any).isResubmitted = extraData.isResubmitted;
       if (extraData.nin) (found as any).nin = extraData.nin;
       if (extraData.photo) (found as any).photo = extraData.photo;
+      if (Array.isArray(extraData.allocatedSchoolIds)) {
+        (found as any).allocatedSchoolIds = extraData.allocatedSchoolIds;
+        (found as any).allocated_school_ids = extraData.allocatedSchoolIds;
+      }
       if (extraData.schoolId) {
         (found as any).schoolId = extraData.schoolId;
         (found as any).createdBySchoolId = extraData.schoolId;
@@ -791,6 +812,10 @@ export async function updateEscortApplicationStatus(
           (found as any).schoolName = extraData.schoolName;
           (found as any).createdBySchoolName = extraData.schoolName;
         }
+      }
+      if (extraData.escortCategory) {
+        (found as any).escortCategory = extraData.escortCategory;
+      } else if (extraData.schoolId && !(found as any).escortCategory) {
         (found as any).escortCategory = 'school_escort';
       }
     }
@@ -811,6 +836,10 @@ export async function updateEscortApplicationStatus(
         };
       }
       if (extraData.isResubmitted !== undefined) (memoryFound as any).isResubmitted = extraData.isResubmitted;
+      if (Array.isArray(extraData.allocatedSchoolIds)) {
+        (memoryFound as any).allocatedSchoolIds = extraData.allocatedSchoolIds;
+        (memoryFound as any).allocated_school_ids = extraData.allocatedSchoolIds;
+      }
       if (extraData.schoolId) {
         (memoryFound as any).schoolId = extraData.schoolId;
         (memoryFound as any).createdBySchoolId = extraData.schoolId;
@@ -818,6 +847,10 @@ export async function updateEscortApplicationStatus(
           (memoryFound as any).schoolName = extraData.schoolName;
           (memoryFound as any).createdBySchoolName = extraData.schoolName;
         }
+      }
+      if (extraData.escortCategory) {
+        (memoryFound as any).escortCategory = extraData.escortCategory;
+      } else if (extraData.schoolId && !(memoryFound as any).escortCategory) {
         (memoryFound as any).escortCategory = 'school_escort';
       }
     }
@@ -862,6 +895,10 @@ export async function updateEscortApplicationStatus(
       }
       if (extraData.isResubmitted !== undefined) appDataObj.isResubmitted = extraData.isResubmitted;
       if (extraData.nin) appDataObj.nin = extraData.nin;
+      if (Array.isArray(extraData.allocatedSchoolIds)) {
+        appDataObj.allocated_school_ids = extraData.allocatedSchoolIds;
+        appDataObj.allocatedSchoolIds = extraData.allocatedSchoolIds;
+      }
       if (extraData.schoolId) {
         appDataObj.schoolId = extraData.schoolId;
         appDataObj.createdBySchoolId = extraData.schoolId;
@@ -869,6 +906,10 @@ export async function updateEscortApplicationStatus(
           appDataObj.schoolName = extraData.schoolName;
           appDataObj.createdBySchoolName = extraData.schoolName;
         }
+      }
+      if (extraData.escortCategory) {
+        appDataObj.escortCategory = extraData.escortCategory;
+      } else if (extraData.schoolId && !appDataObj.escortCategory) {
         appDataObj.escortCategory = 'school_escort';
       }
     }
@@ -881,6 +922,15 @@ export async function updateEscortApplicationStatus(
     };
     if (extraData?.nin) updatePayload.nin = extraData.nin;
     if (extraData?.schoolId) updatePayload.school_id = extraData.schoolId;
+    if (extraData?.escortCategory) updatePayload.escort_type = extraData.escortCategory;
+    if (Array.isArray(extraData?.allocatedSchoolIds) && extraData.allocatedSchoolIds.length > 0) {
+      updatePayload.allocated_school_ids = extraData.allocatedSchoolIds;
+      updatePayload.primary_school_id = extraData.allocatedSchoolIds[0];
+      updatePayload.secondary_school_id = extraData.allocatedSchoolIds[1] || null;
+      if (!updatePayload.school_id) {
+        updatePayload.school_id = extraData.allocatedSchoolIds[0];
+      }
+    }
 
     await supabase
       .from('escort_applications')

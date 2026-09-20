@@ -9,6 +9,7 @@ import {
 } from '@/lib/notifications/escort-workflow-notify';
 import { getPlatformSchoolId } from '@/lib/auth/super-admin';
 import { resolveEscortCategory } from '@/lib/escort/escort-category';
+import { escortAllowsOverlappingPickup } from '@/lib/escort/escort-scheduler';
 import { extractHandoverPin, ensureDailyHandoverPin } from '@/lib/escort/handover-pin';
 import { calculateEscortFare } from '@/lib/escort/escort-pricing';
 import { getActiveCityPricing, normalizeCityKey, toEscortFareOverrides } from '@/lib/escort/city-pricing';
@@ -39,7 +40,7 @@ function invalidateOpsCache() {
 }
 
 const ESCORT_TABLE_COLUMNS =
-  'id,full_name,email,phone,operating_area,status,availability_status,emergency_pool_enabled,last_available_at,user_id,residential_address,closest_landmark,lga,house_lat,house_lng,location_pinned_at,today_trip_status,today_trip_declined_reason,ready_for_pickup,school_id,primary_school_id,secondary_school_id,reg_number';
+  'id,full_name,email,phone,operating_area,status,availability_status,emergency_pool_enabled,last_available_at,user_id,residential_address,closest_landmark,lga,house_lat,house_lng,location_pinned_at,today_trip_status,today_trip_declined_reason,ready_for_pickup,school_id,primary_school_id,secondary_school_id,reg_number,escort_type,application_data';
 
 const canOperate = (request: NextRequest) => {
   const session = getSessionFromRequest(request);
@@ -686,6 +687,57 @@ export async function GET(request: NextRequest) {
       const deviceModel = ['Samsung Galaxy A14 (App v2.4)', 'Xiaomi Redmi 12 (App v2.4)', 'Tecno Spark 10 (App v2.4)', 'Infinix Hot 30 (App v2.4)'][charCodeSum % 4];
       const lastPingAt = isOnline ? 'Just now (Live)' : `${5 + (charCodeSum % 35)} mins ago`;
 
+      // Parse application_data for multi-school allocations
+      let appDataObj: any = {};
+      if (e.application_data) {
+        if (typeof e.application_data === 'string') {
+          try {
+            appDataObj = JSON.parse(e.application_data);
+          } catch {}
+        } else if (typeof e.application_data === 'object') {
+          appDataObj = e.application_data;
+        }
+      }
+
+      const allocatedSchoolIdsSet = new Set<string>();
+      if (e.school_id) allocatedSchoolIdsSet.add(e.school_id);
+      if (e.primary_school_id) allocatedSchoolIdsSet.add(e.primary_school_id);
+      if (e.secondary_school_id) allocatedSchoolIdsSet.add(e.secondary_school_id);
+      if (Array.isArray(e.allocated_school_ids)) {
+        e.allocated_school_ids.forEach((sid: string) => {
+          if (sid) allocatedSchoolIdsSet.add(sid);
+        });
+      }
+      if (Array.isArray(appDataObj?.allocated_school_ids)) {
+        appDataObj.allocated_school_ids.forEach((sid: string) => {
+          if (sid) allocatedSchoolIdsSet.add(sid);
+        });
+      }
+      if (Array.isArray(appDataObj?.allocatedSchoolIds)) {
+        appDataObj.allocatedSchoolIds.forEach((sid: string) => {
+          if (sid) allocatedSchoolIdsSet.add(sid);
+        });
+      }
+      for (const a of activeAssignments) {
+        if (a.school_id) allocatedSchoolIdsSet.add(a.school_id);
+      }
+
+      const allocatedSchoolIds = Array.from(allocatedSchoolIdsSet);
+      const assignedSchools = allocatedSchoolIds.map((sid) => {
+        const sch = (schoolsRes || []).find((s: any) => s.id === sid) || schoolsList.find((s: any) => s.id === sid);
+        const studentCount = activeAssignments.filter((a: any) => a.school_id === sid).length;
+        return {
+          id: sid,
+          name: sch?.name || 'School Campus',
+          student_count: studentCount,
+        };
+      });
+
+      const schoolDisplayName =
+        assignedSchools.length > 1
+          ? `${assignedSchools[0]?.name} (+${assignedSchools.length - 1} campuses)`
+          : (assignedSchool?.name || e.school_name || (e.operating_area?.toLowerCase().includes('school') ? e.operating_area : null));
+
       return {
         ...e,
         createdBySchoolId: e.createdBySchoolId || e.school_id || e.primary_school_id || null,
@@ -694,10 +746,13 @@ export async function GET(request: NextRequest) {
           ...e,
           createdBySchoolId: e.createdBySchoolId || e.school_id || e.primary_school_id || null,
         }),
-        school_id: e.school_id || assignedSchool?.id || null,
-        school_name: e.school_name || assignedSchool?.name || (e.operating_area?.toLowerCase().includes('school') ? e.operating_area : null),
-        assigned_school_id: e.school_id || assignedSchool?.id || null,
-        assigned_school_name: assignedSchool?.name || null,
+        allocated_school_ids: allocatedSchoolIds,
+        assigned_schools: assignedSchools,
+        assigned_schools_count: assignedSchools.length,
+        school_id: e.school_id || allocatedSchoolIds[0] || assignedSchool?.id || null,
+        school_name: schoolDisplayName,
+        assigned_school_id: e.school_id || allocatedSchoolIds[0] || assignedSchool?.id || null,
+        assigned_school_name: assignedSchools[0]?.name || assignedSchool?.name || null,
         assigned_students: assignedStudents,
         assigned_students_count: assignedStudents.length,
         studentsCount: assignedStudents.length,
@@ -1073,47 +1128,100 @@ export async function POST(request: NextRequest) {
         released_students: releasedStudents,
       });
     }
-    if (body.action === 'quick_approve_and_assign_school') {
+    if (body.action === 'quick_approve_and_assign_school' || body.action === 'allocate_schools') {
       const escortAppId = body.escortApplicationId || body.appId;
-      const schoolId = body.schoolId;
-      const schoolName = body.schoolName;
-      const notes = body.notes || 'Approved and assigned to school by City Manager';
+      const rawSchoolIds = body.schoolIds || (body.schoolId ? [body.schoolId] : []);
+      const schoolIds: string[] = Array.isArray(rawSchoolIds) ? rawSchoolIds.filter(Boolean) : [];
+      const primarySchoolId = schoolIds[0] || body.schoolId;
+      const notes = body.notes || 'Approved and assigned to school campus(es) by City Manager';
 
-      if (!escortAppId || !schoolId) {
-        return NextResponse.json({ error: 'Escort Application ID and School ID are required' }, { status: 400 });
+      if (!escortAppId || schoolIds.length === 0) {
+        return NextResponse.json({ error: 'Escort Application ID and at least one School ID are required' }, { status: 400 });
       }
+
+      // Fetch escort details to check escort category / type
+      const { data: escortRec } = await db
+        .from('escort_applications')
+        .select('id, email, full_name, phone, escort_type, application_data, primary_school_id, secondary_school_id')
+        .eq('id', escortAppId)
+        .maybeSingle();
+
+      const escortCategory = resolveEscortCategory(escortRec);
+      const isMyEduRide = escortCategory === 'myeduride_escort' || escortAllowsOverlappingPickup(escortRec?.escort_type);
+
+      if (!isMyEduRide && schoolIds.length > 2) {
+        return NextResponse.json({
+          error: 'School Escorts are dedicated to their internal fleet and cannot be allocated to more than 2 campuses. Reassign or convert to MyEduRide Escort.',
+        }, { status: 400 });
+      }
+
+      // Find school names for display
+      const { data: matchedSchools } = await db
+        .from('schools')
+        .select('id, name')
+        .in('id', schoolIds);
+
+      const schoolNamesMap = new Map((matchedSchools || []).map((s: any) => [s.id, s.name]));
+      const schoolNames = schoolIds.map((id) => schoolNamesMap.get(id) || 'School Campus');
+      const primarySchoolName = schoolNames[0] || body.schoolName || 'Designated School Campus';
 
       const { updateEscortApplicationStatus } = await import('@/lib/escort/escort-db');
       const updateRes = await updateEscortApplicationStatus(escortAppId, 'CITY_MANAGER_APPROVED', notes, {
-        schoolId,
-        schoolName,
+        schoolId: primarySchoolId,
+        schoolName: primarySchoolName,
+        allocatedSchoolIds: schoolIds,
+        escortCategory: isMyEduRide ? 'myeduride_escort' : 'school_escort',
       });
 
+      // Direct update on escort_applications to ensure allocated_school_ids, primary_school_id, and secondary_school_id
+      let curAppData: any = {};
+      if (escortRec?.application_data) {
+        try {
+          curAppData = typeof escortRec.application_data === 'string'
+            ? JSON.parse(escortRec.application_data)
+            : escortRec.application_data;
+        } catch {}
+      }
+      curAppData.allocated_school_ids = schoolIds;
+      if (isMyEduRide) {
+        curAppData.escortCategory = 'myeduride_escort';
+      }
+
+      await db
+        .from('escort_applications')
+        .update({
+          school_id: primarySchoolId,
+          primary_school_id: primarySchoolId,
+          secondary_school_id: schoolIds[1] || null,
+          allocated_school_ids: schoolIds,
+          escort_type: isMyEduRide ? 'myeduride_escort' : 'school_escort',
+          application_data: JSON.stringify(curAppData),
+          updated_at: new Date().toISOString(),
+        })
+        .eq('id', escortAppId);
+
       await audit(db, session.user_id, 'ESCORT_QUICK_APPROVED_AND_ASSIGNED_SCHOOL', 'escort_application', escortAppId, {
-        school_id: schoolId,
-        school_name: schoolName || null,
+        school_id: primarySchoolId,
+        school_name: primarySchoolName,
+        allocated_school_ids: schoolIds,
+        school_names: schoolNames,
+        escort_category: escortCategory,
         notes,
       });
 
       // Send email alert to escort
       try {
-        const { data: escortRec } = await db
-          .from('escort_applications')
-          .select('email, full_name, phone')
-          .eq('id', escortAppId)
-          .maybeSingle();
-
         if (escortRec?.email) {
           await sendEmail({
             fromName: 'MyEduRide City Operations',
             to: escortRec.email.trim().toLowerCase(),
-            subject: `Account Approved & School Assignment: ${schoolName || 'Designated School Campus'}`,
+            subject: `Account Approved & School Assignment: ${schoolNames.join(', ')}`,
             html: `
               <div style="font-family: sans-serif; max-width: 520px; margin: 0 auto; background:#0b1c30; color:#ffffff; padding: 24px; border-radius: 16px;">
                 <h2 style="color:#00A859; margin-top:0;">Account Approved & School Assigned!</h2>
                 <p>Dear <strong>${escortRec.full_name || 'Escort'}</strong>,</p>
                 <p style="background:#00A859; color:#ffffff; padding: 14px; border-radius: 10px; font-weight: bold;">
-                  Congratulations! You have been approved by the City Manager and assigned as an Escort for <strong>${schoolName || 'your designated school'}</strong>.
+                  Congratulations! You have been approved by the City Manager and allocated to <strong>${schoolNames.join(', ')}</strong>.
                 </p>
                 <p style="font-size:13px; color:#cbd5e1;">Your profile is now active on the school roster. Please log in to review assigned student manifests and live transit coordination.</p>
                 <p style="font-size:12px; color:#94a3b8; margin-top: 24px;">MyEduRide — Student Safety Platform</p>
@@ -1125,9 +1233,13 @@ export async function POST(request: NextRequest) {
         console.warn('[city-manager operations] quick approve notify notice:', notifyErr);
       }
 
+      invalidateOpsCache();
+
       return NextResponse.json({
         success: true,
-        message: `Escort approved and assigned to ${schoolName || 'school'} successfully!`,
+        message: `Escort approved and allocated to ${schoolNames.length} school(s): ${schoolNames.join(', ')}!`,
+        allocated_school_ids: schoolIds,
+        school_names: schoolNames,
         result: updateRes,
       });
     }

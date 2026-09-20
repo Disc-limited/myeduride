@@ -474,7 +474,7 @@ export default function MyEduRideEscortView({
       <SchoolNoticeBanner role="escorts" schoolId={liveDashboardData?.escort?.school_id || liveDashboardData?.escort?.primary_school_id} />
       )}
 
-      {/* DUAL-SCHOOL ASSIGNMENT & SCHEDULE STATUS */}
+      {/* MULTI-SCHOOL / DUAL-SCHOOL ASSIGNMENT & SCHEDULE STATUS */}
       {liveDashboardData?.dual_school_schedule && (
         <div className="bg-white rounded-3xl p-4 sm:p-5 border border-purple-200/80 shadow-xs space-y-3 bg-gradient-to-br from-purple-50/50 to-white">
           <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-purple-100 pb-3">
@@ -484,7 +484,11 @@ export default function MyEduRideEscortView({
               </div>
               <div>
                 <div className="flex items-center gap-2 flex-wrap">
-                  <h3 className="font-black text-slate-900 text-sm sm:text-base">Dual-School Transit Coverage</h3>
+                  <h3 className="font-black text-slate-900 text-sm sm:text-base">
+                    {liveDashboardData.dual_school_schedule.is_multi_school
+                      ? `Multi-School Transit Coverage (${liveDashboardData.dual_school_schedule.total_schools} Campuses)`
+                      : 'Dual-School Transit Coverage'}
+                  </h3>
                   <span className={`px-2 py-0.5 rounded-full text-[10px] font-black uppercase ${
                     liveDashboardData.dual_school_schedule.same_time_pickup_allowed
                       ? 'bg-emerald-100 text-emerald-800'
@@ -492,44 +496,69 @@ export default function MyEduRideEscortView({
                         ? 'bg-rose-100 text-rose-800'
                         : 'bg-emerald-100 text-emerald-800'
                   }`}>
-                    {liveDashboardData.dual_school_schedule.same_time_pickup_allowed
-                      ? (liveDashboardData.dual_school_schedule.clash_detected ? 'Same-time pickup' : 'Dual-school coverage')
-                      : (liveDashboardData.dual_school_schedule.clash_detected ? 'Schedule Clash Warning' : 'Verified Non-Clashing')}
+                    {liveDashboardData.dual_school_schedule.is_multi_school
+                      ? `${liveDashboardData.dual_school_schedule.total_schools} Campuses · Shared Corridor`
+                      : liveDashboardData.dual_school_schedule.same_time_pickup_allowed
+                        ? (liveDashboardData.dual_school_schedule.clash_detected ? 'Same-time pickup' : 'Dual-school coverage')
+                        : (liveDashboardData.dual_school_schedule.clash_detected ? 'Schedule Clash Warning' : 'Verified Non-Clashing')}
                   </span>
                 </div>
                 <p className="text-[11px] text-slate-500 font-medium">
-                  {liveDashboardData.dual_school_schedule.same_time_pickup_allowed
-                    ? 'Assigned to 2 schools. Students from both campuses appear on your pickup list and can be released in the same dismissal window.'
-                    : 'Assigned to 2 schools with non-overlapping morning and afternoon bell schedules.'}
+                  {liveDashboardData.dual_school_schedule.is_multi_school
+                    ? `Allocated to ${liveDashboardData.dual_school_schedule.total_schools} school campuses across shared transit corridors. Students from all designated campuses are grouped onto your daily pickup list.`
+                    : liveDashboardData.dual_school_schedule.same_time_pickup_allowed
+                      ? 'Assigned to 2 schools. Students from both campuses appear on your pickup list and can be released in the same dismissal window.'
+                      : 'Assigned to 2 schools with non-overlapping morning and afternoon bell schedules.'}
                 </p>
               </div>
             </div>
           </div>
 
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5 text-xs">
-            <div className="p-3 rounded-2xl bg-white border border-purple-100 space-y-1">
-              <span className="text-[10px] uppercase font-bold text-slate-400 block">School 1 (Campus A)</span>
-              <span className="font-bold text-slate-900 text-xs sm:text-sm block">{liveDashboardData.dual_school_schedule.school_a?.name}</span>
-              <div className="flex items-center gap-3 text-[11px] text-slate-600 pt-0.5">
-                <span>Morning: <b className="text-slate-800">{liveDashboardData.dual_school_schedule.school_a_times?.morning || '07:30'}</b></span>
-                <span>Dismissal: <b className="text-slate-800">{liveDashboardData.dual_school_schedule.school_a_times?.afternoon || '14:00'}</b></span>
+          {/* If 3+ schools, render dynamic campus grid */}
+          {liveDashboardData.dual_school_schedule.is_multi_school && Array.isArray(liveDashboardData.dual_school_schedule.assigned_schools) ? (
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2.5 text-xs">
+              {liveDashboardData.dual_school_schedule.assigned_schools.map((sch: any, idx: number) => (
+                <div key={sch.id || idx} className="p-3 rounded-2xl bg-white border border-purple-100 space-y-1 shadow-xs">
+                  <span className="text-[10px] uppercase font-bold text-slate-400 block">Campus {idx + 1}</span>
+                  <span className="font-bold text-slate-900 text-xs sm:text-sm block truncate" title={sch.name}>
+                    {sch.name}
+                  </span>
+                  <div className="flex items-center gap-3 text-[11px] text-slate-600 pt-0.5">
+                    <span>Morning: <b className="text-slate-800">{sch.student_gate_start || sch.school_start_time || '07:30'}</b></span>
+                    <span>Dismissal: <b className="text-slate-800">{sch.dismissal_start_time || '14:00'}</b></span>
+                  </div>
+                </div>
+              ))}
+            </div>
+          ) : (
+            /* Standard dual-school layout */
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5 text-xs">
+              <div className="p-3 rounded-2xl bg-white border border-purple-100 space-y-1">
+                <span className="text-[10px] uppercase font-bold text-slate-400 block">School 1 (Campus A)</span>
+                <span className="font-bold text-slate-900 text-xs sm:text-sm block">{liveDashboardData.dual_school_schedule.school_a?.name}</span>
+                <div className="flex items-center gap-3 text-[11px] text-slate-600 pt-0.5">
+                  <span>Morning: <b className="text-slate-800">{liveDashboardData.dual_school_schedule.school_a_times?.morning || '07:30'}</b></span>
+                  <span>Dismissal: <b className="text-slate-800">{liveDashboardData.dual_school_schedule.school_a_times?.afternoon || '14:00'}</b></span>
+                </div>
+              </div>
+
+              <div className="p-3 rounded-2xl bg-white border border-purple-100 space-y-1">
+                <span className="text-[10px] uppercase font-bold text-slate-400 block">School 2 (Campus B)</span>
+                <span className="font-bold text-slate-900 text-xs sm:text-sm block">{liveDashboardData.dual_school_schedule.school_b?.name}</span>
+                <div className="flex items-center gap-3 text-[11px] text-slate-600 pt-0.5">
+                  <span>Morning: <b className="text-slate-800">{liveDashboardData.dual_school_schedule.school_b_times?.morning || '08:30'}</b></span>
+                  <span>Dismissal: <b className="text-slate-800">{liveDashboardData.dual_school_schedule.school_b_times?.afternoon || '15:30'}</b></span>
+                </div>
               </div>
             </div>
+          )}
 
-            <div className="p-3 rounded-2xl bg-white border border-purple-100 space-y-1">
-              <span className="text-[10px] uppercase font-bold text-slate-400 block">School 2 (Campus B)</span>
-              <span className="font-bold text-slate-900 text-xs sm:text-sm block">{liveDashboardData.dual_school_schedule.school_b?.name}</span>
-              <div className="flex items-center gap-3 text-[11px] text-slate-600 pt-0.5">
-                <span>Morning: <b className="text-slate-800">{liveDashboardData.dual_school_schedule.school_b_times?.morning || '08:30'}</b></span>
-                <span>Dismissal: <b className="text-slate-800">{liveDashboardData.dual_school_schedule.school_b_times?.afternoon || '15:30'}</b></span>
-              </div>
+          {!liveDashboardData.dual_school_schedule.is_multi_school && (
+            <div className="px-3 py-2 rounded-xl bg-purple-50 text-[11px] text-purple-900 flex flex-wrap items-center justify-between gap-2 font-medium">
+              <span>Morning arrival gap: <b>{liveDashboardData.dual_school_schedule.morning_gap_mins} mins</b></span>
+              <span>Afternoon release gap: <b>{liveDashboardData.dual_school_schedule.afternoon_gap_mins} mins</b></span>
             </div>
-          </div>
-
-          <div className="px-3 py-2 rounded-xl bg-purple-50 text-[11px] text-purple-900 flex flex-wrap items-center justify-between gap-2 font-medium">
-            <span>Morning arrival gap: <b>{liveDashboardData.dual_school_schedule.morning_gap_mins} mins</b></span>
-            <span>Afternoon release gap: <b>{liveDashboardData.dual_school_schedule.afternoon_gap_mins} mins</b></span>
-          </div>
+          )}
         </div>
       )}
 

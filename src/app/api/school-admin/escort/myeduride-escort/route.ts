@@ -247,7 +247,10 @@ export async function POST(request: NextRequest) {
         return NextResponse.json({ error: 'Selected MyEduRide escort not found' }, { status: 404 });
       }
 
-      const limitCheck = await validateEscortSchoolLimit(supabase, escort.id, primarySchoolId);
+      const limitCheck = await validateEscortSchoolLimit(supabase, escort.id, primarySchoolId, {
+        isMyEduRide: true,
+        escortType: 'myeduride_escort',
+      });
       if (!limitCheck.allowed) {
         return NextResponse.json({ error: limitCheck.error }, { status: 400 });
       }
@@ -355,19 +358,37 @@ export async function POST(request: NextRequest) {
 
       try {
         const nowIso = nowUtcIso();
-        if (escort.primary_school_id && escort.primary_school_id !== primarySchoolId && !escort.secondary_school_id) {
-          await supabase
-            .from('escort_applications')
-            .update({ secondary_school_id: primarySchoolId, updated_at: nowIso })
-            .eq('id', escort.id);
-        } else if (!escort.primary_school_id) {
-          await supabase
-            .from('escort_applications')
-            .update({ primary_school_id: primarySchoolId, updated_at: nowIso })
-            .eq('id', escort.id);
+        let curAppData: any = {};
+        if (escort.application_data) {
+          try {
+            curAppData = typeof escort.application_data === 'string'
+              ? JSON.parse(escort.application_data)
+              : escort.application_data;
+          } catch {}
         }
+        const curAllocated: string[] = Array.isArray(curAppData.allocated_school_ids)
+          ? [...curAppData.allocated_school_ids]
+          : [escort.primary_school_id, escort.secondary_school_id].filter(Boolean);
+        if (!curAllocated.includes(primarySchoolId)) {
+          curAllocated.push(primarySchoolId);
+        }
+        curAppData.allocated_school_ids = curAllocated;
+
+        const appUpdates: Record<string, any> = {
+          application_data: JSON.stringify(curAppData),
+          updated_at: nowIso,
+        };
+        if (escort.primary_school_id && escort.primary_school_id !== primarySchoolId && !escort.secondary_school_id) {
+          appUpdates.secondary_school_id = primarySchoolId;
+        } else if (!escort.primary_school_id) {
+          appUpdates.primary_school_id = primarySchoolId;
+        }
+        await supabase
+          .from('escort_applications')
+          .update(appUpdates)
+          .eq('id', escort.id);
       } catch (linkErr) {
-        console.warn('[myeduride-escort] dual-school link notice:', linkErr);
+        console.warn('[myeduride-escort] multi-school link notice:', linkErr);
       }
 
       // 8. Immediately Inform City Manager, Parents, and Assigned Escort
