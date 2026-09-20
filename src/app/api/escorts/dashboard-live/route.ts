@@ -7,7 +7,12 @@ import { findEscortApplicationForSession, resolveEscortCategory } from '@/lib/es
 import { nowUtcIso } from '@/lib/utils/time';
 import { checkSchoolTimingClash } from '@/lib/escort/escort-scheduler';
 import { calculateEscortFare } from '@/lib/escort/escort-pricing';
-import { getActiveCityPricing, toEscortFareOverrides } from '@/lib/escort/city-pricing';
+import {
+  getActiveCityPricing,
+  toEscortFareOverrides,
+  resolveCityKeyFromContext,
+  cityLabelForKey,
+} from '@/lib/escort/city-pricing';
 import { ensureAutoReadyForPickup, isDismissalWindowOpen } from '@/lib/gate/auto-ready-pickup';
 
 export const dynamic = 'force-dynamic';
@@ -439,8 +444,19 @@ export async function GET(request: NextRequest) {
     }
 
     // Map students into rich manifest
-    // Helper to extract daily fare from booking / assignment metadata — never invent a default distance.
-    const cityPricing = await getActiveCityPricing('LAGOS');
+    // Dynamically resolve City Manager agreed rates for the route corridor & operating territory
+    const resolvedCityKey = resolveCityKeyFromContext([
+      assignedRoute?.directions_summary,
+      assignedRoute?.name,
+      escortProfile?.operating_area,
+      (escortProfile as any)?.operatingArea,
+      escortProfile?.city,
+      schoolData?.location_address,
+      schoolData?.address,
+      schoolData?.name,
+      ...(assignedSchools || []).flatMap((s: any) => [s.location_address, s.address, s.name]),
+    ]);
+    const cityPricing = await getActiveCityPricing(resolvedCityKey);
     const fareRates = toEscortFareOverrides(cityPricing);
 
     const extractStoredFare = (stId: string): number | null => {
@@ -710,6 +726,11 @@ export async function GET(request: NextRequest) {
         pickup_time: st.pickup_time || routeStops.find((r: any) => r.student_id === st.id)?.pickup_time || null,
         parent_phone: st.parent_phone || null,
         parent_name: st.parent_name || null,
+        billable_km: distanceKm != null ? Math.max(1, Math.ceil(distanceKm)) : null,
+        agreed_rate_per_km: fareRates.rate_per_km,
+        route_name: assignedRoute?.name || null,
+        operating_city: resolvedCityKey,
+        operating_city_label: cityPricing.city_label || cityLabelForKey(resolvedCityKey),
       };
     });
 
@@ -743,6 +764,10 @@ export async function GET(request: NextRequest) {
           total_students: studentManifest.length,
           approved_students_count: approvedStudentsCount,
           pending_students_count: studentManifest.length - approvedStudentsCount,
+          agreed_rate_per_km: fareRates.rate_per_km,
+          operating_city: resolvedCityKey,
+          operating_city_label: cityPricing.city_label || cityLabelForKey(resolvedCityKey),
+          route_name: assignedRoute?.name || null,
         };
 
     const operationalManifest = studentManifest.filter((s) => s.city_manager_approved);

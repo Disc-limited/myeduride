@@ -16,6 +16,13 @@
     "seed:super-admins:inspect": "node scripts/seed-super-admins.js --inspect-only",
     "migrate": "node scripts/migrate.js",
     "db:migrate": "node scripts/migrate.js",
+    "db:dump": "bash scripts/dump-database.sh",
+    "db:restore": "bash scripts/migrate-database-dump.sh",
+    "format": "prettier --write \"src/**/*.{ts,tsx,js,jsx,json,css}\"",
+    "format:check": "prettier --check \"src/**/*.{ts,tsx,js,jsx,json,css}\"",
+    "security": "bash scripts/security-scan.sh",
+    "health:check": "bash scripts/health-check.sh",
+    "deploy:prod": "bash scripts/deploy-production.sh",
     "cap:sync": "cap sync",
     "cap:android": "cap open android",
     "cap:run:android": "cap run android",
@@ -65,6 +72,8 @@
     "eslint": "^8.57.0",
     "eslint-config-next": "^14.2.0",
     "postcss": "^8.4.0",
+    "prettier": "^3.9.8",
+    "prettier-plugin-tailwindcss": "^0.8.1",
     "tsx": "^4.23.12",
     "typescript": "^5.4.0"
   }

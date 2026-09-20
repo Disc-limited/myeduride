@@ -610,7 +610,7 @@ export default function AssignStudentToEscortModal({
                 </div>
               </div>
               <p className="text-[10px] text-slate-400 leading-relaxed">
-                ₦300 per 0.5 km · ₦30 per extra 0.1 km · 6% service charge included. Distance billed: {fareEstimates.billableKm} km (charge ₦{fareEstimates.distanceCharge.toLocaleString()} + service ₦{fareEstimates.serviceCharge.toLocaleString()} per trip).
+                ₦{cityRates?.rate_per_km || 500}/km agreed by City Manager for this route corridor · {fareEstimates.serviceChargePercent}% service charge included. Distance billed: {fareEstimates.billableKm} km (charge ₦{fareEstimates.distanceCharge.toLocaleString()} + service ₦{fareEstimates.serviceCharge.toLocaleString()} per trip).
               </p>
             </div>
 

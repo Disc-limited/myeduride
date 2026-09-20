@@ -432,7 +432,8 @@ export default function MyEduRideEscortView({
             <div>
               <h3 className="font-black text-slate-900 text-sm sm:text-base">City Manager Approved Daily Earnings</h3>
               <p className="text-[11px] sm:text-xs text-slate-500 font-medium">
-                Verified daily transit rates approved by the City Manager for your assigned students.
+                Verified daily transit compensation approved by the City Manager for your route corridor
+                {earningsSummary.agreed_rate_per_km ? ` (₦${earningsSummary.agreed_rate_per_km}/km agreed rate)` : ''}.
               </p>
             </div>
           </div>
@@ -1255,9 +1256,19 @@ export default function MyEduRideEscortView({
       {/* TAB 5: EARNINGS BREAKDOWN */}
       {activeTab === 'earnings' && (
         <div className="bg-white rounded-3xl border border-slate-200 p-4 sm:p-6 shadow-xs space-y-4">
-          <div className="border-b border-slate-100 pb-3">
-            <h3 className="font-black text-base sm:text-lg text-slate-900">Per-Student Daily Earnings Breakdown</h3>
-            <p className="text-xs text-slate-500">City Manager verified rates for each assigned passenger.</p>
+          <div className="border-b border-slate-100 pb-3 flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+            <div>
+              <h3 className="font-black text-base sm:text-lg text-slate-900">Per-Student Daily Earnings Breakdown</h3>
+              <p className="text-xs text-slate-500">
+                Route corridor compensation: ₦{earningsSummary.agreed_rate_per_km || 500}/km agreed by the City Manager
+                {earningsSummary.operating_city_label ? ` (${earningsSummary.operating_city_label})` : ''}.
+              </p>
+            </div>
+            {earningsSummary.agreed_rate_per_km && (
+              <span className="self-start sm:self-auto px-2.5 py-1 rounded-full bg-emerald-50 border border-emerald-200 text-emerald-800 font-bold text-[11px]">
+                ₦{earningsSummary.agreed_rate_per_km}/km Route Rate
+              </span>
+            )}
           </div>
 
           <div className="divide-y divide-slate-100">
@@ -1267,9 +1278,19 @@ export default function MyEduRideEscortView({
               displayRoster.map((s: any) => (
                 <div key={s.id} className="py-3.5 flex items-center justify-between gap-3 text-xs">
                   <div className="min-w-0">
-                    <span className="font-black text-slate-900 block truncate">{s.name}</span>
-                    <span className="text-[11px] text-slate-500 truncate block">
+                    <div className="flex items-center gap-2">
+                      <span className="font-black text-slate-900 truncate">{s.name}</span>
+                      {s.distance_km != null && (
+                        <span className="text-[10px] font-bold px-1.5 py-0.5 rounded bg-slate-100 text-slate-700">
+                          {s.distance_km} km ({s.billable_km || Math.ceil(s.distance_km)} km billed)
+                        </span>
+                      )}
+                    </div>
+                    <span className="text-[11px] text-slate-500 truncate block mt-0.5">
                       {s.school_name || 'School'} • {s.pickup_address || 'Home'}
+                    </span>
+                    <span className="text-[10px] text-emerald-700 font-semibold block mt-0.5">
+                      Rate: {s.billable_km || (s.distance_km != null ? Math.ceil(s.distance_km) : 1)} km × ₦{s.agreed_rate_per_km || earningsSummary.agreed_rate_per_km || 500}/km agreed by City Manager
                     </span>
                   </div>
                   <div className="text-right shrink-0">

@@ -5,7 +5,7 @@ import { getAdminClient } from '@/lib/supabase/admin';
 import { getEscortApplications } from '@/lib/escort/escort-db';
 import { nowUtcIso, todayInLagos } from '@/lib/utils/time';
 import { calculateSchoolToHomeDistance, calculateEscortFare } from '@/lib/escort/escort-pricing';
-import { getActiveCityPricing, toEscortFareOverrides } from '@/lib/escort/city-pricing';
+import { getActiveCityPricing, toEscortFareOverrides, resolveCityKeyFromContext } from '@/lib/escort/city-pricing';
 import { normalizeEscortTripType } from '@/lib/escort/normalize-trip-type';
 import { notifyEscortAssignmentCreated } from '@/lib/notifications/escort-workflow-notify';
 import { checkSchoolTimingClash, escortAllowsOverlappingPickup, validateEscortSchoolLimit } from '@/lib/escort/escort-scheduler';
@@ -374,7 +374,15 @@ export async function POST(request: NextRequest) {
       { house_lat: student.house_lat, house_lng: student.house_lng, house_address: student.house_address }
     );
 
-    const cityPricing = await getActiveCityPricing('LAGOS');
+    const resolvedCityKey = resolveCityKeyFromContext([
+      school?.location_address,
+      school?.address,
+      school?.name,
+      escort?.operating_area,
+      escort?.city,
+      student.house_address,
+    ]);
+    const cityPricing = await getActiveCityPricing(resolvedCityKey);
     const fareResult = calculateEscortFare(
       distanceResult.distanceKm,
       trip_type,
@@ -412,6 +420,8 @@ export async function POST(request: NextRequest) {
       billable_km: fareResult.billableKm,
       rate_per_km: fareResult.ratePerKm,
       rate_per_half_km: fareResult.ratePerKm,
+      agreed_rate_per_km: fareResult.ratePerKm,
+      operating_city: resolvedCityKey,
       rate_per_tenth_km: 0,
       one_way_fare: fareResult.oneWayFare,
       assigned_escort_id: escort_id,

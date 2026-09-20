@@ -1,0 +1,31 @@
+title = "MyEduRide Secret Scanning Rules"
+
+[extend]
+useDefault = true
+
+[[rules]]
+id = "supabase-service-role-key"
+description = "Supabase Service Role Secret Key"
+regex = '''eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9\.[a-zA-Z0-9_-]+\.[a-zA-Z0-9_-]+'''
+keywords = ["service_role", "supabase"]
+entropy = 3.5
+
+[[rules]]
+id = "resend-api-key"
+description = "Resend API Key"
+regex = '''re_[a-zA-Z0-9]{32,}'''
+keywords = ["re_"]
+
+[[rules]]
+id = "postgres-connection-string"
+description = "PostgreSQL Raw Connection String with Credentials"
+regex = '''postgres(?:ql)?:\/\/[a-zA-Z0-9_.-]+:[^@\s]+@[a-zA-Z0-9_.-]+:[0-9]+\/[a-zA-Z0-9_.-]+'''
+keywords = ["postgres", "postgresql"]
+
+[allowlist]
+description = "Allowlisted files and mock test fixtures"
+paths = [
+  '''^\.env\.local\.example$''',
+  '''^tests\/fixtures\/.*''',
+  '''package-lock\.json'''
+]

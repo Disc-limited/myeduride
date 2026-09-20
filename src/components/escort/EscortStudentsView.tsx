@@ -88,6 +88,11 @@ export default function EscortStudentsView({
                 </span>
                 <p className="font-black text-emerald-700 text-base">
                   {earnings.formatted_total_daily_earnings || '₦0'}
+                  {earnings.agreed_rate_per_km && (
+                    <span className="text-[10px] font-bold text-emerald-800 ml-1.5">
+                      (@ ₦{earnings.agreed_rate_per_km}/km)
+                    </span>
+                  )}
                 </p>
               </div>
             )}
@@ -266,7 +271,9 @@ export default function EscortStudentsView({
                 {/* Pricing only for MyEduRide Escorts */}
                 {isMyEduRideEscort && st.formatted_daily_fare && (
                   <div className="flex items-center justify-between text-slate-600 bg-emerald-50/50 px-2 py-1 rounded-lg border border-emerald-100">
-                    <span className="text-[10px] font-bold text-emerald-800 uppercase">Trip Pricing</span>
+                    <span className="text-[10px] font-bold text-emerald-800 uppercase">
+                      {st.billable_km || (st.distance_km != null ? Math.ceil(st.distance_km) : 1)} km @ ₦{st.agreed_rate_per_km || earnings.agreed_rate_per_km || 500}/km
+                    </span>
                     <span className="font-black text-emerald-700 text-xs">{st.formatted_daily_fare} / day</span>
                   </div>
                 )}

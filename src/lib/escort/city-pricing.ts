@@ -89,6 +89,66 @@ export function cityLabelForKey(cityKey: string): string {
   return found?.label || cityKey;
 }
 
+/**
+ * Resolves a recognized city_pricing_config key from contextual strings
+ * such as route corridor name, route directions, escort operating area,
+ * escort city, or school address.
+ */
+export function resolveCityKeyFromContext(candidates: (string | null | undefined)[]): string {
+  for (const raw of candidates) {
+    if (!raw) continue;
+    const upper = String(raw).trim().toUpperCase();
+    if (!upper) continue;
+
+    // Check direct matches first
+    const directFound = CITY_OPTIONS.find((c) => c.key === upper);
+    if (directFound) return directFound.key;
+
+    // Check specific corridor and zone substrings
+    if (upper.includes('LEKKI') || upper.includes('AJAH') || upper.includes('CHEVRON') || upper.includes('JAKANDE')) {
+      return 'LEKKI';
+    }
+    if (upper.includes('IKEJA') || upper.includes('MARYLAND') || upper.includes('OJODU') || upper.includes('ALAUSA')) {
+      return 'IKEJA';
+    }
+    if (
+      upper.includes('MAINLAND') ||
+      upper.includes('SURULERE') ||
+      upper.includes('YABA') ||
+      upper.includes('GBAGADA') ||
+      upper.includes('FESTAC') ||
+      upper.includes('EJIGBO') ||
+      upper.includes('ISOLO')
+    ) {
+      return 'LAGOS MAINLAND';
+    }
+    if (
+      upper.includes('ISLAND') ||
+      upper.includes('VICTORIA ISLAND') ||
+      upper.includes('IKOYI') ||
+      upper.includes('ONIRU')
+    ) {
+      return 'LAGOS ISLAND';
+    }
+    if (
+      upper.includes('ABUJA') ||
+      upper.includes('FCT') ||
+      upper.includes('MAITAMA') ||
+      upper.includes('WUSE') ||
+      upper.includes('GARKI')
+    ) {
+      return 'ABUJA';
+    }
+    if (upper.includes('EDO') || upper.includes('BENIN') || upper.includes('GRA BENIN')) {
+      return 'EDO';
+    }
+    if (upper.includes('LAGOS')) {
+      return 'LAGOS';
+    }
+  }
+  return DEFAULT_CITY_KEY;
+}
+
 function ratesFromRow(row: any): CityFareRates {
   const half = Number(row.rate_per_half_km);
   const fromCol = row.rate_per_km != null ? Number(row.rate_per_km) : NaN;
