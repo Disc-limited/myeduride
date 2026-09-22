@@ -373,6 +373,7 @@ export async function GET(request: NextRequest) {
       id: student.id,
       name: `${student.first_name || ''} ${student.last_name || ''}`.trim(),
       className: studentClass?.name || 'Class',
+      schoolId: school?.id || student.school_id || null,
       houseAddress: student.house_address || null,
       houseLat: student.house_lat != null ? Number(student.house_lat) : null,
       houseLng: student.house_lng != null ? Number(student.house_lng) : null,

@@ -1442,25 +1442,22 @@ export async function POST(request: NextRequest) {
 
     // Action 2: Start Trip
     if (action === 'start_trip') {
-      const { trip_type } = body;
+      const { trip_type, lat: bodyLat, lng: bodyLng, heading: bodyHeading, speedKmh: bodySpeed } = body;
       const tripKind = trip_type === 'afternoon' ? 'afternoon_dropoff' : 'morning_pickup';
       let createdSessionId: string | null = null;
       let createdSchoolId: string | null = null;
 
       if (session?.user_id) {
-        await supabase
+        // Atomic single roundtrip: update escort status AND return metadata
+        const { data: appRow } = await supabase
           .from('escort_applications')
           .update({
             today_trip_status: 'in_progress',
             operational_status: 'In Transit',
             ready_for_pickup: true,
           })
-          .eq('user_id', session.user_id);
-
-        const { data: appRow } = await supabase
-          .from('escort_applications')
-          .select('id, house_lat, house_lng, school_id, primary_school_id')
           .eq('user_id', session.user_id)
+          .select('id, house_lat, house_lng, school_id, primary_school_id')
           .maybeSingle();
 
         const escortAppId = appRow?.id || session.user_id;
@@ -1468,30 +1465,24 @@ export async function POST(request: NextRequest) {
           primarySchoolId || appRow?.primary_school_id || appRow?.school_id || null;
         createdSchoolId = schoolForSession;
 
-        // Close any prior in-progress sessions for this escort
+        // Close any prior in-progress sessions for this escort in a single query
+        const closeOrConditions = [`escort_user_id.eq.${session.user_id}`];
+        if (appRow?.id) closeOrConditions.push(`escort_id.eq.${appRow.id}`);
+
         await supabase
           .from('vehicle_active_sessions')
           .update({
             status: 'completed',
             completed_at: nowUtcIso(),
           })
-          .eq('escort_user_id', session.user_id)
+          .or(closeOrConditions.join(','))
           .eq('status', 'in_progress');
 
-        if (appRow?.id) {
-          await supabase
-            .from('vehicle_active_sessions')
-            .update({
-              status: 'completed',
-              completed_at: nowUtcIso(),
-            })
-            .eq('escort_id', appRow.id)
-            .eq('status', 'in_progress');
-        }
-
         if (schoolForSession) {
-          const initialLat = appRow?.house_lat != null ? Number(appRow.house_lat) : null;
-          const initialLng = appRow?.house_lng != null ? Number(appRow.house_lng) : null;
+          const clientLat = bodyLat != null && Number.isFinite(Number(bodyLat)) ? Number(bodyLat) : null;
+          const clientLng = bodyLng != null && Number.isFinite(Number(bodyLng)) ? Number(bodyLng) : null;
+          const initialLat = clientLat ?? (appRow?.house_lat != null ? Number(appRow.house_lat) : null);
+          const initialLng = clientLng ?? (appRow?.house_lng != null ? Number(appRow.house_lng) : null);
 
           const { data: insertedSession, error: insertErr } = await supabase
             .from('vehicle_active_sessions')
@@ -1503,8 +1494,8 @@ export async function POST(request: NextRequest) {
               status: 'in_progress',
               current_lat: initialLat,
               current_lng: initialLng,
-              current_speed_kmh: 0,
-              current_heading: 0,
+              current_speed_kmh: Number(bodySpeed) || 0,
+              current_heading: Number(bodyHeading) || 0,
               started_at: nowUtcIso(),
               last_ping_at: nowUtcIso(),
             })

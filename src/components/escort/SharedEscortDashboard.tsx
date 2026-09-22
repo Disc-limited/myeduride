@@ -1,7 +1,7 @@
 // @ts-nocheck
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import {
   ShieldCheck,
   Navigation,
@@ -51,6 +51,7 @@ import {
   MapPinOff,
   Maximize2,
   X,
+  Loader2,
 } from 'lucide-react';
 import { toast } from 'sonner';
 import SchoolNoticeBanner from '@/components/shared/SchoolNoticeBanner';
@@ -108,6 +109,25 @@ export default function SharedEscortDashboard({
     ensureSeatbelts: false,
     checkBelongings: false,
   });
+  const [isProcessingTripAction, setIsProcessingTripAction] = useState(false);
+  const [isSimulatingDrive, setIsSimulatingDrive] = useState(false);
+
+  // GPS Hardware Pre-Warming: Acquire fast initial fix on mount so start_trip has instant coordinates
+  useEffect(() => {
+    if (typeof window === 'undefined' || !('geolocation' in navigator)) return;
+    navigator.geolocation.getCurrentPosition(
+      (pos) => {
+        setLiveGps((prev) => ({
+          lat: prev.lat ?? pos.coords.latitude,
+          lng: prev.lng ?? pos.coords.longitude,
+          heading: prev.heading || pos.coords.heading || 0,
+          speedKmh: prev.speedKmh || (pos.coords.speed ? pos.coords.speed * 3.6 : 0),
+        }));
+      },
+      () => {},
+      { enableHighAccuracy: true, timeout: 6000, maximumAge: 10000 }
+    );
+  }, []);
 
   // Keep local trip/session state aligned with live dashboard payload
   useEffect(() => {
@@ -209,6 +229,28 @@ export default function SharedEscortDashboard({
     }
   };
 
+  // Generate realistic simulation waypoints along the route corridor
+  const simulationWaypoints = useMemo(() => {
+    const pts: Array<{ lat: number; lng: number }> = [];
+    const homePins = liveMapPins.filter((p) => p.kind === 'home' || p.kind === 'stop');
+    const schoolPins = liveMapPins.filter((p) => p.kind === 'school');
+    homePins.forEach((p) => pts.push({ lat: p.lat, lng: p.lng }));
+    schoolPins.forEach((p) => pts.push({ lat: p.lat, lng: p.lng }));
+
+    // Fallback circular road corridor loop around the coordinate if 0 or 1 pin is present
+    if (pts.length < 2) {
+      const c = pts.length === 1 ? pts[0] : { lat: 6.5244, lng: 3.3792 };
+      pts.length = 0;
+      pts.push({ lat: c.lat, lng: c.lng });
+      pts.push({ lat: c.lat + 0.0025, lng: c.lng + 0.0018 });
+      pts.push({ lat: c.lat + 0.0048, lng: c.lng + 0.0006 });
+      pts.push({ lat: c.lat + 0.0035, lng: c.lng - 0.0024 });
+      pts.push({ lat: c.lat + 0.0012, lng: c.lng - 0.0028 });
+      pts.push({ lat: c.lat, lng: c.lng });
+    }
+    return pts;
+  }, [liveMapPins]);
+
   const {
     isBroadcasting,
     hasPermissionError,
@@ -224,6 +266,8 @@ export default function SharedEscortDashboard({
     vehicleId: liveDashboardData?.vehicle?.id || escortData?.vehicle_id,
     escortId: liveDashboardData?.escort?.id || escortData?.id || undefined,
     isActive: Boolean(isTripActive && !isManualMode && currentTripSessionId),
+    isSimulating: isSimulatingDrive,
+    simulationWaypoints,
     onError: handleTelemetryError,
     onPositionUpdate: (point) => {
       setLiveGps({
@@ -234,6 +278,13 @@ export default function SharedEscortDashboard({
       });
     },
   });
+
+  const getChildAddress = (raw: unknown) => {
+    if (!raw) return 'Address not set';
+    const text = String(raw).trim();
+    if (text.startsWith('{') && text.includes('discount')) return 'Home address on file';
+    return text;
+  };
 
   // Lock body scroll while map is expanded for driving focus
   useEffect(() => {
@@ -265,6 +316,7 @@ export default function SharedEscortDashboard({
         }
         className={expanded ? 'rounded-2xl border-0 shadow-none' : 'rounded-xl border-0 shadow-none'}
         pins={liveMapPins}
+        routeCoordinates={simulationWaypoints.length >= 2 ? simulationWaypoints : undefined}
         vehicleLat={isTripActive ? liveGps.lat : null}
         vehicleLng={isTripActive ? liveGps.lng : null}
         vehicleHeading={liveGps.heading || currentHeading || 0}
@@ -282,7 +334,12 @@ export default function SharedEscortDashboard({
       toast.info('No morning student pickups scheduled.');
       return;
     }
+    if (isProcessingTripAction) return;
+    setIsProcessingTripAction(true);
     try {
+      if (typeof window !== 'undefined' && 'vibrate' in navigator) {
+        navigator.vibrate(40);
+      }
       const completing = morningTripStarted || morningTripActive;
       const res = await fetch('/api/escorts/dashboard-live', {
         method: 'POST',
@@ -291,6 +348,10 @@ export default function SharedEscortDashboard({
           action: completing ? 'complete_trip' : 'start_trip',
           trip_type: 'morning',
           school_id: liveDashboardData?.school?.id || liveDashboardData?.escort?.school_id,
+          lat: liveGps.lat,
+          lng: liveGps.lng,
+          heading: liveGps.heading,
+          speedKmh: liveGps.speedKmh,
         }),
       });
       const data = await res.json();
@@ -299,11 +360,16 @@ export default function SharedEscortDashboard({
       if (!completing && data.sessionId) {
         setActiveSessionId(data.sessionId);
       }
-      if (completing) setActiveSessionId(null);
+      if (completing) {
+        setActiveSessionId(null);
+        setIsSimulatingDrive(false);
+      }
       toast.success(data.message || (completing ? 'Morning trip completed.' : 'Morning trip started. Live tracking enabled.'));
       onRefreshData?.();
     } catch (err: any) {
       toast.error(err.message || 'Failed to update morning trip');
+    } finally {
+      setIsProcessingTripAction(false);
     }
   };
 
@@ -320,7 +386,12 @@ export default function SharedEscortDashboard({
         return;
       }
     }
+    if (isProcessingTripAction) return;
+    setIsProcessingTripAction(true);
     try {
+      if (typeof window !== 'undefined' && 'vibrate' in navigator) {
+        navigator.vibrate(40);
+      }
       const completing = afternoonTripStarted;
       const res = await fetch('/api/escorts/dashboard-live', {
         method: 'POST',
@@ -329,6 +400,10 @@ export default function SharedEscortDashboard({
           action: completing ? 'complete_trip' : 'start_trip',
           trip_type: 'afternoon',
           school_id: liveDashboardData?.school?.id || liveDashboardData?.escort?.school_id,
+          lat: liveGps.lat,
+          lng: liveGps.lng,
+          heading: liveGps.heading,
+          speedKmh: liveGps.speedKmh,
         }),
       });
       const data = await res.json();
@@ -337,6 +412,7 @@ export default function SharedEscortDashboard({
       if (completing) {
         setIsManualMode(false);
         setActiveSessionId(null);
+        setIsSimulatingDrive(false);
       } else if (data.sessionId) {
         setActiveSessionId(data.sessionId);
       }
@@ -344,6 +420,8 @@ export default function SharedEscortDashboard({
       onRefreshData?.();
     } catch (err: any) {
       toast.error(err.message || 'Failed to update afternoon trip');
+    } finally {
+      setIsProcessingTripAction(false);
     }
   };
 
@@ -690,9 +768,24 @@ export default function SharedEscortDashboard({
               <Compass className="w-4 h-4 text-emerald-600" /> LIVE MAP & ROUTE
             </h4>
             <div className="flex items-center gap-2">
+              {isTripActive && (
+                <button
+                  type="button"
+                  onClick={() => setIsSimulatingDrive((prev) => !prev)}
+                  className={`inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-xl text-[10px] font-extrabold transition-all cursor-pointer shadow-xs ${
+                    isSimulatingDrive
+                      ? 'bg-rose-600 hover:bg-rose-700 text-white animate-pulse'
+                      : 'bg-emerald-600 hover:bg-emerald-700 text-white'
+                  }`}
+                  title={isSimulatingDrive ? 'Stop simulated live movement' : 'Simulate live movement along the route to test real-time parent tracking'}
+                >
+                  <Navigation className="w-3 h-3" />
+                  <span>{isSimulatingDrive ? '■ Stop Test Drive' : '▶ Simulate Live Movement'}</span>
+                </button>
+              )}
               {isTripActive && isBroadcasting ? (
                 <span className="text-[10px] font-bold text-emerald-700 bg-emerald-50 border border-emerald-200 px-2 py-0.5 rounded-lg">
-                  Live GPS{liveGps.speedKmh ? ` · ${Math.round(liveGps.speedKmh)} km/h` : ''}
+                  {isSimulatingDrive ? 'Simulated Drive' : 'Live GPS'}{liveGps.speedKmh ? ` · ${Math.round(liveGps.speedKmh)} km/h` : ''}
                 </span>
               ) : (
                 <span className="text-[10px] text-slate-400 font-medium">Route overview</span>
@@ -813,7 +906,7 @@ export default function SharedEscortDashboard({
             </p>
             <button
               type="button"
-              disabled={morningList.length === 0 && !morningTripStarted && !morningTripActive}
+              disabled={(morningList.length === 0 && !morningTripStarted && !morningTripActive) || isProcessingTripAction}
               onClick={handleStartMorningTrip}
               className={`w-full py-2.5 px-4 rounded-xl ${
                 morningTripStarted || morningTripActive
@@ -821,7 +914,14 @@ export default function SharedEscortDashboard({
                   : 'bg-[#00A859] hover:bg-emerald-600 shadow-emerald-600/20'
               } disabled:opacity-50 text-white font-extrabold text-xs transition-all shadow-md flex items-center justify-center gap-2 cursor-pointer`}
             >
-              <span>{morningTripStarted || morningTripActive ? '■ Complete Morning Trip' : '▶ Start Trip to School'}</span>
+              {isProcessingTripAction ? (
+                <>
+                  <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                  <span>{morningTripStarted || morningTripActive ? 'Completing Trip…' : 'Starting Trip…'}</span>
+                </>
+              ) : (
+                <span>{morningTripStarted || morningTripActive ? '■ Complete Morning Trip' : '▶ Start Trip to School'}</span>
+              )}
             </button>
           </div>
         </div>
@@ -1006,14 +1106,22 @@ export default function SharedEscortDashboard({
 
           <button
             type="button"
+            disabled={isProcessingTripAction}
             onClick={handleStartAfternoonTrip}
             className={`w-full py-2.5 px-4 rounded-xl ${
               afternoonTripStarted
                 ? 'bg-rose-600 hover:bg-rose-700 shadow-rose-600/20'
                 : 'bg-blue-600 hover:bg-blue-700 shadow-blue-600/20'
-            } text-white font-extrabold text-xs transition-all shadow-md flex items-center justify-center gap-2 cursor-pointer`}
+            } disabled:opacity-50 text-white font-extrabold text-xs transition-all shadow-md flex items-center justify-center gap-2 cursor-pointer`}
           >
-            <span>{afternoonTripStarted ? '■ Complete Afternoon Trip' : '▶ Start Trip'}</span>
+            {isProcessingTripAction ? (
+              <>
+                <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                <span>{afternoonTripStarted ? 'Completing Trip…' : 'Starting Trip…'}</span>
+              </>
+            ) : (
+              <span>{afternoonTripStarted ? '■ Complete Afternoon Trip' : '▶ Start Trip'}</span>
+            )}
           </button>
         </div>
 

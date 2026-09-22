@@ -17,20 +17,10 @@
 .DS_Store
 *.pem
 
-# debug & logs
-*.log
+# debug
 npm-debug.log*
 yarn-debug.log*
 yarn-error.log*
-
-# Database dumps & local backups (Security)
-*.dump
-*.bak
-*.sql.gz
-*backup*.sql
-database_file/
-*.tar
-*.tar.gz
 
 # local env files
 .env*.local
@@ -67,3 +57,6 @@ android/local.properties
 android/.idea/
 android/.gradle/
 android/app/build/
+#comment out 
+#addanother line to ignore 
+### 

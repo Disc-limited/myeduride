@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useMemo } from 'react';
+import { useState, useEffect, useMemo, useCallback } from 'react';
 import {
   Bus,
   Navigation,
@@ -106,32 +106,36 @@ export default function ParentLiveMovementView({
   const vehicle = liveData?.vehicle;
   const child = liveData?.child || activeChild;
   const sessionId = liveData?.sessionId || null;
+  // schoolId powers the fleet fallback channel when no formal session row exists
+  const schoolId = liveData?.child?.schoolId || liveData?.child?.school_id || null;
+
+  const handleApproachingStop = useCallback((distanceMeters: number) => {
+    toast.info(`Escort vehicle approaching — about ${Math.max(1, Math.round(distanceMeters))} m away`);
+  }, []);
 
   const livePosition = useLiveVehiclePosition({
     sessionId: hasActive ? sessionId : null,
+    schoolId,   // always subscribe to fleet channel so parents see GPS even without a session row
+    escortId: escort?.id || null,
+    vehicleId: vehicle?.id || null,
     targetStopLat: child?.houseLat ?? undefined,
     targetStopLng: child?.houseLng ?? undefined,
     initialLat: telemetry?.currentLat ?? child?.houseLat ?? child?.schoolLat ?? 6.5244,
     initialLng: telemetry?.currentLng ?? child?.houseLng ?? child?.schoolLng ?? 3.3792,
-    onApproachingStop: (distanceMeters) => {
-      toast.info(`Escort vehicle approaching — about ${Math.max(1, Math.round(distanceMeters))} m away`);
-    },
+    initialPingAt: telemetry?.lastPingAt ?? null,
+    onApproachingStop: handleApproachingStop,
   });
 
   const vehicleLat =
-    livePosition.isConnected && livePosition.displayLat
+    livePosition.displayLat != null
       ? livePosition.displayLat
       : telemetry?.currentLat ?? null;
   const vehicleLng =
-    livePosition.isConnected && livePosition.displayLng
+    livePosition.displayLng != null
       ? livePosition.displayLng
       : telemetry?.currentLng ?? null;
-  const vehicleHeading = livePosition.isConnected
-    ? livePosition.displayHeading
-    : telemetry?.heading ?? 0;
-  const vehicleSpeed = livePosition.isConnected
-    ? livePosition.speedKmh
-    : telemetry?.speedKmh ?? 0;
+  const vehicleHeading = livePosition.displayHeading || telemetry?.heading || 0;
+  const vehicleSpeed = livePosition.speedKmh || telemetry?.speedKmh || 0;
   const etaMinutes = livePosition.etaMinutes;
   const remainingKm =
     livePosition.distanceToStopMeters != null

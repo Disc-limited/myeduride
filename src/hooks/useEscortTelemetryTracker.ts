@@ -18,6 +18,8 @@ interface UseEscortTelemetryOptions {
   vehicleId?: string;
   escortId?: string;
   isActive: boolean;
+  isSimulating?: boolean;
+  simulationWaypoints?: Array<{ lat: number; lng: number }>;
   currentStopIndex?: number;
   onPositionUpdate?: (point: TelemetryPoint) => void;
   onError?: (errorMessage: string, code?: number) => void;
@@ -29,6 +31,8 @@ export function useEscortTelemetryTracker({
   vehicleId,
   escortId,
   isActive,
+  isSimulating = false,
+  simulationWaypoints = [],
   currentStopIndex = 0,
   onPositionUpdate,
   onError,
@@ -48,10 +52,16 @@ export function useEscortTelemetryTracker({
   const lastDbSyncTimeRef = useRef<number>(0);
   const lastErrorMessageRef = useRef<string | null>(null);
   const wakeLockRef = useRef<any>(null);
+  // Gate: only broadcast once the Supabase channel has confirmed SUBSCRIBED
+  const isSessionChannelReadyRef = useRef<boolean>(false);
+  const isSchoolChannelReadyRef = useRef<boolean>(false);
+  const latestTelemetryPointRef = useRef<TelemetryPoint | null>(null);
+  const lastBroadcastHeadingRef = useRef<number>(0);
 
   // Ref-stabilized callbacks to prevent unnecessary effect teardown / re-execution loops
   const onPositionUpdateRef = useRef(onPositionUpdate);
   const onErrorRef = useRef(onError);
+  const simulationWaypointsRef = useRef(simulationWaypoints);
 
   useEffect(() => {
     onPositionUpdateRef.current = onPositionUpdate;
@@ -60,6 +70,12 @@ export function useEscortTelemetryTracker({
   useEffect(() => {
     onErrorRef.current = onError;
   }, [onError]);
+
+  useEffect(() => {
+    if (simulationWaypoints && simulationWaypoints.length >= 2) {
+      simulationWaypointsRef.current = simulationWaypoints;
+    }
+  }, [simulationWaypoints]);
 
   const supabase = createClient();
 
@@ -150,14 +166,58 @@ export function useEscortTelemetryTracker({
     setIsBroadcasting(true);
 
     // Setup Supabase Realtime Broadcast Channels
+    // IMPORTANT: Do NOT send until status === 'SUBSCRIBED' — messages sent before the
+    // WebSocket handshake completes are silently dropped by the Supabase Realtime SDK.
+    isSessionChannelReadyRef.current = false;
+    isSchoolChannelReadyRef.current = false;
+
     const sessionChannel = supabase.channel(`tracking:session_${sessionId}`, {
       config: { broadcast: { self: false } },
     });
-    sessionChannel.subscribe();
+    sessionChannel.subscribe((status) => {
+      if (status === 'SUBSCRIBED') {
+        isSessionChannelReadyRef.current = true;
+        console.log('[Tracker] Session broadcast channel ready — telemetry will now be sent');
+        // Zero-loss startup: flush latest cached telemetry fix immediately upon connection
+        if (latestTelemetryPointRef.current) {
+          sessionChannel.send({
+            type: 'broadcast',
+            event: 'telemetry_ping',
+            payload: {
+              ...latestTelemetryPointRef.current,
+              sessionId,
+              vehicleId,
+              escortId,
+              currentStopIndex,
+            },
+          });
+        }
+      } else if (status === 'CLOSED' || status === 'CHANNEL_ERROR') {
+        isSessionChannelReadyRef.current = false;
+      }
+    });
 
     const schoolChannel = schoolId
-      ? supabase.channel(`tracking:school_${schoolId}`, { config: { broadcast: { self: false } } }).subscribe()
+      ? supabase.channel(`tracking:school_${schoolId}`, { config: { broadcast: { self: false } } })
       : null;
+    if (schoolChannel) {
+      schoolChannel.subscribe((status) => {
+        isSchoolChannelReadyRef.current = status === 'SUBSCRIBED';
+        if (status === 'SUBSCRIBED' && latestTelemetryPointRef.current) {
+          schoolChannel.send({
+            type: 'broadcast',
+            event: 'fleet_vehicle_ping',
+            payload: {
+              ...latestTelemetryPointRef.current,
+              sessionId,
+              vehicleId,
+              escortId,
+              currentStopIndex,
+            },
+          });
+        }
+      });
+    }
 
     // Core telemetry processor shared between native foreground GPS and browser watchPosition
     const processTelemetryPoint = async (
@@ -175,17 +235,36 @@ export function useEscortTelemetryTracker({
       const speedKmh = speedMps !== null && speedMps >= 0 ? speedMps * 3.6 : 0;
       const heading = headingDeg || 0;
 
-      // Discard erratic jitter (e.g. accuracy worse than 45m)
-      if (accuracy > 45) {
+      // Discard severe GPS jitter.
+      // Threshold is 150m (not 45m) because Nigerian urban canyons, traffic, and low-end Android
+      // devices commonly report 60–120m accuracy. The smooth lerp animation in useLiveVehiclePosition
+      // already absorbs the visual jitter, so we only reject truly unusable fixes.
+      if (accuracy > 150) {
+        console.warn(`[Tracker] GPS fix discarded — accuracy ${Math.round(accuracy)}m exceeds 150m threshold`);
         return;
       }
 
-      // Adaptive ping throttle: 3.5s when driving (> 8 km/h), 8s when stationary
-      const minThrottleMs = speedKmh > 8 ? 3500 : 8000;
-      if (now - lastBroadcastTimeRef.current < minThrottleMs) {
+      // Heading delta check: if heading changed by > 25 degrees, emit faster to capture turns cleanly
+      let headingDiff = Math.abs(heading - lastBroadcastHeadingRef.current);
+      if (headingDiff > 180) headingDiff = 360 - headingDiff;
+      const isSignificantTurn = headingDiff >= 25;
+
+      // Adaptive ping throttle:
+      // High speed (> 15 km/h): 1500ms
+      // Low speed (5-15 km/h): 2500ms
+      // Stationary (<= 5 km/h): 3500ms
+      // Sharp turn (> 25°): 1200ms
+      const minThrottleMs = isSignificantTurn
+        ? 1200
+        : speedKmh > 15
+          ? 1500
+          : speedKmh > 5
+            ? 2500
+            : 3500;
+
+      if (lastBroadcastTimeRef.current > 0 && now - lastBroadcastTimeRef.current < minThrottleMs) {
         return;
       }
-      lastBroadcastTimeRef.current = now;
 
       const telemetryPoint: TelemetryPoint = {
         lat,
@@ -197,6 +276,9 @@ export function useEscortTelemetryTracker({
         timestamp: typeof timestampVal === 'number' ? new Date(timestampVal).toISOString() : (timestampVal || new Date().toISOString()),
       };
 
+      // Always cache latest point for instantaneous handshake flush
+      latestTelemetryPointRef.current = telemetryPoint;
+
       setCurrentSpeedKmh(telemetryPoint.speedKmh);
       setCurrentHeading(telemetryPoint.heading);
       setGpsAccuracy(telemetryPoint.accuracyMeters || 0);
@@ -204,20 +286,26 @@ export function useEscortTelemetryTracker({
       setPingCount((prev) => prev + 1);
       onPositionUpdateRef.current?.(telemetryPoint);
 
-      // 1. Fast Ephemeral WebSocket Broadcast (Sub-second latency)
-      sessionChannel.send({
-        type: 'broadcast',
-        event: 'telemetry_ping',
-        payload: {
-          ...telemetryPoint,
-          sessionId,
-          vehicleId,
-          escortId,
-          currentStopIndex,
-        },
-      });
+      let broadcastSent = false;
 
-      if (schoolChannel) {
+      // 1. Fast Ephemeral WebSocket Broadcast (Sub-second latency)
+      // Only send once the channel is confirmed SUBSCRIBED — un-subscribed sends are silently dropped.
+      if (isSessionChannelReadyRef.current) {
+        sessionChannel.send({
+          type: 'broadcast',
+          event: 'telemetry_ping',
+          payload: {
+            ...telemetryPoint,
+            sessionId,
+            vehicleId,
+            escortId,
+            currentStopIndex,
+          },
+        });
+        broadcastSent = true;
+      }
+
+      if (schoolChannel && isSchoolChannelReadyRef.current) {
         schoolChannel.send({
           type: 'broadcast',
           event: 'fleet_vehicle_ping',
@@ -229,10 +317,16 @@ export function useEscortTelemetryTracker({
             currentStopIndex,
           },
         });
+        broadcastSent = true;
       }
 
-      // 2. Periodic Database Sync (every ~16 seconds)
-      if (now - lastDbSyncTimeRef.current > 16000) {
+      if (broadcastSent) {
+        lastBroadcastTimeRef.current = now;
+        lastBroadcastHeadingRef.current = heading;
+      }
+
+      // 2. Periodic Database Sync (every ~12 seconds)
+      if (now - lastDbSyncTimeRef.current > 12000) {
         lastDbSyncTimeRef.current = now;
         try {
           await supabase
@@ -254,62 +348,119 @@ export function useEscortTelemetryTracker({
       }
     };
 
-    // 1. Listen to Native Android Hardware GPS via Foreground Service
+    let simulationTimer: NodeJS.Timeout | null = null;
     let nativeListenerCleanup: (() => void) | null = null;
-    if (isForegroundServiceSupported()) {
-      addForegroundLocationListener((nativePos) => {
-        processTelemetryPoint(
-          nativePos.latitude,
-          nativePos.longitude,
-          nativePos.accuracy,
-          nativePos.speed,
-          nativePos.heading,
-          nativePos.timestamp
-        );
-      }).then((unsub) => {
-        nativeListenerCleanup = unsub;
-      });
-    }
 
-    // 2. Fallback / Complementary Browser Geolocation Watcher
-    if ('geolocation' in navigator) {
-      watchIdRef.current = navigator.geolocation.watchPosition(
-        async (pos) => {
-          processTelemetryPoint(
-            pos.coords.latitude,
-            pos.coords.longitude,
-            pos.coords.accuracy,
-            pos.coords.speed,
-            pos.coords.heading || 0,
-            pos.timestamp
-          );
-        },
-        (error) => {
-          if (error.code === 1) {
-            setPermissionState('denied');
-            if (watchIdRef.current !== null) {
-              navigator.geolocation.clearWatch(watchIdRef.current);
-              watchIdRef.current = null;
-            }
-          } else if (error.code === 2) {
-            setPermissionState('unavailable');
-          }
+    if (isSimulating) {
+      setPermissionState('granted');
+      lastErrorMessageRef.current = null;
 
-          const errKey = `${error.code}:${error.message}`;
-          if (lastErrorMessageRef.current !== errKey) {
-            lastErrorMessageRef.current = errKey;
-            onErrorRef.current?.(error.message, error.code);
-          }
-        },
-        {
-          enableHighAccuracy: true,
-          timeout: 12000,
-          maximumAge: 2000,
+      // Realistic transit waypoints
+      const wps =
+        simulationWaypointsRef.current && simulationWaypointsRef.current.length >= 2
+          ? simulationWaypointsRef.current
+          : [
+              { lat: 6.5244, lng: 3.3792 },
+              { lat: 6.5265, lng: 3.3820 },
+              { lat: 6.5295, lng: 3.3845 },
+              { lat: 6.5320, lng: 3.3810 },
+              { lat: 6.5280, lng: 3.3765 },
+            ];
+
+      let wpIndex = 0;
+      let stepProgress = 0;
+      const STEPS_PER_SEGMENT = 12;
+
+      const runSimulationStep = () => {
+        const from = wps[wpIndex];
+        const to = wps[(wpIndex + 1) % wps.length];
+
+        stepProgress += 1;
+        const ratio = Math.min(stepProgress / STEPS_PER_SEGMENT, 1);
+
+        const lat = from.lat + (to.lat - from.lat) * ratio;
+        const lng = from.lng + (to.lng - from.lng) * ratio;
+
+        // Calculate forward road bearing
+        const dLng = ((to.lng - from.lng) * Math.PI) / 180;
+        const y = Math.sin(dLng) * Math.cos((to.lat * Math.PI) / 180);
+        const x =
+          Math.cos((from.lat * Math.PI) / 180) * Math.sin((to.lat * Math.PI) / 180) -
+          Math.sin((from.lat * Math.PI) / 180) * Math.cos((to.lat * Math.PI) / 180) * Math.cos(dLng);
+        const bearing = Math.round(((Math.atan2(y, x) * 180) / Math.PI + 360) % 360);
+
+        // 35 km/h = 9.7 m/s
+        processTelemetryPoint(lat, lng, 6, 9.7, bearing, Date.now());
+
+        if (stepProgress >= STEPS_PER_SEGMENT) {
+          stepProgress = 0;
+          wpIndex = (wpIndex + 1) % wps.length;
         }
-      );
+      };
+
+      runSimulationStep();
+      simulationTimer = setInterval(runSimulationStep, 1500);
+    } else {
+      // 1. Listen to Native Android Hardware GPS via Foreground Service
+      if (isForegroundServiceSupported()) {
+        addForegroundLocationListener((nativePos) => {
+          processTelemetryPoint(
+            nativePos.latitude,
+            nativePos.longitude,
+            nativePos.accuracy,
+            nativePos.speed,
+            nativePos.heading,
+            nativePos.timestamp
+          );
+        }).then((unsub) => {
+          nativeListenerCleanup = unsub;
+        });
+      }
+
+      // 2. Fallback / Complementary Browser Geolocation Watcher
+      if ('geolocation' in navigator) {
+        watchIdRef.current = navigator.geolocation.watchPosition(
+          async (pos) => {
+            processTelemetryPoint(
+              pos.coords.latitude,
+              pos.coords.longitude,
+              pos.coords.accuracy,
+              pos.coords.speed,
+              pos.coords.heading || 0,
+              pos.timestamp
+            );
+          },
+          (error) => {
+            if (error.code === 1) {
+              setPermissionState('denied');
+              if (watchIdRef.current !== null) {
+                navigator.geolocation.clearWatch(watchIdRef.current);
+                watchIdRef.current = null;
+              }
+            } else if (error.code === 2) {
+              setPermissionState('unavailable');
+            }
+
+            const errKey = `${error.code}:${error.message}`;
+            if (lastErrorMessageRef.current !== errKey) {
+              lastErrorMessageRef.current = errKey;
+              onErrorRef.current?.(error.message, error.code);
+            }
+          },
+          {
+            enableHighAccuracy: true,
+            timeout: 12000,
+            maximumAge: 2000,
+          }
+        );
+      }
     }
 
     return () => {
+      if (simulationTimer) {
+        clearInterval(simulationTimer);
+        simulationTimer = null;
+      }
       if (watchIdRef.current !== null) {
         navigator.geolocation?.clearWatch(watchIdRef.current);
         watchIdRef.current = null;
@@ -332,8 +483,7 @@ export function useEscortTelemetryTracker({
     schoolId,
     vehicleId,
     escortId,
-    currentStopIndex,
-    batteryLevel,
+    isSimulating,
     retryTrigger,
     requestWakeLock,
     releaseWakeLock,
