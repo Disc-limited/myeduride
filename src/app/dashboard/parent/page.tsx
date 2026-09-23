@@ -56,6 +56,7 @@ import PromoBanner from '@/components/parent/PromoBanner';
 import PickupAuthCard from '@/components/parent/PickupAuthCard';
 import WalletCard from '@/components/parent/WalletCard';
 import ChildrenGridCard from '@/components/parent/ChildrenGridCard';
+import CancelTripModal from '@/components/parent/CancelTripModal';
 import AttendanceWeekCard from '@/components/parent/AttendanceWeekCard';
 import EduChatPreviewCard from '@/components/parent/EduChatPreviewCard';
 import QuickActionsGrid from '@/components/parent/QuickActionsGrid';
@@ -106,6 +107,8 @@ export default function ParentDashboard() {
   const [showWalletModal, setShowWalletModal] = useState(false);
   const [showLocationModal, setShowLocationModal] = useState(false);
   const [locationModalChild, setLocationModalChild] = useState<any>(null);
+  const [showCancelTripModal, setShowCancelTripModal] = useState(false);
+  const [cancelTripChild, setCancelTripChild] = useState<any>(null);
   const [showIdPassModal, setShowIdPassModal] = useState(false);
 
   // Pickup Form state
@@ -283,6 +286,55 @@ export default function ParentDashboard() {
       supabase.removeChannel(channel);
     };
   }, [messageForm.student_id, children]);
+
+  // Real-time 5-minute Doorstep Proximity Alert Subscription
+  useEffect(() => {
+    if (!children.length) return;
+    const supabase = createClient();
+    const channels = children.map((kid: any) => {
+      const ch = supabase.channel(`parent:student_${kid.id}`);
+      ch.on(
+        'broadcast',
+        { event: 'escort_proximity_5min' },
+        (payload: any) => {
+          const alert = payload.payload;
+          try {
+            if (typeof window !== 'undefined' && 'vibrate' in navigator) {
+              navigator.vibrate([200, 100, 200]);
+            }
+            const audioCtx = new (window.AudioContext || (window as any).webkitAudioContext)();
+            const osc = audioCtx.createOscillator();
+            const gain = audioCtx.createGain();
+            osc.type = 'sine';
+            osc.frequency.setValueAtTime(587.33, audioCtx.currentTime); // D5
+            osc.frequency.exponentialRampToValueAtTime(880, audioCtx.currentTime + 0.3); // A5
+            gain.gain.setValueAtTime(0.3, audioCtx.currentTime);
+            gain.gain.exponentialRampToValueAtTime(0.01, audioCtx.currentTime + 0.5);
+            osc.connect(gain);
+            gain.connect(audioCtx.destination);
+            osc.start();
+            osc.stop(audioCtx.currentTime + 0.5);
+          } catch {
+            // Audio context not allowed or unsupported
+          }
+
+          const childName = alert?.student_name || kid.first_name || 'Your child';
+          toast.warning(
+            `🔔 ${childName}'s escort is ~5 minutes away!`,
+            {
+              duration: 12000,
+              description: `Escort ${alert?.escort_name || 'team'} is approaching your doorstep (${Math.round((alert?.distance_meters || 1200) / 100) * 100}m away). Please get ${childName} ready.`,
+            }
+          );
+        }
+      ).subscribe();
+      return ch;
+    });
+
+    return () => {
+      channels.forEach((ch) => supabase.removeChannel(ch));
+    };
+  }, [children]);
 
   const formatTimeAgo = (iso?: string) => {
     if (!iso) return '';
@@ -804,6 +856,10 @@ export default function ParentDashboard() {
                   setLocationModalChild(ch);
                   setShowLocationModal(true);
                 }}
+                onCancelTrip={(ch) => {
+                  setCancelTripChild(ch);
+                  setShowCancelTripModal(true);
+                }}
               />
 
               {/* Transit Corridors Widget */}
@@ -926,6 +982,10 @@ export default function ParentDashboard() {
                       onPinHouseLocation={(ch) => {
                         setLocationModalChild(ch);
                         setShowLocationModal(true);
+                      }}
+                      onCancelTrip={(ch) => {
+                        setCancelTripChild(ch);
+                        setShowCancelTripModal(true);
                       }}
                     />
                   </div>
@@ -1436,6 +1496,33 @@ export default function ParentDashboard() {
           }}
           schoolName={(safeChildren[0] as any)?.schools?.name || (safeChildren[0] as any)?.school_name || 'MyEduRide Partner Campus'}
           childrenList={safeChildren}
+        />
+      )}
+
+      {/* "Not Going Today" Trip Cancellation Modal */}
+      {showCancelTripModal && cancelTripChild && (
+        <CancelTripModal
+          isOpen={showCancelTripModal}
+          onClose={() => {
+            setShowCancelTripModal(false);
+            setCancelTripChild(null);
+          }}
+          child={cancelTripChild}
+          onTripCanceled={(childId, reason) => {
+            setChildren((prev) =>
+              (prev || []).map((c) =>
+                c.id === childId
+                  ? {
+                      ...c,
+                      is_canceled_today: true,
+                      cancellation_reason: reason,
+                      today_status_label: 'Not Going Today',
+                      present_today: false,
+                    }
+                  : c
+              )
+            );
+          }}
         />
       )}
 

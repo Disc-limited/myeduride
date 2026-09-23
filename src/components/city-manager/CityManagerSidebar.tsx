@@ -28,6 +28,7 @@ import {
   Phone,
   LogOut,
   ChevronDown,
+  Ban,
 } from 'lucide-react';
 import { logout } from '@/lib/api';
 
@@ -85,6 +86,7 @@ export function CityManagerSidebar({
     { id: 'vehicles', label: 'Vehicles', icon: Car, hasChildren: true },
     { id: 'gate-monitor', label: 'Gate Monitor', icon: DoorOpen, hasChildren: true },
     { id: 'trips-management', label: 'Trips Management', icon: Navigation },
+    { id: 'cancellations', label: 'Student Cancellations', icon: Ban, badge: 'TODAY', badgeColor: 'bg-rose-600 text-white font-black' },
     { id: 'safety-incidents', label: 'Safety & Incidents', icon: AlertTriangle, badge: '2', badgeColor: 'bg-red-500 text-white' },
     { id: 'assignments', label: 'Assignments', icon: ClipboardList },
     { id: 'communication', label: 'Communication', icon: MessageSquare, badge: 'NEW', badgeColor: 'bg-emerald-500 text-white font-black' },

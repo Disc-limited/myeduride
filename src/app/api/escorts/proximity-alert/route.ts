@@ -21,7 +21,7 @@ export async function POST(request: NextRequest) {
       current_lat,
       current_lng,
       trip_phase = 'morning_pickup',
-      threshold_meters = 500,
+      threshold_meters = 1200,
     } = body;
 
     if (!student_id || current_lat == null || current_lng == null) {
@@ -117,8 +117,8 @@ export async function POST(request: NextRequest) {
     }
 
     const studentName = `${student.first_name} ${student.last_name}`.trim();
-    // Estimate ETA based on average urban residential navigation speed (~250m/min)
-    const etaMins = Math.max(1, Math.round(distanceMeters / 250));
+    // Estimate ETA based on average urban residential navigation speed (~240m/min)
+    const etaMins = Math.max(1, Math.round(distanceMeters / 240));
     const roundedDist = Math.round(distanceMeters);
     const nowIso = new Date().toISOString();
 
@@ -130,14 +130,14 @@ export async function POST(request: NextRequest) {
 
     const parentUserIds = (parentLinks || []).map((p) => p.parent_user_id).filter(Boolean);
 
-    // 6. Insert notification for parents
+    // 6. Insert notification for parents & send Web Push
     if (parentUserIds.length > 0) {
       const notifs = parentUserIds.map((userId) => ({
         user_id: userId,
         school_id: student.school_id,
         student_id: student.id,
-        title: `Escort Approaching: ${studentName}`,
-        message: `Escort ${escortName} is now ${roundedDist}m away (~${etaMins} min${etaMins > 1 ? 's' : ''}) from your house. Please have ${studentName} ready at the doorstep!`,
+        title: `🚐 Escort Approaching: ${studentName}`,
+        message: `Escort ${escortName} is now ~${etaMins} minute${etaMins > 1 ? 's' : ''} away (${roundedDist}m) from your house. Please have ${studentName} ready at the doorstep!`,
         type: 'escort_proximity',
         is_read: false,
       }));
@@ -146,6 +146,44 @@ export async function POST(request: NextRequest) {
         await supabase.from('notifications').insert(notifs);
       } catch (ne) {
         console.warn('[proximity-alert] notification insert note:', ne);
+      }
+
+      // Send Web Push to Parents
+      const { sendPushToUser } = await import('@/lib/push/send');
+      for (const parentId of parentUserIds) {
+        try {
+          await sendPushToUser(supabase, parentId, {
+            title: `🚐 Escort Approaching (~${etaMins} mins)`,
+            message: `${escortName} is ${roundedDist}m away. Please have ${studentName} ready at the doorstep!`,
+            type: 'system',
+            student_id,
+            url: '/dashboard/parent?tab=live',
+          });
+        } catch (pe) {
+          console.warn('[proximity-alert] push send note:', pe);
+        }
+      }
+
+      // Broadcast on Realtime channel for Parent App live bell / audio chime
+      try {
+        const parentChannel = supabase.channel(`parent:student_${student_id}`);
+        await parentChannel.send({
+          type: 'broadcast',
+          event: 'escort_proximity_5min',
+          payload: {
+            event: 'escort_proximity_5min',
+            student_id,
+            student_name: studentName,
+            escort_id: escortId,
+            escort_name: escortName,
+            distance_meters: roundedDist,
+            eta_minutes: etaMins,
+            trip_phase,
+            timestamp: nowIso,
+          },
+        });
+      } catch (rtErr) {
+        console.warn('[proximity-alert] parent realtime broadcast note:', rtErr);
       }
     }
 
@@ -177,7 +215,7 @@ export async function POST(request: NextRequest) {
       eta_minutes: etaMins,
       student_name: studentName,
       parents_notified_count: parentUserIds.length,
-      message: `Proximity notification successfully sent to ${parentUserIds.length} parent(s) (${roundedDist}m away).`,
+      message: `5-minute proximity notification successfully sent to ${parentUserIds.length} parent(s) (~${etaMins} mins / ${roundedDist}m away).`,
     });
   } catch (err: any) {
     console.error('[proximity-alert] Error:', err);

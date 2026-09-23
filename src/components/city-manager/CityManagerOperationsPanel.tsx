@@ -216,6 +216,36 @@ export function CityManagerOperationsPanel() {
 
   useEffect(() => { load(''); }, []);
 
+  // Real-time listener for parent trip cancellations
+  useEffect(() => {
+    let supabase: any = null;
+    try {
+      const { createClient } = require('@/lib/supabase/client');
+      supabase = createClient();
+      const channel = supabase.channel('city_manager:operations', {
+        config: { broadcast: { self: false } },
+      });
+
+      channel
+        .on('broadcast', { event: 'student_trip_canceled' }, (payload: any) => {
+          const evt = payload?.payload;
+          if (!evt) return;
+
+          toast.warning(`🚫 Cancellation Notice: ${evt.student_name || 'Student'}`, {
+            description: `Trip canceled by parent today (${evt.reason || 'Absent'}). Assigned Escort: ${evt.escort_name || 'N/A'}.`,
+            duration: 9000,
+          });
+
+          load();
+        })
+        .subscribe();
+
+      return () => {
+        if (supabase) supabase.removeChannel(channel);
+      };
+    } catch {}
+  }, []);
+
   const applyStudent = (student: any) => {
     setSelectedStudent(student);
     setBooking((v: any) => ({ ...v, schoolId: student.school_id }));
@@ -537,6 +567,50 @@ export function CityManagerOperationsPanel() {
         </div>
       )}
 
+      {/* TODAY'S PARENT CANCELLATIONS & EXCEPTIONS FEED */}
+      {data.daily_cancellations && data.daily_cancellations.length > 0 && (
+        <section className="rounded-3xl border border-rose-500/40 bg-gradient-to-r from-rose-950/30 via-[#180b14] to-slate-900 p-5 shadow-lg space-y-3 animate-in fade-in">
+          <div className="flex items-center justify-between pb-2 border-b border-rose-900/40">
+            <div className="flex items-center gap-2">
+              <span className="w-2.5 h-2.5 rounded-full bg-rose-500 animate-ping" />
+              <h4 className="text-sm font-extrabold text-white flex items-center gap-2">
+                Today&apos;s Student Absences &amp; Trip Cancellations ({data.daily_cancellations.length})
+              </h4>
+            </div>
+            <span className="text-[10px] font-mono text-rose-300 bg-rose-900/50 px-2 py-0.5 rounded-md border border-rose-700/50">
+              Live Operations Notice
+            </span>
+          </div>
+
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2.5">
+            {data.daily_cancellations.map((c: any) => (
+              <div
+                key={c.id}
+                className="p-3 rounded-2xl bg-slate-900/90 border border-rose-500/30 flex items-start justify-between gap-2 shadow-xs"
+              >
+                <div className="flex items-center gap-2.5 min-w-0">
+                  <div className="w-8 h-8 rounded-xl bg-rose-500/20 text-rose-300 font-bold flex items-center justify-center shrink-0 border border-rose-400/30 text-xs">
+                    🚫
+                  </div>
+                  <div className="min-w-0">
+                    <p className="font-extrabold text-white text-xs truncate">{c.student_name}</p>
+                    <p className="text-[10px] text-slate-400 truncate">
+                      {c.school_name} · Escort: <strong className="text-cyan-300">{c.escort_name}</strong>
+                    </p>
+                    <p className="text-[10px] text-rose-300 font-semibold truncate mt-0.5">
+                      Reason: {c.reason}
+                    </p>
+                  </div>
+                </div>
+                <span className="text-[9px] font-mono text-slate-400 shrink-0">
+                  {c.canceled_at ? new Date(c.canceled_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : 'Today'}
+                </span>
+              </div>
+            ))}
+          </div>
+        </section>
+      )}
+
       {/* ========================================================================= */}
       {/* ASSIGNED STUDENTS TO ESCORT ROSTER & REAL-TIME REASSIGNMENT               */}
       {/* ========================================================================= */}
@@ -675,16 +749,35 @@ export function CityManagerOperationsPanel() {
                       )}
                     </td>
                     <td className="py-3 px-3">
-                      <div className="space-y-0.5">
-                        <span className={`inline-block px-2 py-0.5 rounded-full text-[10px] font-black uppercase ${
-                          a.status === 'active' ? 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/40' : 'bg-slate-800 text-slate-400'
-                        }`}>
-                          {a.status || 'Active'}
-                        </span>
-                        <p className="text-[10px] text-slate-500">
-                          {a.service_date ? new Date(a.service_date).toLocaleDateString() : 'Today'}
-                        </p>
-                      </div>
+                      {(() => {
+                        const cancelEntry = (data.daily_cancellations || []).find(
+                          (c: any) => c.student_id === a.student_id || (a.student && c.student_id === a.student.id)
+                        );
+                        if (cancelEntry) {
+                          return (
+                            <div className="space-y-0.5">
+                              <span className="inline-block px-2 py-0.5 rounded-full text-[10px] font-black uppercase bg-rose-500/20 text-rose-300 border border-rose-500/40">
+                                🚫 Canceled Today
+                              </span>
+                              <p className="text-[9px] text-rose-400/90 font-medium">
+                                {cancelEntry.reason}
+                              </p>
+                            </div>
+                          );
+                        }
+                        return (
+                          <div className="space-y-0.5">
+                            <span className={`inline-block px-2 py-0.5 rounded-full text-[10px] font-black uppercase ${
+                              a.status === 'active' ? 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/40' : 'bg-slate-800 text-slate-400'
+                            }`}>
+                              {a.status || 'Active'}
+                            </span>
+                            <p className="text-[10px] text-slate-500">
+                              {a.service_date ? new Date(a.service_date).toLocaleDateString() : 'Today'}
+                            </p>
+                          </div>
+                        );
+                      })()}
                     </td>
                     <td className="py-3 px-3 text-right sticky right-0 bg-[#0b1c30]/95 whitespace-nowrap">
                       <div className="inline-flex items-center gap-1.5">

@@ -340,14 +340,42 @@ export async function GET(request: NextRequest) {
       activeSession = schoolSessions?.[0] || null;
     }
 
-    // 6. Attendance → journey stage
+    // 6. Attendance & Trip status → accurate journey stage
     const todayDate = new Date().toISOString().split('T')[0];
-    const { data: todayAttendance } = await supabase
-      .from('attendance_records')
-      .select('*')
-      .eq('student_id', student.id)
-      .eq('date', todayDate)
-      .maybeSingle();
+    const [
+      { data: todayAttendance },
+      { data: departureRecord },
+      { data: todayTrip },
+      { data: dismissalReq },
+    ] = await Promise.all([
+      supabase
+        .from('attendance_records')
+        .select('*')
+        .eq('student_id', student.id)
+        .eq('date', todayDate)
+        .maybeSingle(),
+      supabase
+        .from('attendance_records')
+        .select('*')
+        .eq('student_id', student.id)
+        .eq('type', 'departure')
+        .gte('timestamp', `${todayDate}T00:00:00`)
+        .order('timestamp', { ascending: false })
+        .limit(1)
+        .maybeSingle(),
+      supabase
+        .from('escort_student_daily_trips')
+        .select('*')
+        .eq('student_id', student.id)
+        .eq('trip_date', todayDate)
+        .maybeSingle(),
+      supabase
+        .from('dismissal_requests')
+        .select('*')
+        .eq('student_id', student.id)
+        .eq('dismissal_date', todayDate)
+        .maybeSingle(),
+    ]);
 
     let journeyStage:
       | 'scheduled'
@@ -356,13 +384,26 @@ export async function GET(request: NextRequest) {
       | 'in_class'
       | 'afternoon_transit'
       | 'delivered_home' = 'scheduled';
-    if (todayAttendance?.check_out_time) {
+
+    const isDeliveredHome = Boolean(
+      todayTrip?.afternoon_dropped_off ||
+      todayAttendance?.check_out_time ||
+      dismissalReq?.status === 'completed' ||
+      (departureRecord && !todayTrip?.afternoon_picked_up && activeSession?.trip_type !== 'afternoon_dropoff')
+    );
+
+    const isReturningHome = Boolean(
+      !isDeliveredHome &&
+      (todayTrip?.afternoon_picked_up || activeSession?.trip_type === 'afternoon_dropoff')
+    );
+
+    if (isDeliveredHome) {
       journeyStage = 'delivered_home';
-    } else if (todayAttendance?.check_in_time) {
-      journeyStage = 'in_class';
-    } else if (activeSession?.trip_type === 'afternoon_dropoff') {
+    } else if (isReturningHome) {
       journeyStage = 'afternoon_transit';
-    } else if (activeSession) {
+    } else if (todayAttendance?.check_in_time || todayTrip?.morning_dropped_off) {
+      journeyStage = 'in_class';
+    } else if (todayTrip?.morning_picked_up || activeSession) {
       journeyStage = 'pickup_in_progress';
     }
 
@@ -434,6 +475,8 @@ export async function GET(request: NextRequest) {
     const base = {
       success: true,
       journeyStage,
+      isSafeAtHome,
+      todayTrip: todayTrip || null,
       child: childPayload,
       escort: escortPayload,
       vehicle: vehiclePayload,

@@ -594,15 +594,25 @@ export async function GET(request: NextRequest) {
     // Query today's doorstep pickup & dropoff status for this escort
     let todayDailyTrips: any[] = [];
     try {
-      if (escortIdentifiers.length > 0) {
-        const { data: dTrips } = await supabase
-          .from('escort_student_daily_trips')
-          .select('*')
-          .eq('trip_date', today)
-          .in('escort_id', escortIdentifiers);
+      const allKnownStudentIds = Array.from(
+        new Set([...allTargetStudentIds, ...assignedStudents.map((s) => s.id)].filter(Boolean))
+      );
 
-        if (dTrips) todayDailyTrips = dTrips;
+      const tripQuery = supabase
+        .from('escort_student_daily_trips')
+        .select('*')
+        .eq('trip_date', today);
+
+      if (allKnownStudentIds.length > 0 && escortIdentifiers.length > 0) {
+        tripQuery.or(`student_id.in.(${allKnownStudentIds.join(',')}),escort_id.in.(${escortIdentifiers.join(',')})`);
+      } else if (allKnownStudentIds.length > 0) {
+        tripQuery.in('student_id', allKnownStudentIds);
+      } else if (escortIdentifiers.length > 0) {
+        tripQuery.in('escort_id', escortIdentifiers);
       }
+
+      const { data: dTrips } = await tripQuery;
+      if (dTrips) todayDailyTrips = dTrips;
     } catch (err) {
       console.warn('[dashboard-live] daily trips fetch notice:', err);
     }
@@ -613,30 +623,40 @@ export async function GET(request: NextRequest) {
       const departure = attendanceToday.find((a) => a.student_id === st.id && a.type === 'departure');
       const trip = todayDailyTrips.find((t) => t.student_id === st.id);
 
+      const isCanceledByParent = Boolean(trip?.is_canceled_by_parent);
+
       // Morning status lifecycle:
+      // 0. CANCELED_BY_PARENT (Parent clicked "Not Going Today" -> Trip Canceled)
       // 1. PENDING_HOME_PICKUP (Scheduled for pickup at home)
       // 2. PICKED_UP_FROM_HOME (Escort confirmed home doorstep pickup -> ON_BOARD)
       // 3. DROPPED_OFF_AT_SCHOOL (Gate officer signed arrival -> DROPPED_OFF at school)
       let morning_status = 'PENDING_HOME_PICKUP';
-      if (arrival) {
+      if (isCanceledByParent) {
+        morning_status = 'CANCELED_BY_PARENT';
+      } else if (arrival) {
         morning_status = 'DROPPED_OFF_AT_SCHOOL';
       } else if (trip?.morning_picked_up) {
         morning_status = 'PICKED_UP_FROM_HOME';
       }
 
       // Afternoon status lifecycle:
+      // 0. CANCELED_BY_PARENT (Trip canceled by parent for today)
       // 1. PENDING_SCHOOL_PICKUP (Waiting for gate release)
       // 2. PICKED_UP_FROM_GATE (Gate officer signed departure or released -> ON_BOARD Picked Up)
       // 3. SAFE_AT_HOME (Escort completed home dropoff -> DROPPED_OFF)
       let afternoon_status = 'PENDING_SCHOOL_PICKUP';
-      if (trip?.afternoon_dropped_off) {
+      if (isCanceledByParent) {
+        afternoon_status = 'CANCELED_BY_PARENT';
+      } else if (trip?.afternoon_dropped_off) {
         afternoon_status = 'SAFE_AT_HOME';
       } else if (departure || trip?.afternoon_picked_up) {
         afternoon_status = 'PICKED_UP_FROM_GATE';
       }
 
       let status = 'SCHEDULED';
-      if (morning_status === 'DROPPED_OFF_AT_SCHOOL') {
+      if (isCanceledByParent) {
+        status = 'CANCELED';
+      } else if (morning_status === 'DROPPED_OFF_AT_SCHOOL') {
         status = 'DROPPED_OFF';
       } else if (morning_status === 'PICKED_UP_FROM_HOME') {
         status = 'ON_BOARD';
@@ -753,6 +773,9 @@ export async function GET(request: NextRequest) {
         status,
         morning_status,
         afternoon_status,
+        is_canceled_by_parent: isCanceledByParent,
+        cancellation_reason: trip?.cancellation_reason || null,
+        canceled_at: trip?.canceled_at || null,
         morning_picked_up_at: trip?.morning_picked_up_at || null,
         afternoon_picked_up_at: trip?.afternoon_picked_up_at || null,
         afternoon_dropped_off_at: trip?.afternoon_dropped_off_at || null,
@@ -812,9 +835,16 @@ export async function GET(request: NextRequest) {
       .filter((s) => s.trip_type !== 'afternoon_only')
       .map((s) => ({
         ...s,
-        status: s.morning_status === 'DROPPED_OFF_AT_SCHOOL' ? 'DROPPED_OFF' : (s.morning_status === 'PICKED_UP_FROM_HOME' ? 'ON_BOARD' : 'SCHEDULED'),
-        picked: s.morning_status === 'PICKED_UP_FROM_HOME' || s.morning_status === 'DROPPED_OFF_AT_SCHOOL',
-        dropped: s.morning_status === 'DROPPED_OFF_AT_SCHOOL',
+        status: s.is_canceled_by_parent
+          ? 'CANCELED'
+          : (s.morning_status === 'DROPPED_OFF_AT_SCHOOL'
+              ? 'DROPPED_OFF'
+              : (s.morning_status === 'PICKED_UP_FROM_HOME'
+                  ? 'ON_BOARD'
+                  : 'SCHEDULED')),
+        picked: !s.is_canceled_by_parent && (s.morning_status === 'PICKED_UP_FROM_HOME' || s.morning_status === 'DROPPED_OFF_AT_SCHOOL'),
+        dropped: !s.is_canceled_by_parent && (s.morning_status === 'DROPPED_OFF_AT_SCHOOL'),
+        is_canceled: Boolean(s.is_canceled_by_parent),
         address: s.house_address || s.pickup_address,
         time: s.pickup_time,
         avatar: s.photo_url,
@@ -825,9 +855,16 @@ export async function GET(request: NextRequest) {
       .filter((s) => s.trip_type !== 'morning_only')
       .map((s) => ({
         ...s,
-        status: s.afternoon_status === 'SAFE_AT_HOME' ? 'DROPPED_OFF' : (s.afternoon_status === 'PICKED_UP_FROM_GATE' ? 'ON_BOARD' : 'SCHEDULED'),
-        picked: s.afternoon_status === 'PICKED_UP_FROM_GATE' || s.afternoon_status === 'SAFE_AT_HOME',
-        dropped: s.afternoon_status === 'SAFE_AT_HOME',
+        status: s.is_canceled_by_parent
+          ? 'CANCELED'
+          : (s.afternoon_status === 'SAFE_AT_HOME'
+              ? 'DROPPED_OFF'
+              : (s.afternoon_status === 'PICKED_UP_FROM_GATE'
+                  ? 'ON_BOARD'
+                  : 'SCHEDULED')),
+        picked: !s.is_canceled_by_parent && (s.afternoon_status === 'PICKED_UP_FROM_GATE' || s.afternoon_status === 'SAFE_AT_HOME'),
+        dropped: !s.is_canceled_by_parent && (s.afternoon_status === 'SAFE_AT_HOME'),
+        is_canceled: Boolean(s.is_canceled_by_parent),
         note: s.school_name ? `Pick from ${s.school_name} Gate` : 'Pick from school gate',
         address: s.house_address || s.pickup_address,
         avatar: s.photo_url,

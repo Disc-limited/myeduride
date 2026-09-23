@@ -13,31 +13,12 @@ import { escortAllowsOverlappingPickup } from '@/lib/escort/escort-scheduler';
 import { extractHandoverPin, ensureDailyHandoverPin } from '@/lib/escort/handover-pin';
 import { calculateEscortFare } from '@/lib/escort/escort-pricing';
 import { getActiveCityPricing, normalizeCityKey, toEscortFareOverrides } from '@/lib/escort/city-pricing';
+import { readOpsCache, writeOpsCache, invalidateOpsCache } from '@/lib/city-manager/ops-cache';
 
 export const dynamic = 'force-dynamic';
 
 const LIVE_ASSIGNMENT_STATUSES = ['active', 'pending_confirmation', 'pending'];
 const DEAD_BOOKING_STATUSES = ['cancelled', 'canceled', 'rejected', 'reassigned'];
-const OPS_CACHE_TTL_MS = 12_000;
-const opsGetCache = new Map<string, { at: number; payload: any }>();
-
-function readOpsCache(key: string) {
-  const hit = opsGetCache.get(key);
-  if (!hit) return null;
-  if (Date.now() - hit.at > OPS_CACHE_TTL_MS) {
-    opsGetCache.delete(key);
-    return null;
-  }
-  return hit.payload;
-}
-
-function writeOpsCache(key: string, payload: any) {
-  opsGetCache.set(key, { at: Date.now(), payload });
-}
-
-function invalidateOpsCache() {
-  opsGetCache.clear();
-}
 
 const ESCORT_TABLE_COLUMNS =
   'id,full_name,email,phone,operating_area,status,availability_status,emergency_pool_enabled,last_available_at,user_id,residential_address,closest_landmark,lga,house_lat,house_lng,location_pinned_at,today_trip_status,today_trip_declined_reason,ready_for_pickup,school_id,primary_school_id,secondary_school_id,reg_number,escort_type,application_data';
@@ -167,7 +148,8 @@ export async function GET(request: NextRequest) {
     const includeWalkHome = view === 'full';
 
     const empty: any[] = [];
-    const [schoolsRes, escortsRes, bookingsRes, assignmentsRes, auditRes, deputisingRes, vehiclesRes, routesRes, walkHomeRes, pinnedParentsRes, gateOfficersRes, gateActivitiesRes, allSchoolStudentsRes] = await Promise.all([
+    const todayStr = todayInLagos();
+    const [schoolsRes, escortsRes, bookingsRes, assignmentsRes, auditRes, deputisingRes, vehiclesRes, routesRes, walkHomeRes, pinnedParentsRes, gateOfficersRes, gateActivitiesRes, allSchoolStudentsRes, dailyCancellationsRes] = await Promise.all([
       db.from('schools').select('id, name, address, gps_lat, gps_lng, location_address, location_landmark, location_pinned_at').order('name').then((r: any) => r.data || [], () => []),
       db.from('escort_applications').select(ESCORT_TABLE_COLUMNS).in('status', ['CITY_MANAGER_APPROVED', 'ACTIVE']).then((r: any) => r.data || [], () => []),
       db.from('transport_bookings').select('id, status, notes, source, student_id, school_id, parent_user_id, pickup_address, pickup_lat, pickup_lng, requested_pickup_at, created_at, school:schools(name), student:students(id,first_name,last_name,student_id_number,photo_url,class_id,house_address,house_lat,house_lng,house_landmark,house_notes,house_pinned_at,custom_fields), parent:user_profiles!parent_user_id(full_name, phone)').not('status', 'in', '(cancelled,canceled,rejected,reassigned)').order('created_at', { ascending: false }).limit(100).then((r: any) => r.data || [], () => []),
@@ -187,6 +169,18 @@ export async function GET(request: NextRequest) {
       includeCensus
         ? db.from('students').select('id, first_name, last_name, student_id_number, photo_url, school_id, is_active, custom_fields, house_address, house_lat, house_lng, house_landmark, class:school_classes(name)').order('first_name').limit(500).then((r: any) => r.data || [], () => [])
         : db.from('students').select('school_id').not('school_id', 'is', null).limit(4000).then((r: any) => r.data || [], () => []),
+      db.from('escort_student_daily_trips')
+        .select('id, trip_date, student_id, escort_id, school_id, is_canceled_by_parent, cancellation_reason, cancellation_notes, canceled_at, student:students(id, first_name, last_name, photo_url, student_id_number, class:school_classes(name)), school:schools(name)')
+        .or(`trip_date.eq.${todayStr},canceled_at.gte.${todayStr}T00:00:00`)
+        .eq('is_canceled_by_parent', true)
+        .order('canceled_at', { ascending: false })
+        .then((r: any) => {
+          if (r.error) console.error('[operations] daily_cancellations error:', r.error);
+          return r.data || [];
+        }, (err: any) => {
+          console.error('[operations] daily_cancellations rejected:', err);
+          return [];
+        }),
     ]);
 
     let students: any[] = [];
@@ -942,6 +936,27 @@ export async function GET(request: NextRequest) {
       pending_corrections: pendingCorrections,
       deputising_records: deputisingRes,
       emergency_deputising: deputisingRes,
+      daily_cancellations: (dailyCancellationsRes || []).map((c: any) => {
+        const stu = Array.isArray(c.student) ? c.student[0] : c.student;
+        const sch = Array.isArray(c.school) ? c.school[0] : c.school;
+        const matchedEsc = (escortsRes || []).find((e: any) => e.id === c.escort_id || e.user_id === c.escort_id);
+        const cls = Array.isArray(stu?.class) ? stu.class[0] : stu?.class;
+        return {
+          id: c.id,
+          student_id: c.student_id,
+          student_name: stu ? `${stu.first_name || ''} ${stu.last_name || ''}`.trim() : 'Student',
+          student_number: stu?.student_id_number || 'N/A',
+          photo_url: stu?.photo_url || null,
+          class_name: cls?.name || 'Class',
+          school_name: sch?.name || 'School Campus',
+          escort_name: matchedEsc?.full_name || 'Assigned Escort',
+          escort_phone: matchedEsc?.phone || '',
+          reason: c.cancellation_reason || 'Illness / Personal',
+          notes: c.cancellation_notes || '',
+          canceled_at: c.canceled_at || c.created_at,
+          date: c.trip_date,
+        };
+      }),
     };
     writeOpsCache(cacheKey, payload);
     return NextResponse.json(payload, { headers: { 'Cache-Control': 'private, max-age=8', 'X-CM-Cache': 'MISS' } });

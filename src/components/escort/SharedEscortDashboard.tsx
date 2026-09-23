@@ -58,6 +58,7 @@ import SchoolNoticeBanner from '@/components/shared/SchoolNoticeBanner';
 import LocationPermissionModal from '@/components/shared/LocationPermissionModal';
 import LiveVehicleMap from '@/components/shared/LiveVehicleMap';
 import { useEscortTelemetryTracker } from '@/hooks/useEscortTelemetryTracker';
+import { createClient } from '@/lib/supabase/client';
 
 interface SharedEscortDashboardProps {
   session?: any;
@@ -157,6 +158,220 @@ export default function SharedEscortDashboard({
     liveDashboardData?.escort?.today_trip_status,
   ]);
 
+  // Local cancellations set to immediately strike through students canceled in real time
+  const [canceledStudentIds, setCanceledStudentIds] = useState<Set<string>>(new Set());
+  // Tracks students who have already received the 5-min proximity notification this session
+  const notifiedProximityStudentsRef = useRef<Set<string>>(new Set());
+  // Anti-duplicate alert debounce
+  const recentlyAlertedRef = useRef<Set<string>>(new Set());
+
+  // Distinctive 3-pulse taxi alert buzzer
+  const playCancellationBuzzer = useCallback(() => {
+    try {
+      const AudioCtx = window.AudioContext || (window as any).webkitAudioContext;
+      if (!AudioCtx) return;
+      const ctx = new AudioCtx();
+      const run = () => {
+        const now = ctx.currentTime;
+        [0, 0.22, 0.44].forEach((startOffset, i) => {
+          const osc = ctx.createOscillator();
+          const gain = ctx.createGain();
+          osc.type = 'sawtooth';
+          osc.frequency.setValueAtTime(620 - i * 110, now + startOffset);
+          gain.gain.setValueAtTime(0.45, now + startOffset);
+          gain.gain.exponentialRampToValueAtTime(0.01, now + startOffset + 0.16);
+          osc.connect(gain);
+          gain.connect(ctx.destination);
+          osc.start(now + startOffset);
+          osc.stop(now + startOffset + 0.16);
+        });
+      };
+
+      if (ctx.state === 'suspended') {
+        ctx.resume().then(run).catch(() => {});
+      } else {
+        run();
+      }
+    } catch (e) {
+      console.warn('[playCancellationBuzzer] audio context note:', e);
+    }
+  }, []);
+
+  // Centralized Cancellation Dispatcher: Sound + Vibrate + Toast + State update
+  const handleStudentCanceled = useCallback((studentId: string, reason?: string, studentNameHint?: string) => {
+    if (!studentId) return;
+
+    if (recentlyAlertedRef.current.has(studentId)) {
+      setCanceledStudentIds((prev) => new Set([...Array.from(prev), studentId]));
+      return;
+    }
+    recentlyAlertedRef.current.add(studentId);
+    setTimeout(() => recentlyAlertedRef.current.delete(studentId), 15000);
+
+    // 1. Play loud alert buzzer
+    playCancellationBuzzer();
+
+    // 2. Haptic vibration
+    if (typeof window !== 'undefined' && 'vibrate' in navigator) {
+      try { navigator.vibrate([300, 100, 300, 100, 500]); } catch {}
+    }
+
+    // 3. Resolve student name
+    const allStudents = [
+      ...(liveDashboardData?.students?.manifest || []),
+      ...(liveDashboardData?.students?.morning || []),
+      ...(liveDashboardData?.students?.afternoon || []),
+    ];
+    const matched = allStudents.find((s: any) => s.id === studentId);
+    const studentName = matched?.name || studentNameHint || 'Student';
+
+    // 4. Prominent high-priority toast
+    toast.error(`🚫 Trip Canceled: ${studentName}`, {
+      description: `Parent declared absent today (${reason || 'Not attending'}). Stop removed from route.`,
+      duration: 15000,
+    });
+
+    // 5. Update local state
+    setCanceledStudentIds((prev) => new Set([...Array.from(prev), studentId]));
+    onRefreshData?.();
+  }, [liveDashboardData?.students, onRefreshData, playCancellationBuzzer]);
+
+  // Unlock AudioContext on first user interaction anywhere on the screen
+  useEffect(() => {
+    const unlockAudio = () => {
+      try {
+        const AudioCtx = window.AudioContext || (window as any).webkitAudioContext;
+        if (AudioCtx) {
+          const ctx = new AudioCtx();
+          if (ctx.state === 'suspended') ctx.resume();
+        }
+      } catch {}
+      window.removeEventListener('click', unlockAudio);
+      window.removeEventListener('touchstart', unlockAudio);
+    };
+    window.addEventListener('click', unlockAudio, { once: true });
+    window.addEventListener('touchstart', unlockAudio, { once: true });
+    return () => {
+      window.removeEventListener('click', unlockAudio);
+      window.removeEventListener('touchstart', unlockAudio);
+    };
+  }, []);
+
+  // Multi-Channel Real-Time Subscriptions: WebSocket Broadcasts + Postgres Changes
+  useEffect(() => {
+    const supabase = createClient();
+    const channels: any[] = [];
+
+    // 1. Listen on Escort identifiers
+    const escortIds = Array.from(
+      new Set(
+        [
+          liveDashboardData?.escort?.id,
+          escortData?.id,
+          session?.user_id,
+        ].filter(Boolean)
+      )
+    ) as string[];
+
+    escortIds.forEach((eId) => {
+      const ch = supabase.channel(`escort:${eId}`);
+      ch.on('broadcast', { event: 'student_trip_canceled' }, (payload: any) => {
+        const data = payload?.payload;
+        if (data?.student_id) {
+          handleStudentCanceled(data.student_id, data.reason, data.student_name);
+        }
+      }).subscribe();
+      channels.push(ch);
+    });
+
+    // 2. Listen on School Escorts channel
+    const schoolId = liveDashboardData?.school?.id || escortData?.schoolId;
+    if (schoolId) {
+      const schoolCh = supabase.channel(`school_escorts:${schoolId}`);
+      schoolCh.on('broadcast', { event: 'student_trip_canceled' }, (payload: any) => {
+        const data = payload?.payload;
+        if (data?.student_id) {
+          handleStudentCanceled(data.student_id, data.reason, data.student_name);
+        }
+      }).subscribe();
+      channels.push(schoolCh);
+    }
+
+    // 3. Listen on individual student trip channels for all assigned students
+    const manifestStudents = [
+      ...(liveDashboardData?.students?.manifest || []),
+      ...(liveDashboardData?.students?.morning || []),
+      ...(liveDashboardData?.students?.afternoon || []),
+    ];
+    const uniqueStudentIds = Array.from(new Set(manifestStudents.map((s: any) => s.id).filter(Boolean)));
+
+    uniqueStudentIds.forEach((sId: string) => {
+      const sCh = supabase.channel(`student_trip:${sId}`);
+      sCh.on('broadcast', { event: 'student_trip_canceled' }, (payload: any) => {
+        const data = payload?.payload;
+        if (data?.student_id) {
+          handleStudentCanceled(data.student_id, data.reason, data.student_name);
+        }
+      }).subscribe();
+      channels.push(sCh);
+    });
+
+    // 4. Infallible Postgres Replication Listener: escort_student_daily_trips
+    const dbTripCh = supabase
+      .channel('escort_daily_trip_changes')
+      .on(
+        'postgres_changes',
+        {
+          event: '*',
+          schema: 'public',
+          table: 'escort_student_daily_trips',
+        },
+        (payload: any) => {
+          const rec = payload?.new;
+          if (rec?.is_canceled_by_parent && rec?.student_id) {
+            handleStudentCanceled(rec.student_id, rec.cancellation_reason);
+          }
+        }
+      )
+      .subscribe();
+    channels.push(dbTripCh);
+
+    // 5. Infallible Postgres Replication Listener: notifications
+    const dbNotifCh = supabase
+      .channel('escort_notification_changes')
+      .on(
+        'postgres_changes',
+        {
+          event: 'INSERT',
+          schema: 'public',
+          table: 'notifications',
+          filter: 'type=eq.trip_canceled',
+        },
+        (payload: any) => {
+          const notif = payload?.new;
+          if (notif?.student_id) {
+            handleStudentCanceled(notif.student_id, notif.message, notif.title?.replace('🚫 Trip Canceled:', '').trim());
+          }
+        }
+      )
+      .subscribe();
+    channels.push(dbNotifCh);
+
+    return () => {
+      channels.forEach((ch) => {
+        try { supabase.removeChannel(ch); } catch {}
+      });
+    };
+  }, [
+    liveDashboardData?.escort?.id,
+    liveDashboardData?.school?.id,
+    liveDashboardData?.students,
+    escortData?.id,
+    escortData?.schoolId,
+    session?.user_id,
+    handleStudentCanceled,
+  ]);
+
   // Dynamic Live Database Bindings
   const escortName = liveDashboardData?.escort?.name || escortData?.name || escortData?.fullName || session?.full_name || 'Escort';
   const escortCode = liveDashboardData?.escort?.code || escortData?.escort_code || escortData?.id || null;
@@ -171,13 +386,30 @@ export default function SharedEscortDashboard({
   const totalStudents = liveDashboardData?.stats?.totalStudents ?? liveDashboardData?.students?.manifest?.length ?? 0;
   const totalDistance = liveDashboardData?.stats?.totalDistance ?? '0 km';
 
-  // Live Pickup List Data from Supabase DB
-  const morningList = liveDashboardData?.students?.morning || [];
-  const afternoonList = liveDashboardData?.students?.afternoon || [];
-  const droppedOffList = liveDashboardData?.students?.dropped_off || morningList.filter((s: any) => s.dropped || s.status === 'DROPPED_OFF' || s.morning_status === 'DROPPED_OFF_AT_SCHOOL');
+  // Live Pickup List Data with instantaneous parent cancellation filter
+  const rawMorningList = liveDashboardData?.students?.morning || [];
+  const rawAfternoonList = liveDashboardData?.students?.afternoon || [];
+
+  const isStudentCanceled = (s: any) =>
+    Boolean(s.is_canceled || s.is_canceled_by_parent || s.status === 'CANCELED' || (s.id && canceledStudentIds.has(s.id)));
+
+  const morningList = rawMorningList.map((s: any) => ({
+    ...s,
+    is_canceled_by_parent: isStudentCanceled(s),
+  }));
+
+  const afternoonList = rawAfternoonList.map((s: any) => ({
+    ...s,
+    is_canceled_by_parent: isStudentCanceled(s),
+  }));
+
+  const activeMorningList = morningList.filter((s: any) => !s.is_canceled_by_parent);
+  const canceledMorningList = morningList.filter((s: any) => s.is_canceled_by_parent);
+
+  const droppedOffList = liveDashboardData?.students?.dropped_off || activeMorningList.filter((s: any) => s.dropped || s.status === 'DROPPED_OFF' || s.morning_status === 'DROPPED_OFF_AT_SCHOOL');
   const isPicked = (s: any) => Boolean(s?.picked || s?.status === 'PICKED' || s?.status === 'ON_BOARD' || s?.status === 'DROPPED_OFF' || s?.morning_status === 'PICKED_UP_FROM_HOME' || s?.morning_status === 'DROPPED_OFF_AT_SCHOOL');
-  const morningPickedCount = morningList.filter(isPicked).length;
-  const nextPickup = morningList.find((s: any) => !isPicked(s)) || null;
+  const morningPickedCount = activeMorningList.filter(isPicked).length;
+  const nextPickup = activeMorningList.find((s: any) => !isPicked(s)) || null;
   const tripStatus = liveDashboardData?.escort?.today_trip_status;
   const morningTripActive = tripStatus === 'in_progress';
   const afternoonReleased = afternoonList.filter((s: any) => s.picked || s.afternoon_status === 'PICKED_UP_FROM_GATE' || s.afternoon_status === 'SAFE_AT_HOME').length;
@@ -276,6 +508,65 @@ export default function SharedEscortDashboard({
         heading: point.heading || 0,
         speedKmh: point.speedKmh || 0,
       });
+
+      // Automated 5-Minute Proximity Detection Loop
+      if (point.lat != null && point.lng != null && isTripActive) {
+        const candidateStudents = afternoonTripStarted
+          ? afternoonList.filter((s: any) => !s.dropped && !s.is_canceled_by_parent && s.house_lat && s.house_lng)
+          : activeMorningList.filter((s: any) => !isPicked(s) && !s.is_canceled_by_parent && s.house_lat && s.house_lng);
+
+        for (const st of candidateStudents) {
+          const sId = st.id;
+          if (!sId || notifiedProximityStudentsRef.current.has(sId)) continue;
+          if (st.is_morning_proximity_notified || st.is_afternoon_proximity_notified) {
+            notifiedProximityStudentsRef.current.add(sId);
+            continue;
+          }
+
+          // Compute Haversine distance in meters
+          const R = 6371e3;
+          const phi1 = (Number(point.lat) * Math.PI) / 180;
+          const phi2 = (Number(st.house_lat) * Math.PI) / 180;
+          const deltaPhi = ((Number(st.house_lat) - Number(point.lat)) * Math.PI) / 180;
+          const deltaLambda = ((Number(st.house_lng) - Number(point.lng)) * Math.PI) / 180;
+          const a =
+            Math.sin(deltaPhi / 2) * Math.sin(deltaPhi / 2) +
+            Math.cos(phi1) * Math.cos(phi2) * Math.sin(deltaLambda / 2) * Math.sin(deltaLambda / 2);
+          const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+          const distMeters = Math.round(R * c);
+
+          // Threshold: <= 1200m (~5 minutes) and > 40m
+          if (distMeters <= 1200 && distMeters > 40) {
+            notifiedProximityStudentsRef.current.add(sId);
+            const escortTargetId = liveDashboardData?.escort?.id || escortData?.id || session?.user_id;
+
+            fetch('/api/escorts/proximity-alert', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({
+                student_id: sId,
+                escort_id: escortTargetId,
+                current_lat: point.lat,
+                current_lng: point.lng,
+                trip_phase: afternoonTripStarted ? 'afternoon_dropoff' : 'morning_pickup',
+                threshold_meters: 1200,
+              }),
+            })
+              .then((res) => res.json())
+              .then((resData) => {
+                if (resData.triggered) {
+                  toast.info(`📢 5-Min Alert: ${st.name || 'Parent'}`, {
+                    description: `Approaching doorstep (${distMeters}m away). Parent notified to have student ready!`,
+                    duration: 6000,
+                  });
+                }
+              })
+              .catch((alertErr) => {
+                console.warn('[proximity-alert trigger error]', alertErr);
+              });
+          }
+        }
+      }
     },
   });
 
@@ -862,9 +1153,27 @@ export default function SharedEscortDashboard({
         {/* Card 1: MORNING PICKUP LIST (4 Cols) */}
         <div className="lg:col-span-4 bg-white rounded-2xl p-4 shadow-sm border border-slate-200/90 space-y-3 flex flex-col justify-between">
           <div className="flex items-center justify-between">
-            <h4 className="font-extrabold text-slate-900 text-xs uppercase tracking-wider">
-              MORNING PICKUP LIST
-            </h4>
+            <div className="flex items-center gap-2">
+              <h4 className="font-extrabold text-slate-900 text-xs uppercase tracking-wider">
+                MORNING PICKUP LIST
+              </h4>
+              <button
+                type="button"
+                onClick={() => {
+                  playCancellationBuzzer();
+                  if (typeof window !== 'undefined' && 'vibrate' in navigator) {
+                    try { navigator.vibrate([300, 100, 300, 100, 500]); } catch {}
+                  }
+                  toast.info('🔔 Audio Buzzer & Haptic Vibration Tested', {
+                    description: 'This is the exact sound and pulse that plays when a parent cancels a trip.',
+                  });
+                }}
+                className="text-[9px] text-slate-400 hover:text-slate-700 px-1.5 py-0.5 rounded border border-slate-200 hover:border-slate-300 font-bold transition-all cursor-pointer flex items-center gap-1"
+                title="Click to test the urgent cancellation audio buzzer and vibration"
+              >
+                <span>🔔 Test Buzz</span>
+              </button>
+            </div>
             <span className="text-[10px] text-emerald-700 font-bold">
               {morningPickedCount} of {morningList.length} Picked
             </span>
@@ -878,25 +1187,65 @@ export default function SharedEscortDashboard({
                 <p className="text-[10px]">Assigned students for morning transport will list here.</p>
               </div>
             ) : (
-              morningList.map((stu: any, index: number) => (
-                <div key={stu.id || index} className="p-2.5 rounded-xl bg-slate-50 border border-slate-200 flex items-center justify-between gap-2">
-                  <div className="flex items-center gap-2.5 min-w-0">
-                    <span className={`w-5 h-5 rounded-full ${index === 0 ? 'bg-purple-600' : 'bg-amber-500'} text-white font-extrabold text-[10px] flex items-center justify-center shrink-0`}>
-                      {index + 1}
-                    </span>
-                    <div className={`w-7 h-7 rounded-full ${index === 0 ? 'bg-purple-100 text-purple-700' : 'bg-amber-100 text-amber-800'} font-bold flex items-center justify-center text-xs shrink-0`}>
-                      {stu.avatar || stu.name?.substring(0, 2)?.toUpperCase() || 'ST'}
+              morningList.map((stu: any, index: number) => {
+                const isCanceled = Boolean(stu.is_canceled_by_parent);
+                return (
+                  <div
+                    key={stu.id || index}
+                    className={`p-2.5 rounded-xl border flex items-center justify-between gap-2 transition-all ${
+                      isCanceled
+                        ? 'bg-rose-50/70 border-rose-200 opacity-75'
+                        : 'bg-slate-50 border-slate-200'
+                    }`}
+                  >
+                    <div className="flex items-center gap-2.5 min-w-0">
+                      <span
+                        className={`w-5 h-5 rounded-full ${
+                          isCanceled ? 'bg-rose-400' : index === 0 ? 'bg-purple-600' : 'bg-amber-500'
+                        } text-white font-extrabold text-[10px] flex items-center justify-center shrink-0`}
+                      >
+                        {isCanceled ? '✕' : index + 1}
+                      </span>
+                      <div
+                        className={`w-7 h-7 rounded-full ${
+                          isCanceled
+                            ? 'bg-rose-100 text-rose-700'
+                            : index === 0
+                              ? 'bg-purple-100 text-purple-700'
+                              : 'bg-amber-100 text-amber-800'
+                        } font-bold flex items-center justify-center text-xs shrink-0`}
+                      >
+                        {stu.avatar || stu.name?.substring(0, 2)?.toUpperCase() || 'ST'}
+                      </div>
+                      <div className="min-w-0">
+                        <h5
+                          className={`font-extrabold text-xs truncate ${
+                            isCanceled ? 'line-through text-slate-500' : 'text-slate-900'
+                          }`}
+                        >
+                          {stu.name}
+                        </h5>
+                        <p className="text-[10px] text-slate-500 truncate">
+                          {isCanceled ? `🚫 Not Going: ${stu.cancellation_reason || 'Absent'}` : stu.address}
+                        </p>
+                      </div>
                     </div>
-                    <div className="min-w-0">
-                      <h5 className="font-extrabold text-slate-900 text-xs truncate">{stu.name}</h5>
-                      <p className="text-[10px] text-slate-500 truncate">{stu.address}</p>
-                    </div>
+                    {isCanceled ? (
+                      <span className="px-2 py-0.5 rounded bg-rose-100 text-rose-800 font-extrabold text-[9px] shrink-0 border border-rose-200">
+                        CANCELED
+                      </span>
+                    ) : (
+                      <span
+                        className={`px-2 py-0.5 rounded ${
+                          isPicked(stu) ? 'bg-emerald-100 text-emerald-800' : 'bg-amber-100 text-amber-800'
+                        } font-extrabold text-[9px] shrink-0 flex items-center gap-1`}
+                      >
+                        {isPicked(stu) ? `PICKED ${stu.time || ''} ✓` : `NEXT ${stu.time || ''}`.trim()}
+                      </span>
+                    )}
                   </div>
-                  <span className={`px-2 py-0.5 rounded ${isPicked(stu) ? 'bg-emerald-100 text-emerald-800' : 'bg-amber-100 text-amber-800'} font-extrabold text-[9px] shrink-0 flex items-center gap-1`}>
-                    {isPicked(stu) ? `PICKED ${stu.time || ''} ✓` : `NEXT ${stu.time || ''}`.trim()}
-                  </span>
-                </div>
-              ))
+                );
+              })
             )}
           </div>
 

@@ -59,8 +59,14 @@ export default function MigoAIFloatingWidget({
           replyText = 'You do not have any linked children on your profile yet.';
         } else {
           const statusLines = childrenList.map((c) => {
+            if (c.is_safe_at_home || c.afternoon_dropped_off) {
+              return `🏡 ${c.first_name} has arrived safely and is home.`;
+            }
+            if (c.on_afternoon_transit) {
+              return `🚐 ${c.first_name} has departed school and is en-route home in the shuttle.`;
+            }
             return c.present_today
-              ? `✅ ${c.first_name} is checked in and safely at school.`
+              ? `✅ ${c.first_name} is checked in and safely on campus at school.`
               : `⏳ ${c.first_name} has not checked in yet today.`;
           });
           replyText = statusLines.join('\n');

@@ -1,7 +1,7 @@
 // @ts-nocheck
 'use client';
 
-import { useState, useMemo, useEffect } from 'react';
+import { useState, useMemo, useEffect, useCallback } from 'react';
 import {
   Radio,
   UserCheck,
@@ -68,6 +68,7 @@ import {
   Compass,
 } from 'lucide-react';
 import { toast } from 'sonner';
+import { createClient } from '@/lib/supabase/client';
 import StudentAvatar from '@/components/shared/StudentAvatar';
 import { CityManagerOperationsPanel } from '@/components/city-manager/CityManagerOperationsPanel';
 import { CityManagerPricingView } from '@/components/shared/CityPricingPanel';
@@ -121,6 +122,8 @@ export function CityManagerCommandControl({
   const [vehicles, setVehicles] = useState<any[]>([]);
   const [deputisingRecords, setDeputisingRecords] = useState<any[]>([]);
   const [parentRequests, setParentRequests] = useState<any[]>([]);
+  const [dailyCancellations, setDailyCancellations] = useState<any[]>([]);
+  const [cancellationSearch, setCancellationSearch] = useState('');
   const [auditLogs, setAuditLogs] = useState<any[]>([]);
   const [transitRoutes, setTransitRoutes] = useState<any[]>([]);
   const [selectedCorridorRoute, setSelectedCorridorRoute] = useState<any>(null);
@@ -161,116 +164,193 @@ export function CityManagerCommandControl({
   }, [currentTab]);
 
   // Fetch Live City Manager Operations Data
+  const loadOperationsData = useCallback(async (silent = false) => {
+    if (!silent) setLoading(true);
+    try {
+      const res = await fetch(`/api/city-manager/operations?view=tables&city=${encodeURIComponent(selectedCity)}`);
+      const data = await res.json();
+      if (data && !data.error) {
+        if (Array.isArray(data.schools)) {
+          const seenSchoolIds = new Set<string>();
+          const seenSchoolNames = new Set<string>();
+          const uniqueSchools = data.schools.filter((s: any) => {
+            const id = String(s.id || '');
+            const name = String(s.name || '').trim().toLowerCase();
+            if (!id || seenSchoolIds.has(id)) return false;
+            if (name === 'myeduride platform' || id === '00000000-0000-0000-0000-000000000001') return false;
+            if (name && seenSchoolNames.has(name)) return false;
+            seenSchoolIds.add(id);
+            if (name) seenSchoolNames.add(name);
+            return true;
+          });
+          setSchools(
+            uniqueSchools.map((s: any) => ({
+              id: s.id,
+              name: s.name || 'School Campus',
+              area: s.address || selectedCity,
+              escortsCount: s.escortsCount || 0,
+              studentsCount: s.studentsCount || (Array.isArray(s.students) ? s.students.length : 0),
+              students: Array.isArray(s.students) ? s.students : [],
+              gatesCount: s.gateOfficersCount || 1,
+              gateOfficersCount: s.gateOfficersCount || 1,
+              gateOfficers: 'Gate Officer',
+              status: s.status || 'ONLINE',
+              avgMorningEta: '07:30 AM',
+              complianceScore: s.complianceScore || 100,
+            }))
+          );
+        }
+        if (Array.isArray(data.escorts)) {
+          setEscorts(
+            data.escorts.map((e: any) => ({
+              id: e.id,
+              name: e.full_name || 'Verified Escort',
+              type:
+                e.escort_category === 'school_escort' ||
+                resolveEscortCategory(e) === 'school_escort'
+                  ? 'school'
+                  : 'myeduride',
+              phone: e.phone || '—',
+              status: e.availability_status === 'available' ? 'AVAILABLE' : e.status === 'ACTIVE' ? 'ON_TRIP' : 'STANDBY',
+              schoolName: e.assigned_school_name || e.school_name || e.operating_area || selectedCity,
+              schoolId: e.assigned_school_id || e.school_id || null,
+              allocatedSchoolIds: Array.isArray(e.allocated_school_ids) ? e.allocated_school_ids : (e.assigned_school_id || e.school_id ? [e.assigned_school_id || e.school_id] : []),
+              assignedSchools: Array.isArray(e.assigned_schools) ? e.assigned_schools : [],
+              assignedSchoolsCount: e.assigned_schools_count || (Array.isArray(e.assigned_schools) ? e.assigned_schools.length : (e.assigned_school_id ? 1 : 0)),
+              vehicle: e.application_data?.assignedVehicle || e.application_data?.regNumber || 'Verified Vehicle',
+              currentTripId: null,
+              route: e.operating_area ? `${e.operating_area} Corridor` : 'Designated Route',
+              studentsCount: e.assigned_students_count || (Array.isArray(e.assigned_students) ? e.assigned_students.length : 0),
+              assignedStudents: Array.isArray(e.assigned_students) ? e.assigned_students : [],
+              speed: e.speed || `${e.speed_kmh || 0} km/h`,
+              speed_kmh: e.speed_kmh || 0,
+              battery: e.battery || `${e.battery_level || 85}%`,
+              battery_level: e.battery_level || 85,
+              battery_status: e.battery_status || 'GOOD',
+              device_status: e.device_status || 'ACTIVE',
+              device_model: e.device_model || 'Samsung Galaxy A14 (App v2.4)',
+              lastPing: e.last_ping_at || 'Live',
+              last_ping_at: e.last_ping_at || 'Live',
+              complianceScore: 100,
+              rating: 5.0,
+              tripsToday: 0,
+              avatar: e.application_data?.photo || '',
+              notes: 'Verified escort profile on file.',
+            }))
+          );
+        }
+        if (Array.isArray(data.gate_officers) && data.gate_officers.length > 0) {
+          setGateOfficers(data.gate_officers);
+        }
+        if (Array.isArray(data.gate_activities) && data.gate_activities.length > 0) {
+          setGateActivities(data.gate_activities);
+        }
+        if (Array.isArray(data.audit)) {
+          setAuditLogs(
+            data.audit.map((a: any) => ({
+              id: a.id,
+              time: a.created_at ? new Date(a.created_at).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' }) : 'Just now',
+              actor: a.user_id ? 'City Manager' : 'System',
+              target: a.entity_type || 'Operations',
+              action: a.action || 'AUDIT_LOGGED',
+              details: a.metadata ? JSON.stringify(a.metadata) : 'Operational event recorded.',
+            }))
+          );
+        }
+        if (Array.isArray(data.vehicles)) {
+          setVehicles(data.vehicles);
+        }
+        if (Array.isArray(data.deputising_records)) {
+          setDeputisingRecords(data.deputising_records);
+        }
+        if (Array.isArray(data.parent_requests)) {
+          setParentRequests(data.parent_requests);
+        }
+        if (Array.isArray(data.pinned_parent_addresses)) {
+          setPinnedParentAddresses(data.pinned_parent_addresses);
+        }
+        if (Array.isArray(data.daily_cancellations)) {
+          setDailyCancellations(data.daily_cancellations);
+        }
+      }
+    } catch (err) {
+      console.warn('[city-manager-command] fetch operations error:', err);
+    } finally {
+      if (!silent) setLoading(false);
+    }
+  }, [selectedCity]);
+
   useEffect(() => {
-    setLoading(true);
-    fetch(`/api/city-manager/operations?view=tables&city=${encodeURIComponent(selectedCity)}`)
-      .then((res) => res.json())
-      .then((data) => {
-        if (data && !data.error) {
-          if (Array.isArray(data.schools)) {
-            const seenSchoolIds = new Set<string>();
-            const seenSchoolNames = new Set<string>();
-            const uniqueSchools = data.schools.filter((s: any) => {
-              const id = String(s.id || '');
-              const name = String(s.name || '').trim().toLowerCase();
-              if (!id || seenSchoolIds.has(id)) return false;
-              if (name === 'myeduride platform' || id === '00000000-0000-0000-0000-000000000001') return false;
-              if (name && seenSchoolNames.has(name)) return false;
-              seenSchoolIds.add(id);
-              if (name) seenSchoolNames.add(name);
-              return true;
-            });
-            setSchools(
-              uniqueSchools.map((s: any) => ({
-                id: s.id,
-                name: s.name || 'School Campus',
-                area: s.address || selectedCity,
-                escortsCount: s.escortsCount || 0,
-                studentsCount: s.studentsCount || (Array.isArray(s.students) ? s.students.length : 0),
-                students: Array.isArray(s.students) ? s.students : [],
-                gatesCount: s.gateOfficersCount || 1,
-                gateOfficersCount: s.gateOfficersCount || 1,
-                gateOfficers: 'Gate Officer',
-                status: s.status || 'ONLINE',
-                avgMorningEta: '07:30 AM',
-                complianceScore: s.complianceScore || 100,
-              }))
-            );
+    loadOperationsData();
+  }, [loadOperationsData]);
+
+  // Real-time Supabase subscription for cancellations & operational updates
+  useEffect(() => {
+    const supabase = createClient();
+    if (!supabase) return;
+
+    // 1. Broadcast channel listener for real-time cancellations
+    const opsChannel = supabase
+      .channel('city_manager:operations')
+      .on('broadcast', { event: 'student_trip_canceled' }, (payload: any) => {
+        const eventData = payload?.payload;
+        if (!eventData) return;
+
+        toast.warning(`🚫 Trip Canceled: ${eventData.student_name || 'Student'}`, {
+          description: `${eventData.student_name} (${eventData.school_name || 'School'}) marked absent: ${eventData.reason || 'Not Going'}. Assigned escort: ${eventData.escort_name || 'Unassigned'}. Route updated.`,
+          duration: 9000,
+        });
+
+        setDailyCancellations((prev) => {
+          if (prev.some((c) => c.student_id === eventData.student_id && c.date === eventData.date)) {
+            return prev;
           }
-          if (Array.isArray(data.escorts)) {
-            setEscorts(
-              data.escorts.map((e: any) => ({
-                id: e.id,
-                name: e.full_name || 'Verified Escort',
-                type:
-                  e.escort_category === 'school_escort' ||
-                  resolveEscortCategory(e) === 'school_escort'
-                    ? 'school'
-                    : 'myeduride',
-                phone: e.phone || '—',
-                status: e.availability_status === 'available' ? 'AVAILABLE' : e.status === 'ACTIVE' ? 'ON_TRIP' : 'STANDBY',
-                schoolName: e.assigned_school_name || e.school_name || e.operating_area || selectedCity,
-                schoolId: e.assigned_school_id || e.school_id || null,
-                allocatedSchoolIds: Array.isArray(e.allocated_school_ids) ? e.allocated_school_ids : (e.assigned_school_id || e.school_id ? [e.assigned_school_id || e.school_id] : []),
-                assignedSchools: Array.isArray(e.assigned_schools) ? e.assigned_schools : [],
-                assignedSchoolsCount: e.assigned_schools_count || (Array.isArray(e.assigned_schools) ? e.assigned_schools.length : (e.assigned_school_id ? 1 : 0)),
-                vehicle: e.application_data?.assignedVehicle || e.application_data?.regNumber || 'Verified Vehicle',
-                currentTripId: null,
-                route: e.operating_area ? `${e.operating_area} Corridor` : 'Designated Route',
-                studentsCount: e.assigned_students_count || (Array.isArray(e.assigned_students) ? e.assigned_students.length : 0),
-                assignedStudents: Array.isArray(e.assigned_students) ? e.assigned_students : [],
-                speed: e.speed || `${e.speed_kmh || 0} km/h`,
-                speed_kmh: e.speed_kmh || 0,
-                battery: e.battery || `${e.battery_level || 85}%`,
-                battery_level: e.battery_level || 85,
-                battery_status: e.battery_status || 'GOOD',
-                device_status: e.device_status || 'ACTIVE',
-                device_model: e.device_model || 'Samsung Galaxy A14 (App v2.4)',
-                lastPing: e.last_ping_at || 'Live',
-                last_ping_at: e.last_ping_at || 'Live',
-                complianceScore: 100,
-                rating: 5.0,
-                tripsToday: 0,
-                avatar: e.application_data?.photo || '',
-                notes: 'Verified escort profile on file.',
-              }))
-            );
-          }
-          if (Array.isArray(data.gate_officers) && data.gate_officers.length > 0) {
-            setGateOfficers(data.gate_officers);
-          }
-          if (Array.isArray(data.gate_activities) && data.gate_activities.length > 0) {
-            setGateActivities(data.gate_activities);
-          }
-          if (Array.isArray(data.audit)) {
-            setAuditLogs(
-              data.audit.map((a: any) => ({
-                id: a.id,
-                time: a.created_at ? new Date(a.created_at).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' }) : 'Just now',
-                actor: a.user_id ? 'City Manager' : 'System',
-                target: a.entity_type || 'Operations',
-                action: a.action || 'AUDIT_LOGGED',
-                details: a.metadata ? JSON.stringify(a.metadata) : 'Operational event recorded.',
-              }))
-            );
-          }
-          if (Array.isArray(data.vehicles)) {
-            setVehicles(data.vehicles);
-          }
-          if (Array.isArray(data.deputising_records)) {
-            setDeputisingRecords(data.deputising_records);
-          }
-          if (Array.isArray(data.parent_requests)) {
-            setParentRequests(data.parent_requests);
-          }
-          if (Array.isArray(data.pinned_parent_addresses)) {
-            setPinnedParentAddresses(data.pinned_parent_addresses);
+          return [
+            {
+              id: eventData.id || `cancel-${Date.now()}`,
+              student_id: eventData.student_id,
+              student_name: eventData.student_name,
+              student_number: eventData.student_number || 'N/A',
+              photo_url: eventData.photo_url || null,
+              class_name: eventData.class_name || 'Class',
+              school_name: eventData.school_name || 'School Campus',
+              escort_name: eventData.escort_name || 'Assigned Escort',
+              escort_phone: eventData.escort_phone || '',
+              reason: eventData.reason || 'Parent Notice',
+              notes: eventData.notes || '',
+              canceled_at: eventData.canceled_at || new Date().toISOString(),
+              date: eventData.date || new Date().toISOString().split('T')[0],
+            },
+            ...prev,
+          ];
+        });
+
+        // Silently refresh ops tables to keep count tallies accurate
+        loadOperationsData(true);
+      })
+      .subscribe();
+
+    // 2. Postgres change listener on escort_student_daily_trips table
+    const dbTripsChannel = supabase
+      .channel('db_escort_daily_trips_cancellations')
+      .on(
+        'postgres_changes',
+        { event: '*', schema: 'public', table: 'escort_student_daily_trips' },
+        (payload: any) => {
+          if (payload.new && payload.new.is_canceled_by_parent) {
+            loadOperationsData(true);
           }
         }
-      })
-      .catch((err) => console.warn('[city-manager-command] fetch operations error:', err))
-      .finally(() => setLoading(false));
-  }, [selectedCity]);
+      )
+      .subscribe();
+
+    return () => {
+      try {
+        supabase.removeChannel(opsChannel);
+        supabase.removeChannel(dbTripsChannel);
+      } catch {}
+    };
+  }, [loadOperationsData]);
 
   // Escort Sub-Filter: 'ALL' | 'MYEDURIDE' | 'SCHOOL'
   const [escortTypeFilter, setEscortTypeFilter] = useState<'ALL' | 'myeduride' | 'school'>('ALL');
@@ -629,6 +709,438 @@ export function CityManagerCommandControl({
     }, 600);
   };
 
+  const formatCancellationTime = (isoString?: string) => {
+    if (!isoString) return 'Today';
+    try {
+      const d = new Date(isoString);
+      if (isNaN(d.getTime())) return 'Today';
+      return d.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' });
+    } catch {
+      return 'Today';
+    }
+  };
+
+  const renderCancellationsBanner = () => {
+    if (!dailyCancellations || dailyCancellations.length === 0) {
+      return null;
+    }
+
+    return (
+      <div className="rounded-2xl border border-rose-500/50 bg-gradient-to-r from-rose-950/80 via-slate-900 to-[#120a15] p-4 shadow-xl shadow-rose-950/30 animate-in fade-in duration-300">
+        <div className="flex flex-wrap items-center justify-between gap-3 pb-3 border-b border-rose-800/40">
+          <div className="flex items-center gap-3">
+            <div className="w-10 h-10 rounded-xl bg-rose-500/20 border border-rose-500/40 flex items-center justify-center text-rose-400 shrink-0 shadow-lg shadow-rose-500/10">
+              <Ban size={20} className="animate-pulse" />
+            </div>
+            <div>
+              <div className="flex items-center gap-2 flex-wrap">
+                <h4 className="text-sm font-black text-white tracking-wide uppercase">
+                  ⚡ Operational Notice: {dailyCancellations.length} Student {dailyCancellations.length === 1 ? 'Trip Cancellation' : 'Trip Cancellations'} Recorded Today
+                </h4>
+                <span className="px-2 py-0.5 rounded-full bg-rose-600 text-white text-[10px] font-black uppercase tracking-wider animate-pulse">
+                  ROUTE UPDATED
+                </span>
+              </div>
+              <p className="text-xs text-rose-200/90 mt-0.5">
+                Parents clicked "Not Going Today". Assigned escorts have been notified in real time and pickup stops are bypassed on today's route.
+              </p>
+            </div>
+          </div>
+
+          <div className="flex items-center gap-2">
+            <button
+              type="button"
+              onClick={() => switchTab('cancellations')}
+              className="px-3.5 py-1.5 rounded-xl bg-rose-600 hover:bg-rose-500 text-white text-xs font-black flex items-center gap-1.5 shadow-md shadow-rose-600/30 transition-all cursor-pointer"
+            >
+              <span>Inspect Cancellations ({dailyCancellations.length})</span>
+              <ChevronRight size={14} />
+            </button>
+          </div>
+        </div>
+
+        {/* Quick Preview Cards */}
+        <div className="mt-3 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2.5">
+          {dailyCancellations.slice(0, 3).map((item) => (
+            <div
+              key={item.id}
+              className="p-3 rounded-xl bg-slate-900/90 border border-rose-800/40 hover:border-rose-600/60 transition-all flex items-center justify-between gap-3"
+            >
+              <div className="flex items-center gap-2.5 min-w-0">
+                <StudentAvatar
+                  photoUrl={item.photo_url}
+                  name={item.student_name}
+                  size={38}
+                  className="rounded-lg shrink-0 border border-rose-500/30"
+                />
+                <div className="min-w-0">
+                  <div className="flex items-center gap-1.5">
+                    <p className="text-xs font-black text-white truncate">{item.student_name}</p>
+                    <span className="px-1.5 py-0.2 rounded text-[9px] font-bold bg-rose-500/20 text-rose-300 shrink-0">
+                      Not Going
+                    </span>
+                  </div>
+                  <p className="text-[10px] text-slate-400 truncate">
+                    {item.school_name} • <span className="text-amber-300 font-semibold">{item.reason}</span>
+                  </p>
+                  <p className="text-[10px] text-slate-400 truncate">
+                    Escort: <span className="text-slate-300 font-bold">{item.escort_name || 'Unassigned'}</span>
+                  </p>
+                </div>
+              </div>
+
+              <div className="text-right shrink-0">
+                <span className="text-[10px] font-bold text-slate-400 block font-mono">
+                  {formatCancellationTime(item.canceled_at)}
+                </span>
+                {item.escort_phone && (
+                  <button
+                    type="button"
+                    onClick={() =>
+                      setContactModal({
+                        open: true,
+                        target: { name: item.escort_name, phone: item.escort_phone },
+                        targetType: 'ESCORT',
+                        message: `Regarding ${item.student_name}'s cancellation for today (${item.reason}): please confirm route adjustment.`,
+                        channel: 'IN_APP',
+                      })
+                    }
+                    className="mt-1 p-1 rounded-lg bg-slate-800 hover:bg-slate-700 text-cyan-400 hover:text-white"
+                    title="Quick Message Escort"
+                  >
+                    <MessageSquare size={13} />
+                  </button>
+                )}
+              </div>
+            </div>
+          ))}
+
+          {dailyCancellations.length > 3 && (
+            <div
+              onClick={() => switchTab('cancellations')}
+              className="cursor-pointer p-3 rounded-xl bg-rose-950/40 border border-rose-800/40 hover:bg-rose-900/50 transition-all flex flex-col items-center justify-center text-center"
+            >
+              <span className="text-xs font-black text-rose-300">+{dailyCancellations.length - 3} More Absences</span>
+              <span className="text-[10px] text-rose-400/80">Click to open full cancellations view</span>
+            </div>
+          )}
+        </div>
+      </div>
+    );
+  };
+
+  const renderCancellationsView = () => {
+    const filtered = dailyCancellations.filter((c) => {
+      if (!cancellationSearch.trim()) return true;
+      const q = cancellationSearch.toLowerCase();
+      return (
+        String(c.student_name || '').toLowerCase().includes(q) ||
+        String(c.student_number || '').toLowerCase().includes(q) ||
+        String(c.school_name || '').toLowerCase().includes(q) ||
+        String(c.escort_name || '').toLowerCase().includes(q) ||
+        String(c.reason || '').toLowerCase().includes(q) ||
+        String(c.notes || '').toLowerCase().includes(q)
+      );
+    });
+
+    return (
+      <div className="space-y-4 animate-in fade-in">
+        {/* Header Strip */}
+        <div className="bg-[#0b1c30] rounded-2xl border border-slate-800 p-5 shadow-xl flex flex-wrap items-center justify-between gap-4">
+          <div className="flex items-center gap-3">
+            <div className="w-12 h-12 rounded-2xl bg-rose-500/20 border border-rose-500/40 flex items-center justify-center text-rose-400">
+              <Ban size={24} />
+            </div>
+            <div>
+              <div className="flex items-center gap-2">
+                <h3 className="text-base font-black tracking-wide uppercase text-white">
+                  Student Trip Cancellations & Absence Command
+                </h3>
+                <span className="px-2.5 py-0.5 rounded-full bg-rose-600 text-white text-[10px] font-black uppercase tracking-wider">
+                  TODAY'S LOG
+                </span>
+              </div>
+              <p className="text-xs text-slate-400">
+                Live registry of student rides canceled by parents for today ({new Date().toLocaleDateString('en-US', { weekday: 'long', month: 'short', day: 'numeric', year: 'numeric' })}). All assigned escorts have been notified and pickup sequences updated.
+              </p>
+            </div>
+          </div>
+
+          <div className="flex items-center gap-2">
+            <button
+              type="button"
+              onClick={() => {
+                loadOperationsData();
+                toast.success('Cancellations registry refreshed.');
+              }}
+              className="px-3.5 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-bold flex items-center gap-1.5 transition-all cursor-pointer"
+            >
+              <RefreshCw size={14} />
+              <span>Sync Live Feed</span>
+            </button>
+          </div>
+        </div>
+
+        {/* 4 Summary Telemetry Cards */}
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
+          <div className="bg-[#0b1c30] rounded-2xl border border-slate-800 p-4">
+            <div className="flex items-center justify-between">
+              <span className="text-xs font-bold text-slate-400 uppercase tracking-wider">Total Cancellations</span>
+              <UserX size={16} className="text-rose-400" />
+            </div>
+            <div className="mt-2 flex items-baseline gap-2">
+              <span className="text-2xl font-black text-rose-400">{dailyCancellations.length}</span>
+              <span className="text-xs text-slate-400">Students Not Going</span>
+            </div>
+            <span className="inline-block mt-2 px-2 py-0.5 rounded text-[10px] font-extrabold bg-rose-500/20 text-rose-300">
+              {dailyCancellations.length > 0 ? 'Routes Automatically Adjusted' : 'Full Attendance Today'}
+            </span>
+          </div>
+
+          <div className="bg-[#0b1c30] rounded-2xl border border-slate-800 p-4">
+            <div className="flex items-center justify-between">
+              <span className="text-xs font-bold text-slate-400 uppercase tracking-wider">Schools Affected</span>
+              <School size={16} className="text-blue-400" />
+            </div>
+            <div className="mt-2 flex items-baseline gap-2">
+              <span className="text-2xl font-black text-white">
+                {new Set(dailyCancellations.map((c) => c.school_name).filter(Boolean)).size}
+              </span>
+              <span className="text-xs text-slate-400">Campus Portals</span>
+            </div>
+            <span className="inline-block mt-2 px-2 py-0.5 rounded text-[10px] font-extrabold bg-blue-500/20 text-blue-300">
+              Campus Gate Informed
+            </span>
+          </div>
+
+          <div className="bg-[#0b1c30] rounded-2xl border border-slate-800 p-4">
+            <div className="flex items-center justify-between">
+              <span className="text-xs font-bold text-slate-400 uppercase tracking-wider">Escort Dispatch Status</span>
+              <CheckCircle2 size={16} className="text-emerald-400" />
+            </div>
+            <div className="mt-2 flex items-baseline gap-2">
+              <span className="text-2xl font-black text-emerald-400">100%</span>
+              <span className="text-xs text-slate-400">Alerted Real-Time</span>
+            </div>
+            <span className="inline-block mt-2 px-2 py-0.5 rounded text-[10px] font-extrabold bg-emerald-500/20 text-emerald-300">
+              0 Unnecessary Pickups
+            </span>
+          </div>
+
+          <div className="bg-[#0b1c30] rounded-2xl border border-slate-800 p-4">
+            <div className="flex items-center justify-between">
+              <span className="text-xs font-bold text-slate-400 uppercase tracking-wider">Active Town / City</span>
+              <Navigation size={16} className="text-cyan-400" />
+            </div>
+            <div className="mt-2 flex items-baseline gap-2">
+              <span className="text-base font-black text-cyan-400 truncate">{selectedCity}</span>
+            </div>
+            <span className="inline-block mt-2 px-2 py-0.5 rounded text-[10px] font-extrabold bg-cyan-500/20 text-cyan-300">
+              Autonomous Dispatch Active
+            </span>
+          </div>
+        </div>
+
+        {/* Search Bar */}
+        <div className="bg-[#0b1c30] rounded-2xl border border-slate-800 p-4 flex flex-wrap items-center justify-between gap-3">
+          <div className="relative flex-1 min-w-[240px]">
+            <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400" size={15} />
+            <input
+              type="text"
+              placeholder="Search by student name, ID, school, assigned escort, or cancellation reason..."
+              value={cancellationSearch}
+              onChange={(e) => setCancellationSearch(e.target.value)}
+              className="w-full pl-10 pr-4 py-2 rounded-xl bg-slate-900 border border-slate-700 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-rose-500"
+            />
+            {cancellationSearch && (
+              <button
+                type="button"
+                onClick={() => setCancellationSearch('')}
+                className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-white cursor-pointer"
+              >
+                <X size={14} />
+              </button>
+            )}
+          </div>
+
+          <span className="text-xs text-slate-400 font-semibold">
+            Showing <strong className="text-white">{filtered.length}</strong> of {dailyCancellations.length} records
+          </span>
+        </div>
+
+        {/* Cancellation Records Table */}
+        <div className="bg-[#0b1c30] rounded-2xl border border-slate-800 p-5 shadow-xl space-y-4">
+          <div className="overflow-x-auto rounded-xl border border-slate-800">
+            <table className="w-full text-left text-xs">
+              <thead className="bg-[#07172b] text-[10px] font-black text-slate-400 uppercase border-b border-slate-800">
+                <tr>
+                  <th className="p-3">Student Details</th>
+                  <th className="p-3">Destination School</th>
+                  <th className="p-3">Assigned Escort</th>
+                  <th className="p-3">Cancellation Reason</th>
+                  <th className="p-3">Parent Notes</th>
+                  <th className="p-3 text-center">Notice Time</th>
+                  <th className="p-3 text-center">Dispatch Status</th>
+                  <th className="p-3 text-right">Actions</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-slate-800/80 font-medium text-slate-200">
+                {filtered.length === 0 ? (
+                  <tr>
+                    <td colSpan={8} className="text-center py-16 text-slate-400">
+                      <div className="w-12 h-12 rounded-full bg-slate-800/80 flex items-center justify-center mx-auto mb-3 text-slate-500">
+                        <CheckCircle2 size={24} className="text-emerald-400" />
+                      </div>
+                      <p className="text-sm font-bold text-white">
+                        {cancellationSearch ? 'No cancellations match your search' : 'No Student Trip Cancellations Recorded Today'}
+                      </p>
+                      <p className="text-xs text-slate-500 mt-1 max-w-md mx-auto">
+                        {cancellationSearch
+                          ? 'Try adjusting your search query or clear the filter.'
+                          : 'When parents click "Not Going Today" from their dashboard, the trip will immediately display here in real-time, alert the assigned escort, and remove the stop.'}
+                      </p>
+                      {cancellationSearch && (
+                        <button
+                          type="button"
+                          onClick={() => setCancellationSearch('')}
+                          className="mt-3 px-3 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-xs text-slate-200 font-semibold cursor-pointer"
+                        >
+                          Clear Search Filter
+                        </button>
+                      )}
+                    </td>
+                  </tr>
+                ) : (
+                  filtered.map((item) => (
+                    <tr key={item.id} className="hover:bg-slate-800/40 transition-colors">
+                      {/* Student Details */}
+                      <td className="p-3">
+                        <div className="flex items-center gap-3">
+                          <StudentAvatar
+                            photoUrl={item.photo_url}
+                            name={item.student_name}
+                            size={40}
+                            className="rounded-xl border border-rose-500/30 shrink-0"
+                          />
+                          <div>
+                            <strong className="text-white block text-sm font-bold">{item.student_name}</strong>
+                            <div className="text-[11px] text-slate-400 font-mono flex items-center gap-2 mt-0.5">
+                              <span>ID: <strong className="text-slate-300">{item.student_number || 'N/A'}</strong></span>
+                              <span>•</span>
+                              <span className="text-amber-300">{item.class_name || 'Class N/A'}</span>
+                            </div>
+                          </div>
+                        </div>
+                      </td>
+
+                      {/* Destination School */}
+                      <td className="p-3">
+                        <div className="flex items-center gap-1.5">
+                          <School size={14} className="text-slate-400 shrink-0" />
+                          <span className="text-xs font-semibold text-slate-200">{item.school_name || 'School Campus'}</span>
+                        </div>
+                      </td>
+
+                      {/* Assigned Escort */}
+                      <td className="p-3">
+                        <div>
+                          <strong className="text-xs text-white block">{item.escort_name || 'Unassigned Escort'}</strong>
+                          {item.escort_phone ? (
+                            <span className="text-[11px] text-slate-400 font-mono">{item.escort_phone}</span>
+                          ) : (
+                            <span className="text-[10px] text-slate-500 italic">No phone on file</span>
+                          )}
+                        </div>
+                      </td>
+
+                      {/* Cancellation Reason */}
+                      <td className="p-3">
+                        <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg text-xs font-bold bg-rose-500/15 text-rose-300 border border-rose-500/30">
+                          <Ban size={12} />
+                          {item.reason || 'Illness / Personal'}
+                        </span>
+                      </td>
+
+                      {/* Parent Notes */}
+                      <td className="p-3 max-w-xs">
+                        <p className="text-xs text-slate-300 line-clamp-2 italic">
+                          {item.notes ? `"${item.notes}"` : <span className="text-slate-500 not-italic">No additional parent remarks</span>}
+                        </p>
+                      </td>
+
+                      {/* Notice Time */}
+                      <td className="p-3 text-center">
+                        <div className="inline-flex flex-col items-center">
+                          <span className="text-xs font-bold text-white font-mono">
+                            {formatCancellationTime(item.canceled_at)}
+                          </span>
+                          <span className="text-[10px] text-slate-400">
+                            {item.date || 'Today'}
+                          </span>
+                        </div>
+                      </td>
+
+                      {/* Dispatch Status */}
+                      <td className="p-3 text-center">
+                        <div className="inline-flex flex-col items-center gap-1">
+                          <span className="px-2 py-0.5 rounded-full text-[10px] font-black bg-rose-500/20 text-rose-300 border border-rose-500/30">
+                            TRIP CANCELED
+                          </span>
+                          <span className="text-[9px] font-bold text-emerald-400 flex items-center gap-1">
+                            <Check size={10} />
+                            Escort Alerted
+                          </span>
+                        </div>
+                      </td>
+
+                      {/* Actions */}
+                      <td className="p-3 text-right">
+                        <div className="flex items-center justify-end gap-1.5">
+                          {item.escort_phone && (
+                            <button
+                              type="button"
+                              onClick={() =>
+                                setContactModal({
+                                  open: true,
+                                  target: { name: item.escort_name, phone: item.escort_phone },
+                                  targetType: 'ESCORT',
+                                  message: `Operational notice: ${item.student_name} (${item.school_name}) is marked absent today (${item.reason}). Do not proceed to their home.`,
+                                  channel: 'IN_APP',
+                                })
+                              }
+                              className="px-2.5 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-cyan-400 hover:text-white text-xs font-semibold flex items-center gap-1 transition-all cursor-pointer"
+                              title="Message Assigned Escort"
+                            >
+                              <MessageSquare size={13} />
+                              <span>Escort</span>
+                            </button>
+                          )}
+
+                          <button
+                            type="button"
+                            onClick={() => {
+                              toast.info(`Cancellation details for ${item.student_name}`, {
+                                description: `School: ${item.school_name} | Escort: ${item.escort_name} | Reason: ${item.reason} | Note: ${item.notes || 'None'}`,
+                              });
+                            }}
+                            className="p-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white transition-all cursor-pointer"
+                            title="Inspect Record"
+                          >
+                            <Info size={14} />
+                          </button>
+                        </div>
+                      </td>
+                    </tr>
+                  ))
+                )}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+    );
+  };
+
   return (
     <div className="space-y-4 text-slate-100">
       {/* ========================================================================= */}
@@ -687,9 +1199,9 @@ export function CityManagerCommandControl({
       </div>
 
       {/* ========================================================================= */}
-      {/* 2. REAL-TIME 8-POINT OPERATIONAL TELEMETRY RIBBON */}
+      {/* 2. REAL-TIME 10-POINT OPERATIONAL TELEMETRY RIBBON */}
       {/* ========================================================================= */}
-      <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-8 gap-2.5">
+      <div className="grid grid-cols-2 sm:grid-cols-5 lg:grid-cols-10 gap-2.5">
         {/* Stat 1: Schools Online */}
         <div
           onClick={() => switchTab('schools')}
@@ -872,6 +1384,36 @@ export function CityManagerCommandControl({
             </span>
           </div>
         </div>
+
+        {/* Stat 10: Student Cancellations */}
+        <div
+          onClick={() => switchTab('cancellations')}
+          className={`cursor-pointer rounded-2xl border p-3 flex flex-col justify-between transition-all ${
+            currentTab === 'cancellations'
+              ? 'bg-rose-950/60 border-rose-500 ring-1 ring-rose-500'
+              : dailyCancellations.length > 0
+              ? 'bg-[#180b12] border-rose-800/80 hover:border-rose-600'
+              : 'bg-[#0b1c30] border-slate-800 hover:border-slate-700'
+          }`}
+        >
+          <div className="flex items-center justify-between">
+            <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Cancellations</span>
+            <Ban size={15} className={dailyCancellations.length > 0 ? "text-rose-400 animate-pulse" : "text-slate-400"} />
+          </div>
+          <div className="mt-2">
+            <div className="flex items-baseline gap-1.5">
+              <span className={`text-xl font-black ${dailyCancellations.length > 0 ? 'text-rose-400' : 'text-slate-400'}`}>
+                {dailyCancellations.length}
+              </span>
+              <span className="text-[10px] font-bold text-slate-400">Today</span>
+            </div>
+            <span className={`inline-block mt-1 px-1.5 py-0.2 rounded text-[9px] font-extrabold ${
+              dailyCancellations.length > 0 ? 'bg-rose-500/20 text-rose-300' : 'bg-slate-800 text-slate-400'
+            }`}>
+              {dailyCancellations.length > 0 ? `${dailyCancellations.length} Not Going` : 'Zero Absences'}
+            </span>
+          </div>
+        </div>
       </div>
 
       {/* ========================================================================= */}
@@ -883,6 +1425,7 @@ export function CityManagerCommandControl({
           { id: 'escorts', label: 'Monitor Escorts (MyEduRide & School)', icon: UserCheck, count: escorts.length },
           { id: 'gate-monitor', label: 'Gate Officers & Gate Stream', icon: DoorOpen, count: gateOfficers.length },
           { id: 'trips-management', label: 'Active Trips & Operational Timing', icon: Navigation, count: escorts.filter(e => e.status === 'ON_TRIP').length },
+          { id: 'cancellations', label: 'Student Cancellations & Absences', icon: Ban, count: dailyCancellations.length, alert: dailyCancellations.length > 0 },
           { id: 'corridor-map', label: 'Transit Corridors & Pinned Houses', icon: MapPin, count: pinnedParentAddresses.length || corridorMetrics?.total_pinned_houses || 0 },
           { id: 'assignments', label: 'Bookings & Escort Assignments', icon: ClipboardList, count: parentRequests.length },
           { id: 'pricing', label: 'City Pricing Adjuster', icon: BadgePercent },
@@ -929,8 +1472,9 @@ export function CityManagerCommandControl({
       {/* ========================================================================= */}
       {/* VIEW 1: LIVE COMMAND RADAR & TACTICAL MAP (DASHBOARD / LIVE-OPERATIONS / DEFAULT) */}
       {/* ========================================================================= */}
-      {(currentTab === 'dashboard' || currentTab === 'live-operations' || (!['escorts', 'gate-monitor', 'trips-management', 'corridor-map', 'safety-incidents', 'escalations', 'communication', 'schools', 'vehicles', 'assignments', 'pricing', 'performance', 'reports-analytics', 'settings-access', 'audit-logs'].includes(currentTab))) && (
+      {(currentTab === 'dashboard' || currentTab === 'live-operations' || (!['escorts', 'gate-monitor', 'trips-management', 'cancellations', 'corridor-map', 'safety-incidents', 'escalations', 'communication', 'schools', 'vehicles', 'assignments', 'pricing', 'performance', 'reports-analytics', 'settings-access', 'audit-logs'].includes(currentTab))) && (
         <div className="space-y-4">
+          {renderCancellationsBanner()}
           {loading && (
             <div className="rounded-xl border border-cyan-500/30 bg-cyan-500/10 px-4 py-2 text-xs font-semibold text-cyan-200">
               Loading city operations tables…
@@ -1726,6 +2270,7 @@ export function CityManagerCommandControl({
       {/* ========================================================================= */}
       {currentTab === 'trips-management' && (
         <div className="space-y-4">
+          {renderCancellationsBanner()}
           {/* Operational Timing Strip */}
           <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
             <div className="bg-[#0b1c30] rounded-2xl border border-slate-800 p-4">
@@ -2684,6 +3229,11 @@ export function CityManagerCommandControl({
           </div>
         </div>
       )}
+
+      {/* ========================================================================= */}
+      {/* VIEW 11: STUDENT TRIP CANCELLATIONS & ABSENCE COMMAND */}
+      {/* ========================================================================= */}
+      {currentTab === 'cancellations' && renderCancellationsView()}
 
       {/* ========================================================================= */}
       {/* MODAL: VIEW ESCORT ASSIGNED STUDENTS MANIFEST */}

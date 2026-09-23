@@ -636,8 +636,10 @@ export async function POST(request: NextRequest) {
         const [
           studentsRes,
           { data: arrivals },
+          { data: departures },
           { data: dismissals },
           { data: extraLessons },
+          { data: dailyTrips },
         ] = await Promise.all([
           supabase.from('students').select(studentSelect).in('id', ids).eq('is_active', true),
           supabase
@@ -645,6 +647,13 @@ export async function POST(request: NextRequest) {
             .select('student_id, status, timestamp')
             .in('student_id', ids)
             .eq('type', 'arrival')
+            .gte('timestamp', startIso)
+            .lte('timestamp', endIso),
+          supabase
+            .from('attendance_records')
+            .select('student_id, status, timestamp')
+            .in('student_id', ids)
+            .eq('type', 'departure')
             .gte('timestamp', startIso)
             .lte('timestamp', endIso),
           supabase
@@ -657,6 +666,11 @@ export async function POST(request: NextRequest) {
             .select('student_id, is_released, lesson_end_time, reason')
             .in('student_id', ids)
             .eq('date', today),
+          supabase
+            .from('escort_student_daily_trips')
+            .select('student_id, morning_picked_up, morning_dropped_off, afternoon_picked_up, afternoon_dropped_off, afternoon_dropped_off_at, is_canceled_by_parent, cancellation_reason, canceled_at')
+            .in('student_id', ids)
+            .eq('trip_date', today),
         ]);
 
         let students: any[] | null = studentsRes.data as any[] | null;
@@ -676,8 +690,10 @@ export async function POST(request: NextRequest) {
         }
 
         const arrivalMap = new Map(arrivals?.map((a: any) => [a.student_id, a]) || []);
+        const departureMap = new Map(departures?.map((d: any) => [d.student_id, d]) || []);
         const dismissalMap = new Map(dismissals?.map((d: any) => [d.student_id, d]) || []);
         const extraLessonMap = new Map(extraLessons?.map((e: any) => [e.student_id, e]) || []);
+        const dailyTripMap = new Map(dailyTrips?.map((t: any) => [t.student_id, t]) || []);
         const linkByStudent = new Map(links.map((l: any) => [l.student_id, l]));
 
         const [{ data: escortAssigns }, { data: routeAssigns }] = await Promise.all([
@@ -715,22 +731,56 @@ export async function POST(request: NextRequest) {
 
         const children = (students || []).map((s: any) => {
           const arrival = arrivalMap.get(s.id);
+          const departure = departureMap.get(s.id);
           const dismissal = dismissalMap.get(s.id);
           const extraLesson = extraLessonMap.get(s.id);
+          const trip = dailyTripMap.get(s.id);
+
+          const isSafeAtHome = Boolean(
+            trip?.afternoon_dropped_off ||
+            (departure && !trip?.afternoon_picked_up) ||
+            dismissal?.status === 'completed'
+          );
+          const isOnAfternoonTransit = Boolean(trip?.afternoon_picked_up && !trip?.afternoon_dropped_off);
+          const safeAtHomeTime = trip?.afternoon_dropped_off_at || departure?.timestamp || null;
+
+          const isCanceledToday = Boolean(trip?.is_canceled_by_parent);
+
           return {
             ...s,
             relationship: linkByStudent.get(s.id)?.relationship || 'parent',
             escort_name: escortByStudent.get(s.id) || null,
             route_name: routeByStudent.get(s.id)?.route_name || null,
             vehicle_model: routeByStudent.get(s.id)?.vehicle_model || null,
-            present_today: !!arrival,
-            arrival_status: arrival?.status || null,
+            present_today: !isCanceledToday && !!arrival,
+            arrival_status: isCanceledToday ? 'absent' : (arrival?.status || null),
             arrival_time: arrival?.timestamp || null,
-            ready_for_pickup: !!dismissal && dismissal.status !== 'completed',
+            ready_for_pickup: !isCanceledToday && !isSafeAtHome && !isOnAfternoonTransit && !!dismissal && dismissal.status !== 'completed',
             dismissal_status: dismissal?.status || null,
-            in_extra_lesson: !!extraLesson && !extraLesson.is_released,
+            in_extra_lesson: !isCanceledToday && !isSafeAtHome && !isOnAfternoonTransit && !!extraLesson && !extraLesson.is_released,
             extra_lesson_end_time: extraLesson?.lesson_end_time || null,
             extra_lesson_reason: extraLesson?.reason || null,
+            is_safe_at_home: !isCanceledToday && isSafeAtHome,
+            afternoon_dropped_off: !isCanceledToday && isSafeAtHome,
+            on_afternoon_transit: !isCanceledToday && isOnAfternoonTransit,
+            afternoon_picked_up: !isCanceledToday && Boolean(trip?.afternoon_picked_up),
+            safe_at_home_time: safeAtHomeTime,
+            is_canceled_today: isCanceledToday,
+            cancellation_reason: trip?.cancellation_reason || null,
+            canceled_at: trip?.canceled_at || null,
+            today_status_label: isCanceledToday
+              ? 'Not Going Today'
+              : isSafeAtHome
+                ? 'Safe at Home'
+                : isOnAfternoonTransit
+                  ? 'En Route Home'
+                  : !!dismissal && dismissal.status !== 'completed'
+                    ? 'Ready for Pickup'
+                    : !!extraLesson && !extraLesson.is_released
+                      ? 'Extended Lesson'
+                      : !!arrival
+                        ? 'At School'
+                        : 'Not Checked In',
           };
         });
 

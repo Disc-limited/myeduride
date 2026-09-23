@@ -229,8 +229,8 @@ export default function ParentLiveMovementView({
     delivered_home: {
       title: 'Safe Home Delivery Completed',
       subtitle: 'Custody successfully handed over at residence',
-      badgeColor: 'bg-purple-100 text-purple-800 border-purple-300',
-      dotColor: 'bg-purple-500',
+      badgeColor: 'bg-emerald-100 text-emerald-800 border-emerald-300',
+      dotColor: 'bg-emerald-500',
     },
   };
 
@@ -511,7 +511,9 @@ export default function ParentLiveMovementView({
                   ? 'Pin your house doorstep to centre the map. Street map is still live below.'
                   : hasActive
                     ? 'Waiting for escort GPS pings…'
-                    : 'No active trip — showing doorstep and school pins.'
+                    : stage === 'delivered_home'
+                      ? 'Safe home delivery completed — child has safely arrived home.'
+                      : 'No active trip — showing doorstep and school pins.'
               }
             />
 
