@@ -392,6 +392,8 @@ export async function GET(request: NextRequest) {
       (departureRecord && !todayTrip?.afternoon_picked_up && activeSession?.trip_type !== 'afternoon_dropoff')
     );
 
+    const isSafeAtHome = isDeliveredHome;
+
     const isReturningHome = Boolean(
       !isDeliveredHome &&
       (todayTrip?.afternoon_picked_up || activeSession?.trip_type === 'afternoon_dropoff')

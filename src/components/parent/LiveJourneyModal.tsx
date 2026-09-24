@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import {
   X,
   Bus,
@@ -19,6 +19,8 @@ import {
   Maximize2
 } from 'lucide-react';
 import { useLiveVehiclePosition } from '@/hooks/useLiveVehiclePosition';
+import LiveVehicleMap from '@/components/shared/LiveVehicleMap';
+import { fetchDrivingRoute } from '@/lib/navigation/road-router';
 
 interface LiveJourneyModalProps {
   isOpen: boolean;
@@ -54,8 +56,10 @@ export default function LiveJourneyModal({
   const [mapType, setMapType] = useState<'roadmap' | 'satellite'>('roadmap');
   const [showTraffic, setShowTraffic] = useState(true);
 
-  // Live Position Subscription & Lerp Interpolation
+  // Live Position Subscription & 60FPS Continuous Motion
   const {
+    displayLat,
+    displayLng,
     speedKmh,
     displayHeading,
     isConnected,
@@ -63,10 +67,51 @@ export default function LiveJourneyModal({
     etaMinutes,
     lastPingAt,
   } = useLiveVehiclePosition({
-    sessionId: sessionId || 'demo-active-session',
+    sessionId: sessionId || null,
     targetStopLat,
     targetStopLng,
   });
+
+  const modalPins = useMemo(() => {
+    const pins: Array<{ lat: number; lng: number; label?: string; kind?: 'home' | 'school' | 'stop' }> = [];
+    if (targetStopLat != null && targetStopLng != null && Number.isFinite(targetStopLat) && Number.isFinite(targetStopLng)) {
+      pins.push({
+        lat: Number(targetStopLat),
+        lng: Number(targetStopLng),
+        label: targetStopName || 'Doorstep',
+        kind: 'home',
+      });
+    }
+    return pins;
+  }, [targetStopLat, targetStopLng, targetStopName]);
+
+  const [roadCoordinates, setRoadCoordinates] = useState<Array<{ lat: number; lng: number }>>([]);
+
+  useEffect(() => {
+    let cancelled = false;
+    const waypoints: Array<{ lat: number; lng: number }> = [];
+
+    if (displayLat != null && displayLng != null && Number.isFinite(displayLat) && Number.isFinite(displayLng)) {
+      waypoints.push({ lat: displayLat, lng: displayLng });
+    }
+    if (targetStopLat != null && targetStopLng != null && Number.isFinite(targetStopLat) && Number.isFinite(targetStopLng)) {
+      waypoints.push({ lat: targetStopLat, lng: targetStopLng });
+    }
+
+    if (waypoints.length >= 2) {
+      fetchDrivingRoute(waypoints).then((pts) => {
+        if (!cancelled && pts.length >= 2) {
+          setRoadCoordinates(pts);
+        }
+      });
+    } else {
+      setRoadCoordinates([]);
+    }
+
+    return () => {
+      cancelled = true;
+    };
+  }, [displayLat, displayLng, targetStopLat, targetStopLng]);
 
   if (!isOpen) return null;
 
@@ -118,85 +163,23 @@ export default function LiveJourneyModal({
           {/* Left: Interactive Live Radar Map Canvas (8 Cols) */}
           <div className="lg:col-span-8 space-y-4">
             <div className="relative h-[320px] sm:h-[380px] rounded-3xl overflow-hidden border border-slate-200 shadow-inner bg-slate-900">
-              
-              {/* Map Background Tile Graphic */}
-              <div
-                className={`absolute inset-0 bg-cover bg-center transition-all duration-300 ${
-                  mapType === 'satellite' ? 'opacity-75' : 'opacity-90'
-                }`}
-                style={{
-                  backgroundImage:
-                    mapType === 'satellite'
-                      ? "linear-gradient(rgba(15, 23, 42, 0.4), rgba(15, 23, 42, 0.4)), url('https://images.unsplash.com/photo-1524661135-423995f22d0b?auto=format&fit=crop&q=80')"
-                      : "linear-gradient(rgba(15, 23, 42, 0.15), rgba(15, 23, 42, 0.15)), url('/images/background%20image.png')",
-                }}
+              <LiveVehicleMap
+                key="parent-modal-live-map"
+                mapType={mapType}
+                heightClassName="h-full"
+                className="w-full h-full rounded-3xl border-0"
+                vehicleLat={displayLat}
+                vehicleLng={displayLng}
+                vehicleHeading={displayHeading}
+                vehicleSpeedKmh={speedKmh}
+                vehicleLabel={vehicleModel || 'EduRide'}
+                pins={modalPins}
+                routeCoordinates={roadCoordinates.length >= 2 ? roadCoordinates : undefined}
+                followVehicle={true}
+                hideAttribution={true}
+                showZoom={true}
+                emptyMessage="Connecting to live shuttle GPS..."
               />
-
-              {/* Highway Network Overlay */}
-              <svg className="absolute inset-0 w-full h-full pointer-events-none z-10" preserveAspectRatio="none">
-                <path
-                  d="M 40,290 C 120,240 180,310 260,200 S 390,140 520,70"
-                  fill="none"
-                  stroke="#10b981"
-                  strokeWidth="8"
-                  strokeLinecap="round"
-                />
-                <path
-                  d="M 40,290 C 120,240 180,310 260,200 S 390,140 520,70"
-                  fill="none"
-                  stroke="#ffffff"
-                  strokeWidth="3"
-                  strokeDasharray="10 8"
-                  className="animate-pulse"
-                />
-              </svg>
-
-              {/* Start Point Marker (School Origin) */}
-              <div className="absolute left-[8%] bottom-[12%] z-20 flex flex-col items-center">
-                <div className="w-8 h-8 rounded-full bg-blue-600 border-2 border-white shadow-lg flex items-center justify-center text-white text-[10px] font-black">
-                  SCH
-                </div>
-                <span className="text-[10px] font-extrabold text-slate-900 bg-white/95 px-2 py-0.5 rounded-md shadow-md mt-1">
-                  School Gate
-                </span>
-              </div>
-
-              {/* Real-time Moving Shuttle Bus Marker */}
-              <div
-                className="absolute z-30 transition-all duration-700 ease-out flex flex-col items-center -translate-x-1/2 -translate-y-1/2"
-                style={{
-                  left: '48%',
-                  top: '52%',
-                }}
-              >
-                {/* Radar Waves */}
-                <div className="absolute -inset-4 rounded-full bg-amber-400/30 animate-ping" />
-                <div className="absolute -inset-8 rounded-full bg-emerald-400/20 animate-pulse" />
-
-                {/* Bus Avatar with Direction Angle */}
-                <div
-                  className="relative w-12 h-12 rounded-2xl bg-amber-400 border-3 border-white shadow-2xl flex items-center justify-center text-slate-900 font-bold transition-transform duration-300"
-                  style={{ transform: `rotate(${displayHeading || 45}deg)` }}
-                >
-                  <Bus className="w-6 h-6" />
-                </div>
-
-                {/* Telemetry Capsule */}
-                <div className="mt-1 flex items-center gap-1 bg-slate-950/90 border border-slate-700 text-white px-2 py-0.5 rounded-full text-[10px] font-black shadow-lg">
-                  <Radio className="w-3 h-3 text-emerald-400 animate-pulse" />
-                  <span>{speedKmh > 0 ? `${speedKmh} km/h` : '36 km/h'}</span>
-                </div>
-              </div>
-
-              {/* Destination / Parent Stop Marker */}
-              <div className="absolute right-[12%] top-[14%] z-20 flex flex-col items-center">
-                <div className="w-9 h-9 rounded-full bg-emerald-600 border-2 border-white shadow-xl flex items-center justify-center text-white animate-bounce">
-                  <Navigation className="w-4 h-4 fill-white" />
-                </div>
-                <span className="text-[10px] font-extrabold text-emerald-900 bg-emerald-50 border border-emerald-300 px-2 py-0.5 rounded-md shadow-md mt-1">
-                  Your Pickup Stop
-                </span>
-              </div>
 
               {/* Top Controls Overlay */}
               <div className="absolute left-3 top-3 z-30 flex items-center gap-2">

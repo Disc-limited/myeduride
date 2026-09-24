@@ -99,7 +99,7 @@ export function useLiveVehiclePosition({
   //   1. Session channel: `tracking:session_<sessionId>` (direct, authoritative)
   //   2. School fleet channel: `tracking:school_<schoolId>` (fleet fallback)
   useEffect(() => {
-    if (!sessionId && !schoolId) {
+    if (!sessionId && !schoolId && !escortId) {
       setIsConnected(false);
       return;
     }
@@ -175,6 +175,19 @@ export function useLiveVehiclePosition({
       channels.push(sessionCh);
     }
 
+    // Direct escort-level channel (instant handshake before session sync)
+    if (escortId) {
+      const escortCh = supabase
+        .channel(`tracking:escort_${escortId}`)
+        .on('broadcast', { event: 'telemetry_ping' }, ({ payload }) => {
+          handleTelemetryPayload(payload);
+        })
+        .subscribe((status) => {
+          if (status === 'SUBSCRIBED' && !sessionId) setIsConnected(true);
+        });
+      channels.push(escortCh);
+    }
+
     // Fallback: school-level fleet channel (receives fleet_vehicle_ping from escort)
     if (schoolId) {
       const schoolCh = supabase
@@ -183,7 +196,7 @@ export function useLiveVehiclePosition({
           handleTelemetryPayload(payload);
         })
         .subscribe((status) => {
-          if (status === 'SUBSCRIBED' && !sessionId) setIsConnected(true);
+          if (status === 'SUBSCRIBED' && !sessionId && !escortId) setIsConnected(true);
         });
       channels.push(schoolCh);
     }

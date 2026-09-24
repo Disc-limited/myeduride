@@ -59,6 +59,7 @@ import LocationPermissionModal from '@/components/shared/LocationPermissionModal
 import LiveVehicleMap from '@/components/shared/LiveVehicleMap';
 import { useEscortTelemetryTracker } from '@/hooks/useEscortTelemetryTracker';
 import { createClient } from '@/lib/supabase/client';
+import { fetchDrivingRoute } from '@/lib/navigation/road-router';
 
 interface SharedEscortDashboardProps {
   session?: any;
@@ -111,7 +112,6 @@ export default function SharedEscortDashboard({
     checkBelongings: false,
   });
   const [isProcessingTripAction, setIsProcessingTripAction] = useState(false);
-  const [isSimulatingDrive, setIsSimulatingDrive] = useState(false);
 
   // GPS Hardware Pre-Warming: Acquire fast initial fix on mount so start_trip has instant coordinates
   useEffect(() => {
@@ -461,27 +461,49 @@ export default function SharedEscortDashboard({
     }
   };
 
-  // Generate realistic simulation waypoints along the route corridor
-  const simulationWaypoints = useMemo(() => {
-    const pts: Array<{ lat: number; lng: number }> = [];
+  const [roadCoordinates, setRoadCoordinates] = useState<Array<{ lat: number; lng: number }>>([]);
+
+  // Fetch real road curves along actual streets connecting vehicle to stops and school
+  useEffect(() => {
+    let cancelled = false;
+    const waypoints: Array<{ lat: number; lng: number }> = [];
+
+    // Always prioritize the live vehicle location as the route starting point
+    if (liveGps.lat != null && liveGps.lng != null && Number.isFinite(liveGps.lat) && Number.isFinite(liveGps.lng)) {
+      waypoints.push({ lat: Number(liveGps.lat), lng: Number(liveGps.lng) });
+    }
+
     const homePins = liveMapPins.filter((p) => p.kind === 'home' || p.kind === 'stop');
     const schoolPins = liveMapPins.filter((p) => p.kind === 'school');
-    homePins.forEach((p) => pts.push({ lat: p.lat, lng: p.lng }));
-    schoolPins.forEach((p) => pts.push({ lat: p.lat, lng: p.lng }));
+    homePins.forEach((p) => waypoints.push({ lat: p.lat, lng: p.lng }));
+    schoolPins.forEach((p) => waypoints.push({ lat: p.lat, lng: p.lng }));
 
-    // Fallback circular road corridor loop around the coordinate if 0 or 1 pin is present
-    if (pts.length < 2) {
-      const c = pts.length === 1 ? pts[0] : { lat: 6.5244, lng: 3.3792 };
-      pts.length = 0;
-      pts.push({ lat: c.lat, lng: c.lng });
-      pts.push({ lat: c.lat + 0.0025, lng: c.lng + 0.0018 });
-      pts.push({ lat: c.lat + 0.0048, lng: c.lng + 0.0006 });
-      pts.push({ lat: c.lat + 0.0035, lng: c.lng - 0.0024 });
-      pts.push({ lat: c.lat + 0.0012, lng: c.lng - 0.0028 });
-      pts.push({ lat: c.lat, lng: c.lng });
+    // If only vehicle coordinate is known (or no pins yet), generate road corridor directly starting from vehicle
+    if (waypoints.length === 1) {
+      const v = waypoints[0];
+      // Create a forward road loop from the vehicle's actual location
+      waypoints.push({ lat: v.lat + 0.0035, lng: v.lng + 0.0020 });
+      waypoints.push({ lat: v.lat + 0.0068, lng: v.lng + 0.0015 });
+      waypoints.push({ lat: v.lat + 0.0090, lng: v.lng - 0.0020 });
+      waypoints.push({ lat: v.lat + 0.0040, lng: v.lng - 0.0025 });
+    } else if (waypoints.length === 0) {
+      // Default to Ikeja / Alausa transit corridor
+      const c = { lat: 6.6210, lng: 3.3580 };
+      waypoints.push({ lat: c.lat, lng: c.lng });
+      waypoints.push({ lat: c.lat + 0.0035, lng: c.lng + 0.0020 });
+      waypoints.push({ lat: c.lat + 0.0068, lng: c.lng + 0.0015 });
     }
-    return pts;
-  }, [liveMapPins]);
+
+    fetchDrivingRoute(waypoints).then((pts) => {
+      if (!cancelled && pts.length >= 2) {
+        setRoadCoordinates(pts);
+      }
+    });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [liveMapPins, liveGps.lat, liveGps.lng]);
 
   const {
     isBroadcasting,
@@ -496,10 +518,8 @@ export default function SharedEscortDashboard({
     sessionId: currentTripSessionId || undefined,
     schoolId: liveDashboardData?.activeSession?.school_id || liveDashboardData?.escort?.school_id || escortData?.school_id,
     vehicleId: liveDashboardData?.vehicle?.id || escortData?.vehicle_id,
-    escortId: liveDashboardData?.escort?.id || escortData?.id || undefined,
-    isActive: Boolean(isTripActive && !isManualMode && currentTripSessionId),
-    isSimulating: isSimulatingDrive,
-    simulationWaypoints,
+    escortId: liveDashboardData?.escort?.id || escortData?.id || session?.user_id || undefined,
+    isActive: Boolean(isTripActive && !isManualMode && (currentTripSessionId || escortData?.id || liveDashboardData?.escort?.id || session?.user_id)),
     onError: handleTelemetryError,
     onPositionUpdate: (point) => {
       setLiveGps({
@@ -607,7 +627,7 @@ export default function SharedEscortDashboard({
         }
         className={expanded ? 'rounded-2xl border-0 shadow-none' : 'rounded-xl border-0 shadow-none'}
         pins={liveMapPins}
-        routeCoordinates={simulationWaypoints.length >= 2 ? simulationWaypoints : undefined}
+        routeCoordinates={roadCoordinates.length >= 2 ? roadCoordinates : undefined}
         vehicleLat={isTripActive ? liveGps.lat : null}
         vehicleLng={isTripActive ? liveGps.lng : null}
         vehicleHeading={liveGps.heading || currentHeading || 0}
@@ -653,7 +673,6 @@ export default function SharedEscortDashboard({
       }
       if (completing) {
         setActiveSessionId(null);
-        setIsSimulatingDrive(false);
       }
       toast.success(data.message || (completing ? 'Morning trip completed.' : 'Morning trip started. Live tracking enabled.'));
       onRefreshData?.();
@@ -703,7 +722,6 @@ export default function SharedEscortDashboard({
       if (completing) {
         setIsManualMode(false);
         setActiveSessionId(null);
-        setIsSimulatingDrive(false);
       } else if (data.sessionId) {
         setActiveSessionId(data.sessionId);
       }
@@ -1059,24 +1077,15 @@ export default function SharedEscortDashboard({
               <Compass className="w-4 h-4 text-emerald-600" /> LIVE MAP & ROUTE
             </h4>
             <div className="flex items-center gap-2">
-              {isTripActive && (
-                <button
-                  type="button"
-                  onClick={() => setIsSimulatingDrive((prev) => !prev)}
-                  className={`inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-xl text-[10px] font-extrabold transition-all cursor-pointer shadow-xs ${
-                    isSimulatingDrive
-                      ? 'bg-rose-600 hover:bg-rose-700 text-white animate-pulse'
-                      : 'bg-emerald-600 hover:bg-emerald-700 text-white'
-                  }`}
-                  title={isSimulatingDrive ? 'Stop simulated live movement' : 'Simulate live movement along the route to test real-time parent tracking'}
-                >
-                  <Navigation className="w-3 h-3" />
-                  <span>{isSimulatingDrive ? '■ Stop Test Drive' : '▶ Simulate Live Movement'}</span>
-                </button>
-              )}
               {isTripActive && isBroadcasting ? (
-                <span className="text-[10px] font-bold text-emerald-700 bg-emerald-50 border border-emerald-200 px-2 py-0.5 rounded-lg">
-                  {isSimulatingDrive ? 'Simulated Drive' : 'Live GPS'}{liveGps.speedKmh ? ` · ${Math.round(liveGps.speedKmh)} km/h` : ''}
+                <span className="text-[10px] font-bold text-emerald-700 bg-emerald-50 border border-emerald-200 px-2 py-0.5 rounded-lg flex items-center gap-1.5">
+                  <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
+                  Live GPS{liveGps.speedKmh ? ` · ${Math.round(liveGps.speedKmh)} km/h` : ''}
+                </span>
+              ) : isTripActive ? (
+                <span className="text-[10px] font-semibold text-amber-700 bg-amber-50 border border-amber-200 px-2 py-0.5 rounded-lg flex items-center gap-1.5">
+                  <span className="w-1.5 h-1.5 rounded-full bg-amber-500 animate-pulse" />
+                  Acquiring GPS...
                 </span>
               ) : (
                 <span className="text-[10px] text-slate-400 font-medium">Route overview</span>
@@ -1157,22 +1166,6 @@ export default function SharedEscortDashboard({
               <h4 className="font-extrabold text-slate-900 text-xs uppercase tracking-wider">
                 MORNING PICKUP LIST
               </h4>
-              <button
-                type="button"
-                onClick={() => {
-                  playCancellationBuzzer();
-                  if (typeof window !== 'undefined' && 'vibrate' in navigator) {
-                    try { navigator.vibrate([300, 100, 300, 100, 500]); } catch {}
-                  }
-                  toast.info('🔔 Audio Buzzer & Haptic Vibration Tested', {
-                    description: 'This is the exact sound and pulse that plays when a parent cancels a trip.',
-                  });
-                }}
-                className="text-[9px] text-slate-400 hover:text-slate-700 px-1.5 py-0.5 rounded border border-slate-200 hover:border-slate-300 font-bold transition-all cursor-pointer flex items-center gap-1"
-                title="Click to test the urgent cancellation audio buzzer and vibration"
-              >
-                <span>🔔 Test Buzz</span>
-              </button>
             </div>
             <span className="text-[10px] text-emerald-700 font-bold">
               {morningPickedCount} of {morningList.length} Picked

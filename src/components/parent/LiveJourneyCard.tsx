@@ -1,9 +1,11 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { Navigation, Bus, ArrowRight, Layers, Plus, Minus, MapPin, Compass, ShieldCheck, Radio } from 'lucide-react';
 import LiveJourneyModal from './LiveJourneyModal';
 import { useLiveVehiclePosition } from '@/hooks/useLiveVehiclePosition';
+import LiveVehicleMap from '@/components/shared/LiveVehicleMap';
+import { fetchDrivingRoute } from '@/lib/navigation/road-router';
 
 interface LiveJourneyCardProps {
   childName?: string;
@@ -43,12 +45,12 @@ export default function LiveJourneyCard({
   onOpenLiveJourney,
 }: LiveJourneyCardProps) {
   const [mapType, setMapType] = useState<'roadmap' | 'satellite'>('roadmap');
-  const [zoomLevel, setZoomLevel] = useState(14);
-  const [busProgress, setBusProgress] = useState(45); // percentage along route
   const [isModalOpen, setIsModalOpen] = useState(false);
 
-  // Live Position Subscription & Lerp Interpolation
+  // Live Position Subscription & 60FPS Continuous Motion
   const {
+    displayLat,
+    displayLng,
     speedKmh,
     displayHeading,
     isConnected,
@@ -60,17 +62,49 @@ export default function LiveJourneyCard({
     targetStopLng,
   });
 
-  // Animate shuttle movement along simulated route if no raw GPS
+  const cardPins = useMemo(() => {
+    const pins: Array<{ lat: number; lng: number; label?: string; kind?: 'home' | 'school' | 'stop' }> = [];
+    if (targetStopLat != null && targetStopLng != null && Number.isFinite(targetStopLat) && Number.isFinite(targetStopLng)) {
+      pins.push({
+        lat: Number(targetStopLat),
+        lng: Number(targetStopLng),
+        label: targetStopName || 'Doorstep',
+        kind: 'home',
+      });
+    }
+    return pins;
+  }, [targetStopLat, targetStopLng, targetStopName]);
+
+  const [roadCoordinates, setRoadCoordinates] = useState<Array<{ lat: number; lng: number }>>([]);
+
   useEffect(() => {
-    if (!hasActiveJourney) return;
-    const timer = setInterval(() => {
-      setBusProgress((prev) => (prev >= 85 ? 30 : prev + 1.5));
-    }, 2000);
-    return () => clearInterval(timer);
-  }, [hasActiveJourney]);
+    let cancelled = false;
+    const waypoints: Array<{ lat: number; lng: number }> = [];
+
+    if (displayLat != null && displayLng != null && Number.isFinite(displayLat) && Number.isFinite(displayLng)) {
+      waypoints.push({ lat: displayLat, lng: displayLng });
+    }
+    if (targetStopLat != null && targetStopLng != null && Number.isFinite(targetStopLat) && Number.isFinite(targetStopLng)) {
+      waypoints.push({ lat: targetStopLat, lng: targetStopLng });
+    }
+
+    if (waypoints.length >= 2) {
+      fetchDrivingRoute(waypoints).then((pts) => {
+        if (!cancelled && pts.length >= 2) {
+          setRoadCoordinates(pts);
+        }
+      });
+    } else {
+      setRoadCoordinates([]);
+    }
+
+    return () => {
+      cancelled = true;
+    };
+  }, [displayLat, displayLng, targetStopLat, targetStopLng]);
 
   const effectiveEta = liveEta ?? etaMinutes ?? 8;
-  const effectiveSpeed = speedKmh > 0 ? `${speedKmh} km/h` : '38 km/h';
+  const effectiveSpeed = speedKmh > 0 ? `${Math.round(speedKmh)} km/h` : '38 km/h';
 
   if (!hasActiveJourney) {
     return (
@@ -127,87 +161,35 @@ export default function LiveJourneyCard({
           </span>
         </div>
 
-        {/* Google Map Visual Canvas */}
-        <div className="relative my-3 rounded-2xl overflow-hidden border border-slate-200 shadow-inner h-[150px] bg-slate-100 group">
-          {/* Map Background Tiles (Roadmap / Satellite) */}
-          <div
-            className={`absolute inset-0 transition-opacity duration-300 bg-cover bg-center ${
-              mapType === 'satellite' ? 'opacity-90' : 'opacity-100'
-            }`}
-            style={{
-              backgroundImage:
-                mapType === 'satellite'
-                  ? "linear-gradient(rgba(15, 23, 42, 0.3), rgba(15, 23, 42, 0.3)), url('https://images.unsplash.com/photo-1524661135-423995f22d0b?auto=format&fit=crop&q=80')"
-                  : "linear-gradient(rgba(248, 250, 252, 0.2), rgba(248, 250, 252, 0.2)), url('/images/background%20image.png')",
-            }}
+        {/* Real Live Leaflet Map Canvas */}
+        <div className="relative my-3 rounded-2xl overflow-hidden border border-slate-200 shadow-inner h-[175px] bg-slate-100 group">
+          <LiveVehicleMap
+            key="parent-card-live-map"
+            mapType={mapType}
+            heightClassName="h-full"
+            className="w-full h-full rounded-2xl border-0"
+            vehicleLat={displayLat}
+            vehicleLng={displayLng}
+            vehicleHeading={displayHeading}
+            vehicleSpeedKmh={speedKmh}
+            vehicleLabel={vehicleModel || 'EduRide'}
+            pins={cardPins}
+            routeCoordinates={roadCoordinates.length >= 2 ? roadCoordinates : undefined}
+            followVehicle={true}
+            hideAttribution={true}
+            showZoom={false}
+            emptyMessage="Waiting for live vehicle GPS..."
           />
 
-          {/* Google Maps Road Network Overlay Graphic */}
-          <svg className="absolute inset-0 w-full h-full pointer-events-none z-10" preserveAspectRatio="none">
-            {/* Main Highway / Route Polyline */}
-            <path
-              d="M 20,120 Q 90,40 180,80 T 320,30"
-              fill="none"
-              stroke="#10b981"
-              strokeWidth="5"
-              strokeLinecap="round"
-            />
-            {/* Active GPS Traffic Line */}
-            <path
-              d="M 20,120 Q 90,40 180,80 T 320,30"
-              fill="none"
-              stroke="#ffffff"
-              strokeWidth="2"
-              strokeDasharray="8 6"
-              className="animate-pulse"
-            />
-          </svg>
-
-          {/* Origin Marker (School) */}
-          <div className="absolute left-[8%] bottom-[12%] z-20 flex flex-col items-center">
-            <div className="w-6 h-6 rounded-full bg-blue-600 border-2 border-white shadow-md flex items-center justify-center text-white text-[9px] font-bold">
-              SCH
-            </div>
-            <span className="text-[8px] font-extrabold text-slate-800 bg-white/90 px-1 rounded shadow-2xs mt-0.5">
-              School
+          {/* Floating ETA Callout Badge */}
+          <div className="absolute right-2.5 top-2.5 bg-white/95 border border-slate-200/90 shadow-md backdrop-blur-md px-2.5 py-1 rounded-xl text-center z-30 pointer-events-none">
+            <span className="text-sm font-black text-slate-900 block leading-none">{effectiveEta}</span>
+            <span className="text-[8px] font-bold text-slate-400 uppercase tracking-wider block mt-0.5">
+              min away
             </span>
           </div>
 
-          {/* Live Shuttle Bus Moving Marker */}
-          <div
-            className="absolute z-30 transition-all duration-1000 ease-linear flex flex-col items-center -translate-x-1/2 -translate-y-1/2"
-            style={{
-              left: `${busProgress}%`,
-              top: `${60 - Math.sin((busProgress / 100) * Math.PI * 2) * 20}%`,
-            }}
-          >
-            {/* Animated Pulse Ring */}
-            <div className="absolute -inset-2 rounded-full bg-amber-400/40 animate-ping" />
-
-            {/* Bus Badge Marker */}
-            <div
-              className="relative w-8 h-8 rounded-xl bg-amber-400 border-2 border-white shadow-lg flex items-center justify-center text-slate-900 font-bold transition-transform duration-300"
-              style={{ transform: `rotate(${displayHeading || 0}deg)` }}
-            >
-              <Bus className="w-4 h-4" />
-            </div>
-
-            <span className="text-[8px] font-extrabold text-slate-900 bg-amber-300 px-1.5 py-0.5 rounded-md shadow-md mt-0.5 whitespace-nowrap">
-              {effectiveSpeed}
-            </span>
-          </div>
-
-          {/* Destination Marker (Home / Dropoff Stop) */}
-          <div className="absolute right-[8%] top-[12%] z-20 flex flex-col items-center">
-            <div className="w-6 h-6 rounded-full bg-emerald-600 border-2 border-white shadow-md flex items-center justify-center text-white">
-              <Navigation className="w-3 h-3 fill-white" />
-            </div>
-            <span className="text-[8px] font-extrabold text-slate-800 bg-white/90 px-1 rounded shadow-2xs mt-0.5">
-              Stop 3
-            </span>
-          </div>
-
-          {/* Map Type Switcher (Roadmap / Satellite) */}
+          {/* Map Type Switcher */}
           <div className="absolute left-2.5 top-2.5 z-30 flex items-center bg-white/95 rounded-lg border border-slate-200/80 p-0.5 shadow-sm text-[9px] font-bold">
             <button
               type="button"
@@ -227,46 +209,6 @@ export default function LiveJourneyCard({
             >
               Satellite
             </button>
-          </div>
-
-          {/* Map Zoom Controls */}
-          <div className="absolute right-2.5 bottom-7 z-30 flex flex-col bg-white/95 rounded-lg border border-slate-200/80 shadow-sm">
-            <button
-              type="button"
-              onClick={() => setZoomLevel((z) => Math.min(z + 1, 18))}
-              className="p-1 text-slate-600 hover:bg-slate-100 border-b border-slate-100 cursor-pointer"
-              title="Zoom In"
-            >
-              <Plus className="w-3 h-3" />
-            </button>
-            <button
-              type="button"
-              onClick={() => setZoomLevel((z) => Math.max(z - 1, 10))}
-              className="p-1 text-slate-600 hover:bg-slate-100 cursor-pointer"
-              title="Zoom Out"
-            >
-              <Minus className="w-3 h-3" />
-            </button>
-          </div>
-
-          {/* Floating ETA Callout Badge */}
-          <div className="absolute right-2.5 top-2.5 bg-white/95 border border-slate-200/90 shadow-md backdrop-blur-md px-2.5 py-1 rounded-xl text-center z-30">
-            <span className="text-sm font-black text-slate-900 block leading-none">{effectiveEta}</span>
-            <span className="text-[8px] font-bold text-slate-400 uppercase tracking-wider block mt-0.5">
-              min away
-            </span>
-          </div>
-
-          {/* Watermark (Bottom-Left) */}
-          <div className="absolute left-2.5 bottom-1.5 z-30 flex items-center gap-1 select-none pointer-events-none">
-            <span className="text-[10px] font-bold text-slate-700 tracking-tight bg-white/80 px-1 py-0.5 rounded">
-              <span className="text-blue-500">G</span>
-              <span className="text-red-500">o</span>
-              <span className="text-yellow-500">o</span>
-              <span className="text-blue-500">g</span>
-              <span className="text-green-500">l</span>
-              <span className="text-red-500">e</span> Maps
-            </span>
           </div>
         </div>
 

@@ -2,6 +2,8 @@
 
 import { useState, useEffect, useRef } from 'react';
 import { loadLeaflet } from '@/lib/leaflet-loader';
+import { VehicleMotionAnimator, MotionPoint } from '@/lib/navigation/vehicle-motion-engine';
+import { LatLngPoint } from '@/lib/navigation/road-router';
 
 export type LiveMapPin = {
   lat: number;
@@ -88,6 +90,13 @@ export default function LiveVehicleMap({
   const hasInitialFitRef = useRef<boolean>(false);
   const prevCoordRef = useRef<{ lat: number; lng: number } | null>(null);
   const lastCalculatedBearingRef = useRef<number>(0);
+  const animatorRef = useRef<VehicleMotionAnimator | null>(null);
+  const followVehicleRef = useRef<boolean>(followVehicle);
+  const lastPanTimeRef = useRef<number>(0);
+
+  useEffect(() => {
+    followVehicleRef.current = followVehicle;
+  }, [followVehicle]);
 
   // Init map once
   useEffect(() => {
@@ -104,12 +113,10 @@ export default function LiveVehicleMap({
           }
         }
         .live-vehicle-marker {
-          transition: transform 1.1s cubic-bezier(0.25, 0.1, 0.25, 1);
           will-change: transform;
           overflow: visible !important;
         }
         .live-vehicle-inner-icon {
-          transition: transform 0.5s cubic-bezier(0.34, 1.56, 0.64, 1);
           will-change: transform;
         }
       `;
@@ -159,6 +166,27 @@ export default function LiveVehicleMap({
         pinsGroupRef.current = L.layerGroup().addTo(map);
         vehicleLayerRef.current = L.layerGroup().addTo(map);
         mapRef.current = map;
+
+        const animator = new VehicleMotionAnimator((pos: MotionPoint) => {
+          if (!vehicleMarkerRef.current) return;
+          vehicleMarkerRef.current.setLatLng([pos.lat, pos.lng]);
+          const markerEl = vehicleMarkerRef.current.getElement();
+          if (markerEl) {
+            const innerIcon = markerEl.querySelector('.live-vehicle-inner-icon') as HTMLElement | null;
+            if (innerIcon) {
+              innerIcon.style.transform = `rotate(${pos.heading}deg)`;
+            }
+          }
+          if (followVehicleRef.current && mapRef.current) {
+            const now = performance.now();
+            if (now - lastPanTimeRef.current > 350) {
+              lastPanTimeRef.current = now;
+              mapRef.current.panTo([pos.lat, pos.lng], { animate: true, duration: 0.35 });
+            }
+          }
+        });
+        animatorRef.current = animator;
+
         setIsMapReady(true);
 
         // Force size recalc after layout
@@ -184,6 +212,10 @@ export default function LiveVehicleMap({
     return () => {
       cancelled = true;
       setIsMapReady(false);
+      if (animatorRef.current) {
+        animatorRef.current.stop();
+        animatorRef.current = null;
+      }
       if (mapRef.current) {
         mapRef.current.remove();
         mapRef.current = null;
@@ -286,13 +318,29 @@ export default function LiveVehicleMap({
 
     const points: [number, number][] = [];
 
-    // Priority 1: Explicit routeCoordinates passed
+    // Priority 1: Explicit routeCoordinates passed (validate geographic relevance to vehicle/pins)
     if (routeCoordinates && routeCoordinates.length >= 2) {
-      routeCoordinates.forEach((pt) => {
-        if (pt.lat != null && pt.lng != null && Number.isFinite(Number(pt.lat)) && Number.isFinite(Number(pt.lng))) {
-          points.push([Number(pt.lat), Number(pt.lng)]);
-        }
-      });
+      const refLat = vehicleLat != null ? Number(vehicleLat) : (pins[0]?.lat != null ? Number(pins[0].lat) : null);
+      const refLng = vehicleLng != null ? Number(vehicleLng) : (pins[0]?.lng != null ? Number(pins[0].lng) : null);
+
+      let isGeographicallyRelevant = true;
+      if (refLat != null && refLng != null) {
+        // Ensure at least one coordinate is within 8km
+        isGeographicallyRelevant = routeCoordinates.some((pt) => {
+          if (pt.lat == null || pt.lng == null) return false;
+          const dLat = (Number(pt.lat) - refLat) * 111.1;
+          const dLng = (Number(pt.lng) - refLng) * 111.1 * Math.cos((refLat * Math.PI) / 180);
+          return Math.hypot(dLat, dLng) <= 8;
+        });
+      }
+
+      if (isGeographicallyRelevant) {
+        routeCoordinates.forEach((pt) => {
+          if (pt.lat != null && pt.lng != null && Number.isFinite(Number(pt.lat)) && Number.isFinite(Number(pt.lng))) {
+            points.push([Number(pt.lat), Number(pt.lng)]);
+          }
+        });
+      }
     }
 
     // Priority 2: Construct active navigation route connecting vehicle to pins
@@ -326,8 +374,8 @@ export default function LiveVehicleMap({
       const vLng = Number(vehicleLng);
       const brng = Number(vehicleHeading) || lastCalculatedBearingRef.current || 35;
       const rad = (brng * Math.PI) / 180;
-      const backDist = 350; // 350m trail behind
-      const fwdDist = 950;  // 950m route line ahead
+      const backDist = 250; // 250m trail behind
+      const fwdDist = 800;  // 800m route line ahead
       const backLat = vLat - (backDist * Math.cos(rad)) / 111320;
       const backLng = vLng - (backDist * Math.sin(rad)) / (111320 * Math.cos((vLat * Math.PI) / 180));
       const fwdLat = vLat + (fwdDist * Math.cos(rad)) / 111320;
@@ -340,6 +388,14 @@ export default function LiveVehicleMap({
     }
 
     if (points.length >= 2) {
+      const latLngPoints: LatLngPoint[] = points.map(([pLat, pLng]) => ({ lat: pLat, lng: pLng }));
+      animatorRef.current?.setRoute(
+        latLngPoints,
+        vehicleLat != null && vehicleLng != null
+          ? { lat: Number(vehicleLat), lng: Number(vehicleLng) }
+          : undefined
+      );
+
       // 1. Soft glowing emerald route halo (signature Bolt style)
       L.polyline(points, {
         color: '#34D186',
@@ -414,33 +470,34 @@ export default function LiveVehicleMap({
 
     /**
      * Authentic Bolt Top-Down 3D Vehicle Icon:
-     * - Dark obsidian chassis with metallic silver contours (#0F172A & #1E293B) for supreme contrast on the green route line
+     * - Embedded directly on the road corridor, scaled to 22x40px to match standard street lane width
+     * - Dark obsidian chassis with metallic silver contours (#0F172A & #1E293B)
      * - Aerodynamic curved windshield & tinted glass panels
      * - Twin LED projector headlights with ambient forward road beam
      * - Twin ruby-red taillights
-     * - Four black rubber tires tucked under wheel arches
-     * - Centered directly on [lat, lng] (iconAnchor: [20, 36]) without artificial offsets
-     * - Floating license/speed badge positioned cleanly below without rotating or obscuring the car
+     * - Centered directly on [lat, lng] (iconAnchor: [11, 20])
+     * - Compact micro badge positioned neatly below without covering adjacent streets
      */
     const createVehicleIcon = (h: number, lbl: string) => {
       return L.divIcon({
         className: 'live-vehicle-marker',
         html: `
-          <div style="position:relative;width:40px;height:72px;display:flex;align-items:center;justify-content:center;pointer-events:none;">
-            <!-- Rotating Car Body (pivots precisely around center on the road line) -->
-            <div class="live-vehicle-inner-icon" style="position:absolute;width:40px;height:72px;display:flex;align-items:center;justify-content:center;transform:rotate(${h}deg);transform-origin:50% 50%;">
-              <svg width="40" height="72" viewBox="0 0 40 72" fill="none" xmlns="http://www.w3.org/2000/svg" style="filter:drop-shadow(0 4px 8px rgba(0,0,0,0.45));">
+          <div style="position:relative;width:22px;height:40px;display:flex;align-items:center;justify-content:center;pointer-events:none;">
+            <!-- Rotating Car Body (embedded directly on the road path) -->
+            <div class="live-vehicle-inner-icon" style="position:absolute;width:22px;height:40px;display:flex;align-items:center;justify-content:center;transform:rotate(${h}deg);transform-origin:50% 50%;">
+              <svg width="22" height="40" viewBox="0 0 40 72" fill="none" xmlns="http://www.w3.org/2000/svg" style="filter:drop-shadow(0 2px 5px rgba(0,0,0,0.45));">
                 <defs>
                   <!-- Dual Forward Headlight Road Beam -->
                   <linearGradient id="boltHeadlightBeam" x1="0%" y1="100%" x2="0%" y2="0%">
-                    <stop offset="0%" stop-color="#FFFFFF" stop-opacity="0.35"/>
+                    <stop offset="0%" stop-color="#FFFFFF" stop-opacity="0.4"/>
                     <stop offset="100%" stop-color="#FFFFFF" stop-opacity="0"/>
                   </linearGradient>
-                  <!-- Sleek Obsidian Metallic Car Body -->
+                  <!-- Crisp Pearl White / Platinum Metallic Car Body (Bolt/Uber style) -->
                   <linearGradient id="boltCarBody" x1="0%" y1="0%" x2="100%" y2="100%">
-                    <stop offset="0%" stop-color="#2D3748"/>
-                    <stop offset="35%" stop-color="#1A202C"/>
-                    <stop offset="100%" stop-color="#0F172A"/>
+                    <stop offset="0%" stop-color="#FFFFFF"/>
+                    <stop offset="30%" stop-color="#F8FAFC"/>
+                    <stop offset="70%" stop-color="#E2E8F0"/>
+                    <stop offset="100%" stop-color="#CBD5E1"/>
                   </linearGradient>
                   <!-- Tinted Glass Reflection -->
                   <linearGradient id="boltGlassGradient" x1="0%" y1="0%" x2="0%" y2="100%">
@@ -449,7 +506,7 @@ export default function LiveVehicleMap({
                   </linearGradient>
                   <!-- Windshield Cyan Sheen -->
                   <linearGradient id="boltSheen" x1="0%" y1="0%" x2="100%" y2="100%">
-                    <stop offset="0%" stop-color="#38BDF8" stop-opacity="0.4"/>
+                    <stop offset="0%" stop-color="#38BDF8" stop-opacity="0.45"/>
                     <stop offset="100%" stop-color="#38BDF8" stop-opacity="0.05"/>
                   </linearGradient>
                 </defs>
@@ -464,23 +521,26 @@ export default function LiveVehicleMap({
                 <rect x="3" y="47" width="3.5" height="11" rx="1.75" fill="#0A0E17"/>
                 <rect x="33.5" y="47" width="3.5" height="11" rx="1.75" fill="#0A0E17"/>
 
-                <!-- Side-view Mirrors -->
-                <path d="M5 23 C2.5 22 2.5 26 5 27 Z" fill="#2D3748"/>
-                <path d="M35 23 C37.5 22 37.5 26 35 27 Z" fill="#2D3748"/>
+                <!-- Side-view Mirrors (Pearl White with dark outline) -->
+                <path d="M5 23 C2.5 22 2.5 26 5 27 Z" fill="#F8FAFC" stroke="#475569" stroke-width="0.6"/>
+                <path d="M35 23 C37.5 22 37.5 26 35 27 Z" fill="#F8FAFC" stroke="#475569" stroke-width="0.6"/>
 
-                <!-- Aerodynamic Sedan Chassis -->
-                <path d="M20 9 C13 9 9 14 8 22 C7 31 7 46 8 57 C9 64 13 67 20 67 C27 67 31 64 32 57 C33 46 33 31 32 22 C31 14 27 9 20 9 Z" fill="url(#boltCarBody)" stroke="#E2E8F0" stroke-width="1.3"/>
+                <!-- Aerodynamic Sedan Chassis (Pearl White with Charcoal definition for maximum road visibility) -->
+                <path d="M20 9 C13 9 9 14 8 22 C7 31 7 46 8 57 C9 64 13 67 20 67 C27 67 31 64 32 57 C33 46 33 31 32 22 C31 14 27 9 20 9 Z" fill="url(#boltCarBody)" stroke="#334155" stroke-width="1.3"/>
+
+                <!-- Subtle Hood Crease Lines -->
+                <path d="M15 13 C17 11 23 11 25 13" stroke="#CBD5E1" stroke-width="0.8" fill="none"/>
 
                 <!-- Bolt Emerald Identity Accent Line along sides -->
-                <path d="M9 26 C9 40 9 48 10 54" stroke="#34D186" stroke-width="0.8" opacity="0.8" stroke-linecap="round"/>
-                <path d="M31 26 C31 40 31 48 30 54" stroke="#34D186" stroke-width="0.8" opacity="0.8" stroke-linecap="round"/>
+                <path d="M9 26 C9 40 9 48 10 54" stroke="#00D665" stroke-width="1.2" opacity="0.95" stroke-linecap="round"/>
+                <path d="M31 26 C31 40 31 48 30 54" stroke="#00D665" stroke-width="1.2" opacity="0.95" stroke-linecap="round"/>
 
-                <!-- Front Windshield -->
+                <!-- Front Windshield (Deep Tinted Glass with Sheen) -->
                 <path d="M12 20 C15 17 25 17 28 20 L27 30 C23 28 17 28 13 30 Z" fill="url(#boltGlassGradient)"/>
                 <path d="M13 21 C16 18 24 18 27 21 L26 25 C22 24 18 24 14 25 Z" fill="url(#boltSheen)"/>
 
-                <!-- Panoramic Roof Panel -->
-                <path d="M13.5 31 C17 29.5 23 29.5 26.5 31 L26 47 C23 48 17 48 14 47 Z" fill="#0F172A"/>
+                <!-- Panoramic Tinted Glass Roof Panel -->
+                <path d="M13.5 31 C17 29.5 23 29.5 26.5 31 L26 47 C23 48 17 48 14 47 Z" fill="#0F172A" stroke="#1E293B" stroke-width="0.5"/>
                 <line x1="15" y1="38" x2="25" y2="38" stroke="#334155" stroke-width="0.8"/>
 
                 <!-- Rear Windshield -->
@@ -498,14 +558,14 @@ export default function LiveVehicleMap({
               </svg>
             </div>
 
-            <!-- Floating Label (Never rotates with car, stays upright & legible) -->
-            <div class="live-vehicle-label" style="position:absolute;top:100%;left:50%;transform:translateX(-50%);margin-top:2px;background:rgba(15,23,42,0.88);color:#fff;font:700 9px/1.2 sans-serif;padding:2px 7px;border-radius:9999px;white-space:nowrap;border:1px solid rgba(52,209,134,0.45);box-shadow:0 3px 8px rgba(0,0,0,0.35);backdrop-filter:blur(4px);">
+            <!-- Compact Micro License/Speed Badge (Unobtrusive, fits within lane width) -->
+            <div class="live-vehicle-label" style="position:absolute;top:100%;left:50%;transform:translateX(-50%);margin-top:2px;background:rgba(15,23,42,0.88);color:#fff;font:800 7.5px/1 sans-serif;padding:1.5px 5px;border-radius:4px;white-space:nowrap;border:1px solid rgba(52,209,134,0.45);box-shadow:0 2px 4px rgba(0,0,0,0.3);letter-spacing:0.2px;">
               ${lbl}
             </div>
           </div>
         `,
-        iconSize: [40, 72],
-        iconAnchor: [20, 36],
+        iconSize: [22, 40],
+        iconAnchor: [11, 20],
       });
     };
 
@@ -521,16 +581,9 @@ export default function LiveVehicleMap({
         map.setView([lat, lng], 15);
       }
     } else {
-      // Marker already exists: Glide smoothly to new position!
-      vehicleMarkerRef.current.setLatLng([lat, lng]);
-
-      // In-place rotation & label updates without DOM teardown
+      // In-place label update without tearing down the marker DOM
       const markerEl = vehicleMarkerRef.current.getElement();
       if (markerEl) {
-        const innerIcon = markerEl.querySelector('.live-vehicle-inner-icon') as HTMLElement | null;
-        if (innerIcon) {
-          innerIcon.style.transform = `rotate(${heading}deg)`;
-        }
         const labelEl = markerEl.querySelector('.live-vehicle-label') as HTMLElement | null;
         if (labelEl && labelEl.textContent !== labelText) {
           labelEl.textContent = labelText;
@@ -538,14 +591,12 @@ export default function LiveVehicleMap({
       }
     }
 
-    // Camera following: Smooth pan to follow the vehicle without resetting zoom or jerking
-    if (followVehicle) {
-      const key = `${lat.toFixed(5)},${lng.toFixed(5)}`;
-      if (lastCenterKeyRef.current !== key) {
-        lastCenterKeyRef.current = key;
-        map.panTo([lat, lng], { animate: true, duration: 1.0, easeLinearity: 0.25 });
-      }
-    }
+    // Continuous 60FPS motion interpolation along the road network
+    animatorRef.current?.updateTargetPosition(
+      { lat, lng },
+      Number(vehicleSpeedKmh) || 0,
+      heading
+    );
   }, [
     isMapReady,
     vehicleLat,

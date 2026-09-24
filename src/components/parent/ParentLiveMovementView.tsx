@@ -28,6 +28,7 @@ import { toast } from 'sonner';
 import { photoSrc } from '@/lib/photo';
 import LiveVehicleMap from '@/components/shared/LiveVehicleMap';
 import { useLiveVehiclePosition } from '@/hooks/useLiveVehiclePosition';
+import { fetchDrivingRoute } from '@/lib/navigation/road-router';
 
 interface ParentLiveMovementViewProps {
   childrenList?: any[];
@@ -192,6 +193,38 @@ export default function ParentLiveMovementView({
       : telemetry?.currentLng != null
         ? Number(telemetry.currentLng)
         : null;
+
+  // Real road coordinates along Lagos streets connecting vehicle, doorstep, and school
+  const [roadCoordinates, setRoadCoordinates] = useState<Array<{ lat: number; lng: number }>>([]);
+
+  useEffect(() => {
+    let cancelled = false;
+    const waypoints: Array<{ lat: number; lng: number }> = [];
+
+    if (mapVehicleLat != null && mapVehicleLng != null && Number.isFinite(Number(mapVehicleLat)) && Number.isFinite(Number(mapVehicleLng))) {
+      waypoints.push({ lat: Number(mapVehicleLat), lng: Number(mapVehicleLng) });
+    }
+
+    const homePin = mapPins.find((p) => p.kind === 'home');
+    const schoolPin = mapPins.find((p) => p.kind === 'school');
+
+    if (homePin) waypoints.push({ lat: homePin.lat, lng: homePin.lng });
+    if (schoolPin) waypoints.push({ lat: schoolPin.lat, lng: schoolPin.lng });
+
+    if (waypoints.length >= 2) {
+      fetchDrivingRoute(waypoints).then((pts) => {
+        if (!cancelled && pts.length >= 2) {
+          setRoadCoordinates(pts);
+        }
+      });
+    } else {
+      setRoadCoordinates([]);
+    }
+
+    return () => {
+      cancelled = true;
+    };
+  }, [mapPins, mapVehicleLat, mapVehicleLng]);
 
   // Derive stage
   const stage = (liveData?.journeyStage || 'scheduled') as string;
@@ -504,6 +537,7 @@ export default function ParentLiveMovementView({
               vehicleSpeedKmh={vehicleSpeed}
               vehicleLabel={vehicle?.licensePlate || 'Escort'}
               pins={mapPins}
+              routeCoordinates={roadCoordinates.length >= 2 ? roadCoordinates : undefined}
               followVehicle={Boolean(hasActive && mapVehicleLat != null && mapVehicleLng != null)}
               hideAttribution
               emptyMessage={

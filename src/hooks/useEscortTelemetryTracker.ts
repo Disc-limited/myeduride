@@ -55,6 +55,7 @@ export function useEscortTelemetryTracker({
   // Gate: only broadcast once the Supabase channel has confirmed SUBSCRIBED
   const isSessionChannelReadyRef = useRef<boolean>(false);
   const isSchoolChannelReadyRef = useRef<boolean>(false);
+  const isEscortChannelReadyRef = useRef<boolean>(false);
   const latestTelemetryPointRef = useRef<TelemetryPoint | null>(null);
   const lastBroadcastHeadingRef = useRef<number>(0);
 
@@ -120,7 +121,7 @@ export function useEscortTelemetryTracker({
   }, []);
 
   useEffect(() => {
-    if (!isActive || !sessionId) {
+    if (!isActive || (!sessionId && !escortId)) {
       setIsBroadcasting(false);
       releaseWakeLock();
       if (watchIdRef.current !== null) {
@@ -170,36 +171,72 @@ export function useEscortTelemetryTracker({
     // WebSocket handshake completes are silently dropped by the Supabase Realtime SDK.
     isSessionChannelReadyRef.current = false;
     isSchoolChannelReadyRef.current = false;
+    isEscortChannelReadyRef.current = false;
 
-    const sessionChannel = supabase.channel(`tracking:session_${sessionId}`, {
-      config: { broadcast: { self: false } },
-    });
-    sessionChannel.subscribe((status) => {
-      if (status === 'SUBSCRIBED') {
-        isSessionChannelReadyRef.current = true;
-        console.log('[Tracker] Session broadcast channel ready — telemetry will now be sent');
-        // Zero-loss startup: flush latest cached telemetry fix immediately upon connection
-        if (latestTelemetryPointRef.current) {
-          sessionChannel.send({
-            type: 'broadcast',
-            event: 'telemetry_ping',
-            payload: {
-              ...latestTelemetryPointRef.current,
-              sessionId,
-              vehicleId,
-              escortId,
-              currentStopIndex,
-            },
-          });
+    const sessionChannel = sessionId
+      ? supabase.channel(`tracking:session_${sessionId}`, {
+          config: { broadcast: { self: false } },
+        })
+      : null;
+
+    if (sessionChannel) {
+      sessionChannel.subscribe((status) => {
+        if (status === 'SUBSCRIBED') {
+          isSessionChannelReadyRef.current = true;
+          console.log('[Tracker] Session broadcast channel ready');
+          if (latestTelemetryPointRef.current) {
+            sessionChannel.send({
+              type: 'broadcast',
+              event: 'telemetry_ping',
+              payload: {
+                ...latestTelemetryPointRef.current,
+                sessionId,
+                vehicleId,
+                escortId,
+                currentStopIndex,
+              },
+            });
+          }
+        } else if (status === 'CLOSED' || status === 'CHANNEL_ERROR') {
+          isSessionChannelReadyRef.current = false;
         }
-      } else if (status === 'CLOSED' || status === 'CHANNEL_ERROR') {
-        isSessionChannelReadyRef.current = false;
-      }
-    });
+      });
+    }
+
+    const escortChannel = escortId
+      ? supabase.channel(`tracking:escort_${escortId}`, {
+          config: { broadcast: { self: false } },
+        })
+      : null;
+
+    if (escortChannel) {
+      escortChannel.subscribe((status) => {
+        if (status === 'SUBSCRIBED') {
+          isEscortChannelReadyRef.current = true;
+          console.log('[Tracker] Escort broadcast channel ready');
+          if (latestTelemetryPointRef.current) {
+            escortChannel.send({
+              type: 'broadcast',
+              event: 'telemetry_ping',
+              payload: {
+                ...latestTelemetryPointRef.current,
+                sessionId,
+                vehicleId,
+                escortId,
+                currentStopIndex,
+              },
+            });
+          }
+        } else if (status === 'CLOSED' || status === 'CHANNEL_ERROR') {
+          isEscortChannelReadyRef.current = false;
+        }
+      });
+    }
 
     const schoolChannel = schoolId
       ? supabase.channel(`tracking:school_${schoolId}`, { config: { broadcast: { self: false } } })
       : null;
+
     if (schoolChannel) {
       schoolChannel.subscribe((status) => {
         isSchoolChannelReadyRef.current = status === 'SUBSCRIBED';
@@ -290,8 +327,23 @@ export function useEscortTelemetryTracker({
 
       // 1. Fast Ephemeral WebSocket Broadcast (Sub-second latency)
       // Only send once the channel is confirmed SUBSCRIBED — un-subscribed sends are silently dropped.
-      if (isSessionChannelReadyRef.current) {
+      if (sessionChannel && isSessionChannelReadyRef.current) {
         sessionChannel.send({
+          type: 'broadcast',
+          event: 'telemetry_ping',
+          payload: {
+            ...telemetryPoint,
+            sessionId,
+            vehicleId,
+            escortId,
+            currentStopIndex,
+          },
+        });
+        broadcastSent = true;
+      }
+
+      if (escortChannel && isEscortChannelReadyRef.current) {
+        escortChannel.send({
           type: 'broadcast',
           event: 'telemetry_ping',
           payload: {
@@ -326,7 +378,7 @@ export function useEscortTelemetryTracker({
       }
 
       // 2. Periodic Database Sync (every ~12 seconds)
-      if (now - lastDbSyncTimeRef.current > 12000) {
+      if (sessionId && now - lastDbSyncTimeRef.current > 12000) {
         lastDbSyncTimeRef.current = now;
         try {
           await supabase
@@ -473,7 +525,8 @@ export function useEscortTelemetryTracker({
         stopForegroundTracking().catch(() => {});
       }
       releaseWakeLock();
-      sessionChannel.unsubscribe();
+      sessionChannel?.unsubscribe();
+      escortChannel?.unsubscribe();
       schoolChannel?.unsubscribe();
       setIsBroadcasting(false);
     };
