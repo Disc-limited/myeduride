@@ -58,10 +58,10 @@ export default function SafetyConnectView({
   const [bookingModalOpen, setBookingModalOpen] = useState(false);
   const [liveRadarOpen, setLiveRadarOpen] = useState(false);
   const [bookingForm, setBookingForm] = useState({
-    operating_area: 'Victoria Island / Oniru / Lekki',
+    operating_area: '',
     pickup_date: new Date().toISOString().split('T')[0],
     pickup_time: '03:30 PM',
-    pickup_location: '1044 Ademola Adetokunbo St, Victoria Island',
+    pickup_location: '',
     reason: 'School Escort Unavailable / Urgent Leave',
   });
   const [submittingBooking, setSubmittingBooking] = useState(false);
@@ -700,12 +700,36 @@ export default function SafetyConnectView({
         <LiveJourneyModal
           isOpen={liveRadarOpen}
           onClose={() => setLiveRadarOpen(false)}
-          childName={selectedChildObj ? `${selectedChildObj.first_name} ${selectedChildObj.last_name}` : 'Student'}
-          escortName={activeBooking?.escort_name || data?.school_escort?.full_name || 'Assigned Escort'}
-          escortCode={activeBooking?.escort_id ? `ESC-${String(activeBooking.escort_id).slice(0, 4).toUpperCase()}` : '—'}
-          vehicleModel={activeBooking?.vehicle_plate || data?.school_escort?.vehicle?.make_model || '—'}
-          licensePlate={activeBooking?.vehicle_plate || '—'}
-          routeName={activeBooking?.operating_area || data?.school_escort?.route?.name || 'Assigned route'}
+          childName={
+            data?.child
+              ? `${data.child.first_name || ''} ${data.child.last_name || ''}`.trim()
+              : selectedChildObj
+                ? `${selectedChildObj.first_name || ''} ${selectedChildObj.last_name || ''}`.trim()
+                : ''
+          }
+          schoolName={
+            data?.school?.name ||
+            (selectedChildObj as any)?.school?.name ||
+            (selectedChildObj as any)?.schools?.name ||
+            ''
+          }
+          schoolAddress={
+            data?.school?.location_address ||
+            data?.school?.address ||
+            (selectedChildObj as any)?.school?.address ||
+            ''
+          }
+          schoolLat={data?.school?.gps_lat != null ? Number(data.school.gps_lat) : ((selectedChildObj as any)?.school?.gps_lat != null ? Number((selectedChildObj as any).school.gps_lat) : null)}
+          schoolLng={data?.school?.gps_lng != null ? Number(data.school.gps_lng) : ((selectedChildObj as any)?.school?.gps_lng != null ? Number((selectedChildObj as any).school.gps_lng) : null)}
+          houseAddress={data?.child?.house_address || selectedChildObj?.house_address || ''}
+          houseLat={data?.child?.house_lat != null ? Number(data.child.house_lat) : (selectedChildObj?.house_lat != null ? Number(selectedChildObj.house_lat) : null)}
+          houseLng={data?.child?.house_lng != null ? Number(data.child.house_lng) : (selectedChildObj?.house_lng != null ? Number(selectedChildObj.house_lng) : null)}
+          escortName={activeBooking?.escort_name || data?.school_escort?.full_name || ''}
+          escortCode={activeBooking?.escort_id ? `ESC-${String(activeBooking.escort_id).slice(0, 4).toUpperCase()}` : ''}
+          escortPhone={activeBooking?.escort_phone || data?.school_escort?.phone || ''}
+          vehicleModel={activeBooking?.vehicle_plate || data?.school_escort?.vehicle?.make_model || ''}
+          licensePlate={activeBooking?.vehicle_plate || data?.school_escort?.vehicle?.reg_number || ''}
+          routeName={activeBooking?.operating_area || data?.school_escort?.route?.name || ''}
           sessionId={data?.edrive?.trip_id || undefined}
         />
           </>
@@ -785,7 +809,7 @@ export default function SafetyConnectView({
                 <label className="block font-bold text-slate-700 mb-1">Pickup Address / Stop Location</label>
                 <input
                   type="text"
-                  placeholder="e.g. 1044 Ademola Adetokunbo St, Victoria Island"
+                  placeholder="e.g. Student doorstep or estate pickup point"
                   value={bookingForm.pickup_location}
                   onChange={(e) => setBookingForm({ ...bookingForm, pickup_location: e.target.value })}
                   className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl"

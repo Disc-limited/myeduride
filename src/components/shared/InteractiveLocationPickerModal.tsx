@@ -52,9 +52,17 @@ export default function InteractiveLocationPickerModal({
   schoolName,
   onLocationSaved,
 }: LocationPickerProps) {
-  // Default coordinates: Lagos, Nigeria (approx center)
-  const defaultLat = initialLat || 6.4474;
-  const defaultLng = initialLng || 3.4731;
+  // Default coordinates: Grounded in child/school coordinates, or city center
+  const defaultLat =
+    initialLat ||
+    child?.house_lat ||
+    child?.school?.gps_lat ||
+    6.5655;
+  const defaultLng =
+    initialLng ||
+    child?.house_lng ||
+    child?.school?.gps_lng ||
+    3.2931;
 
   const [coords, setCoords] = useState<{ lat: number; lng: number }>({
     lat: defaultLat,

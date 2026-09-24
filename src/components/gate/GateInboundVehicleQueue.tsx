@@ -30,54 +30,11 @@ interface InboundVehicle {
   lastPing: string;
 }
 
-const DEFAULT_INBOUND: InboundVehicle[] = [
-  {
-    id: 'inb-1',
-    vehicleReg: 'LAG-205-XC',
-    vehicleModel: 'Toyota Hiace (18-Seater)',
-    driverName: 'Mr. Segun Adeyemi',
-    driverPhone: '+234 809 777 8899',
-    escortName: 'Officer Chinedu Eze',
-    routeName: 'Route 3: Gbagada - Ogudu',
-    distanceToGateMeters: 400,
-    etaMinutes: 1,
-    studentCount: 14,
-    status: 'at_gate',
-    lastPing: 'Just now',
-  },
-  {
-    id: 'inb-2',
-    vehicleReg: 'LAG-412-XA',
-    vehicleModel: 'Toyota Coaster (30-Seater)',
-    driverName: 'Mr. Babatunde Lawal',
-    driverPhone: '+234 803 111 2233',
-    escortName: 'Officer John Okonkwo',
-    routeName: 'Route 1: Ikeja Express',
-    distanceToGateMeters: 1200,
-    etaMinutes: 4,
-    studentCount: 22,
-    status: 'approaching',
-    lastPing: '2s ago',
-  },
-  {
-    id: 'inb-3',
-    vehicleReg: 'LAG-731-XD',
-    vehicleModel: 'Nissan Civilian (24-Seater)',
-    driverName: 'Mr. Joshua Adams',
-    driverPhone: '+234 814 333 4455',
-    escortName: 'Officer Blessing Danjuma',
-    routeName: 'Route 4: Yaba - Magodo',
-    distanceToGateMeters: 2400,
-    etaMinutes: 8,
-    studentCount: 18,
-    status: 'approaching',
-    lastPing: '4s ago',
-  },
-];
+const DEFAULT_INBOUND: InboundVehicle[] = [];
 
 export default function GateInboundVehicleQueue({
   schoolId,
-  schoolName = 'EduRide Academy',
+  schoolName = '',
 }: {
   schoolId?: string;
   schoolName?: string;
@@ -123,6 +80,13 @@ export default function GateInboundVehicleQueue({
 
       {/* Inbound Vehicles List */}
       <div className="space-y-3">
+        {inboundQueue.length === 0 && (
+          <div className="py-8 text-center bg-slate-50/80 rounded-2xl border border-slate-200 p-4">
+            <Bus className="w-8 h-8 text-slate-300 mx-auto mb-2" />
+            <p className="text-sm font-bold text-slate-700">No Vehicles Inbound</p>
+            <p className="text-xs text-slate-500 mt-0.5">Active shuttles approaching campus will appear here automatically.</p>
+          </div>
+        )}
         {inboundQueue.map((item) => {
           const isAtGate = item.status === 'at_gate';
           const isCleared = item.status === 'cleared';

@@ -280,7 +280,7 @@ export default function EscortTripsView({
               </span>
             </div>
             <p className="text-xs text-slate-500 font-medium flex flex-wrap items-center gap-2">
-              <span>Vehicle: <strong className="text-slate-800 font-bold">{vehicle.vehicle_name || vehicle.name || 'HiAce Bus'}</strong> ({vehicle.plate_number || vehicle.regNumber || 'LAG-104-ED'})</span>
+              <span>Vehicle: <strong className="text-slate-800 font-bold">{vehicle.vehicle_name || vehicle.name || 'Transit Shuttle'}</strong> ({vehicle.plate_number || vehicle.regNumber || 'Plate Pending'})</span>
               <span>•</span>
               <span>Capacity: <strong className="text-slate-800 font-bold">{vehicle.capacity || 14} Seats</strong></span>
               <span>•</span>

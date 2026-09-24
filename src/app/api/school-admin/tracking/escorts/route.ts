@@ -103,8 +103,8 @@ export async function GET(request: NextRequest) {
       .eq('id', primarySchoolId)
       .maybeSingle();
 
-    const schoolLat = school?.gps_lat ? Number(school.gps_lat) : 6.4474;
-    const schoolLng = school?.gps_lng ? Number(school.gps_lng) : 3.4731;
+    const schoolLat = school?.gps_lat ? Number(school.gps_lat) : null;
+    const schoolLng = school?.gps_lng ? Number(school.gps_lng) : null;
 
     // 2. Fetch Escort Assignments strictly for this school
     const { data: assignmentsData, error: assignErr } = await supabase
@@ -319,10 +319,10 @@ export async function GET(request: NextRequest) {
         sessionId: sessionRow?.id || null,
         escortUserId: app.user_id || sessionRow?.escort_user_id || null,
         escortName: app.fullName || app.name || 'Assigned Escort',
-        escortPhone: app.phone || '+234 800 000 0000',
+        escortPhone: app.phone || '',
         escortPhoto: app.photo || null,
         escortType,
-        vehiclePlate: vehicle?.reg_number || app.regNumber || 'LAG-412-XA',
+        vehiclePlate: vehicle?.reg_number || app.regNumber || 'Plate Pending',
         vehicleModel: vehicle
           ? `${vehicle.make || ''} ${vehicle.model || ''}`.trim()
           : (app.make && app.model ? `${app.make} ${app.model}` : 'Verified Shuttle'),

@@ -1415,8 +1415,20 @@ export async function POST(request: NextRequest) {
           primarySchoolId || appRow?.primary_school_id || appRow?.school_id || null;
 
         if (isReady && schoolForSession) {
-          const initialLat = appRow?.house_lat ? Number(appRow.house_lat) : 6.4474;
-          const initialLng = appRow?.house_lng ? Number(appRow.house_lng) : 3.4731;
+          let initialLat = appRow?.house_lat ? Number(appRow.house_lat) : null;
+          let initialLng = appRow?.house_lng ? Number(appRow.house_lng) : null;
+
+          if (initialLat == null || initialLng == null) {
+            const { data: schRow } = await supabase
+              .from('schools')
+              .select('gps_lat, gps_lng')
+              .eq('id', schoolForSession)
+              .maybeSingle();
+            if (schRow?.gps_lat && schRow?.gps_lng) {
+              initialLat = Number(schRow.gps_lat);
+              initialLng = Number(schRow.gps_lng);
+            }
+          }
 
           // Close prior live sessions before opening a new ready session
           await supabase

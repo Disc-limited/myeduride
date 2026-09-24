@@ -231,8 +231,8 @@ export default function LiveEscortMovementTrackingPage() {
           mapInstanceRef.current = null;
         }
 
-        const centerLat = schoolData?.gps_lat || selectedEscort?.currentLat || 6.4474;
-        const centerLng = schoolData?.gps_lng || selectedEscort?.currentLng || 3.4731;
+        const centerLat = schoolData?.gps_lat || selectedEscort?.currentLat || 6.5655;
+        const centerLng = schoolData?.gps_lng || selectedEscort?.currentLng || 3.2931;
 
         const map = L.map(mapContainerRef.current, {
           center: [centerLat, centerLng],

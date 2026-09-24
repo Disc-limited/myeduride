@@ -1093,13 +1093,23 @@ function CityManagerDashboardContent() {
                   </h4>
                   <p><strong className="text-slate-400">Home Address:</strong> {selectedApp.address || <span className="text-slate-600 italic">Not provided</span>}</p>
                   <p><strong className="text-slate-400">City / State:</strong> <span className="text-white font-bold">{[selectedApp.city, selectedApp.state].filter(Boolean).join(', ') || 'Lagos, Nigeria'}</span></p>
-                  <div className="mt-1 p-2 rounded-lg bg-emerald-950/60 border border-emerald-500/30 text-[11px] text-emerald-300 font-mono font-bold flex items-center justify-between">
-                    <span className="flex items-center gap-1">
-                      <MapPin size={12} className="text-emerald-400" />
-                      Pinned GPS: {selectedApp.pinnedGpsLocation?.lat || 6.5244}, {selectedApp.pinnedGpsLocation?.lng || 3.3792}
-                    </span>
-                    <span className="text-[9px] font-extrabold bg-emerald-600 text-white px-1.5 py-0.5 rounded uppercase">PINNED ✓</span>
-                  </div>
+                  {selectedApp.pinnedGpsLocation?.lat != null ? (
+                    <div className="mt-1 p-2 rounded-lg bg-emerald-950/60 border border-emerald-500/30 text-[11px] text-emerald-300 font-mono font-bold flex items-center justify-between">
+                      <span className="flex items-center gap-1">
+                        <MapPin size={12} className="text-emerald-400" />
+                        Pinned GPS: {Number(selectedApp.pinnedGpsLocation.lat).toFixed(5)}, {Number(selectedApp.pinnedGpsLocation.lng).toFixed(5)}
+                      </span>
+                      <span className="text-[9px] font-extrabold bg-emerald-600 text-white px-1.5 py-0.5 rounded uppercase">PINNED ✓</span>
+                    </div>
+                  ) : (
+                    <div className="mt-1 p-2 rounded-lg bg-slate-800/60 border border-slate-700/50 text-[11px] text-slate-400 font-mono flex items-center justify-between">
+                      <span className="flex items-center gap-1">
+                        <MapPin size={12} className="text-slate-500" />
+                        GPS Pin: Not Set
+                      </span>
+                      <span className="text-[9px] font-bold bg-slate-700 text-slate-300 px-1.5 py-0.5 rounded">UNPINNED</span>
+                    </div>
+                  )}
                 </div>
 
                 {/* Box 3: Vehicle Info & Photographs */}

@@ -100,10 +100,21 @@ export default function MyEduRideEscortManagementPage() {
   const selectedStudentObj = students.find((s: any) => s.id === selectedStudentId);
   const computeLivePreview = () => {
     if (!selectedStudentObj) return null;
-    const sLat = school?.gps_lat || 6.435;
-    const sLng = school?.gps_lng || 3.48;
-    const hLat = selectedStudentObj.house_lat || 6.45;
-    const hLng = selectedStudentObj.house_lng || 3.52;
+    const sLat = school?.gps_lat ? Number(school.gps_lat) : null;
+    const sLng = school?.gps_lng ? Number(school.gps_lng) : null;
+    const hLat = selectedStudentObj.house_lat ? Number(selectedStudentObj.house_lat) : null;
+    const hLng = selectedStudentObj.house_lng ? Number(selectedStudentObj.house_lng) : null;
+
+    if (!sLat || !sLng || !hLat || !hLng) {
+      return {
+        distanceKm: null,
+        morningFare: 0,
+        afternoonFare: 0,
+        dailyFare: 0,
+        houseAddress: selectedStudentObj.house_address || 'Designated Home Residence',
+        isUnpinned: true,
+      };
+    }
 
     const R = 6371; // Earth's radius in km
     const dLat = ((hLat - sLat) * Math.PI) / 180;
@@ -129,6 +140,7 @@ export default function MyEduRideEscortManagementPage() {
       afternoonFare,
       dailyFare,
       houseAddress: selectedStudentObj.house_address || 'Designated Home Residence',
+      isUnpinned: false,
     };
   };
 

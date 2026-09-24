@@ -386,8 +386,8 @@ export async function GET(request: NextRequest) {
         id: escortProfile?.id || currentUserId,
         code: escortProfile?.escort_code || 'ESCORT',
         full_name: currentUserName,
-        vehicle_reg: escortProfile?.vehicle?.regNumber || escortProfile?.regNumber || 'LAG-104-ED',
-        operating_area: escortProfile?.operating_area || 'Lagos Central',
+        vehicle_reg: escortProfile?.vehicle?.regNumber || escortProfile?.regNumber || 'Plate Pending',
+        operating_area: escortProfile?.operating_area || 'Transit Zone',
       },
       channels: {
         parents: parentChannels,

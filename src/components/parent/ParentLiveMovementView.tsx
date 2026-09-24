@@ -101,6 +101,7 @@ export default function ParentLiveMovementView({
   }, [safeChildren, selectedChildId]);
 
   const hasActive = Boolean(liveData?.hasActiveJourney);
+  const todayTrip = liveData?.todayTrip;
   const telemetry = liveData?.telemetry;
   const route = liveData?.route;
   const escort = liveData?.escort;
@@ -121,8 +122,8 @@ export default function ParentLiveMovementView({
     vehicleId: vehicle?.id || null,
     targetStopLat: child?.houseLat ?? undefined,
     targetStopLng: child?.houseLng ?? undefined,
-    initialLat: telemetry?.currentLat ?? child?.houseLat ?? child?.schoolLat ?? 6.5244,
-    initialLng: telemetry?.currentLng ?? child?.houseLng ?? child?.schoolLng ?? 3.3792,
+    initialLat: telemetry?.currentLat ?? null,
+    initialLng: telemetry?.currentLng ?? null,
     initialPingAt: telemetry?.lastPingAt ?? null,
     onApproachingStop: handleApproachingStop,
   });
@@ -173,7 +174,7 @@ export default function ParentLiveMovementView({
       pins.push({
         lat: schoolLat,
         lng: schoolLng,
-        label: child?.schoolName || child?.school_name || 'School',
+        label: child?.schoolName || child?.school_name || activeChild?.school?.name || (activeChild as any)?.schools?.name || 'School Gate',
         kind: 'school',
       });
     }
@@ -194,22 +195,40 @@ export default function ParentLiveMovementView({
         ? Number(telemetry.currentLng)
         : null;
 
-  // Real road coordinates along Lagos streets connecting vehicle, doorstep, and school
+  // Derive journey stage
+  const stage = (liveData?.journeyStage || 'scheduled') as string;
+
+  // Real road coordinates along streets connecting vehicle, doorstep, and school
   const [roadCoordinates, setRoadCoordinates] = useState<Array<{ lat: number; lng: number }>>([]);
 
   useEffect(() => {
     let cancelled = false;
-    const waypoints: Array<{ lat: number; lng: number }> = [];
 
-    if (mapVehicleLat != null && mapVehicleLng != null && Number.isFinite(Number(mapVehicleLat)) && Number.isFinite(Number(mapVehicleLng))) {
-      waypoints.push({ lat: Number(mapVehicleLat), lng: Number(mapVehicleLng) });
+    // Student is safe in school or at home: no active navigation polyline across roads
+    if (stage === 'in_class' || stage === 'at_school_gate' || stage === 'delivered_home') {
+      setRoadCoordinates([]);
+      return;
     }
+
+    // Only draw driving navigation route if there is an active journey with real vehicle coordinates
+    if (!hasActive || mapVehicleLat == null || mapVehicleLng == null) {
+      setRoadCoordinates([]);
+      return;
+    }
+
+    const waypoints: Array<{ lat: number; lng: number }> = [];
+    waypoints.push({ lat: Number(mapVehicleLat), lng: Number(mapVehicleLng) });
 
     const homePin = mapPins.find((p) => p.kind === 'home');
     const schoolPin = mapPins.find((p) => p.kind === 'school');
 
-    if (homePin) waypoints.push({ lat: homePin.lat, lng: homePin.lng });
-    if (schoolPin) waypoints.push({ lat: schoolPin.lat, lng: schoolPin.lng });
+    if (stage === 'afternoon_transit' && homePin) {
+      waypoints.push({ lat: homePin.lat, lng: homePin.lng });
+    } else if (schoolPin) {
+      waypoints.push({ lat: schoolPin.lat, lng: schoolPin.lng });
+    } else if (homePin) {
+      waypoints.push({ lat: homePin.lat, lng: homePin.lng });
+    }
 
     if (waypoints.length >= 2) {
       fetchDrivingRoute(waypoints).then((pts) => {
@@ -224,10 +243,7 @@ export default function ParentLiveMovementView({
     return () => {
       cancelled = true;
     };
-  }, [mapPins, mapVehicleLat, mapVehicleLng]);
-
-  // Derive stage
-  const stage = (liveData?.journeyStage || 'scheduled') as string;
+  }, [mapPins, mapVehicleLat, mapVehicleLng, hasActive, stage]);
   const STAGE_CONFIGS: Record<string, { title: string; subtitle: string; badgeColor: string; dotColor: string }> = {
     scheduled: {
       title: 'Scheduled Route Active',
@@ -531,23 +547,26 @@ export default function ParentLiveMovementView({
               key={`parent-live-map-${selectedChildId || 'child'}`}
               mapType={mapType}
               heightClassName="h-[360px] sm:h-[440px]"
-              vehicleLat={mapVehicleLat}
-              vehicleLng={mapVehicleLng}
+              vehicleLat={hasActive ? mapVehicleLat : null}
+              vehicleLng={hasActive ? mapVehicleLng : null}
               vehicleHeading={vehicleHeading}
               vehicleSpeedKmh={vehicleSpeed}
               vehicleLabel={vehicle?.licensePlate || 'Escort'}
               pins={mapPins}
+              centerPinKind={stage === 'in_class' || stage === 'at_school_gate' ? 'school' : stage === 'delivered_home' ? 'home' : undefined}
               routeCoordinates={roadCoordinates.length >= 2 ? roadCoordinates : undefined}
               followVehicle={Boolean(hasActive && mapVehicleLat != null && mapVehicleLng != null)}
               hideAttribution
               emptyMessage={
                 mapPins.length === 0
                   ? 'Pin your house doorstep to centre the map. Street map is still live below.'
-                  : hasActive
-                    ? 'Waiting for escort GPS pings…'
+                  : stage === 'in_class'
+                    ? `Safe on Campus — ${child?.schoolName || 'School'}`
                     : stage === 'delivered_home'
                       ? 'Safe home delivery completed — child has safely arrived home.'
-                      : 'No active trip — showing doorstep and school pins.'
+                      : hasActive
+                        ? 'Waiting for escort GPS pings…'
+                        : `Transit corridor between doorstep and ${child?.schoolName || 'School'}`
               }
             />
 
@@ -736,7 +755,7 @@ export default function ParentLiveMovementView({
                 </h3>
               </div>
               <span className="text-slate-500 text-[10px] font-bold">
-                {route?.stops?.length || 4} Checkpoints
+                {route?.stops?.length || 3} Checkpoints
               </span>
             </div>
 
@@ -744,53 +763,116 @@ export default function ParentLiveMovementView({
             <div className="space-y-3 relative before:absolute before:left-3 before:top-2 before:bottom-2 before:w-0.5 before:bg-slate-100">
               {/* Checkpoint 1: Home Doorstep */}
               <div className="flex items-start gap-3 relative z-10 text-xs">
-                <div className="w-6 h-6 rounded-full bg-emerald-500 text-white flex items-center justify-center shadow-xs shrink-0 mt-0.5">
+                <div
+                  className={`w-6 h-6 rounded-full flex items-center justify-center shadow-xs shrink-0 mt-0.5 ${
+                    stage === 'in_class' || stage === 'at_school_gate' || stage === 'delivered_home'
+                      ? 'bg-emerald-500 text-white'
+                      : stage === 'pickup_in_progress' && !todayTrip?.morning_picked_up
+                        ? 'bg-sky-500 text-white ring-4 ring-sky-100 animate-pulse'
+                        : 'bg-emerald-500 text-white'
+                  }`}
+                >
                   <CheckCircle2 className="w-3.5 h-3.5" />
                 </div>
-                <div className="flex-1">
+                <div className="flex-1 min-w-0">
                   <div className="flex items-center justify-between">
                     <p className="font-bold text-slate-900">Doorstep Pickup</p>
-                    <span className="text-[10px] text-emerald-700 font-bold font-mono">07:05 AM</span>
+                    <span className="text-[10px] text-emerald-700 font-bold font-mono">
+                      {stage === 'in_class' || stage === 'at_school_gate' || stage === 'delivered_home'
+                        ? 'Completed'
+                        : stage === 'pickup_in_progress'
+                          ? 'In Progress'
+                          : route?.departureMorning || '07:05 AM'}
+                    </span>
                   </div>
-                  <p className="text-[11px] text-slate-500">
+                  <p className="text-[11px] text-slate-500 truncate">
                     {child?.houseAddress || 'Child Residence Landmark'}
                   </p>
                 </div>
               </div>
 
-              {/* Checkpoint 2: Transit Corridor Intersection */}
+              {/* Checkpoint 2: Transit Corridor */}
               <div className="flex items-start gap-3 relative z-10 text-xs">
-                <div className="w-6 h-6 rounded-full bg-sky-500 text-white flex items-center justify-center shadow-xs shrink-0 mt-0.5 ring-4 ring-sky-100 animate-pulse">
+                <div
+                  className={`w-6 h-6 rounded-full flex items-center justify-center shadow-xs shrink-0 mt-0.5 ${
+                    stage === 'in_class' || stage === 'at_school_gate' || stage === 'delivered_home'
+                      ? 'bg-emerald-500 text-white'
+                      : hasActive
+                        ? 'bg-sky-500 text-white ring-4 ring-sky-100 animate-pulse'
+                        : 'bg-slate-200 text-slate-500'
+                  }`}
+                >
                   <Bus className="w-3 h-3" />
                 </div>
-                <div className="flex-1">
+                <div className="flex-1 min-w-0">
                   <div className="flex items-center justify-between">
-                    <p className="font-bold text-slate-900">Main Transit Corridor</p>
-                    <span className="text-[10px] text-sky-600 font-bold font-mono">In Progress</span>
+                    <p className="font-bold text-slate-900">
+                      {stage === 'afternoon_transit' ? 'Return Transit Corridor' : 'School Transit Corridor'}
+                    </p>
+                    <span
+                      className={`text-[10px] font-bold font-mono ${
+                        stage === 'in_class' || stage === 'delivered_home'
+                          ? 'text-emerald-700'
+                          : hasActive
+                            ? 'text-sky-600'
+                            : 'text-slate-400'
+                      }`}
+                    >
+                      {stage === 'in_class' || stage === 'delivered_home'
+                        ? 'Completed'
+                        : hasActive
+                          ? 'In Transit'
+                          : 'Standby'}
+                    </span>
                   </div>
-                  <p className="text-[11px] text-slate-500">
-                    Express Corridor junction
+                  <p className="text-[11px] text-slate-500 truncate">
                     {hasActive && vehicleSpeed
-                      ? ` • ${Math.round(vehicleSpeed)} km/h`
-                      : hasActive
-                        ? ' • In transit'
-                        : ''}
+                      ? `Speed: ${Math.round(vehicleSpeed)} km/h • Live Escort GPS`
+                      : stage === 'in_class'
+                        ? 'Safely completed morning transit'
+                        : stage === 'delivered_home'
+                          ? 'Safely completed afternoon transit'
+                          : 'Awaiting scheduled departure'}
                   </p>
                 </div>
               </div>
 
-              {/* Checkpoint 3: School Arrival Gate */}
+              {/* Checkpoint 3: School Arrival Gate & Campus */}
               <div className="flex items-start gap-3 relative z-10 text-xs">
-                <div className="w-6 h-6 rounded-full bg-slate-200 text-slate-500 flex items-center justify-center shrink-0 mt-0.5">
+                <div
+                  className={`w-6 h-6 rounded-full flex items-center justify-center shrink-0 mt-0.5 ${
+                    stage === 'in_class' || stage === 'at_school_gate'
+                      ? 'bg-emerald-600 text-white ring-4 ring-emerald-100 shadow-sm'
+                      : stage === 'delivered_home'
+                        ? 'bg-emerald-500 text-white'
+                        : 'bg-slate-200 text-slate-500'
+                  }`}
+                >
                   <School className="w-3 h-3" />
                 </div>
-                <div className="flex-1">
+                <div className="flex-1 min-w-0">
                   <div className="flex items-center justify-between">
-                    <p className="font-bold text-slate-700">School Gate Delivery</p>
-                    <span className="text-[10px] text-slate-400 font-mono">07:45 AM</span>
+                    <p className="font-bold text-slate-900">
+                      {stage === 'in_class' ? 'Safe on Campus / In Class' : 'School Gate Reception'}
+                    </p>
+                    <span
+                      className={`text-[10px] font-mono font-bold ${
+                        stage === 'in_class' || stage === 'at_school_gate'
+                          ? 'text-emerald-700'
+                          : 'text-slate-400'
+                      }`}
+                    >
+                      {stage === 'in_class'
+                        ? 'Safe In Class'
+                        : stage === 'at_school_gate'
+                          ? 'At Gate'
+                          : stage === 'delivered_home'
+                            ? 'Departed 02:30 PM'
+                            : '07:35 AM'}
+                    </span>
                   </div>
-                  <p className="text-[11px] text-slate-500">
-                    {child?.schoolName || 'Campus Main Gate Reception'}
+                  <p className="text-[11px] text-slate-500 truncate">
+                    {child?.schoolName || 'Campus Main Reception'}
                   </p>
                 </div>
               </div>

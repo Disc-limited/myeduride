@@ -25,6 +25,7 @@ export type LiveVehicleMapProps = {
   routeCoordinates?: Array<{ lat: number; lng: number }>;
   followVehicle?: boolean;
   emptyMessage?: string;
+  centerPinKind?: 'home' | 'school' | 'stop';
   /** Hide OSM/Leaflet footer attribution for a clean map chrome (default true). */
   hideAttribution?: boolean;
   showZoom?: boolean;
@@ -74,6 +75,7 @@ export default function LiveVehicleMap({
   routeCoordinates,
   followVehicle = true,
   emptyMessage = 'Waiting for live GPS coordinates…',
+  centerPinKind,
   hideAttribution = true,
   showZoom = true,
 }: LiveVehicleMapProps) {
@@ -128,14 +130,16 @@ export default function LiveVehicleMap({
         if (cancelled || !containerRef.current || mapRef.current) return;
         leafletRef.current = L;
 
+        const schoolOrHomePin = pins.find((p) => p.kind === 'school' && p.lat != null) || pins.find((p) => p.lat != null);
+        const focalSeed = centerPinKind ? pins.find((p) => p.kind === centerPinKind && p.lat != null) : null;
         const seedLat =
           vehicleLat != null
             ? Number(vehicleLat)
-            : pins.find((p) => p.lat != null)?.lat ?? 6.5244;
+            : (focalSeed?.lat != null ? Number(focalSeed.lat) : (schoolOrHomePin?.lat ?? 6.5655));
         const seedLng =
           vehicleLng != null
             ? Number(vehicleLng)
-            : pins.find((p) => p.lng != null)?.lng ?? 3.3792;
+            : (focalSeed?.lng != null ? Number(focalSeed.lng) : (schoolOrHomePin?.lng ?? 3.2931));
 
         const map = L.map(containerRef.current, {
           center: [seedLat, seedLng],
@@ -294,19 +298,27 @@ export default function LiveVehicleMap({
       L.marker([lat, lng], { icon }).addTo(group);
     });
 
-    // Fit overview bounds ONCE when pins are loaded
-    if (!hasInitialFitRef.current && bounds.length >= 2) {
-      try {
-        hasInitialFitRef.current = true;
-        map.fitBounds(bounds, { padding: [48, 48], maxZoom: 15 });
-      } catch {
-        /* ignore */
+    // Dynamic centering when not actively following vehicle
+    if (!followVehicleRef.current || vehicleLat == null) {
+      if (centerPinKind) {
+        const focal = pins.find((p) => p.kind === centerPinKind && p.lat != null && p.lng != null);
+        if (focal) {
+          map.setView([Number(focal.lat), Number(focal.lng)], 16);
+          return;
+        }
       }
-    } else if (!hasInitialFitRef.current && bounds.length === 1) {
-      hasInitialFitRef.current = true;
-      map.setView(bounds[0], 14);
+
+      if (bounds.length >= 2) {
+        try {
+          map.fitBounds(bounds, { padding: [48, 48], maxZoom: 15 });
+        } catch {
+          /* ignore */
+        }
+      } else if (bounds.length === 1) {
+        map.setView(bounds[0], 15);
+      }
     }
-  }, [isMapReady, pins]);
+  }, [isMapReady, pins, centerPinKind]);
 
   // LAYER 2: Bolt Active Route Polyline Path (Signature Vibrant Green Corridor)
   useEffect(() => {

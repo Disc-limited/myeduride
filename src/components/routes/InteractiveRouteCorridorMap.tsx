@@ -92,17 +92,17 @@ export default function InteractiveRouteCorridorMap({
           mapInstanceRef.current = null;
         }
 
-        // Center map on School, first stop, first student, or Lagos
+        // Center map on School, first stop, first student, or corridor center
         const defaultCenterLat =
           school?.gps_lat ||
           stops.find((s) => s.gps_lat)?.gps_lat ||
           pinnedStudents[0]?.house_lat ||
-          6.4474;
+          6.5655;
         const defaultCenterLng =
           school?.gps_lng ||
           stops.find((s) => s.gps_lng)?.gps_lng ||
           pinnedStudents[0]?.house_lng ||
-          3.4731;
+          3.2931;
 
         const map = L.map(mapContainerRef.current, {
           center: [defaultCenterLat, defaultCenterLng],
@@ -174,17 +174,22 @@ export default function InteractiveRouteCorridorMap({
         if (activeFilter !== 'stops') {
           pinnedStudents.forEach((stu) => {
             if (stu.house_lat && stu.house_lng) {
-              const schLat = school?.gps_lat || 6.4474;
-              const schLng = school?.gps_lng || 3.4731;
-              const dLat = ((stu.house_lat - schLat) * Math.PI) / 180;
-              const dLon = ((stu.house_lng - schLng) * Math.PI) / 180;
-              const aDist =
-                Math.sin(dLat / 2) * Math.sin(dLat / 2) +
-                Math.cos((schLat * Math.PI) / 180) * Math.cos((stu.house_lat * Math.PI) / 180) *
-                Math.sin(dLon / 2) * Math.sin(dLon / 2);
-              const cDist = 2 * Math.atan2(Math.sqrt(aDist), Math.sqrt(1 - aDist));
-              const distKm = Math.round(6371 * cDist * 100) / 100;
-              const estMins = Math.max(5, Math.round((distKm / 25) * 60));
+              const schLat = school?.gps_lat || (stops.find((s) => s.gps_lat)?.gps_lat ?? null);
+              const schLng = school?.gps_lng || (stops.find((s) => s.gps_lng)?.gps_lng ?? null);
+              let distKm: number | null = null;
+              let estMins: number | null = null;
+
+              if (schLat != null && schLng != null) {
+                const dLat = ((stu.house_lat - schLat) * Math.PI) / 180;
+                const dLon = ((stu.house_lng - schLng) * Math.PI) / 180;
+                const aDist =
+                  Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+                  Math.cos((schLat * Math.PI) / 180) * Math.cos((stu.house_lat * Math.PI) / 180) *
+                  Math.sin(dLon / 2) * Math.sin(dLon / 2);
+                const cDist = 2 * Math.atan2(Math.sqrt(aDist), Math.sqrt(1 - aDist));
+                distKm = Math.round(6371 * cDist * 100) / 100;
+                estMins = Math.max(5, Math.round((distKm / 25) * 60));
+              }
 
               const houseIcon = L.divIcon({
                 className: 'house-marker',

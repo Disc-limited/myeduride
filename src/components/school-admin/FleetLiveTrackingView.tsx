@@ -51,100 +51,15 @@ interface FleetLiveTrackingViewProps {
   vehicles?: FleetVehicle[];
 }
 
-const DEFAULT_FLEET: FleetVehicle[] = [
-  {
-    id: 'veh-01',
-    vehicleReg: 'LAG-412-XA',
-    vehicleModel: 'Toyota Coaster (30-Seater)',
-    driverName: 'Mr. Babatunde Lawal',
-    driverPhone: '+234 803 111 2233',
-    escortName: 'Officer John Okonkwo',
-    routeName: 'Route 1: Ikeja - Maryland - Surulere',
-    status: 'on_schedule',
-    speedKmh: 38,
-    heading: 42,
-    batteryLevel: 88,
-    currentStopName: 'Maryland Mall Stop',
-    nextStopName: 'Anthony Village Bus Stop',
-    totalStudents: 22,
-    pickedCount: 18,
-    etaToGateMinutes: 12,
-    lastPing: '3s ago',
-    lat: 6.5744,
-    lng: 3.3662,
-  },
-  {
-    id: 'veh-02',
-    vehicleReg: 'LAG-894-XB',
-    vehicleModel: 'Toyota Hiace (18-Seater)',
-    driverName: 'Mr. Emeka Obi',
-    driverPhone: '+234 802 444 5566',
-    escortName: 'Officer Fatima Bello',
-    routeName: 'Route 2: Lekki Phase 1 - Ikoyi - Campus',
-    status: 'delayed',
-    speedKmh: 14,
-    heading: 120,
-    batteryLevel: 74,
-    currentStopName: 'Admiralty Way Traffic',
-    nextStopName: 'Falomo Bridge Roundabout',
-    totalStudents: 16,
-    pickedCount: 12,
-    etaToGateMinutes: 24,
-    lastPing: '2s ago',
-    lat: 6.4474,
-    lng: 3.4723,
-  },
-  {
-    id: 'veh-03',
-    vehicleReg: 'LAG-205-XC',
-    vehicleModel: 'Toyota Hiace (18-Seater)',
-    driverName: 'Mr. Segun Adeyemi',
-    driverPhone: '+234 809 777 8899',
-    escortName: 'Officer Chinedu Eze',
-    routeName: 'Route 3: Gbagada - Ogudu - School Gate',
-    status: 'at_gate',
-    speedKmh: 0,
-    heading: 0,
-    batteryLevel: 92,
-    currentStopName: 'School Main Gate',
-    nextStopName: 'Arrival Verification Point',
-    totalStudents: 14,
-    pickedCount: 14,
-    etaToGateMinutes: 0,
-    lastPing: 'Just now',
-    lat: 6.5244,
-    lng: 3.3792,
-  },
-  {
-    id: 'veh-04',
-    vehicleReg: 'LAG-731-XD',
-    vehicleModel: 'Nissan Civilian (24-Seater)',
-    driverName: 'Mr. Joshua Adams',
-    driverPhone: '+234 814 333 4455',
-    escortName: 'Officer Blessing Danjuma',
-    routeName: 'Route 4: Yaba - Magodo Express',
-    status: 'on_schedule',
-    speedKmh: 44,
-    heading: 210,
-    batteryLevel: 81,
-    currentStopName: 'Magodo Phase 2 Gate',
-    nextStopName: 'CMD Road Junction',
-    totalStudents: 18,
-    pickedCount: 15,
-    etaToGateMinutes: 16,
-    lastPing: '5s ago',
-    lat: 6.6122,
-    lng: 3.3854,
-  },
-];
+const DEFAULT_FLEET: FleetVehicle[] = [];
 
 export default function FleetLiveTrackingView({
   schoolId,
-  schoolName = 'EduRide Academy',
+  schoolName = 'EduRide Campus',
   vehicles = DEFAULT_FLEET,
 }: FleetLiveTrackingViewProps) {
   const [fleetList, setFleetList] = useState<FleetVehicle[]>(vehicles);
-  const [selectedVehicle, setSelectedVehicle] = useState<FleetVehicle | null>(vehicles[0]);
+  const [selectedVehicle, setSelectedVehicle] = useState<FleetVehicle | null>(vehicles[0] || null);
   const [searchQuery, setSearchQuery] = useState('');
   const [statusFilter, setStatusFilter] = useState<'all' | 'on_schedule' | 'delayed' | 'at_gate'>('all');
   const [mapType, setMapType] = useState<'roadmap' | 'satellite'>('roadmap');
@@ -343,6 +258,19 @@ export default function FleetLiveTrackingView({
                 {schoolName} Campus
               </span>
             </div>
+
+            {/* Empty State when no active vehicles */}
+            {fleetList.length === 0 && (
+              <div className="absolute inset-0 z-30 flex flex-col items-center justify-center p-6 text-center bg-slate-900/60 backdrop-blur-xs">
+                <div className="w-12 h-12 rounded-2xl bg-slate-800 text-slate-400 flex items-center justify-center mb-3 border border-slate-700">
+                  <Bus className="w-6 h-6" />
+                </div>
+                <p className="text-white font-bold text-sm">No Active Shuttle Trips Right Now</p>
+                <p className="text-slate-400 text-xs mt-1 max-w-sm">
+                  When escorts commence their morning or afternoon routes, live positions and transit updates will stream here in real time.
+                </p>
+              </div>
+            )}
 
             {/* Render Active Buses on Canvas */}
             {fleetList.map((veh, idx) => {

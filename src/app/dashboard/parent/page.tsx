@@ -103,7 +103,6 @@ export default function ParentDashboard() {
   const [showAttendanceModal, setShowAttendanceModal] = useState(false);
   const [showEduChatModal, setShowEduChatModal] = useState(false);
   const [showMigoAI, setShowMigoAI] = useState(false);
-  const [showLiveJourneyModal, setShowLiveJourneyModal] = useState(false);
   const [showWalletModal, setShowWalletModal] = useState(false);
   const [showLocationModal, setShowLocationModal] = useState(false);
   const [locationModalChild, setLocationModalChild] = useState<any>(null);
@@ -937,21 +936,31 @@ export default function ParentDashboard() {
                   </div>
                   <div className="md:col-span-5 lg:col-span-5">
                     <LiveJourneyCard
-                      childName={liveTrackingData?.child?.name || (safeChildren[0] ? `${safeChildren[0].first_name} ${safeChildren[0].last_name}` : 'Student')}
+                      childName={liveTrackingData?.child?.name || (safeChildren[0] ? `${safeChildren[0].first_name || ''} ${safeChildren[0].last_name || ''}`.trim() : '')}
+                      schoolName={liveTrackingData?.child?.schoolName || safeChildren[0]?.school?.name || (safeChildren[0] as any)?.schools?.name || ''}
+                      schoolAddress={liveTrackingData?.child?.schoolAddress || safeChildren[0]?.school?.address || safeChildren[0]?.school?.location_address || ''}
+                      schoolLat={liveTrackingData?.child?.schoolLat ?? (safeChildren[0]?.school?.gps_lat ? Number(safeChildren[0].school.gps_lat) : null)}
+                      schoolLng={liveTrackingData?.child?.schoolLng ?? (safeChildren[0]?.school?.gps_lng ? Number(safeChildren[0].school.gps_lng) : null)}
+                      houseAddress={liveTrackingData?.child?.houseAddress || safeChildren[0]?.house_address}
+                      houseLat={liveTrackingData?.child?.houseLat ?? (safeChildren[0]?.house_lat ? Number(safeChildren[0].house_lat) : null)}
+                      houseLng={liveTrackingData?.child?.houseLng ?? (safeChildren[0]?.house_lng ? Number(safeChildren[0].house_lng) : null)}
                       hasActiveJourney={Boolean(liveTrackingData?.hasActiveJourney)}
-                      escortName={liveTrackingData?.escort?.name || liveTrackingData?.route?.escortName || 'Assigned Escort'}
-                      escortCode={liveTrackingData?.escort?.code || liveTrackingData?.route?.escortCode || 'ESC'}
+                      journeyStage={liveTrackingData?.journeyStage || 'scheduled'}
+                      escortName={liveTrackingData?.escort?.name || liveTrackingData?.route?.escortName || ''}
+                      escortCode={liveTrackingData?.escort?.code || liveTrackingData?.route?.escortCode || ''}
                       escortPhone={liveTrackingData?.escort?.phone || liveTrackingData?.route?.escortPhone || ''}
-                      vehicleModel={liveTrackingData?.vehicle?.model || liveTrackingData?.route?.vehicleModel || 'School Bus'}
-                      licensePlate={liveTrackingData?.vehicle?.licensePlate || liveTrackingData?.route?.licensePlate || '—'}
-                      routeName={liveTrackingData?.route?.name || 'Designated Route'}
+                      vehicleModel={liveTrackingData?.vehicle?.model || liveTrackingData?.route?.vehicleModel || ''}
+                      licensePlate={liveTrackingData?.vehicle?.licensePlate || liveTrackingData?.route?.licensePlate || ''}
+                      routeName={liveTrackingData?.route?.name || ''}
                       studentsCount={liveTrackingData?.route?.stopsCount || 0}
                       etaMinutes={liveTrackingData?.hasActiveJourney ? liveTrackingData?.etaMinutes || 0 : 0}
                       etaTime={liveTrackingData?.hasActiveJourney ? liveTrackingData?.etaTime || '—' : '—'}
                       sessionId={liveTrackingData?.sessionId}
-                      targetStopName={liveTrackingData?.route?.stops?.[0]?.name || 'Designated Stop'}
-                      targetStopLat={liveTrackingData?.route?.stops?.[0]?.lat}
-                      targetStopLng={liveTrackingData?.route?.stops?.[0]?.lng}
+                      targetStopName={liveTrackingData?.targetStop?.name || liveTrackingData?.route?.stops?.[0]?.name || liveTrackingData?.child?.schoolName || safeChildren[0]?.school?.name || ''}
+                      targetStopLat={liveTrackingData?.targetStop?.lat ?? liveTrackingData?.route?.stops?.[0]?.lat ?? liveTrackingData?.child?.schoolLat}
+                      targetStopLng={liveTrackingData?.targetStop?.lng ?? liveTrackingData?.route?.stops?.[0]?.lng ?? liveTrackingData?.child?.schoolLng}
+                      stops={liveTrackingData?.route?.stops || []}
+                      onOpenLiveJourney={() => setActiveTab('live')}
                     />
                   </div>
                 </div>
@@ -1154,8 +1163,8 @@ export default function ParentDashboard() {
           class_name: c.class?.name,
         }))}
         initialAddress={locationModalChild?.house_address}
-        initialLat={locationModalChild?.house_lat}
-        initialLng={locationModalChild?.house_lng}
+        initialLat={locationModalChild?.house_lat || locationModalChild?.school?.gps_lat}
+        initialLng={locationModalChild?.house_lng || locationModalChild?.school?.gps_lng}
         initialLandmark={locationModalChild?.house_landmark}
         initialNotes={locationModalChild?.house_notes}
         onLocationSaved={(result) => {
@@ -1340,105 +1349,7 @@ export default function ParentDashboard() {
         </div>
       )}
 
-      {/* Google Maps Interactive Vehicle Tracking Modal */}
-      {showLiveJourneyModal && (
-        <div className="fixed inset-0 z-50 bg-slate-950/80 backdrop-blur-md flex items-center justify-center p-4">
-          <div className="bg-white rounded-3xl max-w-3xl w-full p-6 shadow-2xl border border-slate-200 overflow-hidden space-y-4 animate-in fade-in duration-200">
-            <div className="flex items-center justify-between pb-3 border-b border-slate-100">
-              <div className="flex items-center gap-2">
-                <div className="w-8 h-8 rounded-xl bg-emerald-600 text-white flex items-center justify-center shadow-xs">
-                  <Bus className="w-4 h-4" />
-                </div>
-                <div>
-                  <h2 className="text-base font-extrabold text-slate-900 leading-tight">
-                    Google Maps Shuttle GPS Tracking
-                  </h2>
-                  <p className="text-[10px] text-slate-400 font-bold">
-                    Vehicle: Toyota Hiace (ABC-234AA) • Escort: John Okafor
-                  </p>
-                </div>
-              </div>
-              <button
-                type="button"
-                onClick={() => setShowLiveJourneyModal(false)}
-                className="p-1.5 text-slate-400 hover:text-slate-800 rounded-xl hover:bg-slate-100 transition-colors"
-              >
-                <X className="w-5 h-5" />
-              </button>
-            </div>
 
-            {/* Google Map Viewport */}
-            <div className="relative rounded-2xl overflow-hidden border border-slate-200 shadow-inner h-[320px] bg-slate-900">
-              <div
-                className="absolute inset-0 bg-cover bg-center"
-                style={{
-                  backgroundImage:
-                    "linear-gradient(rgba(15, 23, 42, 0.4), rgba(15, 23, 42, 0.4)), url('https://images.unsplash.com/photo-1524661135-423995f22d0b?auto=format&fit=crop&q=80')",
-                }}
-              />
-
-              {/* Animated Polyline Route */}
-              <svg className="absolute inset-0 w-full h-full pointer-events-none z-10" preserveAspectRatio="none">
-                <path
-                  d="M 40,260 Q 200,80 400,180 T 680,60"
-                  fill="none"
-                  stroke="#10b981"
-                  strokeWidth="6"
-                  strokeLinecap="round"
-                />
-                <path
-                  d="M 40,260 Q 200,80 400,180 T 680,60"
-                  fill="none"
-                  stroke="#ffffff"
-                  strokeWidth="3"
-                  strokeDasharray="10 8"
-                  className="animate-pulse"
-                />
-              </svg>
-
-              {/* Moving Bus Marker */}
-              <div className="absolute left-[45%] top-[40%] -translate-x-1/2 -translate-y-1/2 z-30 flex flex-col items-center">
-                <div className="w-10 h-10 rounded-2xl bg-amber-400 border-2 border-white shadow-xl flex items-center justify-center text-slate-900 font-extrabold animate-bounce">
-                  <Bus className="w-5 h-5" />
-                </div>
-                <span className="text-[10px] font-black text-slate-900 bg-amber-300 px-2 py-0.5 rounded-full shadow-md mt-1">
-                  Speed: 38 km/h • 8 min away
-                </span>
-              </div>
-
-              {/* Google Watermark */}
-              <div className="absolute left-3 bottom-3 z-30 bg-white/90 backdrop-blur-xs px-2 py-1 rounded-md text-[11px] font-bold text-slate-800 shadow-sm">
-                <span className="text-blue-500">G</span>
-                <span className="text-red-500">o</span>
-                <span className="text-yellow-500">o</span>
-                <span className="text-blue-500">g</span>
-                <span className="text-green-500">l</span>
-                <span className="text-red-500">e</span> Maps GPS Telemetry
-              </div>
-            </div>
-
-            {/* Modal Bottom Controls */}
-            <div className="flex items-center justify-between pt-2">
-              <div className="flex items-center gap-3">
-                <a
-                  href="tel:07001234567"
-                  className="bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-xs px-4 py-2.5 rounded-xl shadow-md transition-all flex items-center gap-1.5"
-                >
-                  <Phone className="w-4 h-4" />
-                  <span>Call Escort (John Okafor)</span>
-                </a>
-              </div>
-              <button
-                type="button"
-                onClick={() => setShowLiveJourneyModal(false)}
-                className="bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold text-xs px-4 py-2.5 rounded-xl transition-all"
-              >
-                Close Tracking
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
 
       {/* Wallet Funding Modal */}
       {showWalletModal && (

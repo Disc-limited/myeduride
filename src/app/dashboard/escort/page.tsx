@@ -154,20 +154,20 @@ export default function SchoolEscortDashboardPage() {
     liveDashboardData?.school?.name ||
     escortData?.createdBySchoolName ||
     session?.primary_school?.name ||
-    'Myeduride Academy School';
+    'Assigned School';
 
   const escortName =
     liveDashboardData?.escort?.name ||
     escortData?.name ||
     escortData?.fullName ||
     session?.full_name ||
-    'Kingsley (School Escort)';
+    'Assigned Escort';
 
   const escortCode =
     liveDashboardData?.escort?.code ||
     escortData?.escort_code ||
     escortData?.escortIdCode ||
-    'ESC-5065';
+    'ESC-OFFICIAL';
 
   return (
     <div className="min-h-screen bg-[#F4F6F9] text-slate-800 font-sans flex flex-col lg:flex-row relative">

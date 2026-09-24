@@ -431,24 +431,28 @@ export function CityManagerOperationsPanel() {
         .map((s) => s.trim())
         .filter(Boolean);
 
+      const selSchool = data.schools?.find((s: any) => s.id === deputiseForm.school_id);
+      const depEsc = data.escorts?.find((e: any) => e.id === deputiseForm.deputy_escort_id);
+      const origEsc = data.escorts?.find((e: any) => e.full_name === deputiseForm.original_escort_name || e.id === deputiseForm.original_escort_name);
+
       const r = await fetch('/api/city-manager/operations', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           action: 'create_emergency_deputy',
           school_id: deputiseForm.school_id,
-          school_name: deputiseForm.school_name || 'Gracefield International School',
-          route_id: 'rt-lekki-01',
-          route_name: deputiseForm.route_name || 'Lekki Phase 1 Corridor',
-          original_escort_id: 'ESC-SCH-01',
+          school_name: deputiseForm.school_name || selSchool?.name || 'School Campus',
+          route_id: selSchool?.id ? `route-${selSchool.id}` : 'school-corridor',
+          route_name: deputiseForm.route_name || (selSchool ? `${selSchool.name} Transit Corridor` : 'School Transit Corridor'),
+          original_escort_id: origEsc?.id || 'orig-escort',
           original_escort_name: deputiseForm.original_escort_name,
           original_escort_phone: deputiseForm.original_escort_phone,
           deputy_escort_id: deputiseForm.deputy_escort_id,
           deputy_escort_name: deputiseForm.deputy_escort_name,
           deputy_escort_phone: deputiseForm.deputy_escort_phone,
-          deputy_vehicle_plate: 'SUR-440-XA (Toyota Sienna 2022)',
-          student_names: studentNamesList.length > 0 ? studentNamesList : ['David James', 'Esther Paul'],
-          student_ids: ['STU-001', 'STU-002'],
+          deputy_vehicle_plate: depEsc?.vehicle_plate || 'Assigned Transit Shuttle',
+          student_names: studentNamesList.length > 0 ? studentNamesList : ['Enrolled School Students'],
+          student_ids: [],
           emergency_reason: deputiseForm.emergency_reason,
           notes: deputiseForm.notes,
         }),

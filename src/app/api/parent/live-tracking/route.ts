@@ -153,7 +153,7 @@ export async function GET(request: NextRequest) {
     }
 
     const { searchParams } = new URL(request.url);
-    const childId = searchParams.get('child_id');
+    const childId = searchParams.get('child_id') || searchParams.get('studentId') || searchParams.get('student_id');
     const supabase = getAdminClient();
 
     // 1. Identify student (use school_classes — not classes; schools use gps_lat/gps_lng only)
@@ -340,6 +340,26 @@ export async function GET(request: NextRequest) {
       activeSession = schoolSessions?.[0] || null;
     }
 
+    // 5b. Stale session auto-expiration guard (sessions older than 45 minutes without ping are discarded)
+    if (activeSession) {
+      const lastPingEpoch = activeSession.last_ping_at
+        ? new Date(activeSession.last_ping_at).getTime()
+        : activeSession.started_at
+          ? new Date(activeSession.started_at).getTime()
+          : 0;
+      const isStale = Date.now() - lastPingEpoch > 45 * 60 * 1000;
+      if (isStale) {
+        // Auto-close stale session in database so it no longer lingers as in_progress
+        supabase
+          .from('vehicle_active_sessions')
+          .update({ status: 'completed', completed_at: nowUtcIso() })
+          .eq('id', activeSession.id)
+          .then(() => {})
+          .catch(() => {});
+        activeSession = null;
+      }
+    }
+
     // 6. Attendance & Trip status → accurate journey stage
     const todayDate = new Date().toISOString().split('T')[0];
     const [
@@ -409,8 +429,19 @@ export async function GET(request: NextRequest) {
       journeyStage = 'pickup_in_progress';
     }
 
-    const schoolLat = school?.gps_lat != null ? Number(school.gps_lat) : 6.5244;
-    const schoolLng = school?.gps_lng != null ? Number(school.gps_lng) : 3.3792;
+    const studentHouseLat =
+      student.house_lat != null && !isNaN(Number(student.house_lat)) ? Number(student.house_lat) : null;
+    const studentHouseLng =
+      student.house_lng != null && !isNaN(Number(student.house_lng)) ? Number(student.house_lng) : null;
+
+    const schoolLat =
+      school?.gps_lat != null && !isNaN(Number(school.gps_lat))
+        ? Number(school.gps_lat)
+        : studentHouseLat;
+    const schoolLng =
+      school?.gps_lng != null && !isNaN(Number(school.gps_lng))
+        ? Number(school.gps_lng)
+        : studentHouseLng;
 
     const childPayload = {
       id: student.id,
@@ -418,14 +449,68 @@ export async function GET(request: NextRequest) {
       className: studentClass?.name || 'Class',
       schoolId: school?.id || student.school_id || null,
       houseAddress: student.house_address || null,
-      houseLat: student.house_lat != null ? Number(student.house_lat) : null,
-      houseLng: student.house_lng != null ? Number(student.house_lng) : null,
+      houseLat: studentHouseLat,
+      houseLng: studentHouseLng,
       houseLandmark: student.house_landmark || null,
       schoolName: school?.name || 'School Campus',
       schoolAddress: school?.location_address || school?.address || '',
       schoolLat,
       schoolLng,
     };
+
+    // Ground stops list in real student doorstep & school location
+    let routeStops = stops.map((s) => ({
+      id: s.id,
+      stopNumber: s.stop_number,
+      name: s.name,
+      landmark: s.landmark,
+      lat: s.gps_lat != null ? Number(s.gps_lat) : null,
+      lng: s.gps_lng != null ? Number(s.gps_lng) : null,
+      etaMorning: s.eta_morning,
+    }));
+
+    if (routeStops.length === 0) {
+      routeStops = [
+        {
+          id: 'doorstep-pickup',
+          stopNumber: 1,
+          name: `${student.first_name || 'Student'}'s Doorstep`,
+          landmark: student.house_address || student.house_landmark || 'Residence Doorstep',
+          lat: studentHouseLat,
+          lng: studentHouseLng,
+          etaMorning: '07:05 AM',
+        },
+        {
+          id: 'school-gate',
+          stopNumber: 2,
+          name: school?.name || 'School Campus',
+          landmark: school?.location_address || school?.address || 'Campus Main Reception',
+          lat: schoolLat,
+          lng: schoolLng,
+          etaMorning: '07:35 AM',
+        },
+      ];
+    }
+
+    let targetStop = {
+      name: `${student.first_name || 'Student'}'s Doorstep`,
+      landmark: student.house_address || student.house_landmark || 'Residence Doorstep',
+      lat: studentHouseLat,
+      lng: studentHouseLng,
+    };
+
+    if (
+      journeyStage === 'in_class' ||
+      journeyStage === 'at_school_gate' ||
+      (journeyStage === 'pickup_in_progress' && todayTrip?.morning_picked_up)
+    ) {
+      targetStop = {
+        name: school?.name || 'School Campus',
+        landmark: school?.location_address || school?.address || 'Campus Main Reception',
+        lat: schoolLat,
+        lng: schoolLng,
+      };
+    }
 
     const appData = parseAppData(escortRow?.application_data);
     const routePayload = morningRoute
@@ -440,16 +525,8 @@ export async function GET(request: NextRequest) {
           escortName: escortPayload?.name || null,
           escortPhone: escortPayload?.phone || null,
           escortCode: escortPayload?.code || null,
-          stopsCount: stops.length,
-          stops: stops.map((s) => ({
-            id: s.id,
-            stopNumber: s.stop_number,
-            name: s.name,
-            landmark: s.landmark,
-            lat: s.gps_lat,
-            lng: s.gps_lng,
-            etaMorning: s.eta_morning,
-          })),
+          stopsCount: routeStops.length,
+          stops: routeStops,
         }
       : escortPayload
         ? {
@@ -463,10 +540,23 @@ export async function GET(request: NextRequest) {
             escortName: escortPayload.name,
             escortPhone: escortPayload.phone,
             escortCode: escortPayload.code,
-            stopsCount: 0,
-            stops: [],
+            stopsCount: routeStops.length,
+            stops: routeStops,
           }
-        : null;
+        : {
+            id: null,
+            name: `${school?.name || 'School'} Transit Corridor`,
+            code: 'CORRIDOR',
+            departureMorning: '07:00 AM',
+            departureAfternoon: '02:30 PM',
+            vehicleModel: vehiclePayload.model,
+            licensePlate: vehiclePayload.licensePlate,
+            escortName: null,
+            escortPhone: null,
+            escortCode: null,
+            stopsCount: routeStops.length,
+            stops: routeStops,
+          };
 
     const hasRealCoords =
       activeSession?.current_lat != null &&
@@ -483,6 +573,7 @@ export async function GET(request: NextRequest) {
       escort: escortPayload,
       vehicle: vehiclePayload,
       route: routePayload,
+      targetStop,
       timestamp: nowUtcIso(),
     };
 

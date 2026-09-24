@@ -13,10 +13,10 @@ interface UseLiveVehiclePositionOptions {
   schoolId?: string | null;        // Fallback fleet channel if no formal session row exists
   escortId?: string | null;
   vehicleId?: string | null;
-  targetStopLat?: number;
-  targetStopLng?: number;
-  initialLat?: number;
-  initialLng?: number;
+  targetStopLat?: number | null;
+  targetStopLng?: number | null;
+  initialLat?: number | null;
+  initialLng?: number | null;
   initialPingAt?: string | null;
   onApproachingStop?: (distanceMeters: number, etaMinutes: number) => void;
 }
@@ -28,21 +28,28 @@ export function useLiveVehiclePosition({
   vehicleId,
   targetStopLat,
   targetStopLng,
-  initialLat = 6.5244,
-  initialLng = 3.3792,
+  initialLat,
+  initialLng,
   initialPingAt,
   onApproachingStop,
 }: UseLiveVehiclePositionOptions) {
-  const [currentPosition, setCurrentPosition] = useState<TelemetryPoint>({
-    lat: initialLat,
-    lng: initialLng,
-    speedKmh: 0,
-    heading: 0,
-    timestamp: initialPingAt || new Date().toISOString(),
-  });
+  const validInitialLat = initialLat != null && Number.isFinite(initialLat) ? Number(initialLat) : null;
+  const validInitialLng = initialLng != null && Number.isFinite(initialLng) ? Number(initialLng) : null;
 
-  const [displayLat, setDisplayLat] = useState(initialLat);
-  const [displayLng, setDisplayLng] = useState(initialLng);
+  const [currentPosition, setCurrentPosition] = useState<TelemetryPoint | null>(
+    validInitialLat != null && validInitialLng != null
+      ? {
+          lat: validInitialLat,
+          lng: validInitialLng,
+          speedKmh: 0,
+          heading: 0,
+          timestamp: initialPingAt || new Date().toISOString(),
+        }
+      : null
+  );
+
+  const [displayLat, setDisplayLat] = useState<number | null>(validInitialLat);
+  const [displayLng, setDisplayLng] = useState<number | null>(validInitialLng);
   const [displayHeading, setDisplayHeading] = useState(0);
   const [isConnected, setIsConnected] = useState(false);
   const [distanceToStopMeters, setDistanceToStopMeters] = useState<number | null>(null);
@@ -85,10 +92,11 @@ export function useLiveVehiclePosition({
     }
 
     setCurrentPosition((prev) => ({
-      ...prev,
       lat: initialLat,
       lng: initialLng,
-      timestamp: initialPingAt || prev.timestamp || new Date().toISOString(),
+      speedKmh: prev?.speedKmh || 0,
+      heading: prev?.heading || 0,
+      timestamp: initialPingAt || prev?.timestamp || new Date().toISOString(),
     }));
     setDisplayLat(initialLat);
     setDisplayLng(initialLng);
@@ -219,10 +227,10 @@ export function useLiveVehiclePosition({
     displayLat,
     displayLng,
     displayHeading,
-    speedKmh: currentPosition.speedKmh,
+    speedKmh: currentPosition?.speedKmh || 0,
     isConnected,
     distanceToStopMeters,
     etaMinutes,
-    lastPingAt: currentPosition.timestamp,
+    lastPingAt: currentPosition?.timestamp || null,
   };
 }

@@ -44,7 +44,7 @@ export async function GET(request: NextRequest) {
 
       const { data: student } = await supabase
         .from('students')
-        .select('id, first_name, last_name, school_id, school:schools(id, name)')
+        .select('id, first_name, last_name, school_id, house_address, house_lat, house_lng, house_landmark, school:schools(id, name, address, location_address, gps_lat, gps_lng)')
         .eq('id', childId)
         .maybeSingle();
 
@@ -538,6 +538,16 @@ export async function GET(request: NextRequest) {
       timestamp: nowUtcIso(),
       child_id: childId,
       safety_connect: {
+        child: childRecord ? {
+          id: childRecord.id,
+          first_name: childRecord.first_name,
+          last_name: childRecord.last_name,
+          house_address: childRecord.house_address,
+          house_lat: childRecord.house_lat != null ? Number(childRecord.house_lat) : null,
+          house_lng: childRecord.house_lng != null ? Number(childRecord.house_lng) : null,
+          house_landmark: childRecord.house_landmark,
+        } : null,
+        school: childRecord?.school ? unwrapRel(childRecord.school) : null,
         school_escort: schoolEscort,
         myeduride_escorts: myedurideEscorts,
         active_bookings: activeChildBookings,

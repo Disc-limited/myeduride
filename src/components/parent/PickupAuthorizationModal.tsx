@@ -45,7 +45,7 @@ export default function PickupAuthorizationModal({
   isOpen,
   onClose,
   childId = '',
-  childName = 'Student',
+  childName = '',
   childrenList = [],
   onUpdated,
 }: PickupAuthorizationModalProps) {

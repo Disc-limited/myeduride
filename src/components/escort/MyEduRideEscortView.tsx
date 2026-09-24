@@ -1190,8 +1190,8 @@ export default function MyEduRideEscortView({
             </div>
             <div className="p-4 bg-slate-50 border border-slate-200 rounded-2xl">
               <span className="text-slate-400 font-bold uppercase text-[10px] block">License Plate</span>
-              <span className="font-mono font-black text-slate-900 text-sm mt-1 block">{escort.regNumber || 'LAG-992-MY'}</span>
-              <span className="text-[10px] text-slate-500 font-medium mt-1 block">Lagos State Commercial Plate</span>
+              <span className="font-mono font-black text-slate-900 text-sm mt-1 block">{escort.regNumber || 'Plate Pending'}</span>
+              <span className="text-[10px] text-slate-500 font-medium mt-1 block">Commercial Transit Plate</span>
             </div>
             <div className="p-4 bg-slate-50 border border-slate-200 rounded-2xl">
               <span className="text-slate-400 font-bold uppercase text-[10px] block">Fuel Level</span>
@@ -1228,7 +1228,7 @@ export default function MyEduRideEscortView({
           </div>
 
           <div className="p-3.5 rounded-2xl bg-emerald-50 border border-emerald-200 text-xs text-emerald-900 font-medium">
-            ✨ Optimal Path Active: Lekki Express Corridor ➔ Victoria Island ➔ Ikoyi Campus. Saves ~14 mins transit time.
+            ✨ Optimal Transit Corridor Active: Pinned doorstep addresses to school campus corridor. Real-time GPS enabled.
           </div>
 
           {/* Sequential Stops List */}

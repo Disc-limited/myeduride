@@ -143,7 +143,7 @@ export default function EscortDetailDrawer({ escort, onClose, onUpdateStatus, on
             {/* 1. School Affiliation */}
             <div className="p-3.5 rounded-2xl bg-slate-50 border border-slate-100 space-y-1">
               <span className="text-[10px] font-black uppercase text-slate-400 tracking-wider block">School Domain</span>
-              <p className="font-black text-slate-900 text-sm">{escort.school_name || 'Myeduride Academy School'}</p>
+              <p className="font-black text-slate-900 text-sm">{escort.school_name || 'Assigned School'}</p>
             </div>
 
             {/* 2. Assigned Vehicle */}

@@ -471,7 +471,7 @@ export async function GET(request: NextRequest) {
         type: v.type || 'School Bus',
         capacity: v.capacity || 18,
         school_id: v.school_id,
-        schoolName: sch?.name || v.school_name || 'Myeduride Academy School',
+        schoolName: sch?.name || v.school_name || 'Assigned School',
         escortName: v.assigned_escort_name || matchedEscort?.full_name || matchedRoute?.assigned_escort_name || v.assigned_driver_name || (v.assigned_escort_id ? 'School Escort' : 'Unassigned Escort'),
         escortPhone: v.assigned_escort_phone || matchedEscort?.phone || matchedRoute?.assigned_escort_phone || v.assigned_driver_phone || '',
         escortId: v.assigned_escort_id || matchedRoute?.assigned_escort_id || null,
@@ -576,10 +576,10 @@ export async function GET(request: NextRequest) {
       const matchedSchool = (schoolsRes || []).find((s: any) => s.id === st.school_id) || sch;
       const schoolLat = matchedSchool?.gps_lat != null
         ? Number(matchedSchool.gps_lat)
-        : (sch?.gps_lat != null ? Number(sch.gps_lat) : 6.4474);
+        : (sch?.gps_lat != null ? Number(sch.gps_lat) : null);
       const schoolLng = matchedSchool?.gps_lng != null
         ? Number(matchedSchool.gps_lng)
-        : (sch?.gps_lng != null ? Number(sch.gps_lng) : 3.4731);
+        : (sch?.gps_lng != null ? Number(sch.gps_lng) : null);
       const schoolAddress = matchedSchool?.location_address || matchedSchool?.address || sch?.address || 'School Campus Grounds';
       const houseLat = st.house_lat != null && !isNaN(Number(st.house_lat)) ? Number(st.house_lat) : (st.custom_fields?.house_lat != null && !isNaN(Number(st.custom_fields.house_lat)) ? Number(st.custom_fields.house_lat) : null);
       const houseLng = st.house_lng != null && !isNaN(Number(st.house_lng)) ? Number(st.house_lng) : (st.custom_fields?.house_lng != null && !isNaN(Number(st.custom_fields.house_lng)) ? Number(st.custom_fields.house_lng) : null);
@@ -633,13 +633,13 @@ export async function GET(request: NextRequest) {
         const studentHouseLat = a.student?.house_lat ? Number(a.student.house_lat) : null;
         const studentHouseLng = a.student?.house_lng ? Number(a.student.house_lng) : null;
         const targetSchool = (schoolsRes || []).find((s: any) => s.id === a.school_id) || a.school || assignedSchool;
-        const schoolLat = targetSchool?.gps_lat != null ? Number(targetSchool.gps_lat) : 6.4474;
-        const schoolLng = targetSchool?.gps_lng != null ? Number(targetSchool.gps_lng) : 3.4731;
+        const schoolLat = targetSchool?.gps_lat != null ? Number(targetSchool.gps_lat) : null;
+        const schoolLng = targetSchool?.gps_lng != null ? Number(targetSchool.gps_lng) : null;
         let studentDistKm: number | null = null;
         let studentEstMins: number | null = null;
         let directionsUrl: string | null = null;
 
-        if (studentHouseLat != null && studentHouseLng != null) {
+        if (studentHouseLat != null && studentHouseLng != null && schoolLat != null && schoolLng != null) {
           studentDistKm = computeHaversineDistanceKm(schoolLat, schoolLng, studentHouseLat, studentHouseLng);
           studentEstMins = Math.max(5, Math.round((studentDistKm / 25) * 60));
           directionsUrl = `https://www.google.com/maps/dir/?api=1&origin=${schoolLat},${schoolLng}&destination=${studentHouseLat},${studentHouseLng}&travelmode=driving`;
@@ -1684,8 +1684,8 @@ export async function POST(request: NextRequest) {
       if (body.action === 'reassign') {
         try {
           let oldEscortName = 'Previous Escort';
-          let studentName = 'Student';
-          let schoolName = 'School Campus';
+          let studentName = '';
+          let schoolName = '';
 
           let oldAss: any = null;
           if (body.replacesAssignmentId) {
@@ -1700,9 +1700,18 @@ export async function POST(request: NextRequest) {
               const oStu = Array.isArray(oldAss.student) ? oldAss.student[0] : oldAss.student;
               const oSch = Array.isArray(oldAss.school) ? oldAss.school[0] : oldAss.school;
               if (oEsc?.full_name) oldEscortName = oEsc.full_name;
-              if (oStu) studentName = `${oStu.first_name} ${oStu.last_name}`;
+              if (oStu) studentName = `${oStu.first_name || ''} ${oStu.last_name || ''}`.trim();
               if (oSch?.name) schoolName = oSch.name;
             }
+          }
+
+          if (!schoolName && (body.schoolId || data.school_id)) {
+            const { data: sRow } = await db.from('schools').select('name').eq('id', body.schoolId || data.school_id).maybeSingle();
+            if (sRow?.name) schoolName = sRow.name;
+          }
+          if (!studentName && (body.studentId || data.student_id)) {
+            const { data: stRow } = await db.from('students').select('first_name, last_name').eq('id', body.studentId || data.student_id).maybeSingle();
+            if (stRow) studentName = `${stRow.first_name || ''} ${stRow.last_name || ''}`.trim();
           }
 
           const newPin = Math.floor(1000 + Math.random() * 9000).toString();

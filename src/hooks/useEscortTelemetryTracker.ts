@@ -407,17 +407,14 @@ export function useEscortTelemetryTracker({
       setPermissionState('granted');
       lastErrorMessageRef.current = null;
 
-      // Realistic transit waypoints
       const wps =
         simulationWaypointsRef.current && simulationWaypointsRef.current.length >= 2
           ? simulationWaypointsRef.current
-          : [
-              { lat: 6.5244, lng: 3.3792 },
-              { lat: 6.5265, lng: 3.3820 },
-              { lat: 6.5295, lng: 3.3845 },
-              { lat: 6.5320, lng: 3.3810 },
-              { lat: 6.5280, lng: 3.3765 },
-            ];
+          : [];
+
+      if (wps.length < 2) {
+        return () => {};
+      }
 
       let wpIndex = 0;
       let stepProgress = 0;

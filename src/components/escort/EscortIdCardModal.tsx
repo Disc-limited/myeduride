@@ -58,7 +58,7 @@ export default function EscortIdCardModal({
   const escortCode =
     escortData?.escort_code ||
     escortData?.id ||
-    'ESC-5065';
+    'ESC-OFFICIAL';
 
   const escortIdToken = escortData?.id || escortCode;
   const qrPayload = `MYEDURIDE:ESCORT:${escortIdToken}`;
@@ -67,17 +67,17 @@ export default function EscortIdCardModal({
     escortData?.vehicle_plate ||
     escortData?.vehicle_reg ||
     escortData?.regNumber ||
-    'LAG-104-ED';
+    'Plate Pending';
 
   const vehicleName =
     escortData?.vehicle_name ||
     escortData?.vehicle_type ||
-    'Toyota HiAce Transit';
+    'Transit Shuttle';
 
   const operatingArea =
     escortData?.operating_area ||
     escortData?.school_name ||
-    'Lagos Metropolitan Safety Zone';
+    'Designated Safety Zone';
 
   const photo =
     photoSrc(escortData?.photo) ||

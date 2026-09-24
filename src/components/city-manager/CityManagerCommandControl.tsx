@@ -1512,10 +1512,33 @@ export function CityManagerCommandControl({
                 </div>
               </div>
 
-              {/* Simulated Tactical Map Canvas */}
-              <div className="relative my-3 flex-1 min-h-[380px] rounded-2xl overflow-hidden bg-slate-900 border border-slate-800 bg-[radial-gradient(#1e293b_1px,transparent_1px)] [background-size:16px_16px] flex items-center justify-center">
-                {escorts.length === 0 ? (
-                  <div className="text-center p-8 space-y-3 z-10">
+              {/* Tactical Route Corridor Map Canvas */}
+              <div className="relative my-3 flex-1 min-h-[380px] rounded-2xl overflow-hidden bg-slate-900 border border-slate-800">
+                {selectedCorridorRoute ? (
+                  <InteractiveRouteCorridorMap
+                    school={corridorSchool}
+                    routeCode={selectedCorridorRoute.code}
+                    routeName={selectedCorridorRoute.name}
+                    stops={selectedCorridorRoute.stops || []}
+                    students={
+                      selectedCorridorRoute.passenger_students?.length > 0
+                        ? selectedCorridorRoute.passenger_students
+                        : pinnedParentAddresses.map((p) => ({
+                            student_id: p.student_id,
+                            name: p.student_name,
+                            class: p.class_name,
+                            house_address: p.house_address,
+                            house_lat: p.house_lat,
+                            house_lng: p.house_lng,
+                            house_landmark: p.house_landmark,
+                            house_notes: p.house_notes,
+                            is_house_pinned: true,
+                          }))
+                    }
+                    heightClassName="h-[380px]"
+                  />
+                ) : (
+                  <div className="text-center p-8 space-y-3 z-10 flex flex-col items-center justify-center h-full min-h-[380px]">
                     <div className="w-12 h-12 rounded-2xl bg-slate-800 text-slate-400 flex items-center justify-center mx-auto border border-slate-700">
                       <Navigation size={22} />
                     </div>
@@ -1523,41 +1546,15 @@ export function CityManagerCommandControl({
                     <p className="text-xs text-slate-400 max-w-sm mx-auto">
                       When approved escorts and school transit fleets commence active routes in this jurisdiction, live radar coordinates and vehicle telemetry will appear on this grid in real time.
                     </p>
+                    <button
+                      type="button"
+                      onClick={() => switchTab('corridor-map')}
+                      className="mt-2 px-3 py-1.5 rounded-xl bg-teal-600/30 hover:bg-teal-600/50 text-teal-300 border border-teal-500/40 text-xs font-bold transition-all cursor-pointer flex items-center gap-1.5"
+                    >
+                      <MapPin size={13} />
+                      <span>View Pinned Corridor Houses</span>
+                    </button>
                   </div>
-                ) : (
-                  <>
-                    {/* SVG Route Vectors */}
-                    <div className="absolute inset-0 opacity-40 pointer-events-none">
-                      <svg className="w-full h-full text-slate-700" xmlns="http://www.w3.org/2000/svg">
-                        <path d="M 20 100 Q 200 80 400 150 T 800 250" fill="none" stroke="#00A859" strokeWidth="3" strokeDasharray="6,6" className="animate-pulse" />
-                        <path d="M 150 0 Q 180 200 250 400" fill="none" stroke="#3b82f6" strokeWidth="2.5" />
-                      </svg>
-                    </div>
-
-                    {/* Live Pins for active escorts */}
-                    {escorts.slice(0, 4).map((escort, index) => {
-                      const posClasses = [
-                        'top-24 left-1/4',
-                        'top-1/2 left-1/2',
-                        'bottom-20 left-1/3',
-                        'bottom-16 right-1/4',
-                      ];
-                      return (
-                        <div
-                          key={escort.id}
-                          onClick={() => setTripDetailModal(escort)}
-                          className={`absolute ${posClasses[index % posClasses.length]} cursor-pointer z-20 group`}
-                        >
-                          <div className="w-8 h-8 rounded-full bg-emerald-600 text-white flex items-center justify-center shadow-xl border-2 border-white animate-bounce">
-                            <Car size={15} />
-                          </div>
-                          <div className="absolute -top-7 left-1/2 -translate-x-1/2 bg-emerald-950 text-emerald-300 border border-emerald-500/50 text-[9px] font-black px-2 py-0.5 rounded-full shadow whitespace-nowrap">
-                            {escort.name} ({escort.speed})
-                          </div>
-                        </div>
-                      );
-                    })}
-                  </>
                 )}
               </div>
             </div>
@@ -2624,7 +2621,11 @@ export function CityManagerCommandControl({
                               </div>
                               <div className="flex items-center justify-between">
                                 <span className="text-slate-400">School Campus Pin:</span>
-                                <span className="text-emerald-400 font-bold">{item.school_lat?.toFixed(5) || '6.44740'}, {item.school_lng?.toFixed(5) || '3.47310'}</span>
+                                <span className="text-emerald-400 font-bold">
+                                  {item.school_lat != null && item.school_lng != null
+                                    ? `${item.school_lat.toFixed(5)}, ${item.school_lng.toFixed(5)}`
+                                    : 'Not Pinned'}
+                                </span>
                               </div>
                             </div>
                           </div>
@@ -3604,8 +3605,8 @@ export function CityManagerCommandControl({
                 school={{
                   name: inspectRouteModal.item.school_name,
                   address: inspectRouteModal.item.school_address,
-                  lat: inspectRouteModal.item.school_lat || 6.4474,
-                  lng: inspectRouteModal.item.school_lng || 3.4731,
+                  lat: inspectRouteModal.item.school_lat || 6.5655,
+                  lng: inspectRouteModal.item.school_lng || 3.2931,
                 }}
                 student={{
                   name: inspectRouteModal.item.student_name,
@@ -3614,8 +3615,8 @@ export function CityManagerCommandControl({
                   houseAddress: inspectRouteModal.item.house_address,
                   houseLandmark: inspectRouteModal.item.house_landmark,
                   houseNotes: inspectRouteModal.item.house_notes,
-                  lat: inspectRouteModal.item.house_lat || 6.4521,
-                  lng: inspectRouteModal.item.house_lng || 3.4802,
+                  lat: inspectRouteModal.item.house_lat || inspectRouteModal.item.school_lat || 6.5655,
+                  lng: inspectRouteModal.item.house_lng || inspectRouteModal.item.school_lng || 3.2931,
                   parentPhone: inspectRouteModal.item.assigned_escort_phone || null,
                 }}
                 distanceKm={inspectRouteModal.item.distance_km}

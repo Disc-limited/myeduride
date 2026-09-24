@@ -530,7 +530,9 @@ export async function getEscortApplications(city?: string, options?: GetEscortAp
     vehiclePhotos: app.vehiclePhotos || null,
     // Pinned Home GPS Location
     pinnedGpsLocation: app.pinnedGpsLocation || (
-      (app.address || app.city) ? { lat: 6.5244, lng: 3.3792, address: `${app.address || app.city}${app.state ? `, ${app.state}` : ''}` } : null
+      (app.house_lat != null && app.house_lng != null)
+        ? { lat: Number(app.house_lat), lng: Number(app.house_lng), address: app.address || app.house_address || app.city || 'Home' }
+        : null
     ),
     // Real driver licence if available
     driversLicence: app.driversLicence || app.drivers_licence || null,
@@ -691,15 +693,15 @@ export async function getEscortApplications(city?: string, options?: GetEscortAp
           const cls = Array.isArray(st?.class) ? st.class[0] : st?.class;
           const className = typeof cls === 'object' && cls !== null ? (cls.name || 'Class N/A') : (cls || 'Class N/A');
 
-          const schoolLat = sch?.gps_lat != null ? Number(sch.gps_lat) : 6.4474;
-          const schoolLng = sch?.gps_lng != null ? Number(sch.gps_lng) : 3.4731;
+          const schoolLat = sch?.gps_lat != null ? Number(sch.gps_lat) : null;
+          const schoolLng = sch?.gps_lng != null ? Number(sch.gps_lng) : null;
           const houseLat = st?.house_lat ? Number(st.house_lat) : null;
           const houseLng = st?.house_lng ? Number(st.house_lng) : null;
           let distanceKm: number | null = null;
           let estimatedTransitMins: number | null = null;
           let directionsUrl: string | null = null;
 
-          if (houseLat != null && houseLng != null) {
+          if (houseLat != null && houseLng != null && schoolLat != null && schoolLng != null) {
             const R = 6371;
             const dLat = ((houseLat - schoolLat) * Math.PI) / 180;
             const dLon = ((houseLng - schoolLng) * Math.PI) / 180;
