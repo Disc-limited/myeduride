@@ -135,9 +135,10 @@ export default function NotReadyYetModal({
   };
 
   return (
-    <div className="fixed inset-0 z-[120] flex items-center justify-center p-4 bg-slate-950/70 backdrop-blur-md animate-in fade-in duration-200">
+    <div className="fixed inset-0 z-[120] overflow-y-auto bg-slate-950/70 backdrop-blur-md animate-in fade-in duration-200">
+      <div className="flex min-h-full items-start sm:items-center justify-center p-4 pb-8">
       <div
-        className="relative w-full max-w-lg bg-white rounded-3xl shadow-2xl border border-slate-100 overflow-hidden flex flex-col max-h-[90vh] animate-in zoom-in-95 duration-200"
+        className="relative w-full max-w-lg bg-white rounded-3xl shadow-2xl border border-slate-100 overflow-hidden flex flex-col my-4 sm:my-0 animate-in zoom-in-95 duration-200"
         role="dialog"
         aria-modal="true"
       >
@@ -320,6 +321,7 @@ export default function NotReadyYetModal({
             </button>
           </div>
         </form>
+      </div>
       </div>
     </div>
   );

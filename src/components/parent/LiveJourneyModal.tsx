@@ -274,8 +274,9 @@ export default function LiveJourneyModal({
   const isDeliveredHome = journeyStage === 'delivered_home';
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-5 bg-slate-950/70 backdrop-blur-md animate-in fade-in duration-200">
-      <div className="bg-white rounded-3xl w-full max-w-4xl max-h-[92vh] flex flex-col shadow-2xl border border-slate-200 overflow-hidden font-sans">
+    <div className="fixed inset-0 z-50 overflow-y-auto bg-slate-950/70 backdrop-blur-md animate-in fade-in duration-200">
+      <div className="flex min-h-full items-start sm:items-center justify-center p-3 sm:p-5 pb-8">
+      <div className="bg-white rounded-3xl w-full max-w-4xl flex flex-col shadow-2xl border border-slate-200 overflow-hidden font-sans my-4 sm:my-0">
         
         {/* Header */}
         <div className="p-4 sm:p-5 border-b border-slate-100 flex items-center justify-between bg-slate-50/70">
@@ -618,6 +619,7 @@ export default function LiveJourneyModal({
           </button>
         </div>
 
+      </div>
       </div>
     </div>
   );

@@ -124,8 +124,10 @@ export default function CancelTripModal({
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/70 backdrop-blur-xs animate-in fade-in">
-      <div className="bg-white rounded-3xl max-w-lg w-full p-5 sm:p-6 shadow-2xl border border-slate-100 space-y-4">
+    <div className="fixed inset-0 z-50 overflow-y-auto bg-slate-950/70 backdrop-blur-xs animate-in fade-in">
+      {/* scroll-container centres on tall screens, top-aligns on short/mobile screens */}
+      <div className="flex min-h-full items-start sm:items-center justify-center p-4 pb-8">
+      <div className="bg-white rounded-3xl max-w-lg w-full p-5 sm:p-6 shadow-2xl border border-slate-100 space-y-4 my-4 sm:my-0">
         {/* Header */}
         <div className="flex items-start justify-between pb-3 border-b border-slate-100">
           <div className="flex items-center gap-3">
@@ -270,6 +272,7 @@ export default function CancelTripModal({
             </button>
           </div>
         </form>
+      </div>
       </div>
     </div>
   );
