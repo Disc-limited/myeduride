@@ -3,7 +3,7 @@
 
 import { useCallback, useEffect, useState } from 'react';
 import { fetchData } from '@/lib/api';
-import { Save, Clock, GraduationCap, Users, AlertTriangle } from 'lucide-react';
+import { Save, Clock, GraduationCap, Users, AlertTriangle, Calendar, Trash2, Plus } from 'lucide-react';
 import { toast } from 'sonner';
 import { schoolToSettingsForm, TIME_FIELDS, timeInputToDb } from '@/lib/time-input';
 import Link from 'next/link';
@@ -20,6 +20,20 @@ const GATE_HOUR_FIELDS = [
   'student_gate_start',
   'student_gate_end',
 ] as const;
+
+const DAY_NAMES = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
+
+// Only Mon–Fri are configurable (0=Sun and 6=Sat are weekend)
+const SCHOOL_DAYS = [1, 2, 3, 4, 5];
+
+const EMPTY_DAY_FORM = {
+  dismissal_start_time: '',
+  dismissal_end_time: '',
+  student_gate_end: '',
+  student_gate_start: '',
+  notes: '',
+  is_active: true,
+};
 
 export default function GateSetupPage() {
   const [loading, setLoading] = useState(true);
@@ -38,6 +52,12 @@ export default function GateSetupPage() {
     student_gate_start: '07:30',
     student_gate_end: '15:00',
   });
+
+  // Day-of-week overrides state
+  const [daySchedules, setDaySchedules] = useState<Record<number, any>>({});
+  const [dayForms, setDayForms] = useState<Record<number, typeof EMPTY_DAY_FORM>>({});
+  const [savingDay, setSavingDay] = useState<number | null>(null);
+  const [expandedDay, setExpandedDay] = useState<number | null>(5); // Default open: Friday
 
   const loadSettings = useCallback(async (id) => {
     const sid = id || schoolId;
@@ -78,6 +98,34 @@ export default function GateSetupPage() {
     }
   }, [schoolId]);
 
+  const loadDaySchedules = useCallback(async (sid: string) => {
+    if (!sid) return;
+    try {
+      const res = await fetch(`/api/schools/day-schedules?school_id=${sid}`, {
+        credentials: 'include',
+        cache: 'no-store',
+      });
+      const data = await res.json();
+      if (!res.ok) return; // non-fatal — table may not exist yet
+      const map: Record<number, any> = {};
+      const formMap: Record<number, typeof EMPTY_DAY_FORM> = {};
+      for (const row of data.schedules || []) {
+        if (!row.is_active) continue;
+        map[row.day_of_week] = row;
+        formMap[row.day_of_week] = {
+          dismissal_start_time: row.dismissal_start_time?.slice(0, 5) || '',
+          dismissal_end_time: row.dismissal_end_time?.slice(0, 5) || '',
+          student_gate_end: row.student_gate_end?.slice(0, 5) || '',
+          student_gate_start: row.student_gate_start?.slice(0, 5) || '',
+          notes: row.notes || '',
+          is_active: row.is_active ?? true,
+        };
+      }
+      setDaySchedules(map);
+      setDayForms(formMap);
+    } catch {}
+  }, []);
+
   useEffect(() => {
     (async () => {
       try {
@@ -87,13 +135,70 @@ export default function GateSetupPage() {
           return;
         }
         setSchoolId(schoolData.school_id);
-        await loadSettings(schoolData.school_id);
+        await Promise.all([
+          loadSettings(schoolData.school_id),
+          loadDaySchedules(schoolData.school_id),
+        ]);
       } catch (err) {
         console.error(err);
       }
       setLoading(false);
     })();
-  }, [loadSettings]);
+  }, [loadSettings, loadDaySchedules]);
+
+  const handleSaveDaySchedule = async (dow: number) => {
+    if (!schoolId) return;
+    const form = dayForms[dow] || EMPTY_DAY_FORM;
+    setSavingDay(dow);
+    try {
+      const res = await fetch('/api/schools/day-schedules', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify({
+          school_id: schoolId,
+          day_of_week: dow,
+          dismissal_start_time: form.dismissal_start_time || null,
+          dismissal_end_time: form.dismissal_end_time || null,
+          student_gate_end: form.student_gate_end || null,
+          student_gate_start: form.student_gate_start || null,
+          notes: form.notes || null,
+          is_active: true,
+        }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || 'Save failed');
+      toast.success(data.message || `${DAY_NAMES[dow]} schedule saved`);
+      setDaySchedules((prev) => ({ ...prev, [dow]: data.schedule }));
+    } catch (err: any) {
+      toast.error(err.message || 'Could not save day schedule');
+    }
+    setSavingDay(null);
+  };
+
+  const handleRemoveDaySchedule = async (dow: number) => {
+    if (!schoolId) return;
+    try {
+      const res = await fetch(
+        `/api/schools/day-schedules?school_id=${schoolId}&day_of_week=${dow}`,
+        { method: 'DELETE', credentials: 'include' }
+      );
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || 'Failed to remove');
+      toast.success(data.message || `${DAY_NAMES[dow]} schedule removed`);
+      setDaySchedules((prev) => { const n = { ...prev }; delete n[dow]; return n; });
+      setDayForms((prev) => { const n = { ...prev }; delete n[dow]; return n; });
+    } catch (err: any) {
+      toast.error(err.message || 'Could not remove day schedule');
+    }
+  };
+
+  const setDayField = (dow: number, field: string, value: string) => {
+    setDayForms((prev) => ({
+      ...prev,
+      [dow]: { ...(prev[dow] || EMPTY_DAY_FORM), [field]: value },
+    }));
+  };
 
   const handleSave = async (e) => {
     e.preventDefault();
@@ -355,6 +460,145 @@ NOTIFY pgrst, 'reload schema';`}
           <p className="text-xs text-amber-600">Run the migration above before saving.</p>
         )}
       </form>
+
+      {/* ─── Day-of-Week Schedule Overrides ────────────────────────────── */}
+      <div className="max-w-2xl mt-8">
+        <div className="flex items-center gap-2 mb-1">
+          <Calendar className="text-primary-600" size={20} />
+          <h2 className="font-semibold text-gray-900 text-lg">Day-of-Week Schedule Overrides</h2>
+        </div>
+        <p className="text-sm text-gray-500 mb-4">
+          Set a different dismissal time for specific weekdays — e.g. <strong>Friday early release</strong>.
+          Leave fields blank to inherit the global setting above.
+        </p>
+
+        <div className="space-y-3">
+          {SCHOOL_DAYS.map((dow) => {
+            const dayName = DAY_NAMES[dow];
+            const hasOverride = Boolean(daySchedules[dow]);
+            const isOpen = expandedDay === dow;
+            const form = dayForms[dow] || EMPTY_DAY_FORM;
+            const isFriday = dow === 5;
+
+            return (
+              <div
+                key={dow}
+                className={`rounded-xl border ${
+                  hasOverride
+                    ? 'border-emerald-300 bg-emerald-50'
+                    : 'border-gray-200 bg-white'
+                } shadow-sm overflow-hidden`}
+              >
+                {/* Header row */}
+                <button
+                  type="button"
+                  onClick={() => setExpandedDay(isOpen ? null : dow)}
+                  className="w-full flex items-center justify-between px-4 py-3 text-left"
+                >
+                  <div className="flex items-center gap-2">
+                    <span className={`text-sm font-semibold ${
+                      hasOverride ? 'text-emerald-800' : 'text-gray-700'
+                    }`}>
+                      {dayName}
+                      {isFriday && (
+                        <span className="ml-1.5 text-[10px] font-bold bg-orange-100 text-orange-700 rounded-full px-2 py-0.5">
+                          EARLY RELEASE
+                        </span>
+                      )}
+                    </span>
+                    {hasOverride && (
+                      <span className="text-[11px] text-emerald-700 bg-emerald-100 border border-emerald-200 rounded px-1.5 py-0.5">
+                        Override active — dismissal {daySchedules[dow]?.dismissal_start_time?.slice(0,5)}
+                      </span>
+                    )}
+                  </div>
+                  <span className="text-gray-400 text-xs">{isOpen ? '▲' : '▼'}</span>
+                </button>
+
+                {/* Expanded form */}
+                {isOpen && (
+                  <div className="px-4 pb-4 border-t border-gray-100">
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mt-3">
+                      <div>
+                        <label className="block text-xs font-medium text-gray-700 mb-1">
+                          Dismissal Start <span className="text-orange-500">★</span>
+                        </label>
+                        <input
+                          type="time"
+                          value={form.dismissal_start_time}
+                          onChange={(e) => setDayField(dow, 'dismissal_start_time', e.target.value)}
+                          className="input text-sm"
+                          placeholder={formData.dismissal_start_time}
+                        />
+                        <p className="text-[10px] text-gray-400 mt-0.5">Global: {formData.dismissal_start_time}</p>
+                      </div>
+                      <div>
+                        <label className="block text-xs font-medium text-gray-700 mb-1">Dismissal End</label>
+                        <input
+                          type="time"
+                          value={form.dismissal_end_time}
+                          onChange={(e) => setDayField(dow, 'dismissal_end_time', e.target.value)}
+                          className="input text-sm"
+                        />
+                        <p className="text-[10px] text-gray-400 mt-0.5">Global: {formData.dismissal_end_time}</p>
+                      </div>
+                      <div>
+                        <label className="block text-xs font-medium text-gray-700 mb-1">Student Gate Opens</label>
+                        <input
+                          type="time"
+                          value={form.student_gate_start}
+                          onChange={(e) => setDayField(dow, 'student_gate_start', e.target.value)}
+                          className="input text-sm"
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-xs font-medium text-gray-700 mb-1">Student Gate Closes</label>
+                        <input
+                          type="time"
+                          value={form.student_gate_end}
+                          onChange={(e) => setDayField(dow, 'student_gate_end', e.target.value)}
+                          className="input text-sm"
+                        />
+                        <p className="text-[10px] text-gray-400 mt-0.5">Global: {formData.student_gate_end}</p>
+                      </div>
+                    </div>
+                    <div className="mt-3">
+                      <label className="block text-xs font-medium text-gray-700 mb-1">Notes</label>
+                      <input
+                        type="text"
+                        value={form.notes}
+                        onChange={(e) => setDayField(dow, 'notes', e.target.value)}
+                        className="input text-sm"
+                        placeholder="e.g. Jumat prayers / half day"
+                      />
+                    </div>
+                    <div className="flex items-center gap-2 mt-3">
+                      <button
+                        type="button"
+                        onClick={() => handleSaveDaySchedule(dow)}
+                        disabled={savingDay === dow}
+                        className="btn-primary text-xs px-3 py-1.5 flex items-center gap-1.5 disabled:opacity-50"
+                      >
+                        <Save size={13} />
+                        {savingDay === dow ? 'Saving...' : `Save ${dayName} Schedule`}
+                      </button>
+                      {hasOverride && (
+                        <button
+                          type="button"
+                          onClick={() => handleRemoveDaySchedule(dow)}
+                          className="text-xs text-red-600 hover:text-red-800 flex items-center gap-1 px-2 py-1.5 rounded hover:bg-red-50 transition"
+                        >
+                          <Trash2 size={12} /> Remove Override
+                        </button>
+                      )}
+                    </div>
+                  </div>
+                )}
+              </div>
+            );
+          })}
+        </div>
+      </div>
     </div>
   );
 }

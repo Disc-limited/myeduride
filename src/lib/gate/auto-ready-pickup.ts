@@ -2,12 +2,20 @@ import type { SupabaseClient } from '@supabase/supabase-js';
 import { lagosDayBounds, nigeriaNowParts, nowUtcIso, todayInLagos } from '@/lib/timezone';
 import { getGateDayStatus } from '@/lib/gate/school-day-gate';
 import { ensureDismissalReady } from '@/lib/gate/ensure-dismissal-ready';
+import { resolveEffectiveDaySchedule } from '@/lib/gate/effective-day-schedule';
 
 export type SchoolDismissalTimes = {
   dismissal_start_time?: string | null;
   dismissal_end_time?: string | null;
   student_gate_end?: string | null;
 };
+
+/**
+ * NOTE: SchoolDismissalTimes is kept for backward compatibility with
+ * isDismissalWindowOpen / dismissalWindowBounds callers.
+ * New code should use resolveEffectiveDaySchedule instead of reading
+ * schools.dismissal_start_time directly.
+ */
 
 export function schoolTimeToMinutes(value?: string | null): number | null {
   if (!value) return null;
@@ -72,18 +80,17 @@ export async function ensureAutoReadyForPickup(
   if (!schoolId) return empty;
 
   try {
-    const { data: school } = await supabase
-      .from('schools')
-      .select('id, dismissal_start_time, dismissal_end_time, student_gate_end')
-      .eq('id', schoolId)
-      .maybeSingle();
+    const today = todayInLagos();
 
-    if (!school || !isDismissalWindowOpen(school)) return empty;
+    // Resolve effective schedule: respects Friday (or any weekday) overrides
+    // before falling back to the global school dismissal_start_time.
+    const effectiveSchedule = await resolveEffectiveDaySchedule(supabase, schoolId, today);
+
+    if (!isDismissalWindowOpen(effectiveSchedule)) return empty;
 
     const gateDay = await getGateDayStatus(supabase, schoolId);
     if (!gateDay.gate_open) return empty;
 
-    const today = todayInLagos();
     const { startIso, endIso } = lagosDayBounds();
     const stamp = nowUtcIso();
 

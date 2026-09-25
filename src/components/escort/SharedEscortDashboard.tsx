@@ -160,10 +160,103 @@ export default function SharedEscortDashboard({
 
   // Local cancellations set to immediately strike through students canceled in real time
   const [canceledStudentIds, setCanceledStudentIds] = useState<Set<string>>(new Set());
+  // Local Not Ready state to immediately shift students and reorder the route
+  const [notReadyStudentsMap, setNotReadyStudentsMap] = useState<
+    Record<string, { delayed_minutes: number; shifted_time: string; reason: string }>
+  >({});
   // Tracks students who have already received the 5-min proximity notification this session
   const notifiedProximityStudentsRef = useRef<Set<string>>(new Set());
   // Anti-duplicate alert debounce
   const recentlyAlertedRef = useRef<Set<string>>(new Set());
+  const notReadyDebounceRef = useRef<Set<string>>(new Set());
+
+  // Distinctive 2-tone melodic chime for "Not Ready Yet / Route Shifted"
+  const playNotReadyChime = useCallback(() => {
+    try {
+      const AudioCtx = window.AudioContext || (window as any).webkitAudioContext;
+      if (!AudioCtx) return;
+      const ctx = new AudioCtx();
+      const run = () => {
+        const now = ctx.currentTime;
+        [523.25, 659.25].forEach((freq, i) => {
+          const osc = ctx.createOscillator();
+          const gain = ctx.createGain();
+          osc.type = 'sine';
+          osc.frequency.setValueAtTime(freq, now + i * 0.16);
+          gain.gain.setValueAtTime(0.5, now + i * 0.16);
+          gain.gain.exponentialRampToValueAtTime(0.01, now + i * 0.16 + 0.22);
+          osc.connect(gain);
+          gain.connect(ctx.destination);
+          osc.start(now + i * 0.16);
+          osc.stop(now + i * 0.16 + 0.22);
+        });
+      };
+
+      if (ctx.state === 'suspended') {
+        ctx.resume().then(run).catch(() => {});
+      } else {
+        run();
+      }
+    } catch (e) {
+      console.warn('[playNotReadyChime] audio context note:', e);
+    }
+  }, []);
+
+  // Centralized Not Ready Dispatcher: Sound + Vibrate + Toast + Reorder Route
+  const handleStudentNotReady = useCallback((
+    studentId: string,
+    delayMins: number = 15,
+    reason: string = 'Finishing preparation',
+    shiftedTime: string = 'Later slot',
+    studentNameHint?: string
+  ) => {
+    if (!studentId) return;
+
+    if (notReadyDebounceRef.current.has(studentId)) {
+      setNotReadyStudentsMap((prev) => ({
+        ...prev,
+        [studentId]: { delayed_minutes: delayMins, shifted_time: shiftedTime, reason },
+      }));
+      return;
+    }
+    notReadyDebounceRef.current.add(studentId);
+    setTimeout(() => notReadyDebounceRef.current.delete(studentId), 12000);
+
+    // 1. Play alert chime
+    playNotReadyChime();
+
+    // 2. Haptic vibration
+    if (typeof window !== 'undefined' && 'vibrate' in navigator) {
+      try { navigator.vibrate([200, 100, 200]); } catch {}
+    }
+
+    // 3. Resolve student name
+    const allStudents = [
+      ...(liveDashboardData?.students?.manifest || []),
+      ...(liveDashboardData?.students?.morning || []),
+      ...(liveDashboardData?.students?.afternoon || []),
+    ];
+    const matched = allStudents.find((s: any) => s.id === studentId);
+    const studentName = matched?.name || studentNameHint || 'Student';
+
+    // 4. Prominent high-priority toast with operational instruction
+    toast.warning(`⏳ Route Shifted: ${studentName}`, {
+      description: `Parent requested +${delayMins}m delay (${reason}). Proceeding to pick other ready children first!`,
+      duration: 16000,
+    });
+
+    // 5. Update state to immediately shift queue order
+    setNotReadyStudentsMap((prev) => ({
+      ...prev,
+      [studentId]: {
+        delayed_minutes: delayMins,
+        shifted_time: shiftedTime,
+        reason,
+      },
+    }));
+
+    onRefreshData?.();
+  }, [liveDashboardData?.students, onRefreshData, playNotReadyChime]);
 
   // Distinctive 3-pulse taxi alert buzzer
   const playCancellationBuzzer = useCallback(() => {
@@ -280,7 +373,20 @@ export default function SharedEscortDashboard({
         if (data?.student_id) {
           handleStudentCanceled(data.student_id, data.reason, data.student_name);
         }
-      }).subscribe();
+      });
+      ch.on('broadcast', { event: 'student_not_ready' }, (payload: any) => {
+        const data = payload?.payload;
+        if (data?.student_id) {
+          handleStudentNotReady(
+            data.student_id,
+            data.delay_minutes || 15,
+            data.reason || 'Finishing preparation',
+            data.shifted_pickup_time || 'Later slot',
+            data.student_name
+          );
+        }
+      });
+      ch.subscribe();
       channels.push(ch);
     });
 
@@ -293,7 +399,20 @@ export default function SharedEscortDashboard({
         if (data?.student_id) {
           handleStudentCanceled(data.student_id, data.reason, data.student_name);
         }
-      }).subscribe();
+      });
+      schoolCh.on('broadcast', { event: 'student_not_ready' }, (payload: any) => {
+        const data = payload?.payload;
+        if (data?.student_id) {
+          handleStudentNotReady(
+            data.student_id,
+            data.delay_minutes || 15,
+            data.reason || 'Finishing preparation',
+            data.shifted_pickup_time || 'Later slot',
+            data.student_name
+          );
+        }
+      });
+      schoolCh.subscribe();
       channels.push(schoolCh);
     }
 
@@ -312,7 +431,20 @@ export default function SharedEscortDashboard({
         if (data?.student_id) {
           handleStudentCanceled(data.student_id, data.reason, data.student_name);
         }
-      }).subscribe();
+      });
+      sCh.on('broadcast', { event: 'student_not_ready' }, (payload: any) => {
+        const data = payload?.payload;
+        if (data?.student_id) {
+          handleStudentNotReady(
+            data.student_id,
+            data.delay_minutes || 15,
+            data.reason || 'Finishing preparation',
+            data.shifted_pickup_time || 'Later slot',
+            data.student_name
+          );
+        }
+      });
+      sCh.subscribe();
       channels.push(sCh);
     });
 
@@ -330,6 +462,13 @@ export default function SharedEscortDashboard({
           const rec = payload?.new;
           if (rec?.is_canceled_by_parent && rec?.student_id) {
             handleStudentCanceled(rec.student_id, rec.cancellation_reason);
+          } else if ((rec?.readiness_status === 'not_ready' || rec?.is_not_ready_yet) && rec?.student_id) {
+            handleStudentNotReady(
+              rec.student_id,
+              rec.delayed_minutes || 15,
+              rec.not_ready_reason || 'Finishing preparation',
+              rec.shifted_pickup_time || 'Later slot'
+            );
           }
         }
       )
@@ -393,22 +532,63 @@ export default function SharedEscortDashboard({
   const isStudentCanceled = (s: any) =>
     Boolean(s.is_canceled || s.is_canceled_by_parent || s.status === 'CANCELED' || (s.id && canceledStudentIds.has(s.id)));
 
-  const morningList = rawMorningList.map((s: any) => ({
-    ...s,
-    is_canceled_by_parent: isStudentCanceled(s),
-  }));
+  const isStudentNotReady = (s: any) =>
+    Boolean(s.is_not_ready_yet || (s.id && notReadyStudentsMap[s.id]));
 
-  const afternoonList = rawAfternoonList.map((s: any) => ({
-    ...s,
-    is_canceled_by_parent: isStudentCanceled(s),
-  }));
+  const getStudentDelayInfo = (s: any) =>
+    (s.id && notReadyStudentsMap[s.id]) || (s.is_not_ready_yet ? {
+      delayed_minutes: s.delayed_minutes || 15,
+      shifted_time: s.shifted_pickup_time || 'Later Slot',
+      reason: s.not_ready_reason || 'Parent requested time',
+    } : null);
 
-  const activeMorningList = morningList.filter((s: any) => !s.is_canceled_by_parent);
+  const morningList = rawMorningList.map((s: any) => {
+    const delayInfo = getStudentDelayInfo(s);
+    return {
+      ...s,
+      is_canceled_by_parent: isStudentCanceled(s),
+      is_not_ready_yet: isStudentNotReady(s),
+      delayed_minutes: delayInfo?.delayed_minutes || null,
+      shifted_pickup_time: delayInfo?.shifted_time || null,
+      not_ready_reason: delayInfo?.reason || null,
+    };
+  });
+
+  const afternoonList = rawAfternoonList.map((s: any) => {
+    const delayInfo = getStudentDelayInfo(s);
+    return {
+      ...s,
+      is_canceled_by_parent: isStudentCanceled(s),
+      is_not_ready_yet: isStudentNotReady(s),
+      delayed_minutes: delayInfo?.delayed_minutes || null,
+      shifted_pickup_time: delayInfo?.shifted_time || null,
+      not_ready_reason: delayInfo?.reason || null,
+    };
+  });
+
+  const isPicked = (s: any) => Boolean(s?.picked || s?.status === 'PICKED' || s?.status === 'ON_BOARD' || s?.status === 'DROPPED_OFF' || s?.morning_status === 'PICKED_UP_FROM_HOME' || s?.morning_status === 'DROPPED_OFF_AT_SCHOOL');
+
+  // SMART RE-ORDERING:
+  // 1. Canceled students go to the bottom.
+  // 2. Already-picked students keep completed status.
+  // 3. For unpicked students: READY students come FIRST, "Not Ready Yet" delayed students are shifted AFTER all ready students.
+  const sortedMorningList = [...morningList].sort((a: any, b: any) => {
+    if (a.is_canceled_by_parent !== b.is_canceled_by_parent) return a.is_canceled_by_parent ? 1 : -1;
+    const aPicked = isPicked(a);
+    const bPicked = isPicked(b);
+    if (aPicked !== bPicked) return aPicked ? 1 : -1;
+    const aNotReady = Boolean(a.is_not_ready_yet);
+    const bNotReady = Boolean(b.is_not_ready_yet);
+    if (aNotReady !== bNotReady) return aNotReady ? 1 : -1;
+    return 0;
+  });
+
+  const activeMorningList = sortedMorningList.filter((s: any) => !s.is_canceled_by_parent);
   const canceledMorningList = morningList.filter((s: any) => s.is_canceled_by_parent);
 
   const droppedOffList = liveDashboardData?.students?.dropped_off || activeMorningList.filter((s: any) => s.dropped || s.status === 'DROPPED_OFF' || s.morning_status === 'DROPPED_OFF_AT_SCHOOL');
-  const isPicked = (s: any) => Boolean(s?.picked || s?.status === 'PICKED' || s?.status === 'ON_BOARD' || s?.status === 'DROPPED_OFF' || s?.morning_status === 'PICKED_UP_FROM_HOME' || s?.morning_status === 'DROPPED_OFF_AT_SCHOOL');
   const morningPickedCount = activeMorningList.filter(isPicked).length;
+  // Automatically targets the first READY student!
   const nextPickup = activeMorningList.find((s: any) => !isPicked(s)) || null;
   const tripStatus = liveDashboardData?.escort?.today_trip_status;
   const morningTripActive = tripStatus === 'in_progress';
@@ -1172,54 +1352,91 @@ export default function SharedEscortDashboard({
             </span>
           </div>
 
+          {/* Smart Route Shift Notice Banner */}
+          {activeMorningList.some((s: any) => s.is_not_ready_yet && !isPicked(s)) && (
+            <div className="p-2.5 rounded-xl bg-amber-500/10 border border-amber-300/80 flex items-center justify-between gap-2 text-xs text-amber-950 animate-in fade-in">
+              <div className="flex items-center gap-2 min-w-0">
+                <Clock className="w-4 h-4 text-amber-600 shrink-0 animate-pulse" />
+                <p className="text-[11px] font-semibold truncate">
+                  <strong>Smart Route Shift Active:</strong> Student not ready yet. Prioritizing ready students first to save transit time!
+                </p>
+              </div>
+              <span className="text-[9px] font-black uppercase bg-amber-200 text-amber-900 px-2 py-0.5 rounded-full shrink-0">
+                Time Saver
+              </span>
+            </div>
+          )}
+
           <div className="space-y-2.5">
-            {morningList.length === 0 ? (
+            {sortedMorningList.length === 0 ? (
               <div className="p-8 text-center bg-slate-50 rounded-xl border border-slate-100 text-slate-400">
                 <Users className="w-6 h-6 mx-auto mb-1 text-slate-300" />
                 <p className="font-bold text-slate-600">No Morning Pickups</p>
                 <p className="text-[10px]">Assigned students for morning transport will list here.</p>
               </div>
             ) : (
-              morningList.map((stu: any, index: number) => {
+              sortedMorningList.map((stu: any, index: number) => {
                 const isCanceled = Boolean(stu.is_canceled_by_parent);
+                const isNotReady = Boolean(stu.is_not_ready_yet && !isPicked(stu));
                 return (
                   <div
                     key={stu.id || index}
                     className={`p-2.5 rounded-xl border flex items-center justify-between gap-2 transition-all ${
                       isCanceled
                         ? 'bg-rose-50/70 border-rose-200 opacity-75'
-                        : 'bg-slate-50 border-slate-200'
+                        : isNotReady
+                          ? 'bg-amber-50/80 border-amber-200/90 shadow-2xs'
+                          : 'bg-slate-50 border-slate-200'
                     }`}
                   >
                     <div className="flex items-center gap-2.5 min-w-0">
                       <span
                         className={`w-5 h-5 rounded-full ${
-                          isCanceled ? 'bg-rose-400' : index === 0 ? 'bg-purple-600' : 'bg-amber-500'
+                          isCanceled
+                            ? 'bg-rose-400'
+                            : isNotReady
+                              ? 'bg-amber-500'
+                              : index === 0
+                                ? 'bg-purple-600'
+                                : 'bg-slate-700'
                         } text-white font-extrabold text-[10px] flex items-center justify-center shrink-0`}
                       >
-                        {isCanceled ? '✕' : index + 1}
+                        {isCanceled ? '✕' : isNotReady ? '⏳' : index + 1}
                       </span>
                       <div
                         className={`w-7 h-7 rounded-full ${
                           isCanceled
                             ? 'bg-rose-100 text-rose-700'
-                            : index === 0
-                              ? 'bg-purple-100 text-purple-700'
-                              : 'bg-amber-100 text-amber-800'
+                            : isNotReady
+                              ? 'bg-amber-100 text-amber-900 ring-2 ring-amber-300'
+                              : index === 0
+                                ? 'bg-purple-100 text-purple-700'
+                                : 'bg-slate-100 text-slate-800'
                         } font-bold flex items-center justify-center text-xs shrink-0`}
                       >
                         {stu.avatar || stu.name?.substring(0, 2)?.toUpperCase() || 'ST'}
                       </div>
                       <div className="min-w-0">
-                        <h5
-                          className={`font-extrabold text-xs truncate ${
-                            isCanceled ? 'line-through text-slate-500' : 'text-slate-900'
-                          }`}
-                        >
-                          {stu.name}
-                        </h5>
+                        <div className="flex items-center gap-1.5">
+                          <h5
+                            className={`font-extrabold text-xs truncate ${
+                              isCanceled ? 'line-through text-slate-500' : 'text-slate-900'
+                            }`}
+                          >
+                            {stu.name}
+                          </h5>
+                          {isNotReady && (
+                            <span className="text-[9px] font-black uppercase bg-amber-200 text-amber-900 px-1.5 py-0.2 rounded shrink-0">
+                              Shifted +{stu.delayed_minutes || 15}m
+                            </span>
+                          )}
+                        </div>
                         <p className="text-[10px] text-slate-500 truncate">
-                          {isCanceled ? `🚫 Not Going: ${stu.cancellation_reason || 'Absent'}` : stu.address}
+                          {isCanceled
+                            ? `🚫 Not Going: ${stu.cancellation_reason || 'Absent'}`
+                            : isNotReady
+                              ? `⏳ Pickup shifted to ~${stu.shifted_pickup_time || 'Later'}: ${stu.not_ready_reason || 'Extra time needed'}`
+                              : stu.address}
                         </p>
                       </div>
                     </div>
@@ -1227,10 +1444,14 @@ export default function SharedEscortDashboard({
                       <span className="px-2 py-0.5 rounded bg-rose-100 text-rose-800 font-extrabold text-[9px] shrink-0 border border-rose-200">
                         CANCELED
                       </span>
+                    ) : isNotReady ? (
+                      <span className="px-2 py-0.5 rounded bg-amber-100 text-amber-900 font-extrabold text-[9px] shrink-0 border border-amber-300 flex items-center gap-1 animate-pulse">
+                        ⏳ NOT READY
+                      </span>
                     ) : (
                       <span
                         className={`px-2 py-0.5 rounded ${
-                          isPicked(stu) ? 'bg-emerald-100 text-emerald-800' : 'bg-amber-100 text-amber-800'
+                          isPicked(stu) ? 'bg-emerald-100 text-emerald-800' : 'bg-slate-200 text-slate-800'
                         } font-extrabold text-[9px] shrink-0 flex items-center gap-1`}
                       >
                         {isPicked(stu) ? `PICKED ${stu.time || ''} ✓` : `NEXT ${stu.time || ''}`.trim()}

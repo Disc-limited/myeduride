@@ -35,6 +35,10 @@ export interface ChildStudent {
   is_canceled_today?: boolean;
   cancellation_reason?: string | null;
   canceled_at?: string | null;
+  is_not_ready_yet?: boolean;
+  delayed_minutes?: number | null;
+  shifted_pickup_time?: string | null;
+  not_ready_reason?: string | null;
 }
 
 interface ChildrenGridCardProps {
@@ -42,6 +46,7 @@ interface ChildrenGridCardProps {
   onOpenChildProfile: (childId: string) => void;
   onPinHouseLocation?: (child: ChildStudent) => void;
   onCancelTrip?: (child: ChildStudent) => void;
+  onNotReadyYet?: (child: ChildStudent) => void;
 }
 
 export default function ChildrenGridCard({
@@ -49,6 +54,7 @@ export default function ChildrenGridCard({
   onOpenChildProfile,
   onPinHouseLocation,
   onCancelTrip,
+  onNotReadyYet,
 }: ChildrenGridCardProps) {
   const displayKids: ChildStudent[] = childrenList && childrenList.length > 0 ? childrenList : [];
 
@@ -283,30 +289,45 @@ export default function ChildrenGridCard({
                 )}
               </div>
 
-              {/* Action Buttons: Cancel Trip + View Profile */}
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+              {/* Action Buttons: Not Ready Yet + Cancel Trip + View Profile */}
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
+                <button
+                  type="button"
+                  disabled={child.is_canceled_today || isSafeAtHome}
+                  onClick={() => onNotReadyYet?.(child)}
+                  title={child.is_not_ready_yet ? `Pickup shifted: ~${child.shifted_pickup_time || 'Later'}` : `Click if ${fullName} needs extra time to get ready`}
+                  className={`w-full text-xs font-extrabold py-2 px-2.5 rounded-xl flex items-center justify-center gap-1.5 transition-all cursor-pointer ${
+                    child.is_not_ready_yet
+                      ? 'bg-amber-100 text-amber-900 border border-amber-300 shadow-xs'
+                      : 'bg-amber-50 hover:bg-amber-100 text-amber-900 border border-amber-200 hover:border-amber-300 shadow-2xs'
+                  }`}
+                >
+                  <Clock className="w-3.5 h-3.5 text-amber-600 shrink-0" />
+                  <span>{child.is_not_ready_yet ? `⏳ Shifted (+${child.delayed_minutes || 15}m)` : '⏳ Not Ready Yet'}</span>
+                </button>
+
                 <button
                   type="button"
                   disabled={child.is_canceled_today}
                   onClick={() => onCancelTrip?.(child)}
                   title={child.is_canceled_today ? 'Trip is already marked as canceled today' : `Click if ${fullName} is not going to school today`}
-                  className={`w-full text-xs font-extrabold py-2 px-3 rounded-xl flex items-center justify-center gap-1.5 transition-all cursor-pointer ${
+                  className={`w-full text-xs font-extrabold py-2 px-2.5 rounded-xl flex items-center justify-center gap-1.5 transition-all cursor-pointer ${
                     child.is_canceled_today
                       ? 'bg-rose-50 text-rose-800 border border-rose-200 opacity-80 cursor-not-allowed'
                       : 'bg-rose-50 hover:bg-rose-100 text-rose-700 border border-rose-200 shadow-2xs hover:border-rose-300'
                   }`}
                 >
                   <XCircle className="w-3.5 h-3.5 text-rose-600 shrink-0" />
-                  <span>{child.is_canceled_today ? 'Trip Canceled Today' : '🚫 Not Going Today'}</span>
+                  <span>{child.is_canceled_today ? 'Trip Canceled' : '🚫 Not Going'}</span>
                 </button>
 
                 <button
                   type="button"
                   onClick={() => onOpenChildProfile(child.id)}
                   title={`Click to view complete profile and attendance record of ${fullName}`}
-                  className="w-full bg-white hover:bg-slate-50 border border-slate-200 text-slate-700 text-xs font-bold py-2 px-3 rounded-xl flex items-center justify-center gap-1.5 transition-all shadow-2xs hover:border-slate-300 cursor-pointer"
+                  className="w-full bg-white hover:bg-slate-50 border border-slate-200 text-slate-700 text-xs font-bold py-2 px-2.5 rounded-xl flex items-center justify-center gap-1.5 transition-all shadow-2xs hover:border-slate-300 cursor-pointer"
                 >
-                  <span>View Full Profile</span>
+                  <span>Profile</span>
                   <ArrowRight className="w-3.5 h-3.5 text-slate-400" />
                 </button>
               </div>

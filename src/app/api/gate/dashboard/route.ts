@@ -7,6 +7,7 @@ import { lagosDayBounds, todayInLagos } from '@/lib/timezone';
 import { getGateDayStatus } from '@/lib/gate/school-day-gate';
 import { fetchEnrichedPickupQueue } from '@/lib/gate/pickup-queue-enrich';
 import { matchPickupPhoto, type PickupPersonRow } from '@/lib/gate/student-pickup-context';
+import { resolveEffectiveDaySchedule } from '@/lib/gate/effective-day-schedule';
 
 type EnrichedPickupNotice = Record<string, unknown> & {
   student_id: string;
@@ -151,6 +152,9 @@ export async function GET(request: NextRequest) {
     }
 
     const gate_day = await getGateDayStatus(supabase, schoolId, today);
+
+    // Resolve effective schedule — respects Friday and any weekday overrides
+    const effective_schedule = await resolveEffectiveDaySchedule(supabase, schoolId, today);
 
     // ==========================================
     // 6. LIVE METRICS & KPI COMPUTATION
@@ -364,6 +368,7 @@ export async function GET(request: NextRequest) {
       today_attendance,
       day: dateStr,
       gate_day,
+      effective_schedule,   // ← Friday/weekday-aware schedule for this day
       metrics: {
         students_checked_in: studentArrivalsCount || 0,
         staff_checked_in: staffClockInCount || 0,

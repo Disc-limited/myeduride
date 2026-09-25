@@ -58,6 +58,11 @@ interface LiveJourneyModalProps {
   targetStopLat?: number | null;
   targetStopLng?: number | null;
   stops?: RouteStopItem[];
+  isNotReadyYet?: boolean;
+  delayedMinutes?: number | null;
+  shiftedPickupTime?: string | null;
+  notReadyReason?: string | null;
+  onNotReadyYet?: () => void;
 }
 
 export default function LiveJourneyModal({
@@ -84,6 +89,11 @@ export default function LiveJourneyModal({
   targetStopLat,
   targetStopLng,
   stops = [],
+  isNotReadyYet = false,
+  delayedMinutes = 15,
+  shiftedPickupTime = null,
+  notReadyReason = null,
+  onNotReadyYet,
 }: LiveJourneyModalProps) {
   const [mapType, setMapType] = useState<'roadmap' | 'satellite'>('roadmap');
 
@@ -527,6 +537,22 @@ export default function LiveJourneyModal({
                   <span>Message</span>
                 </button>
               </div>
+
+              {onNotReadyYet && !isChildInClass && !isDeliveredHome && (
+                <button
+                  type="button"
+                  onClick={onNotReadyYet}
+                  className={`w-full py-2.5 px-3 rounded-xl font-extrabold text-xs flex items-center justify-center gap-2 transition-all cursor-pointer shadow-xs ${
+                    isNotReadyYet
+                      ? 'bg-amber-100 text-amber-900 border border-amber-300'
+                      : 'bg-amber-50 hover:bg-amber-100 text-amber-800 border border-amber-200 hover:border-amber-300'
+                  }`}
+                  title="Click if child needs extra time to get ready; notifies escort and shifts pickup slot"
+                >
+                  <Clock className="w-4 h-4 text-amber-600 shrink-0" />
+                  <span>{isNotReadyYet ? `⏳ Pickup Shifted (+${delayedMinutes || 15}m)` : '⏳ Child Not Ready Yet?'}</span>
+                </button>
+              )}
             </div>
 
             {/* Vehicle & Safety Telemetry */}

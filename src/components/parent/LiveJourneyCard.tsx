@@ -12,7 +12,8 @@ import {
   Radio,
   School,
   Home,
-  CheckCircle2
+  CheckCircle2,
+  Clock,
 } from 'lucide-react';
 import LiveJourneyModal from './LiveJourneyModal';
 import { useLiveVehiclePosition } from '@/hooks/useLiveVehiclePosition';
@@ -45,6 +46,11 @@ interface LiveJourneyCardProps {
   targetStopLng?: number | null;
   stops?: any[];
   onOpenLiveJourney?: () => void;
+  isNotReadyYet?: boolean;
+  delayedMinutes?: number | null;
+  shiftedPickupTime?: string | null;
+  notReadyReason?: string | null;
+  onNotReadyYet?: () => void;
 }
 
 export default function LiveJourneyCard({
@@ -73,6 +79,11 @@ export default function LiveJourneyCard({
   targetStopLng,
   stops = [],
   onOpenLiveJourney,
+  isNotReadyYet = false,
+  delayedMinutes = 15,
+  shiftedPickupTime = null,
+  notReadyReason = null,
+  onNotReadyYet,
 }: LiveJourneyCardProps) {
   const [mapType, setMapType] = useState<'roadmap' | 'satellite'>('roadmap');
   const [isModalOpen, setIsModalOpen] = useState(false);
@@ -250,14 +261,31 @@ export default function LiveJourneyCard({
             </p>
           </div>
 
-          <button
-            type="button"
-            onClick={handleOpenRadar}
-            className="w-full bg-slate-900 hover:bg-slate-800 text-white text-xs font-bold py-2.5 rounded-xl flex items-center justify-center gap-1.5 transition-all shadow-xs cursor-pointer"
-          >
-            <span>{isChildInClass ? 'View School Campus Pin' : 'Open Live Map Corridor'}</span>
-            <ArrowRight className="w-3.5 h-3.5 text-slate-400" />
-          </button>
+          <div className="flex items-center gap-2">
+            <button
+              type="button"
+              onClick={handleOpenRadar}
+              className="flex-1 bg-slate-900 hover:bg-slate-800 text-white text-xs font-bold py-2.5 rounded-xl flex items-center justify-center gap-1.5 transition-all shadow-xs cursor-pointer"
+            >
+              <span>{isChildInClass ? 'View School Pin' : 'Open Live Map'}</span>
+              <ArrowRight className="w-3.5 h-3.5 text-slate-400" />
+            </button>
+            {onNotReadyYet && !isChildInClass && !isDeliveredHome && (
+              <button
+                type="button"
+                onClick={onNotReadyYet}
+                title={isNotReadyYet ? `Pickup shifted: ~${shiftedPickupTime || 'Later'}` : 'Click if child is not ready yet to shift pickup time and let escort pick other students first'}
+                className={`px-3 py-2.5 rounded-xl text-xs font-extrabold flex items-center justify-center gap-1.5 transition-all cursor-pointer ${
+                  isNotReadyYet
+                    ? 'bg-amber-100 text-amber-900 border border-amber-300 shadow-2xs'
+                    : 'bg-amber-50 hover:bg-amber-100 text-amber-800 border border-amber-200'
+                }`}
+              >
+                <Clock className="w-3.5 h-3.5 text-amber-600 shrink-0" />
+                <span>{isNotReadyYet ? `+${delayedMinutes || 15}m` : 'Not Ready'}</span>
+              </button>
+            )}
+          </div>
         </div>
 
         {/* Upgraded Modal */}
@@ -285,6 +313,11 @@ export default function LiveJourneyCard({
           targetStopLat={targetStopLat}
           targetStopLng={targetStopLng}
           stops={stops}
+          isNotReadyYet={isNotReadyYet}
+          delayedMinutes={delayedMinutes}
+          shiftedPickupTime={shiftedPickupTime}
+          notReadyReason={notReadyReason}
+          onNotReadyYet={onNotReadyYet}
         />
       </>
     );
@@ -401,15 +434,32 @@ export default function LiveJourneyCard({
           </div>
         </div>
 
-        {/* Action Button */}
-        <button
-          type="button"
-          onClick={handleOpenRadar}
-          className="mt-3 w-full bg-white hover:bg-slate-50 border border-slate-200 text-slate-700 text-xs font-bold py-2.5 rounded-xl flex items-center justify-center gap-1.5 transition-all shadow-2xs hover:border-slate-300 active:scale-98 cursor-pointer"
-        >
-          <span>Open Full Map Tracking</span>
-          <ArrowRight className="w-3.5 h-3.5 text-slate-400" />
-        </button>
+        {/* Action Buttons */}
+        <div className="mt-3 flex items-center gap-2">
+          <button
+            type="button"
+            onClick={handleOpenRadar}
+            className="flex-1 bg-white hover:bg-slate-50 border border-slate-200 text-slate-700 text-xs font-bold py-2.5 rounded-xl flex items-center justify-center gap-1.5 transition-all shadow-2xs hover:border-slate-300 active:scale-98 cursor-pointer"
+          >
+            <span>Open Full Map Tracking</span>
+            <ArrowRight className="w-3.5 h-3.5 text-slate-400" />
+          </button>
+          {onNotReadyYet && !isChildInClass && !isDeliveredHome && (
+            <button
+              type="button"
+              onClick={onNotReadyYet}
+              title={isNotReadyYet ? `Pickup shifted: ~${shiftedPickupTime || 'Later'}` : 'Click if child is not ready yet to shift pickup time and let escort pick other students first'}
+              className={`px-3 py-2.5 rounded-xl text-xs font-extrabold flex items-center justify-center gap-1.5 transition-all cursor-pointer ${
+                isNotReadyYet
+                  ? 'bg-amber-100 text-amber-900 border border-amber-300 shadow-2xs'
+                  : 'bg-amber-50 hover:bg-amber-100 text-amber-800 border border-amber-200'
+              }`}
+            >
+              <Clock className="w-3.5 h-3.5 text-amber-600 shrink-0" />
+              <span>{isNotReadyYet ? `+${delayedMinutes || 15}m` : 'Not Ready'}</span>
+            </button>
+          )}
+        </div>
       </div>
 
       {/* Fullscreen Interactive Radar Modal */}
@@ -437,6 +487,11 @@ export default function LiveJourneyCard({
         targetStopLat={targetStopLat}
         targetStopLng={targetStopLng}
         stops={stops}
+        isNotReadyYet={isNotReadyYet}
+        delayedMinutes={delayedMinutes}
+        shiftedPickupTime={shiftedPickupTime}
+        notReadyReason={notReadyReason}
+        onNotReadyYet={onNotReadyYet}
       />
     </>
   );

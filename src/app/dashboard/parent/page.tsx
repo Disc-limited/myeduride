@@ -57,6 +57,7 @@ import PickupAuthCard from '@/components/parent/PickupAuthCard';
 import WalletCard from '@/components/parent/WalletCard';
 import ChildrenGridCard from '@/components/parent/ChildrenGridCard';
 import CancelTripModal from '@/components/parent/CancelTripModal';
+import NotReadyYetModal from '@/components/parent/NotReadyYetModal';
 import AttendanceWeekCard from '@/components/parent/AttendanceWeekCard';
 import EduChatPreviewCard from '@/components/parent/EduChatPreviewCard';
 import QuickActionsGrid from '@/components/parent/QuickActionsGrid';
@@ -108,6 +109,8 @@ export default function ParentDashboard() {
   const [locationModalChild, setLocationModalChild] = useState<any>(null);
   const [showCancelTripModal, setShowCancelTripModal] = useState(false);
   const [cancelTripChild, setCancelTripChild] = useState<any>(null);
+  const [showNotReadyModal, setShowNotReadyModal] = useState(false);
+  const [notReadyModalChild, setNotReadyModalChild] = useState<any>(null);
   const [showIdPassModal, setShowIdPassModal] = useState(false);
 
   // Pickup Form state
@@ -783,6 +786,10 @@ export default function ParentDashboard() {
                   setLocationModalChild(ch || safeChildren[0] || null);
                   setShowLocationModal(true);
                 }}
+                onNotReadyYet={(ch) => {
+                  setNotReadyModalChild(ch || safeChildren.find((c) => c.id === selectedChild) || safeChildren[0] || null);
+                  setShowNotReadyModal(true);
+                }}
               />
             </div>
           ) : activeTab === 'notices' ? (
@@ -858,6 +865,10 @@ export default function ParentDashboard() {
                 onCancelTrip={(ch) => {
                   setCancelTripChild(ch);
                   setShowCancelTripModal(true);
+                }}
+                onNotReadyYet={(ch) => {
+                  setNotReadyModalChild(ch);
+                  setShowNotReadyModal(true);
                 }}
               />
 
@@ -961,6 +972,13 @@ export default function ParentDashboard() {
                       targetStopLng={liveTrackingData?.targetStop?.lng ?? liveTrackingData?.route?.stops?.[0]?.lng ?? liveTrackingData?.child?.schoolLng}
                       stops={liveTrackingData?.route?.stops || []}
                       onOpenLiveJourney={() => setActiveTab('live')}
+                      onNotReadyYet={() => {
+                        const targetChild = safeChildren.find((c) => c.id === (liveTrackingData?.child?.id || selectedChild)) || safeChildren[0] || null;
+                        if (targetChild) {
+                          setNotReadyModalChild(targetChild);
+                          setShowNotReadyModal(true);
+                        }
+                      }}
                     />
                   </div>
                 </div>
@@ -995,6 +1013,10 @@ export default function ParentDashboard() {
                       onCancelTrip={(ch) => {
                         setCancelTripChild(ch);
                         setShowCancelTripModal(true);
+                      }}
+                      onNotReadyYet={(ch) => {
+                        setNotReadyModalChild(ch);
+                        setShowNotReadyModal(true);
                       }}
                     />
                   </div>
@@ -1433,6 +1455,34 @@ export default function ParentDashboard() {
                   : c
               )
             );
+          }}
+        />
+      )}
+
+      {/* "Not Ready Yet" Smart Shift Modal */}
+      {showNotReadyModal && notReadyModalChild && (
+        <NotReadyYetModal
+          isOpen={showNotReadyModal}
+          onClose={() => {
+            setShowNotReadyModal(false);
+            setNotReadyModalChild(null);
+          }}
+          child={notReadyModalChild}
+          onTripShifted={(childId, delayMins, shiftedTime) => {
+            setChildren((prev) =>
+              (prev || []).map((c) =>
+                c.id === childId
+                  ? {
+                      ...c,
+                      is_not_ready_yet: true,
+                      delayed_minutes: delayMins,
+                      shifted_pickup_time: shiftedTime,
+                      today_status_label: `Not Ready (+${delayMins}m)`,
+                    }
+                  : c
+              )
+            );
+            loadData();
           }}
         />
       )}

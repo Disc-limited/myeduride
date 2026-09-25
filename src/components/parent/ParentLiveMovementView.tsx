@@ -35,6 +35,7 @@ interface ParentLiveMovementViewProps {
   initialChildId?: string;
   onOpenChat?: () => void;
   onOpenPinHouse?: (child: any) => void;
+  onNotReadyYet?: (child: any) => void;
 }
 
 export default function ParentLiveMovementView({
@@ -42,6 +43,7 @@ export default function ParentLiveMovementView({
   initialChildId,
   onOpenChat,
   onOpenPinHouse,
+  onNotReadyYet,
 }: ParentLiveMovementViewProps) {
   const safeChildren = Array.isArray(childrenList) ? childrenList : [];
   const [selectedChildId, setSelectedChildId] = useState<string>(
@@ -382,6 +384,23 @@ export default function ParentLiveMovementView({
             <RefreshCw className={`w-3.5 h-3.5 ${refreshing ? 'animate-spin' : ''}`} />
             <span>Refresh</span>
           </button>
+
+          {/* Not Ready Yet Action Button */}
+          {onNotReadyYet && activeChild && stage !== 'in_class' && stage !== 'delivered_home' && (
+            <button
+              type="button"
+              onClick={() => onNotReadyYet(activeChild)}
+              className={`px-3.5 py-2 rounded-xl text-xs font-extrabold flex items-center gap-1.5 shadow-xs transition-all cursor-pointer ${
+                liveData?.isNotReadyYet
+                  ? 'bg-amber-400 text-slate-950 font-black shadow-md shadow-amber-400/20'
+                  : 'bg-amber-50 hover:bg-amber-100 text-amber-900 border border-amber-200'
+              }`}
+              title="Click if child needs extra time to get ready so escort picks other children first"
+            >
+              <Clock className="w-3.5 h-3.5 text-amber-700 shrink-0" />
+              <span>{liveData?.isNotReadyYet ? `Shifted (+${liveData?.delayedMinutes || 15}m)` : '⏳ Not Ready Yet'}</span>
+            </button>
+          )}
         </div>
       </div>
 
@@ -411,6 +430,16 @@ export default function ParentLiveMovementView({
             <p className="text-xs sm:text-sm text-slate-300 max-w-2xl font-medium leading-relaxed">
               {stageConfig.subtitle}
             </p>
+
+            {/* Smart Route Shift Indicator */}
+            {liveData?.isNotReadyYet && (
+              <div className="p-3 rounded-2xl bg-amber-500/20 border border-amber-400/50 text-amber-200 text-xs flex items-center gap-2.5 shadow-sm">
+                <Clock className="w-4 h-4 text-amber-400 shrink-0 animate-pulse" />
+                <p className="text-[11px] leading-relaxed">
+                  <strong>Pickup Shifted:</strong> Extra time requested (+{liveData?.delayedMinutes || 15} mins). Target pickup window is ~{liveData?.shiftedPickupTime || 'Later'}. Escort has prioritized ready students.
+                </p>
+              </div>
+            )}
 
             {/* Child Doorstep Badge */}
             {child?.houseAddress ? (

@@ -8,6 +8,7 @@ import { todayInLagos } from '@/lib/timezone';
 import { fetchStudentPickupContext } from '@/lib/gate/student-pickup-context';
 import { getParentRecipientsForStudent } from '@/lib/notifications/parent-recipients';
 import { writeAuditLog } from '@/lib/audit/log';
+import { resolveEffectiveDaySchedule } from '@/lib/gate/effective-day-schedule';
 
 export const dynamic = 'force-dynamic';
 
@@ -44,6 +45,10 @@ export async function POST(request: NextRequest) {
     }
 
     const today = todayInLagos();
+
+    // Resolve the effective schedule for today (handles Friday early release)
+    const effectiveSched = await resolveEffectiveDaySchedule(supabase, school_id, today);
+    const isFridayOrEarlyRelease = effectiveSched.is_early_release;
 
     // Check if already marked ready today (prevent double-tap)
     const { data: existing } = await supabase
@@ -101,7 +106,12 @@ export async function POST(request: NextRequest) {
       action: 'TEACHER_MARK_READY_FOR_PICKUP',
       entity_type: 'dismissal_request',
       entity_id: dismissal?.id || null,
-      details: { notes: notes || null },
+      details: {
+        notes: notes || null,
+        early_release: isFridayOrEarlyRelease,
+        effective_dismissal_time: effectiveSched.dismissal_start_time,
+        day_name: effectiveSched.day_name,
+      },
     });
 
     // Get student + school info for notifications
@@ -136,11 +146,16 @@ export async function POST(request: NextRequest) {
       pickupCtx.pickup_persons[0]?.phone ||
       null;
 
-    const title = `${student.first_name} is ready for pickup`;
+    const title = `${student.first_name} is ready for pickup${
+      isFridayOrEarlyRelease ? ' (Early Release)' : ''
+    }`;
     const pickupLine = pickupName
       ? `Expected pickup: ${pickupName}${pickupPhone ? ` (${pickupPhone})` : ''}.`
       : 'Please come to the gate to collect your child.';
-    const message = `${student.first_name} ${student.last_name} has been dismissed at ${schoolName}. ${pickupLine}`;
+    const earlyReleaseNote = isFridayOrEarlyRelease
+      ? ` Note: Today is an early release day — school dismisses at ${effectiveSched.dismissal_start_time}.`
+      : '';
+    const message = `${student.first_name} ${student.last_name} has been dismissed at ${schoolName}.${earlyReleaseNote} ${pickupLine}`;
 
     const emailHtml = `
       <div style="font-family:-apple-system,sans-serif;max-width:480px;margin:0 auto;">
