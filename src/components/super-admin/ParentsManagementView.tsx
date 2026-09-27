@@ -14,6 +14,7 @@ import {
   Loader2,
   GraduationCap,
   Sparkles,
+  Trash2,
 } from 'lucide-react';
 import { toast } from 'sonner';
 import EditParentModal from '@/components/school-admin/EditParentModal';
@@ -51,6 +52,8 @@ export default function ParentsManagementView() {
   const [selectedSchool, setSelectedSchool] = useState('all');
   const [selectedLoginStatus, setSelectedLoginStatus] = useState('all');
   const [editingParent, setEditingParent] = useState<SuperAdminParentRow | null>(null);
+  const [deletingParent, setDeletingParent] = useState<SuperAdminParentRow | null>(null);
+  const [deleteLoading, setDeleteLoading] = useState(false);
   const [loadError, setLoadError] = useState<string | null>(null);
 
   const loadParents = useCallback(async () => {
@@ -120,6 +123,49 @@ export default function ParentsManagementView() {
       toast.error('Failed to run deduplication');
     } finally {
       setDeduplicating(false);
+    }
+  };
+
+  const confirmDeleteParent = async () => {
+    if (!deletingParent) return;
+    setDeleteLoading(true);
+    try {
+      if (deletingParent.id) {
+        const res = await fetch('/api/super-admin/users/delete', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ user_id: deletingParent.id }),
+        });
+        const data = await res.json();
+        if (!res.ok) {
+          toast.error(data.error || 'Failed to delete parent account');
+          return;
+        }
+        toast.success(data.message || 'Parent account deleted successfully');
+      } else {
+        // Clear on-file contact details from linked students
+        const studentIds = deletingParent.children?.map((c) => c.student_id) || [];
+        if (studentIds.length > 0) {
+          await fetch('/api/school-admin/parents/update', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              student_ids: studentIds,
+              school_id: deletingParent.school_id,
+              name: '[Removed]',
+              phone: '',
+              email: '',
+            }),
+          });
+        }
+        toast.success('On-file parent contact removed');
+      }
+      setDeletingParent(null);
+      loadParents();
+    } catch {
+      toast.error('Failed to delete parent record');
+    } finally {
+      setDeleteLoading(false);
     }
   };
 
@@ -373,13 +419,24 @@ export default function ParentsManagementView() {
 
                   {/* Actions */}
                   <td className="py-3.5 px-4 text-right">
-                    <button
-                      type="button"
-                      onClick={() => setEditingParent(parent)}
-                      className="px-3 py-1.5 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold text-xs inline-flex items-center gap-1 transition-colors"
-                    >
-                      <Pencil size={13} /> Edit
-                    </button>
+                    <div className="flex items-center justify-end gap-1.5">
+                      <button
+                        type="button"
+                        onClick={() => setEditingParent(parent)}
+                        className="px-3 py-1.5 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold text-xs inline-flex items-center gap-1 transition-colors"
+                      >
+                        <Pencil size={13} /> Edit
+                      </button>
+
+                      <button
+                        type="button"
+                        onClick={() => setDeletingParent(parent)}
+                        className="p-1.5 rounded-lg text-slate-400 hover:text-red-600 hover:bg-red-50 transition-colors"
+                        title={parent.has_login ? 'Delete parent login account' : 'Remove on-file parent contact'}
+                      >
+                        <Trash2 size={15} />
+                      </button>
+                    </div>
                   </td>
                 </tr>
               ))}
@@ -403,6 +460,50 @@ export default function ParentsManagementView() {
           parent={editingParent}
           schoolId={editingParent.school_id}
         />
+      )}
+
+      {/* Delete Parent Confirmation Modal */}
+      {deletingParent && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-xs">
+          <div className="relative w-full max-w-md bg-white rounded-2xl shadow-2xl border border-red-100 p-6 space-y-4">
+            <div className="w-12 h-12 rounded-2xl bg-red-50 text-red-600 border border-red-200 flex items-center justify-center mx-auto">
+              <AlertCircle size={26} />
+            </div>
+
+            <div className="text-center space-y-1.5">
+              <h3 className="text-base font-extrabold text-slate-900">
+                Permanently Delete Parent Account?
+              </h3>
+              <p className="text-xs text-slate-500 font-medium leading-relaxed">
+                Are you sure you want to delete the record for <strong className="text-slate-800">{deletingParent.name}</strong>
+                {deletingParent.username ? ` (@${deletingParent.username})` : ''} at {deletingParent.school_name}?
+                {deletingParent.has_login
+                  ? ' Their login account, parent-student relationships, and access will be permanently revoked.'
+                  : ' Their on-file parent contact details will be removed from all linked student profiles.'}
+              </p>
+            </div>
+
+            <div className="flex gap-2.5 pt-2">
+              <button
+                type="button"
+                onClick={() => setDeletingParent(null)}
+                disabled={deleteLoading}
+                className="flex-1 py-2.5 px-3 rounded-xl border border-slate-200 text-slate-700 hover:bg-slate-50 font-bold text-xs transition-colors"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={confirmDeleteParent}
+                disabled={deleteLoading}
+                className="flex-1 py-2.5 px-3 rounded-xl bg-red-600 hover:bg-red-700 text-white font-bold text-xs shadow-xs transition-colors flex items-center justify-center gap-1.5"
+              >
+                <Trash2 size={14} />
+                <span>{deleteLoading ? 'Deleting...' : 'Confirm Delete'}</span>
+              </button>
+            </div>
+          </div>
+        </div>
       )}
     </div>
   );

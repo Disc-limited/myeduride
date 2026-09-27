@@ -1,6 +1,6 @@
 'use client';
 
-import { CheckCircle2, XCircle, ArrowRight, UserX, Clock } from 'lucide-react';
+import { CheckCircle2, XCircle, ArrowRight, UserX, Clock, Bus, Home } from 'lucide-react';
 import StudentAvatar from '@/components/shared/StudentAvatar';
 
 export interface ChildStudent {
@@ -19,7 +19,12 @@ export interface ChildStudent {
   is_safe_at_home?: boolean;
   afternoon_dropped_off?: boolean;
   on_afternoon_transit?: boolean;
+  on_morning_transit?: boolean;
+  in_the_bus?: boolean;
+  in_transit?: boolean;
+  morning_picked_up?: boolean;
   afternoon_picked_up?: boolean;
+  is_weekend?: boolean;
   safe_at_home_time?: string | null;
   today_status_label?: string | null;
   school?: { name?: string; primary_color?: string };
@@ -79,10 +84,19 @@ export default function ChildrenGridCard({
         <div className="grid grid-cols-1 gap-3.5">
           {displayKids.map((child) => {
             const isSafeAtHome = Boolean(child.is_safe_at_home || child.afternoon_dropped_off);
-            const isOnAfternoonTransit = Boolean(child.on_afternoon_transit);
-            const isPresent = child.present_today || (child as any).attendance_status === 'present';
-            const isReady = child.ready_for_pickup && !isSafeAtHome && !isOnAfternoonTransit;
-            const isDelayed = child.in_extra_lesson && !isSafeAtHome && !isOnAfternoonTransit;
+            const isOnTransit = Boolean(
+              child.in_the_bus ||
+              child.in_transit ||
+              child.on_afternoon_transit ||
+              child.on_morning_transit ||
+              (child.afternoon_picked_up && !child.afternoon_dropped_off && !child.is_safe_at_home) ||
+              (child.morning_picked_up && !child.present_today && !child.arrival_time)
+            );
+            const isPresent = Boolean(child.present_today || (child as any).attendance_status === 'present');
+            const todayDay = new Date().getDay();
+            const isWeekend = Boolean(child.is_weekend ?? (todayDay === 0 || todayDay === 6));
+            const isReady = child.ready_for_pickup && !isSafeAtHome && !isOnTransit;
+            const isDelayed = child.in_extra_lesson && !isSafeAtHome && !isOnTransit;
             const fullName = `${child.first_name || ''} ${child.last_name || ''}`.trim() || 'Student';
             const classNameStr = child.class?.name || (child as any).class_name || 'Standard';
             const escort = child.escort_name || 'Assigned Driver';
@@ -120,7 +134,7 @@ export default function ChildrenGridCard({
                     </div>
                   </div>
 
-                  {/* Status Badge - Accurate Lifecycle (Safe at Home -> Transit -> Ready -> At School -> Canceled) */}
+                  {/* Status Badge - Accurate Lifecycle (Canceled -> In Bus -> Safe at Home -> Ready -> Delayed -> At School -> Weekend (At Home) -> Not Checked In) */}
                   <div className="shrink-0 flex flex-col items-end gap-1">
                     {child.is_canceled_today ? (
                       <span
@@ -130,6 +144,14 @@ export default function ChildrenGridCard({
                         <span className="w-1.5 h-1.5 rounded-full bg-rose-600 shrink-0" />
                         🚫 Not Going Today
                       </span>
+                    ) : isOnTransit ? (
+                      <span
+                        title="Child has boarded the vehicle and is currently in transit"
+                        className="text-[10px] font-extrabold bg-amber-50 text-amber-800 border border-amber-300 px-2.5 py-1 rounded-full flex items-center gap-1.5 whitespace-nowrap animate-pulse shadow-xs"
+                      >
+                        <span className="w-1.5 h-1.5 rounded-full bg-amber-600 shrink-0" />
+                        🚌 In the Bus
+                      </span>
                     ) : isSafeAtHome ? (
                       <span
                         title="Child has safely arrived and been dropped off at home"
@@ -137,14 +159,6 @@ export default function ChildrenGridCard({
                       >
                         <span className="w-1.5 h-1.5 rounded-full bg-emerald-600 shrink-0" />
                         🏡 Safe at Home
-                      </span>
-                    ) : isOnAfternoonTransit ? (
-                      <span
-                        title="Child has departed school with escort and is en-route home"
-                        className="text-[10px] font-extrabold bg-amber-50 text-amber-800 border border-amber-300 px-2.5 py-1 rounded-full flex items-center gap-1.5 whitespace-nowrap animate-pulse shadow-xs"
-                      >
-                        <span className="w-1.5 h-1.5 rounded-full bg-amber-600 shrink-0" />
-                        🚐 En Route Home
                       </span>
                     ) : isReady ? (
                       <span
@@ -170,6 +184,14 @@ export default function ChildrenGridCard({
                         <span className="w-1.5 h-1.5 rounded-full bg-blue-500 shrink-0" />
                         At School
                       </span>
+                    ) : isWeekend ? (
+                      <span
+                        title="Weekend - School is closed today, student is safe at home"
+                        className="text-[10px] font-extrabold bg-emerald-50 text-emerald-800 border border-emerald-300 px-2.5 py-1 rounded-full flex items-center gap-1.5 whitespace-nowrap shadow-xs"
+                      >
+                        <span className="w-1.5 h-1.5 rounded-full bg-emerald-600 shrink-0" />
+                        🏡 At Home
+                      </span>
                     ) : (
                       <span
                         title="Child has not checked in at school yet today"
@@ -194,36 +216,65 @@ export default function ChildrenGridCard({
 
                 {/* Clean 4-Metric Responsive Sub-Grid with Hover Tooltip Titles */}
                 <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5 my-4 bg-slate-50/80 p-3 rounded-2xl border border-slate-100 text-left text-[11px]">
-                  <div className="min-w-0" title={`Current Status: ${isSafeAtHome ? 'Safe at Home' : isOnAfternoonTransit ? 'En Route Home' : isPresent ? 'At School' : 'Absent'}`}>
+                  <div
+                    className="min-w-0"
+                    title={`Current Status: ${
+                      child.is_canceled_today
+                        ? 'Not Going'
+                        : isOnTransit
+                          ? 'In the Bus'
+                          : isSafeAtHome
+                            ? 'Safe at Home'
+                            : isPresent
+                              ? 'At School'
+                              : isWeekend
+                                ? 'At Home'
+                                : 'Not Checked In'
+                    }`}
+                  >
                     <span className="text-[9px] font-bold text-slate-400 uppercase tracking-wider block truncate">
                       Status
                     </span>
                     <p
                       className={`font-extrabold mt-0.5 flex items-center gap-1 truncate ${
-                        isSafeAtHome
-                          ? 'text-emerald-700'
-                          : isOnAfternoonTransit
+                        child.is_canceled_today
+                          ? 'text-rose-700'
+                          : isOnTransit
                             ? 'text-amber-700'
-                            : isPresent
-                              ? 'text-blue-700'
-                              : 'text-slate-600'
+                            : isSafeAtHome
+                              ? 'text-emerald-700'
+                              : isPresent
+                                ? 'text-blue-700'
+                                : isWeekend
+                                  ? 'text-emerald-700'
+                                  : 'text-slate-600'
                       }`}
                     >
-                      {isSafeAtHome ? (
+                      {child.is_canceled_today ? (
+                        <XCircle className="w-3.5 h-3.5 text-rose-600 shrink-0" />
+                      ) : isOnTransit ? (
+                        <Bus className="w-3.5 h-3.5 text-amber-600 shrink-0 animate-pulse" />
+                      ) : isSafeAtHome ? (
                         <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600 shrink-0" />
                       ) : isPresent ? (
                         <CheckCircle2 className="w-3.5 h-3.5 text-blue-600 shrink-0" />
+                      ) : isWeekend ? (
+                        <Home className="w-3.5 h-3.5 text-emerald-600 shrink-0" />
                       ) : (
                         <Clock className="w-3.5 h-3.5 text-slate-400 shrink-0" />
                       )}
                       <span>
-                        {isSafeAtHome
-                          ? 'Safe at Home'
-                          : isOnAfternoonTransit
-                            ? 'In Transit'
-                            : isPresent
-                              ? 'At School'
-                              : 'Absent'}
+                        {child.is_canceled_today
+                          ? 'Not Going'
+                          : isOnTransit
+                            ? 'In the Bus'
+                            : isSafeAtHome
+                              ? 'Safe at Home'
+                              : isPresent
+                                ? 'At School'
+                                : isWeekend
+                                  ? 'At Home'
+                                  : 'Not Checked In'}
                       </span>
                     </p>
                   </div>
@@ -293,32 +344,54 @@ export default function ChildrenGridCard({
               <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
                 <button
                   type="button"
-                  disabled={child.is_canceled_today || isSafeAtHome}
+                  disabled={isWeekend || child.is_canceled_today || isSafeAtHome}
                   onClick={() => onNotReadyYet?.(child)}
-                  title={child.is_not_ready_yet ? `Pickup shifted: ~${child.shifted_pickup_time || 'Later'}` : `Click if ${fullName} needs extra time to get ready`}
-                  className={`w-full text-xs font-extrabold py-2 px-2.5 rounded-xl flex items-center justify-center gap-1.5 transition-all cursor-pointer ${
-                    child.is_not_ready_yet
-                      ? 'bg-amber-100 text-amber-900 border border-amber-300 shadow-xs'
-                      : 'bg-amber-50 hover:bg-amber-100 text-amber-900 border border-amber-200 hover:border-amber-300 shadow-2xs'
+                  title={
+                    isWeekend
+                      ? 'School shuttle is not operating on weekends'
+                      : child.is_not_ready_yet
+                        ? `Pickup shifted: ~${child.shifted_pickup_time || 'Later'}`
+                        : `Click if ${fullName} needs extra time to get ready`
+                  }
+                  className={`w-full text-xs font-extrabold py-2 px-2.5 rounded-xl flex items-center justify-center gap-1.5 transition-all ${
+                    isWeekend
+                      ? 'bg-slate-100 text-slate-400 border border-slate-200 cursor-not-allowed opacity-75'
+                      : child.is_not_ready_yet
+                        ? 'bg-amber-100 text-amber-900 border border-amber-300 shadow-xs cursor-pointer'
+                        : 'bg-amber-50 hover:bg-amber-100 text-amber-900 border border-amber-200 hover:border-amber-300 shadow-2xs cursor-pointer'
                   }`}
                 >
                   <Clock className="w-3.5 h-3.5 text-amber-600 shrink-0" />
-                  <span>{child.is_not_ready_yet ? `⏳ Shifted (+${child.delayed_minutes || 15}m)` : '⏳ Not Ready Yet'}</span>
+                  <span>
+                    {isWeekend
+                      ? 'Weekend'
+                      : child.is_not_ready_yet
+                        ? `⏳ Shifted (+${child.delayed_minutes || 15}m)`
+                        : '⏳ Not Ready Yet'}
+                  </span>
                 </button>
 
                 <button
                   type="button"
-                  disabled={child.is_canceled_today}
+                  disabled={isWeekend || child.is_canceled_today}
                   onClick={() => onCancelTrip?.(child)}
-                  title={child.is_canceled_today ? 'Trip is already marked as canceled today' : `Click if ${fullName} is not going to school today`}
-                  className={`w-full text-xs font-extrabold py-2 px-2.5 rounded-xl flex items-center justify-center gap-1.5 transition-all cursor-pointer ${
-                    child.is_canceled_today
-                      ? 'bg-rose-50 text-rose-800 border border-rose-200 opacity-80 cursor-not-allowed'
-                      : 'bg-rose-50 hover:bg-rose-100 text-rose-700 border border-rose-200 shadow-2xs hover:border-rose-300'
+                  title={
+                    isWeekend
+                      ? 'School is closed on weekends'
+                      : child.is_canceled_today
+                        ? 'Trip is already marked as canceled today'
+                        : `Click if ${fullName} is not going to school today`
+                  }
+                  className={`w-full text-xs font-extrabold py-2 px-2.5 rounded-xl flex items-center justify-center gap-1.5 transition-all ${
+                    isWeekend
+                      ? 'bg-slate-100 text-slate-400 border border-slate-200 cursor-not-allowed opacity-75'
+                      : child.is_canceled_today
+                        ? 'bg-rose-50 text-rose-800 border border-rose-200 opacity-80 cursor-not-allowed'
+                        : 'bg-rose-50 hover:bg-rose-100 text-rose-700 border border-rose-200 shadow-2xs hover:border-rose-300 cursor-pointer'
                   }`}
                 >
                   <XCircle className="w-3.5 h-3.5 text-rose-600 shrink-0" />
-                  <span>{child.is_canceled_today ? 'Trip Canceled' : '🚫 Not Going'}</span>
+                  <span>{isWeekend ? 'Weekend (No School)' : child.is_canceled_today ? 'Trip Canceled' : '🚫 Not Going'}</span>
                 </button>
 
                 <button

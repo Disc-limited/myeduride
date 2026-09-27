@@ -6,6 +6,7 @@ import SuperAdminSidebar from '@/components/super-admin/SuperAdminSidebar';
 import SuperAdminHeader from '@/components/super-admin/SuperAdminHeader';
 import UnderDevelopment from '@/components/super-admin/UnderDevelopment';
 import ParentsManagementView from '@/components/super-admin/ParentsManagementView';
+import SchoolsManagementView from '@/components/super-admin/SchoolsManagementView';
 import StudentsDirectoryView from '@/components/super-admin/StudentsDirectoryView';
 
 const VIEW_TITLES: Record<string, string> = {
@@ -52,6 +53,8 @@ export default function SuperAdminLayout({ children }: { children: React.ReactNo
           <main className="flex-1 p-4 sm:p-6 lg:p-8 w-full max-w-full mx-auto">
             {currentView === 'parents' ? (
               <ParentsManagementView />
+            ) : currentView === 'schools' ? (
+              <SchoolsManagementView />
             ) : currentView === 'students' ? (
               <StudentsDirectoryView />
             ) : isUnderDevView ? (

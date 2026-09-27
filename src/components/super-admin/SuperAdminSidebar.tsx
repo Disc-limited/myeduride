@@ -52,7 +52,7 @@ interface SidebarItem {
 
 const USER_MANAGEMENT_ITEMS: SidebarItem[] = [
   { id: 'parents', label: 'Parents', icon: Users, viewKey: 'parents' },
-  { id: 'schools', label: 'Schools', icon: Building2, href: '/dashboard/super-admin' },
+  { id: 'schools', label: 'Schools', icon: Building2, viewKey: 'schools' },
   { id: 'school-escorts', label: 'School Escorts', icon: Shield, viewKey: 'school-escorts', isUnderDev: true },
   { id: 'shared-ride-escorts', label: 'Shared Ride Escorts', icon: Car, viewKey: 'shared-ride-escorts', isUnderDev: true },
   { id: 'executive-ride-escorts', label: 'Executive Ride Escorts', icon: Truck, viewKey: 'executive-ride-escorts', isUnderDev: true },

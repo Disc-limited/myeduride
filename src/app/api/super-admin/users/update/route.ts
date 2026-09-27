@@ -38,6 +38,23 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Username is already taken' }, { status: 409 });
     }
 
+    // Check email uniqueness
+    const normalizedEmail = email?.trim() ? email.toLowerCase().trim() : null;
+    if (normalizedEmail) {
+      const { data: existingEmail } = await supabase
+        .from('user_profiles')
+        .select('id, username')
+        .eq('email', normalizedEmail)
+        .neq('id', user_id)
+        .maybeSingle();
+      if (existingEmail) {
+        return NextResponse.json(
+          { error: `Email "${normalizedEmail}" is already registered to @${existingEmail.username}` },
+          { status: 409 }
+        );
+      }
+    }
+
     // Check phone uniqueness
     if (phone?.trim()) {
       const { data: existingPhone } = await supabase
@@ -59,6 +76,7 @@ export async function POST(request: NextRequest) {
       user_metadata: {
         username: normalizedUsername,
         full_name: full_name.trim(),
+        email: normalizedEmail,
       },
     });
 
@@ -73,7 +91,7 @@ export async function POST(request: NextRequest) {
         username: normalizedUsername,
         full_name: full_name.trim(),
         phone: phone?.trim() || null,
-        email: email?.trim() ? email.toLowerCase().trim() : null,
+        email: normalizedEmail,
       })
       .eq('id', user_id);
 

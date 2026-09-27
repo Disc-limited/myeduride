@@ -60,6 +60,23 @@ export async function POST(request: NextRequest) {
         }
       }
 
+      // Check email uniqueness
+      const normalizedEmail = email?.trim() ? email.toLowerCase().trim() : null;
+      if (normalizedEmail) {
+        const { data: existingEmail } = await supabase
+          .from('user_profiles')
+          .select('id, username')
+          .eq('email', normalizedEmail)
+          .neq('id', parent_user_id)
+          .maybeSingle();
+        if (existingEmail) {
+          return NextResponse.json(
+            { error: `Email "${normalizedEmail}" is already in use by @${existingEmail.username}` },
+            { status: 409 }
+          );
+        }
+      }
+
       // Check uniqueness of phone number
       if (phone?.trim()) {
         const { data: existingPhone } = await supabase
@@ -92,6 +109,7 @@ export async function POST(request: NextRequest) {
         user_metadata: {
           username: finalUsername,
           full_name: name.trim(),
+          email: normalizedEmail,
         },
       });
 
@@ -106,7 +124,7 @@ export async function POST(request: NextRequest) {
           username: finalUsername,
           full_name: name.trim(),
           phone: phone?.trim() || null,
-          email: email?.trim() ? email.toLowerCase().trim() : null,
+          email: normalizedEmail,
         })
         .eq('id', parent_user_id);
 

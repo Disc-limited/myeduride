@@ -1,2 +1,7 @@
-// Re-export the main super admin dashboard as the schools page
-export { default } from '../page';
+'use client';
+
+import SchoolsManagementView from '@/components/super-admin/SchoolsManagementView';
+
+export default function SuperAdminSchoolsPage() {
+  return <SchoolsManagementView />;
+}

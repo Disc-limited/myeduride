@@ -1,6 +1,6 @@
 'use client';
 
-import { CheckCircle2, ShieldCheck, Clock } from 'lucide-react';
+import { CheckCircle2, ShieldCheck, Clock, Bus, Home } from 'lucide-react';
 import { formatTimeLagos } from '@/lib/timezone';
 
 interface Child {
@@ -10,6 +10,11 @@ interface Child {
   present_today?: boolean;
   arrival_time?: string | null;
   arrival_status?: string | null;
+  in_the_bus?: boolean;
+  in_transit?: boolean;
+  on_afternoon_transit?: boolean;
+  on_morning_transit?: boolean;
+  is_weekend?: boolean;
 }
 
 interface HeroGreetingCardProps {
@@ -65,6 +70,15 @@ export default function HeroGreetingCard({ userName, childrenList, onOpenSafetyC
       <div className="relative z-20 mt-6 flex flex-wrap items-center gap-3">
         {displayKids.map((child, idx) => {
           const isCheckedIn = Boolean(child?.present_today);
+          const isInBus = Boolean(
+            child?.in_the_bus ||
+            child?.in_transit ||
+            child?.on_afternoon_transit ||
+            child?.on_morning_transit
+          );
+          const todayDay = new Date().getDay();
+          const isWeekend = Boolean(child?.is_weekend ?? (todayDay === 0 || todayDay === 6));
+
           let timeStr = '7:28 AM';
           if (child?.arrival_time) {
             try {
@@ -83,19 +97,53 @@ export default function HeroGreetingCard({ userName, childrenList, onOpenSafetyC
                   ? isEven
                     ? 'bg-white/95 border-emerald-300 text-slate-900'
                     : 'bg-white/95 border-indigo-300 text-slate-900'
-                  : 'bg-slate-900/80 border-slate-700 text-slate-400'
+                  : isInBus
+                    ? 'bg-amber-950/80 border-amber-500/80 text-amber-200 animate-pulse'
+                    : isWeekend
+                      ? 'bg-emerald-950/80 border-emerald-600/70 text-emerald-200'
+                      : 'bg-slate-900/80 border-slate-700 text-slate-400'
               }`}
             >
               <div
-                className={`w-5 h-5 rounded-full flex items-center justify-center ${
-                  isEven ? 'bg-emerald-600 text-white' : 'bg-indigo-600 text-white'
+                className={`w-5 h-5 rounded-full flex items-center justify-center shrink-0 ${
+                  isCheckedIn
+                    ? isEven ? 'bg-emerald-600 text-white' : 'bg-indigo-600 text-white'
+                    : isInBus
+                      ? 'bg-amber-500 text-white'
+                      : isWeekend
+                        ? 'bg-emerald-600 text-white'
+                        : 'bg-slate-700 text-slate-300'
                 }`}
               >
-                <CheckCircle2 className="w-3.5 h-3.5 stroke-[2.5]" />
+                {isCheckedIn ? (
+                  <CheckCircle2 className="w-3.5 h-3.5 stroke-[2.5]" />
+                ) : isInBus ? (
+                  <Bus className="w-3.5 h-3.5" />
+                ) : isWeekend ? (
+                  <Home className="w-3.5 h-3.5" />
+                ) : (
+                  <Clock className="w-3.5 h-3.5" />
+                )}
               </div>
               <div className="flex items-center gap-1.5">
-                <span>{child?.first_name || 'Child'} Arrived School</span>
-                <span className="text-[10px] text-slate-500 font-mono font-normal">{timeStr}</span>
+                <span>
+                  {isCheckedIn
+                    ? `${child?.first_name || 'Child'} Arrived School`
+                    : isInBus
+                      ? `${child?.first_name || 'Child'} In the Bus`
+                      : isWeekend
+                        ? `${child?.first_name || 'Child'} At Home`
+                        : `${child?.first_name || 'Child'} Not Checked In`}
+                </span>
+                {isCheckedIn && (
+                  <span className="text-[10px] text-slate-500 font-mono font-normal">{timeStr}</span>
+                )}
+                {!isCheckedIn && isWeekend && (
+                  <span className="text-[10px] text-emerald-400 font-semibold">(Weekend)</span>
+                )}
+                {!isCheckedIn && isInBus && (
+                  <span className="text-[10px] text-amber-400 font-semibold">(Transit)</span>
+                )}
               </div>
             </div>
           );

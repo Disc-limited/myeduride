@@ -1,6 +1,6 @@
 'use client';
 
-import { Copy, KeyRound, UserPlus, Pencil } from 'lucide-react';
+import { Copy, KeyRound, UserPlus, Pencil, Trash2 } from 'lucide-react';
 import { toast } from 'sonner';
 
 export type AuthorisedPickupPerson = {
@@ -40,6 +40,7 @@ type Props = {
   provisioningId: string | null;
   showPasswords: boolean;
   onEdit?: (row: StudentParentCredential) => void;
+  onDelete?: (row: StudentParentCredential) => void;
 };
 
 export function StudentParentCredentialTableHead() {
@@ -86,6 +87,7 @@ export function StudentParentCredentialRows({
   provisioningId,
   showPasswords,
   onEdit,
+  onDelete,
 }: Props) {
   if (rows.length === 0) return null;
 
@@ -239,6 +241,16 @@ export function StudentParentCredentialRows({
                   >
                     <Pencil size={14} />
                     Edit
+                  </button>
+                )}
+                {onDelete && hasParent && (
+                  <button
+                    type="button"
+                    onClick={() => onDelete(row)}
+                    className="px-2.5 h-9 rounded-xl border border-red-200 bg-red-50 hover:bg-red-100 text-xs font-semibold text-red-600 transition-all inline-flex items-center justify-center min-h-[36px]"
+                    title="Delete parent account"
+                  >
+                    <Trash2 size={14} />
                   </button>
                 )}
               </div>

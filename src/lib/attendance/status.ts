@@ -43,7 +43,7 @@ export const DAY_STATUS_LABELS: Record<DayAttendanceStatus, string> = {
   on_time: 'Present',
   late: 'Late',
   absent: 'Absent',
-  weekend: 'Weekend',
+  weekend: 'At Home',
   upcoming: 'Upcoming',
   excluded: 'No school',
 };
@@ -51,6 +51,7 @@ export const DAY_STATUS_LABELS: Record<DayAttendanceStatus, string> = {
 export function dayStatusColor(status: DayAttendanceStatus): 'green' | 'yellow' | 'red' | 'gray' {
   if (status === 'late') return 'yellow';
   if (status === 'on_time') return 'green';
+  if (status === 'weekend') return 'green';
   if (status === 'absent') return 'red';
   return 'gray';
 }

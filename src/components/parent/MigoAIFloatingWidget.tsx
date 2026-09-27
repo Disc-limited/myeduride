@@ -58,16 +58,27 @@ export default function MigoAIFloatingWidget({
         if (childrenList.length === 0) {
           replyText = 'You do not have any linked children on your profile yet.';
         } else {
+          const isWeekendToday = [0, 6].includes(new Date().getDay());
           const statusLines = childrenList.map((c) => {
+            const inBus = Boolean(
+              c.on_afternoon_transit ||
+              (c as any).in_the_bus ||
+              (c as any).in_transit ||
+              (c as any).on_morning_transit
+            );
+            if (inBus) {
+              return `🚌 ${c.first_name} is currently in the bus in transit.`;
+            }
             if (c.is_safe_at_home || c.afternoon_dropped_off) {
               return `🏡 ${c.first_name} has arrived safely and is home.`;
             }
-            if (c.on_afternoon_transit) {
-              return `🚐 ${c.first_name} has departed school and is en-route home in the shuttle.`;
+            if (c.present_today) {
+              return `✅ ${c.first_name} is checked in and safely on campus at school.`;
             }
-            return c.present_today
-              ? `✅ ${c.first_name} is checked in and safely on campus at school.`
-              : `⏳ ${c.first_name} has not checked in yet today.`;
+            if (isWeekendToday || (c as any).is_weekend) {
+              return `🏡 ${c.first_name} is at home today (weekend - school closed).`;
+            }
+            return `⏳ ${c.first_name} has not checked in yet today.`;
           });
           replyText = statusLines.join('\n');
         }

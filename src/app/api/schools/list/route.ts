@@ -28,26 +28,65 @@ export async function GET(request: NextRequest) {
 
     const schools = (allSchools || []).filter((s) => s.id !== platformId);
 
-    const { data: studentCounts, error: studErr } = await supabase
+    const { data: studentCounts } = await supabase
       .from('students')
       .select('school_id')
       .eq('is_active', true);
 
-    if (studErr) console.error('[schools/list] students:', studErr.message);
-
-    const { data: staffCounts, error: staffErr } = await supabase
+    const { data: staffCounts } = await supabase
       .from('user_school_roles')
       .select('school_id')
       .in('role', ['school_admin', 'teacher', 'gate_officer', 'staff'])
       .eq('is_active', true);
 
-    if (staffErr) console.error('[schools/list] staff:', staffErr.message);
+    const { data: classCounts } = await supabase
+      .from('school_classes')
+      .select('school_id');
 
-    const schoolsWithStats = schools.map((school) => ({
-      ...school,
-      student_count: studentCounts?.filter((s) => s.school_id === school.id).length || 0,
-      staff_count: staffCounts?.filter((s) => s.school_id === school.id).length || 0,
-    }));
+    // Fetch school admins
+    const schoolIds = schools.map((s) => s.id);
+    const { data: adminRoles } = await supabase
+      .from('user_school_roles')
+      .select('school_id, user_id, user_profiles(id, username, email, full_name, phone)')
+      .in('school_id', schoolIds)
+      .eq('role', 'school_admin')
+      .eq('is_active', true);
+
+    const adminBySchool = new Map<string, {
+      admin_user_id: string;
+      admin_name: string;
+      admin_email: string;
+      admin_phone: string;
+      admin_username: string;
+    }>();
+
+    for (const r of adminRoles || []) {
+      const p = Array.isArray(r.user_profiles) ? r.user_profiles[0] : (r.user_profiles as any);
+      if (p && !adminBySchool.has(r.school_id)) {
+        adminBySchool.set(r.school_id, {
+          admin_user_id: p.id,
+          admin_name: p.full_name || '',
+          admin_email: p.email || '',
+          admin_phone: p.phone || '',
+          admin_username: p.username || '',
+        });
+      }
+    }
+
+    const schoolsWithStats = schools.map((school) => {
+      const adminInfo = adminBySchool.get(school.id);
+      return {
+        ...school,
+        student_count: studentCounts?.filter((s) => s.school_id === school.id).length || 0,
+        staff_count: staffCounts?.filter((s) => s.school_id === school.id).length || 0,
+        class_count: classCounts?.filter((c) => c.school_id === school.id).length || 0,
+        admin_user_id: adminInfo?.admin_user_id || null,
+        admin_name: adminInfo?.admin_name || null,
+        admin_email: adminInfo?.admin_email || null,
+        admin_phone: adminInfo?.admin_phone || null,
+        admin_username: adminInfo?.admin_username || null,
+      };
+    });
 
     return NextResponse.json(
       { schools: schoolsWithStats, count: schoolsWithStats.length },

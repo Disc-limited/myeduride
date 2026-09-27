@@ -1024,13 +1024,19 @@ export default function ParentDashboard() {
                     <AttendanceWeekCard
                       presentCount={safeChildren.filter((c) => c?.present_today).length}
                       lateCount={0}
-                      absentCount={safeChildren.filter((c) => !c?.present_today).length}
+                      absentCount={
+                        [0, 6].includes(new Date().getDay())
+                          ? 0
+                          : safeChildren.filter((c) => !c?.present_today).length
+                      }
                       attendanceRate={
-                        safeChildren.length > 0
-                          ? Math.round(
-                              (safeChildren.filter((c) => c?.present_today).length / safeChildren.length) * 100
-                            )
-                          : 0
+                        [0, 6].includes(new Date().getDay())
+                          ? 100
+                          : safeChildren.length > 0
+                            ? Math.round(
+                                (safeChildren.filter((c) => c?.present_today).length / safeChildren.length) * 100
+                              )
+                            : 0
                       }
                       onViewAll={() => setActiveTab('attendance')}
                     />

@@ -13,6 +13,8 @@ import {
   Search,
   Users,
   BookUser,
+  Trash2,
+  AlertCircle,
 } from 'lucide-react';
 import { toast } from 'sonner';
 import {
@@ -53,6 +55,7 @@ function StudentSection({
   savingId,
   showPasswords,
   onEdit,
+  onDelete,
 }: {
   students: StudentParentCredential[];
   draftPasswords: Record<string, string>;
@@ -63,6 +66,7 @@ function StudentSection({
   savingId: string | null;
   showPasswords: boolean;
   onEdit: (row: StudentParentCredential) => void;
+  onDelete?: (row: StudentParentCredential) => void;
 }) {
   if (students.length === 0) return null;
 
@@ -92,6 +96,7 @@ function StudentSection({
             provisioningId={null}
             showPasswords={showPasswords}
             onEdit={onEdit}
+            onDelete={onDelete}
           />
         </table>
       </div>
@@ -113,6 +118,7 @@ function UserSection({
   onUnlock,
   unlockingId,
   onEdit,
+  onDelete,
 }: {
   title: string;
   icon: React.ReactNode;
@@ -127,6 +133,7 @@ function UserSection({
   onUnlock?: (userId: string) => void;
   unlockingId?: string | null;
   onEdit?: (user: CredentialUser) => void;
+  onDelete?: (user: CredentialUser) => void;
 }) {
   if (users.length === 0) return null;
 
@@ -154,6 +161,7 @@ function UserSection({
             onUnlock={onUnlock}
             unlockingId={unlockingId}
             onEdit={onEdit}
+            onDelete={onDelete}
           />
         </table>
       </div>
@@ -174,6 +182,8 @@ export default function SuperAdminPasswordsPage() {
   const [unlockingId, setUnlockingId] = useState<string | null>(null);
   const [showPasswords, setShowPasswords] = useState(true);
   const [editingUser, setEditingUser] = useState<any | null>(null);
+  const [deletingUser, setDeletingUser] = useState<{ id: string; name: string; username?: string; role?: string } | null>(null);
+  const [deleteLoading, setDeleteLoading] = useState(false);
   const [totalUsers, setTotalUsers] = useState(0);
   const [totalStudents, setTotalStudents] = useState(0);
 
@@ -390,6 +400,30 @@ export default function SuperAdminPasswordsPage() {
     }
   };
 
+  const confirmDeleteAccount = async () => {
+    if (!deletingUser?.id) return;
+    setDeleteLoading(true);
+    try {
+      const res = await fetch('/api/super-admin/users/delete', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ user_id: deletingUser.id }),
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        toast.error(data.error || 'Failed to delete account');
+        return;
+      }
+      toast.success(data.message || 'Account deleted successfully');
+      setDeletingUser(null);
+      fetchCredentials();
+    } catch {
+      toast.error('Network error deleting account');
+    } finally {
+      setDeleteLoading(false);
+    }
+  };
+
   const toggleSchool = (schoolId: string) => {
     setExpandedSchools((prev) => {
       const next = new Set(prev);
@@ -506,6 +540,7 @@ export default function SuperAdminPasswordsPage() {
                         onUnlock={unlockUser}
                         unlockingId={unlockingId}
                         onEdit={setEditingUser}
+                        onDelete={(u) => setDeletingUser({ id: u.id, name: u.full_name, username: u.username, role: 'Super Admin' })}
                       />
                     </table>
                   )}
@@ -564,6 +599,14 @@ export default function SuperAdminPasswordsPage() {
                               savingId={savingId}
                               showPasswords={showPasswords}
                               onEdit={setEditingUser}
+                              onDelete={(row) =>
+                                setDeletingUser({
+                                  id: row.parent_user_id!,
+                                  name: row.parent_name,
+                                  username: row.parent_username,
+                                  role: 'Parent',
+                                })
+                              }
                             />
                             <UserSection
                               title="Staff (admin, teachers, gate, general)"
@@ -579,6 +622,14 @@ export default function SuperAdminPasswordsPage() {
                               onUnlock={unlockUser}
                               unlockingId={unlockingId}
                               onEdit={setEditingUser}
+                              onDelete={(u) =>
+                                setDeletingUser({
+                                  id: u.id,
+                                  name: u.full_name,
+                                  username: u.username,
+                                  role: u.roles?.join(', '),
+                                })
+                              }
                             />
                             <UserSection
                               title="Other"
@@ -594,6 +645,14 @@ export default function SuperAdminPasswordsPage() {
                               onUnlock={unlockUser}
                               unlockingId={unlockingId}
                               onEdit={setEditingUser}
+                              onDelete={(u) =>
+                                setDeletingUser({
+                                  id: u.id,
+                                  name: u.full_name,
+                                  username: u.username,
+                                  role: u.roles?.join(', '),
+                                })
+                              }
                             />
                           </>
                         )}
@@ -613,6 +672,49 @@ export default function SuperAdminPasswordsPage() {
         onSuccess={fetchCredentials}
         user={editingUser}
       />
+
+      {/* Delete User Confirmation Modal */}
+      {deletingUser && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-xs">
+          <div className="relative w-full max-w-md bg-white rounded-2xl shadow-2xl border border-red-100 p-6 space-y-4">
+            <div className="w-12 h-12 rounded-2xl bg-red-50 text-red-600 border border-red-200 flex items-center justify-center mx-auto">
+              <AlertCircle size={26} />
+            </div>
+
+            <div className="text-center space-y-1.5">
+              <h3 className="text-base font-extrabold text-slate-900">
+                Permanently Delete Account?
+              </h3>
+              <p className="text-xs text-slate-500 font-medium leading-relaxed">
+                Are you sure you want to permanently delete the account for <strong className="text-slate-800">{deletingUser.name}</strong>
+                {deletingUser.username ? ` (@${deletingUser.username})` : ''}
+                {deletingUser.role ? ` [${deletingUser.role}]` : ''}?
+                All associated access, roles, and linked dependencies will be safely removed. This action cannot be undone.
+              </p>
+            </div>
+
+            <div className="flex gap-2.5 pt-2">
+              <button
+                type="button"
+                onClick={() => setDeletingUser(null)}
+                disabled={deleteLoading}
+                className="flex-1 py-2.5 px-3 rounded-xl border border-slate-200 text-slate-700 hover:bg-slate-50 font-bold text-xs transition-colors"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={confirmDeleteAccount}
+                disabled={deleteLoading}
+                className="flex-1 py-2.5 px-3 rounded-xl bg-red-600 hover:bg-red-700 text-white font-bold text-xs shadow-xs transition-colors flex items-center justify-center gap-1.5"
+              >
+                <Trash2 size={14} />
+                <span>{deleteLoading ? 'Deleting...' : 'Confirm Delete'}</span>
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

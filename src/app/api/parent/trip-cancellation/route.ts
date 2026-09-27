@@ -3,6 +3,7 @@ import { getSessionFromRequest } from '@/lib/auth/auth-server';
 import { getAdminClient } from '@/lib/supabase/admin';
 import { sendPushToUser } from '@/lib/push/send';
 import { todayInLagos, nowUtcIso } from '@/lib/utils/time';
+import { isLagosWeekend } from '@/lib/attendance/lagos-dates';
 import { TripCancellationEvent } from '@/lib/types/trip-cancellation-types';
 import { invalidateOpsCache } from '@/lib/city-manager/ops-cache';
 
@@ -199,41 +200,44 @@ export async function POST(request: NextRequest) {
       invalidateOpsCache();
     } catch {}
 
-    // 4. Update attendance_records (mark absent for today's arrival)
-    try {
-      const startOfDay = `${today}T00:00:00`;
-      const endOfDay = `${today}T23:59:59`;
+    // 4. Update attendance_records (mark absent for today's arrival only on countable school days, NOT weekends)
+    const isWeekendDay = isLagosWeekend(today);
+    if (!isWeekendDay) {
+      try {
+        const startOfDay = `${today}T00:00:00`;
+        const endOfDay = `${today}T23:59:59`;
 
-      const { data: existingAtt } = await supabase
-        .from('attendance_records')
-        .select('id')
-        .eq('student_id', child_id)
-        .eq('type', 'arrival')
-        .gte('timestamp', startOfDay)
-        .lte('timestamp', endOfDay)
-        .maybeSingle();
-
-      if (existingAtt) {
-        await supabase
+        const { data: existingAtt } = await supabase
           .from('attendance_records')
-          .update({
+          .select('id')
+          .eq('student_id', child_id)
+          .eq('type', 'arrival')
+          .gte('timestamp', startOfDay)
+          .lte('timestamp', endOfDay)
+          .maybeSingle();
+
+        if (existingAtt) {
+          await supabase
+            .from('attendance_records')
+            .update({
+              status: 'absent',
+              notes: `Parent declared not going today (${reason}). Notes: ${notes || 'None'}`,
+              timestamp: nowIso,
+            })
+            .eq('id', existingAtt.id);
+        } else {
+          await supabase.from('attendance_records').insert({
+            student_id: child_id,
+            school_id: student.school_id,
+            type: 'arrival',
             status: 'absent',
             notes: `Parent declared not going today (${reason}). Notes: ${notes || 'None'}`,
             timestamp: nowIso,
-          })
-          .eq('id', existingAtt.id);
-      } else {
-        await supabase.from('attendance_records').insert({
-          student_id: child_id,
-          school_id: student.school_id,
-          type: 'arrival',
-          status: 'absent',
-          notes: `Parent declared not going today (${reason}). Notes: ${notes || 'None'}`,
-          timestamp: nowIso,
-        });
+          });
+        }
+      } catch (attErr) {
+        console.warn('[trip-cancellation] attendance record note:', attErr);
       }
-    } catch (attErr) {
-      console.warn('[trip-cancellation] attendance record note:', attErr);
     }
 
     // 5. Build Realtime cancellation event

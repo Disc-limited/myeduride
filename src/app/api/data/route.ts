@@ -7,6 +7,7 @@ import {
 } from '@/lib/auth/school-access';
 import { ATTENDANCE_UI_NOTE } from '@/lib/attendance/window';
 import { todayInLagos, lagosDayBounds, formatTimeLagos } from '@/lib/timezone';
+import { getLagosWeekday } from '@/lib/attendance/lagos-dates';
 import { getSessionFromRequest } from '@/lib/session';
 import { countSchoolParentsOnFile } from '@/lib/school/school-parents-list';
 import { buildStaffDailyReport } from '@/lib/attendance/staff-report';
@@ -729,6 +730,9 @@ export async function POST(request: NextRequest) {
           })
         );
 
+        const todayWeekday = getLagosWeekday(today);
+        const isWeekend = todayWeekday === 0 || todayWeekday === 6;
+
         const children = (students || []).map((s: any) => {
           const arrival = arrivalMap.get(s.id);
           const departure = departureMap.get(s.id);
@@ -741,7 +745,13 @@ export async function POST(request: NextRequest) {
             (departure && !trip?.afternoon_picked_up) ||
             dismissal?.status === 'completed'
           );
-          const isOnAfternoonTransit = Boolean(trip?.afternoon_picked_up && !trip?.afternoon_dropped_off);
+          const isOnMorningTransit = Boolean(
+            trip?.morning_picked_up && !trip?.morning_dropped_off && !arrival
+          );
+          const isOnAfternoonTransit = Boolean(
+            trip?.afternoon_picked_up && !trip?.afternoon_dropped_off
+          );
+          const isInTransit = isOnMorningTransit || isOnAfternoonTransit;
           const safeAtHomeTime = trip?.afternoon_dropped_off_at || departure?.timestamp || null;
 
           const isCanceledToday = Boolean(trip?.is_canceled_by_parent);
@@ -753,34 +763,43 @@ export async function POST(request: NextRequest) {
             route_name: routeByStudent.get(s.id)?.route_name || null,
             vehicle_model: routeByStudent.get(s.id)?.vehicle_model || null,
             present_today: !isCanceledToday && !!arrival,
-            arrival_status: isCanceledToday ? 'absent' : (arrival?.status || null),
+            arrival_status: isCanceledToday
+              ? 'absent'
+              : arrival?.status || (isWeekend ? 'at_home' : null),
             arrival_time: arrival?.timestamp || null,
-            ready_for_pickup: !isCanceledToday && !isSafeAtHome && !isOnAfternoonTransit && !!dismissal && dismissal.status !== 'completed',
+            ready_for_pickup: !isCanceledToday && !isSafeAtHome && !isInTransit && !!dismissal && dismissal.status !== 'completed',
             dismissal_status: dismissal?.status || null,
-            in_extra_lesson: !isCanceledToday && !isSafeAtHome && !isOnAfternoonTransit && !!extraLesson && !extraLesson.is_released,
+            in_extra_lesson: !isCanceledToday && !isSafeAtHome && !isInTransit && !!extraLesson && !extraLesson.is_released,
             extra_lesson_end_time: extraLesson?.lesson_end_time || null,
             extra_lesson_reason: extraLesson?.reason || null,
             is_safe_at_home: !isCanceledToday && isSafeAtHome,
             afternoon_dropped_off: !isCanceledToday && isSafeAtHome,
+            in_the_bus: !isCanceledToday && isInTransit,
+            in_transit: !isCanceledToday && isInTransit,
+            on_morning_transit: !isCanceledToday && isOnMorningTransit,
             on_afternoon_transit: !isCanceledToday && isOnAfternoonTransit,
+            morning_picked_up: !isCanceledToday && Boolean(trip?.morning_picked_up),
             afternoon_picked_up: !isCanceledToday && Boolean(trip?.afternoon_picked_up),
+            is_weekend: isWeekend,
             safe_at_home_time: safeAtHomeTime,
             is_canceled_today: isCanceledToday,
             cancellation_reason: trip?.cancellation_reason || null,
             canceled_at: trip?.canceled_at || null,
             today_status_label: isCanceledToday
               ? 'Not Going Today'
-              : isSafeAtHome
-                ? 'Safe at Home'
-                : isOnAfternoonTransit
-                  ? 'En Route Home'
+              : isInTransit
+                ? 'In the Bus'
+                : isSafeAtHome
+                  ? 'Safe at Home'
                   : !!dismissal && dismissal.status !== 'completed'
                     ? 'Ready for Pickup'
                     : !!extraLesson && !extraLesson.is_released
                       ? 'Extended Lesson'
                       : !!arrival
                         ? 'At School'
-                        : 'Not Checked In',
+                        : isWeekend
+                          ? 'At Home'
+                          : 'Not Checked In',
           };
         });
 

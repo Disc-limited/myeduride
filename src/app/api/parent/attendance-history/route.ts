@@ -6,6 +6,7 @@ import {
   lagosDateStringsInRange,
   resolveLagosReportRange,
   timestampToLagosDateKey,
+  isLagosWeekend,
 } from '@/lib/attendance/lagos-dates';
 import {
   fetchSchoolCalendarContext,
@@ -115,7 +116,7 @@ export async function GET(request: NextRequest) {
       const departure = departureByDay[dayKey];
       const isWeekend = calendarCtx
         ? isWeekendDay(dayKey, calendarCtx.weekendDays)
-        : false;
+        : isLagosWeekend(dayKey);
       const isExcluded = !isSchoolDay(dayKey);
       const status =
         dayKey > today
@@ -141,7 +142,7 @@ export async function GET(request: NextRequest) {
       const departure = departureByDay[dayKey];
       const isWeekend = calendarCtx
         ? isWeekendDay(dayKey, calendarCtx.weekendDays)
-        : false;
+        : isLagosWeekend(dayKey);
       const isExcluded = !isSchoolDay(dayKey);
       const status = resolveCalendarDayStatus(dayKey, arrival, {
         isWeekend,

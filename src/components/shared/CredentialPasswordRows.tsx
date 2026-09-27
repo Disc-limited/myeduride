@@ -1,6 +1,6 @@
 'use client';
 
-import { Copy, KeyRound, Pencil } from 'lucide-react';
+import { Copy, KeyRound, Pencil, Trash2 } from 'lucide-react';
 import { toast } from 'sonner';
 
 export type CredentialUser = {
@@ -31,6 +31,7 @@ type Props = {
   onUnlock?: (userId: string) => void;
   unlockingId?: string | null;
   onEdit?: (user: CredentialUser) => void;
+  onDelete?: (user: CredentialUser) => void;
 };
 
 export function CredentialPasswordRows({
@@ -45,6 +46,7 @@ export function CredentialPasswordRows({
   onUnlock,
   unlockingId,
   onEdit,
+  onDelete,
 }: Props) {
   if (users.length === 0) return null;
 
@@ -152,6 +154,16 @@ export function CredentialPasswordRows({
                   >
                     <Pencil size={14} />
                     Edit
+                  </button>
+                )}
+                {onDelete && (
+                  <button
+                    type="button"
+                    onClick={() => onDelete(user)}
+                    className="px-2.5 h-9 rounded-xl border border-red-200 bg-red-50 hover:bg-red-100 text-xs font-semibold text-red-600 transition-all inline-flex items-center justify-center min-h-[36px]"
+                    title="Delete account"
+                  >
+                    <Trash2 size={14} />
                   </button>
                 )}
               </div>
