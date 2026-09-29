@@ -70,6 +70,10 @@ import ParentRoutePinningWidget from '@/components/routes/ParentRoutePinningWidg
 import ParentLiveMovementView from '@/components/parent/ParentLiveMovementView';
 import ParentMobileBottomNav from '@/components/parent/ParentMobileBottomNav';
 import ParentVisitorGatePassModal from '@/components/parent/ParentVisitorGatePassModal';
+import ChildProfileAttendanceModal from '@/components/parent/ChildProfileAttendanceModal';
+import SchoolAnnouncementDetailModal from '@/components/parent/SchoolAnnouncementDetailModal';
+import { showGmailNotificationToast } from '@/lib/notifications/gmail-toast';
+import { playNotificationChime } from '@/lib/notifications/sound';
 
 // Helper to sanitize internal technical metadata like [sender_id:...] and [Message from ...]
 const cleanNotificationText = (text?: string) => {
@@ -112,6 +116,10 @@ export default function ParentDashboard() {
   const [showNotReadyModal, setShowNotReadyModal] = useState(false);
   const [notReadyModalChild, setNotReadyModalChild] = useState<any>(null);
   const [showIdPassModal, setShowIdPassModal] = useState(false);
+  const [selectedAnnouncementForModal, setSelectedAnnouncementForModal] = useState<any>(null);
+  const [readNoticeIds, setReadNoticeIds] = useState<string[]>([]);
+  const seenNotifIdsRef = useRef<Set<string>>(new Set());
+  const isInitialNotifLoadRef = useRef<boolean>(true);
 
   // Pickup Form state
   const [pickupForm, setPickupForm] = useState({
@@ -338,6 +346,106 @@ export default function ParentDashboard() {
     };
   }, [children]);
 
+  // Real-time Notification Listener with Chime Alert & Gmail-style Toast
+  useEffect(() => {
+    const sess = getSession();
+    if (!sess?.user_id) return;
+
+    const supabase = createClient();
+    const channel = supabase
+      .channel(`parent-notifications:${sess.user_id}`)
+      .on(
+        'postgres_changes',
+        {
+          event: 'INSERT',
+          schema: 'public',
+          table: 'notifications',
+          filter: `user_id=eq.${sess.user_id}`,
+        },
+        (payload: any) => {
+          const newNotif = payload.new;
+          if (!newNotif || seenNotifIdsRef.current.has(newNotif.id)) return;
+          seenNotifIdsRef.current.add(newNotif.id);
+
+          setNotifications((prev) => [newNotif, ...(prev || [])]);
+
+          // Pop up Gmail-style notification toast with sound chime!
+          showGmailNotificationToast({
+            id: newNotif.id,
+            title: cleanNotificationText(newNotif.title) || 'New Notification',
+            message: cleanNotificationText(newNotif.message) || '',
+            tag: (newNotif.type || 'Alert').replace(/_/g, ' '),
+            timeStr: 'Just now',
+            playSound: true,
+            onOpen: () => {
+              markRead(newNotif.id);
+              setShowNotifModal(true);
+            },
+            onDismiss: () => {
+              markRead(newNotif.id);
+            },
+          });
+        }
+      )
+      .on(
+        'postgres_changes',
+        {
+          event: 'UPDATE',
+          schema: 'public',
+          table: 'notifications',
+          filter: `user_id=eq.${sess.user_id}`,
+        },
+        (payload: any) => {
+          const updated = payload.new;
+          setNotifications((prev) =>
+            (prev || []).map((n) => (n.id === updated.id ? { ...n, ...updated } : n))
+          );
+        }
+      )
+      .subscribe();
+
+    // Background polling fallback every 20 seconds for new unread notifications
+    const pollInterval = setInterval(async () => {
+      try {
+        const res = await fetchData('get_parent_notifications');
+        const latest = res?.notifications || [];
+        if (!Array.isArray(latest)) return;
+
+        latest.forEach((n: any) => {
+          if (!seenNotifIdsRef.current.has(n.id)) {
+            seenNotifIdsRef.current.add(n.id);
+            // If it's unread and arrived after initial load, pop up and play chime!
+            if (!n.is_read && !isInitialNotifLoadRef.current) {
+              showGmailNotificationToast({
+                id: n.id,
+                title: cleanNotificationText(n.title) || 'New Notification',
+                message: cleanNotificationText(n.message) || '',
+                tag: (n.type || 'Alert').replace(/_/g, ' '),
+                timeStr: 'Just now',
+                playSound: true,
+                onOpen: () => {
+                  markRead(n.id);
+                  setShowNotifModal(true);
+                },
+                onDismiss: () => {
+                  markRead(n.id);
+                },
+              });
+            }
+          }
+        });
+        setNotifications(latest);
+      } catch {
+        // ignore
+      }
+    }, 20000);
+
+    return () => {
+      supabase.removeChannel(channel);
+      clearInterval(pollInterval);
+    };
+  }, [session?.user_id]);
+
   const formatTimeAgo = (iso?: string) => {
     if (!iso) return '';
     const diff = Date.now() - new Date(iso).getTime();
@@ -438,7 +546,12 @@ export default function ParentDashboard() {
         .catch(() => ({ notices: [] })),
       fetchUnreadChatTotal().catch(() => {}),
     ]).then(([notifRes, walletRes, noticeData]) => {
-      setNotifications(notifRes?.notifications || []);
+      const notifs = notifRes?.notifications || [];
+      setNotifications(notifs);
+      // Register all existing notifications so previously read or existing alerts NEVER pop up on sign-in
+      notifs.forEach((n: any) => seenNotifIdsRef.current.add(n.id));
+      isInitialNotifLoadRef.current = false;
+
       setWalletBalance(Number(walletRes?.balance || 0));
       setRecentNotices(noticeData?.notices || []);
     });
@@ -456,6 +569,17 @@ export default function ParentDashboard() {
     if (sess) {
       setUserName(sess.full_name || sess.username || 'Parent');
       setUserPhotoUrl(sess.photo_url || sess.avatar_url || null);
+      try {
+        const savedNotices = localStorage.getItem(`eduride_read_notices_${sess.user_id || 'parent'}`);
+        if (savedNotices) {
+          const parsed = JSON.parse(savedNotices);
+          if (Array.isArray(parsed)) {
+            setReadNoticeIds(parsed);
+          }
+        }
+      } catch {
+        // ignore
+      }
       loadData();
     } else {
       setLoading(false);
@@ -603,8 +727,44 @@ export default function ParentDashboard() {
   }, [showAttendanceModal, selectedChild, historyType, historyDate, historyYear, historyTerm]);
 
   const markRead = async (id: string) => {
-    await fetchData('mark_notification_read', { notification_id: id });
+    try {
+      await fetchData('mark_notification_read', { notification_id: id });
+    } catch (err) {
+      console.error('Error marking notification read in DB:', err);
+    }
     setNotifications((prev) => (prev || []).map((n) => (n.id === id ? { ...n, is_read: true } : n)));
+    try {
+      const sess = getSession();
+      const storageKey = `eduride_read_notifs_${sess?.user_id || 'parent'}`;
+      const saved = localStorage.getItem(storageKey);
+      const existing = saved ? JSON.parse(saved) : [];
+      if (!existing.includes(id)) {
+        existing.push(id);
+        localStorage.setItem(storageKey, JSON.stringify(existing));
+      }
+    } catch {
+      // ignore
+    }
+  };
+
+  const markAllRead = async () => {
+    const unread = (notifications || []).filter((n: any) => !n?.is_read);
+    for (const n of unread) {
+      markRead(n.id);
+    }
+  };
+
+  const markNoticeRead = (noticeId: string) => {
+    setReadNoticeIds((prev) => {
+      const updated = Array.from(new Set([...prev, noticeId]));
+      try {
+        const sess = getSession();
+        localStorage.setItem(`eduride_read_notices_${sess?.user_id || 'parent'}`, JSON.stringify(updated));
+      } catch {
+        // ignore
+      }
+      return updated;
+    });
   };
 
   const safeNotifications = notifications || [];
@@ -1051,7 +1211,12 @@ export default function ParentDashboard() {
                   <QuickActionsGrid onActionClick={handleQuickAction} />
                   <SchoolAnnouncementsCard
                     announcements={schoolAnnouncements}
+                    readNoticeIds={readNoticeIds}
                     onViewAll={() => setActiveTab('notices')}
+                    onSelectAnnouncement={(item) => {
+                      markNoticeRead(item.id);
+                      setSelectedAnnouncementForModal(item);
+                    }}
                   />
                   <UpcomingEventsCard events={upcomingEvents} onViewAll={() => setActiveTab('notices')} />
                 </div>
@@ -1109,14 +1274,30 @@ export default function ParentDashboard() {
                 <div className="flex items-center gap-2">
                   <Bell className="w-5 h-5 text-emerald-600" />
                   <h2 className="text-base font-extrabold text-slate-900">Notifications</h2>
+                  {unreadNotifsCount > 0 && (
+                    <span className="text-[10px] font-black bg-emerald-100 text-emerald-800 border border-emerald-300 px-2 py-0.5 rounded-full">
+                      {unreadNotifsCount} unread
+                    </span>
+                  )}
                 </div>
-                <button
-                  type="button"
-                  onClick={() => setShowNotifModal(false)}
-                  className="p-1 rounded-lg text-slate-400 hover:text-slate-700"
-                >
-                  <X className="w-5 h-5" />
-                </button>
+                <div className="flex items-center gap-2">
+                  {unreadNotifsCount > 0 && (
+                    <button
+                      type="button"
+                      onClick={markAllRead}
+                      className="text-[11px] font-bold text-emerald-600 hover:text-emerald-700 underline cursor-pointer"
+                    >
+                      Mark all read
+                    </button>
+                  )}
+                  <button
+                    type="button"
+                    onClick={() => setShowNotifModal(false)}
+                    className="p-1 rounded-lg text-slate-400 hover:text-slate-700"
+                  >
+                    <X className="w-5 h-5" />
+                  </button>
+                </div>
               </div>
 
               {safeNotifications.length === 0 ? (
@@ -1216,71 +1397,26 @@ export default function ParentDashboard() {
         }}
       />
 
-      {/* Attendance History Modal */}
-      {showAttendanceModal && (
-        <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4">
-          <div className="bg-white rounded-3xl max-w-xl w-full p-6 shadow-2xl overflow-y-auto max-h-[90vh] space-y-4">
-            <div className="flex items-center justify-between pb-3 border-b border-slate-100">
-              <h2 className="text-base font-extrabold text-slate-900">Attendance History</h2>
-              <button
-                type="button"
-                onClick={() => setShowAttendanceModal(false)}
-                className="p-1 text-slate-400 hover:text-slate-700"
-              >
-                <X className="w-5 h-5" />
-              </button>
-            </div>
+      {/* Comprehensive Child Profile & Full Detailed Attendance Record Modal */}
+      <ChildProfileAttendanceModal
+        isOpen={showAttendanceModal}
+        onClose={() => setShowAttendanceModal(false)}
+        child={safeChildren.find((c) => c.id === selectedChild) || safeChildren[0]}
+        allChildren={safeChildren}
+        onSelectChild={(childId) => setSelectedChild(childId)}
+        onPhotoUpdated={(childId, newPhotoUrl) => {
+          setChildren((prev) =>
+            (prev || []).map((c) => (c.id === childId ? { ...c, photo_url: newPhotoUrl } : c))
+          );
+        }}
+      />
 
-            {safeChildren.length === 0 ? (
-              <p className="text-xs text-slate-500 text-center py-6">No children linked</p>
-            ) : (
-              <div className="space-y-4 text-xs">
-                <select
-                  className="w-full bg-slate-50 border border-slate-200 rounded-xl p-2.5 text-xs text-slate-800 font-bold"
-                  value={selectedChild}
-                  onChange={(e) => setSelectedChild(e.target.value)}
-                >
-                  {safeChildren.map((c) => (
-                    <option key={c.id} value={c.id}>
-                      {c.first_name} {c.last_name}
-                    </option>
-                  ))}
-                </select>
-
-                <div className="flex gap-2">
-                  {['daily', 'weekly', 'monthly', 'yearly'].map((t) => (
-                    <button
-                      key={t}
-                      type="button"
-                      onClick={() => setHistoryType(t)}
-                      className={`flex-1 py-2 text-xs font-bold rounded-xl border transition-all ${
-                        historyType === t
-                          ? 'bg-emerald-600 text-white border-emerald-500 shadow-sm'
-                          : 'bg-slate-50 text-slate-600 border-slate-200'
-                      }`}
-                    >
-                      {t.charAt(0).toUpperCase() + t.slice(1)}
-                    </button>
-                  ))}
-                </div>
-
-                {historyLoading ? (
-                  <p className="text-center py-6 text-slate-400 animate-pulse">Loading logs...</p>
-                ) : historyData?.type === 'daily' ? (
-                  <div className="bg-slate-50 p-4 rounded-2xl border border-slate-100">
-                    <p className="text-xs font-bold text-slate-700">Status: {historyData.status}</p>
-                    <p className="text-xs text-slate-500 mt-1">
-                      Check-in: {formatTimeLagos(historyData.check_in_time)}
-                    </p>
-                  </div>
-                ) : (
-                  <p className="text-center text-slate-400 py-4">Select date range to filter history.</p>
-                )}
-              </div>
-            )}
-          </div>
-        </div>
-      )}
+      {/* School Announcement Reader & Full Detail Modal */}
+      <SchoolAnnouncementDetailModal
+        isOpen={Boolean(selectedAnnouncementForModal)}
+        onClose={() => setSelectedAnnouncementForModal(null)}
+        announcement={selectedAnnouncementForModal}
+      />
 
       {/* EduChat Live Modal */}
       {showEduChatModal && (

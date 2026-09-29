@@ -77,6 +77,23 @@ export default function SchoolNoticeBanner({
   const [dismissedIds, setDismissedIds] = useState<string[]>([]);
   const [loading, setLoading] = useState(true);
 
+  const storageKey = `eduride_read_notices_${role}_${schoolId || 'all'}`;
+
+  // Restore previously read/dismissed notices from persistent storage
+  useEffect(() => {
+    try {
+      const saved = localStorage.getItem(storageKey);
+      if (saved) {
+        const parsed = JSON.parse(saved);
+        if (Array.isArray(parsed)) {
+          setDismissedIds(parsed);
+        }
+      }
+    } catch {
+      // ignore
+    }
+  }, [storageKey]);
+
   useEffect(() => {
     fetchActiveNotices();
     const interval = setInterval(fetchActiveNotices, 8000);
@@ -115,7 +132,15 @@ export default function SchoolNoticeBanner({
   const CategoryIcon = catConfig.icon;
 
   const handleDismiss = (id: string) => {
-    setDismissedIds((prev) => [...prev, id]);
+    setDismissedIds((prev) => {
+      const updated = Array.from(new Set([...prev, id]));
+      try {
+        localStorage.setItem(storageKey, JSON.stringify(updated));
+      } catch {
+        // ignore
+      }
+      return updated;
+    });
     if (currentIndex >= activeNotices.length - 1) {
       setCurrentIndex(Math.max(0, activeNotices.length - 2));
     }

@@ -110,17 +110,24 @@ export default function ChildrenGridCard({
               >
                 {/* Header row: Avatar + Identity + Status Badge */}
                 <div className="flex items-start justify-between gap-3">
-                  <div className="flex items-center gap-3 min-w-0 flex-1">
-                    <StudentAvatar
-                      photoUrl={child.photo_url}
-                      firstName={child.first_name}
-                      lastName={child.last_name}
-                      size="md"
-                      accentColor={child.school?.primary_color || '#059669'}
-                    />
+                  <div
+                    onClick={() => onOpenChildProfile(child.id)}
+                    className="flex items-center gap-3 min-w-0 flex-1 cursor-pointer group/profile hover:opacity-90 transition-opacity"
+                    title={`Click to view profile and attendance for ${fullName}`}
+                  >
+                    <div className="relative">
+                      <StudentAvatar
+                        photoUrl={child.photo_url}
+                        firstName={child.first_name}
+                        lastName={child.last_name}
+                        size="md"
+                        accentColor={child.school?.primary_color || '#059669'}
+                        className="group-hover/profile:ring-2 group-hover/profile:ring-emerald-500 transition-all"
+                      />
+                    </div>
                     <div className="min-w-0 flex-1">
                       <h3
-                        className="text-sm font-extrabold text-slate-900 leading-tight truncate"
+                        className="text-sm font-extrabold text-slate-900 leading-tight truncate group-hover/profile:text-emerald-700 transition-colors"
                         title={`Student: ${fullName}`}
                       >
                         {fullName}
