@@ -405,25 +405,35 @@ export async function GET(request: NextRequest) {
       | 'afternoon_transit'
       | 'delivered_home' = 'scheduled';
 
+    const hasEscortAssigned = Boolean(escortAppId || escortUserId || activeSession || (routeData as any)?.routeName);
+
+    const isReturningHome = Boolean(
+      !todayTrip?.afternoon_dropped_off && (
+        todayTrip?.afternoon_picked_up ||
+        activeSession?.trip_type === 'afternoon_dropoff' ||
+        activeSession?.trip_type === 'afternoon' ||
+        (departureRecord && hasEscortAssigned)
+      )
+    );
+
     const isDeliveredHome = Boolean(
-      todayTrip?.afternoon_dropped_off ||
-      todayAttendance?.check_out_time ||
-      dismissalReq?.status === 'completed' ||
-      (departureRecord && !todayTrip?.afternoon_picked_up && activeSession?.trip_type !== 'afternoon_dropoff')
+      !isReturningHome && (
+        todayTrip?.afternoon_dropped_off ||
+        (!hasEscortAssigned && (
+          todayAttendance?.check_out_time ||
+          dismissalReq?.status === 'completed' ||
+          departureRecord
+        ))
+      )
     );
 
     const isSafeAtHome = isDeliveredHome;
-
-    const isReturningHome = Boolean(
-      !isDeliveredHome &&
-      (todayTrip?.afternoon_picked_up || activeSession?.trip_type === 'afternoon_dropoff')
-    );
 
     if (isDeliveredHome) {
       journeyStage = 'delivered_home';
     } else if (isReturningHome) {
       journeyStage = 'afternoon_transit';
-    } else if (todayAttendance?.check_in_time || todayTrip?.morning_dropped_off) {
+    } else if (todayAttendance?.check_in_time || (todayAttendance as any)?.type === 'arrival' || todayTrip?.morning_dropped_off) {
       journeyStage = 'in_class';
     } else if (todayTrip?.morning_picked_up || activeSession) {
       journeyStage = 'pickup_in_progress';

@@ -669,7 +669,7 @@ export async function POST(request: NextRequest) {
             .eq('date', today),
           supabase
             .from('escort_student_daily_trips')
-            .select('student_id, morning_picked_up, morning_dropped_off, afternoon_picked_up, afternoon_dropped_off, afternoon_dropped_off_at, is_canceled_by_parent, cancellation_reason, canceled_at')
+            .select('student_id, morning_picked_up, morning_picked_up_at, afternoon_picked_up, afternoon_picked_up_at, afternoon_dropped_off, afternoon_dropped_off_at, is_canceled_by_parent, cancellation_reason, canceled_at')
             .in('student_id', ids)
             .eq('trip_date', today),
         ]);
@@ -697,10 +697,10 @@ export async function POST(request: NextRequest) {
         const dailyTripMap = new Map(dailyTrips?.map((t: any) => [t.student_id, t]) || []);
         const linkByStudent = new Map(links.map((l: any) => [l.student_id, l]));
 
-        const [{ data: escortAssigns }, { data: routeAssigns }] = await Promise.all([
+        const [{ data: escortAssigns }, { data: routeAssigns }, { data: activeSessions }] = await Promise.all([
           supabase
             .from('escort_assignments')
-            .select('student_id, escort:escort_applications(full_name)')
+            .select('student_id, escort_application_id, escort:escort_applications(id, full_name, user_id)')
             .in('student_id', ids)
             .in('status', ['active', 'pending_confirmation', 'pending']),
           supabase
@@ -708,6 +708,10 @@ export async function POST(request: NextRequest) {
             .select('student_id, morning_route:transport_routes(name, code, vehicle:school_vehicles(make, model, reg_number))')
             .in('student_id', ids)
             .eq('status', 'active'),
+          supabase
+            .from('vehicle_active_sessions')
+            .select('id, escort_id, escort_user_id, route_id, trip_type, status')
+            .eq('status', 'in_progress'),
         ]);
 
         const escortByStudent = new Map(
@@ -740,26 +744,53 @@ export async function POST(request: NextRequest) {
           const extraLesson = extraLessonMap.get(s.id);
           const trip = dailyTripMap.get(s.id);
 
-          const isSafeAtHome = Boolean(
-            trip?.afternoon_dropped_off ||
-            (departure && !trip?.afternoon_picked_up) ||
-            dismissal?.status === 'completed'
-          );
-          const isOnMorningTransit = Boolean(
-            trip?.morning_picked_up && !trip?.morning_dropped_off && !arrival
-          );
-          const isOnAfternoonTransit = Boolean(
-            trip?.afternoon_picked_up && !trip?.afternoon_dropped_off
-          );
-          const isInTransit = isOnMorningTransit || isOnAfternoonTransit;
-          const safeAtHomeTime = trip?.afternoon_dropped_off_at || departure?.timestamp || null;
+          const escortAssign = (escortAssigns || []).find((row: any) => row.student_id === s.id);
+          const escortData = Array.isArray(escortAssign?.escort) ? escortAssign?.escort[0] : escortAssign?.escort;
+          const escortName = escortData?.full_name || escortByStudent.get(s.id) || null;
+          const escortIds = [escortAssign?.escort_application_id, escortData?.id, escortData?.user_id].filter(Boolean);
+          const hasEscortOrRoute = Boolean(escortName || routeByStudent.get(s.id)?.route_name);
 
+          // Check if escort has an active session right now
+          const activeEscortSession = (activeSessions || []).find((sess: any) =>
+            escortIds.some((id: string) => id === sess.escort_id || id === sess.escort_user_id) ||
+            (sess.status === 'in_progress' && (sess.trip_type === 'afternoon_dropoff' || sess.trip_type === 'afternoon'))
+          );
+
+          // Morning transit: escort picked up from home and child hasn't checked in at school gate
+          const isOnMorningTransit = Boolean(
+            trip?.morning_picked_up && !arrival
+          );
+
+          // Afternoon transit:
+          // 1. Escort marked afternoon_picked_up and has NOT dropped child at home
+          // 2. OR departure record signed at school gate for an escort/route student and not dropped at home
+          // 3. OR active afternoon dropoff session exists and child checked out from school
+          const isOnAfternoonTransit = Boolean(
+            !trip?.afternoon_dropped_off && (
+              trip?.afternoon_picked_up ||
+              (departure && hasEscortOrRoute) ||
+              (activeEscortSession && (activeEscortSession.trip_type === 'afternoon_dropoff' || activeEscortSession.trip_type === 'afternoon') && (departure || dismissal?.status === 'completed'))
+            )
+          );
+
+          const isInTransit = isOnMorningTransit || isOnAfternoonTransit;
+
+          // Transit students are ONLY Safe at Home once afternoon_dropped_off is explicitly true.
+          // Non-transit (self-pickup) students are safe at home once gate departure is logged.
+          const isSafeAtHome = Boolean(
+            !isInTransit && (
+              trip?.afternoon_dropped_off ||
+              (!hasEscortOrRoute && (departure || dismissal?.status === 'completed'))
+            )
+          );
+
+          const safeAtHomeTime = trip?.afternoon_dropped_off_at || (isSafeAtHome ? departure?.timestamp : null) || null;
           const isCanceledToday = Boolean(trip?.is_canceled_by_parent);
 
           return {
             ...s,
             relationship: linkByStudent.get(s.id)?.relationship || 'parent',
-            escort_name: escortByStudent.get(s.id) || null,
+            escort_name: escortName,
             route_name: routeByStudent.get(s.id)?.route_name || null,
             vehicle_model: routeByStudent.get(s.id)?.vehicle_model || null,
             present_today: !isCanceledToday && !!arrival,
@@ -773,7 +804,7 @@ export async function POST(request: NextRequest) {
             extra_lesson_end_time: extraLesson?.lesson_end_time || null,
             extra_lesson_reason: extraLesson?.reason || null,
             is_safe_at_home: !isCanceledToday && isSafeAtHome,
-            afternoon_dropped_off: !isCanceledToday && isSafeAtHome,
+            afternoon_dropped_off: !isCanceledToday && Boolean(trip?.afternoon_dropped_off),
             in_the_bus: !isCanceledToday && isInTransit,
             in_transit: !isCanceledToday && isInTransit,
             on_morning_transit: !isCanceledToday && isOnMorningTransit,

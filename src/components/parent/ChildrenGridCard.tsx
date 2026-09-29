@@ -83,14 +83,21 @@ export default function ChildrenGridCard({
       ) : (
         <div className="grid grid-cols-1 gap-3.5">
           {displayKids.map((child) => {
-            const isSafeAtHome = Boolean(child.is_safe_at_home || child.afternoon_dropped_off);
             const isOnTransit = Boolean(
-              child.in_the_bus ||
-              child.in_transit ||
-              child.on_afternoon_transit ||
-              child.on_morning_transit ||
-              (child.afternoon_picked_up && !child.afternoon_dropped_off && !child.is_safe_at_home) ||
-              (child.morning_picked_up && !child.present_today && !child.arrival_time)
+              !child.afternoon_dropped_off && (
+                child.in_the_bus ||
+                child.in_transit ||
+                child.on_afternoon_transit ||
+                child.on_morning_transit ||
+                child.afternoon_picked_up ||
+                (child.morning_picked_up && !child.present_today && !child.arrival_time)
+              )
+            );
+            const isSafeAtHome = Boolean(
+              !isOnTransit && (
+                child.afternoon_dropped_off ||
+                (child.is_safe_at_home && !child.afternoon_picked_up)
+              )
             );
             const isPresent = Boolean(child.present_today || (child as any).attendance_status === 'present');
             const todayDay = new Date().getDay();
