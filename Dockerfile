@@ -16,8 +16,8 @@ WORKDIR /app
 FROM base AS deps
 WORKDIR /app
 
-COPY package.json package-lock.json ./
-RUN npm ci --ignore-scripts
+COPY package.json package-lock.json* .npmrc* ./
+RUN npm ci --ignore-scripts --legacy-peer-deps
 
 # ------------------------------------------------------------------------------
 # 3. Builder Stage
