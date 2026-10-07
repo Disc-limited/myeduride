@@ -55,6 +55,7 @@ import TodaysHighlightsCard, { HighlightItem } from '@/components/parent/TodaysH
 import PromoBanner from '@/components/parent/PromoBanner';
 import PickupAuthCard from '@/components/parent/PickupAuthCard';
 import WalletCard from '@/components/parent/WalletCard';
+import ParentWalletView from '@/components/parent/ParentWalletView';
 import ChildrenGridCard from '@/components/parent/ChildrenGridCard';
 import CancelTripModal from '@/components/parent/CancelTripModal';
 import NotReadyYetModal from '@/components/parent/NotReadyYetModal';
@@ -805,9 +806,8 @@ export default function ParentDashboard() {
         setShowEduChatModal(true);
         break;
       case 'fund_wallet':
-        toast.info('Transport Wallet is currently undergoing development', {
-          description: 'Ride payments and wallet funding will be active in the upcoming release.',
-        });
+        setActiveTab('wallet');
+        setShowWalletModal(true);
         break;
       case 'journey_history':
         setActiveTab('live');
@@ -979,6 +979,13 @@ export default function ParentDashboard() {
           ) : activeTab === 'pricing' ? (
             <div className="max-w-5xl mx-auto space-y-5">
               <CityPricingReadOnlyPanel title="City Transport Pricing" />
+            </div>
+          ) : activeTab === 'wallet' ? (
+            <div className="max-w-[1600px] mx-auto space-y-5">
+              <ParentWalletView
+                onBalanceUpdated={(newBal) => setWalletBalance(newBal)}
+                openFundOnMount={showWalletModal}
+              />
             </div>
           ) : activeTab === 'children' || activeTab === 'pin_house' ? (
             <div className="max-w-[1600px] mx-auto space-y-6">
@@ -1234,8 +1241,11 @@ export default function ParentDashboard() {
                 {/* Card 2: Wallet Balance */}
                 <WalletCard
                   balanceAmount={walletBalance}
-                  onFundWallet={() => setShowWalletModal(true)}
-                  onViewWalletHistory={() => setShowWalletModal(true)}
+                  onFundWallet={() => {
+                    setActiveTab('wallet');
+                    setShowWalletModal(true);
+                  }}
+                  onViewWalletHistory={() => setActiveTab('wallet')}
                 />
 
                 {/* Card 3: EduChat Preview */}
@@ -1515,48 +1525,7 @@ export default function ParentDashboard() {
 
 
 
-      {/* Wallet Funding Modal */}
-      {showWalletModal && (
-        <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4">
-          <div className="bg-white rounded-3xl max-w-md w-full p-6 shadow-2xl border border-slate-100 space-y-4">
-            <div className="flex items-center justify-between pb-3 border-b border-slate-100">
-              <h2 className="text-base font-extrabold text-slate-900">Fund Parent Wallet</h2>
-              <button
-                type="button"
-                onClick={() => setShowWalletModal(false)}
-                className="p-1 text-slate-400 hover:text-slate-700"
-              >
-                <X className="w-5 h-5" />
-              </button>
-            </div>
 
-            <div className="space-y-3">
-              <p className="text-xs text-slate-500">Enter amount to add to your safety wallet credit:</p>
-              <div className="relative">
-                <span className="absolute left-3.5 top-1/2 -translate-y-1/2 font-bold text-slate-400 text-sm">
-                  ₦
-                </span>
-                <input
-                  type="number"
-                  placeholder="5000"
-                  className="w-full bg-slate-50 border border-slate-200 rounded-xl pl-8 pr-4 py-3 text-sm font-extrabold text-slate-900 focus:outline-none focus:border-emerald-500"
-                />
-              </div>
-
-              <button
-                type="button"
-                onClick={() => {
-                  toast.success('Wallet credit initialized successfully!');
-                  setShowWalletModal(false);
-                }}
-                className="w-full bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-xs py-3 rounded-xl shadow-md transition-all mt-2"
-              >
-                Proceed to Secure Payment
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
 
       {/* Parent Digital Visitor & Gate Pass Modal (Non-printable on-screen pass with linked children) */}
       {showIdPassModal && (

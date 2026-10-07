@@ -10,6 +10,7 @@ import {
 } from '@/lib/attendance/resolve-student';
 import { extractHandoverPin, isTodayHandoverPin, normalizePin } from '@/lib/escort/handover-pin';
 import { assertCanBoardStudent, getEscortBatchStatus } from '@/lib/escort/batch-capacity';
+import { TripFareEngine } from '@/lib/payments/trip-fare-engine';
 
 export const dynamic = 'force-dynamic';
 
@@ -617,6 +618,17 @@ export async function POST(request: NextRequest) {
         updatedTrip = data;
       }
 
+      // Phase 4: Record Leg 1 (Pickup) in financial ledger
+      try {
+        await TripFareEngine.recordLegCompletion({
+          studentId: student_id,
+          legType: 'pickup',
+          verifiedByUserId: session.user_id,
+        });
+      } catch (fareErr) {
+        console.error('[pickup-verify] Leg 1 fare tracking error:', fareErr);
+      }
+
       // Notify parent about morning boarding
       const { data: parents } = await supabase
         .from('student_parents')
@@ -674,6 +686,17 @@ export async function POST(request: NextRequest) {
           .single();
         if (error) throw error;
         updatedTrip = data;
+      }
+
+      // Phase 4: Record Leg 2 (Dropoff) in financial ledger & trigger atomic fare release if both legs complete
+      try {
+        await TripFareEngine.recordLegCompletion({
+          studentId: student_id,
+          legType: 'dropoff',
+          verifiedByUserId: session.user_id,
+        });
+      } catch (fareErr) {
+        console.error('[pickup-verify] Leg 2 fare tracking error:', fareErr);
       }
 
       // Notify parent about afternoon safe arrival home

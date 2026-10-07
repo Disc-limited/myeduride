@@ -1061,9 +1061,13 @@ export async function POST(request: NextRequest) {
       case 'get_parent_wallet': {
         const { data: walletRow } = await supabase
           .from('wallets')
-          .select('balance')
+          .select('balance, available_balance_kobo')
           .eq('user_id', session.user_id)
           .maybeSingle();
+
+        if (walletRow?.available_balance_kobo != null) {
+          return NextResponse.json({ balance: Number(walletRow.available_balance_kobo) / 100 });
+        }
 
         if (walletRow?.balance != null) {
           return NextResponse.json({ balance: Number(walletRow.balance) || 0 });
