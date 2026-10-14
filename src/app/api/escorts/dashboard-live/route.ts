@@ -6,7 +6,7 @@ import { getEscortApplications } from '@/lib/escort/escort-db';
 import { findEscortApplicationForSession, resolveEscortCategory } from '@/lib/escort/escort-category';
 import { nowUtcIso } from '@/lib/utils/time';
 import { checkSchoolTimingClash } from '@/lib/escort/escort-scheduler';
-import { calculateEscortFare } from '@/lib/escort/escort-pricing';
+import { calculateEscortFare, normalizeEscortTripType } from '@/lib/escort/escort-pricing';
 import {
   getActiveCityPricing,
   toEscortFareOverrides,
@@ -708,21 +708,29 @@ export async function GET(request: NextRequest) {
           if (pa?.trip_type) tripType = pa.trip_type;
         } catch {}
       }
+      const normalizedTripType = normalizeEscortTripType(tripType);
 
-      // MyEduRide Escort: sees location, address, AND price
-      // School Escort: DOES NOT see any price, but sees location, doorstep address, distance, and direction
-      const storedFare = extractStoredFare(st.id);
-      const gpsFare = !isSchoolEscort && storedFare == null && distanceKm != null
-        ? calculateEscortFare(distanceKm, tripType === 'afternoon_only' || tripType === 'morning_only' ? tripType : 'both', fareRates).dailyFare
-        : null;
-      const rawDailyFare = storedFare != null ? storedFare : gpsFare;
-      const dailyFare = isSchoolEscort ? null : rawDailyFare;
-      const morningFare = dailyFare != null
-        ? (tripType === 'afternoon_only' ? 0 : tripType === 'morning_only' ? dailyFare : Math.round(dailyFare / 2))
-        : null;
-      const afternoonFare = dailyFare != null
-        ? (tripType === 'morning_only' ? 0 : tripType === 'afternoon_only' ? dailyFare : dailyFare - (morningFare || 0))
-        : null;
+      // Dynamically compute fare from active city manager rates so afternoon/morning/daily fares update immediately.
+      const discountInfo = extractDiscountInfo(st.id);
+      const fareEngine = calculateEscortFare(
+        distanceKm != null ? distanceKm : 4.5,
+        normalizedTripType,
+        fareRates
+      );
+      const isDiscounted = discountInfo?.discountedFare != null && Number(discountInfo.discountedFare) > 0;
+      const effectiveDailyFare = isDiscounted ? Number(discountInfo.discountedFare) : fareEngine.dailyFare;
+
+      const dailyFare = isSchoolEscort ? null : effectiveDailyFare;
+      const morningFare = isSchoolEscort
+        ? null
+        : (isDiscounted
+            ? (normalizedTripType === 'afternoon_only' ? 0 : normalizedTripType === 'morning_only' ? effectiveDailyFare : Math.round(effectiveDailyFare / 2))
+            : fareEngine.morningFare);
+      const afternoonFare = isSchoolEscort
+        ? null
+        : (isDiscounted
+            ? (normalizedTripType === 'morning_only' ? 0 : normalizedTripType === 'afternoon_only' ? effectiveDailyFare : effectiveDailyFare - (morningFare || 0))
+            : fareEngine.afternoonFare);
 
       const cls = Array.isArray(st.class) ? st.class[0]?.name : (st.class?.name || st.class_name || 'MyEduRide Transit');
       const hasHousePin = houseLat != null && houseLng != null;
@@ -730,7 +738,6 @@ export async function GET(request: NextRequest) {
         ? `https://www.google.com/maps/dir/?api=1&destination=${houseLat},${houseLng}`
         : null);
 
-      const discountInfo = extractDiscountInfo(st.id);
       const resolvedHouseAddr = st.house_address || (st.custom_fields?.address ? String(st.custom_fields.address) : null) || st.pickup_address || null;
 
       return {
@@ -739,7 +746,7 @@ export async function GET(request: NextRequest) {
         student_id_number: st.student_id_number || null,
         class_name: cls,
         photo_url: st.photo_url || null,
-        trip_type: tripType,
+        trip_type: normalizedTripType,
         school_id: matchAssignment?.school_id || st.school_id || rowSchool?.id || null,
         school_name: assignedSchoolName,
         school_lat: schoolLat,
@@ -802,8 +809,8 @@ export async function GET(request: NextRequest) {
     // Compute Today's Total Earnings Summary for Escort
     const approvedStudentsCount = studentManifest.filter((s) => s.city_manager_approved).length;
     const totalDailyEarnings = studentManifest.reduce((acc, s) => acc + (s.city_manager_approved && s.daily_fare ? s.daily_fare : 0), 0);
-    const morningProjected = studentManifest.reduce((acc, s) => acc + (s.city_manager_approved && s.trip_type !== 'afternoon_only' && s.morning_fare ? s.morning_fare : 0), 0);
-    const afternoonProjected = studentManifest.reduce((acc, s) => acc + (s.city_manager_approved && s.trip_type !== 'morning_only' && s.afternoon_fare ? s.afternoon_fare : 0), 0);
+    const morningProjected = studentManifest.reduce((acc, s) => acc + (s.city_manager_approved && (s.trip_type as string) !== 'afternoon_only' && (s.trip_type as string) !== 'afternoon' && s.morning_fare ? s.morning_fare : 0), 0);
+    const afternoonProjected = studentManifest.reduce((acc, s) => acc + (s.city_manager_approved && (s.trip_type as string) !== 'morning_only' && (s.trip_type as string) !== 'morning' && s.afternoon_fare ? s.afternoon_fare : 0), 0);
 
     const earningsSummary = isSchoolEscort
       ? {
@@ -837,7 +844,7 @@ export async function GET(request: NextRequest) {
 
     const operationalManifest = studentManifest.filter((s) => s.city_manager_approved);
     const morningStudents = operationalManifest
-      .filter((s) => s.trip_type !== 'afternoon_only')
+      .filter((s) => (s.trip_type as string) !== 'afternoon_only' && (s.trip_type as string) !== 'afternoon')
       .map((s) => ({
         ...s,
         status: s.is_canceled_by_parent
@@ -857,7 +864,7 @@ export async function GET(request: NextRequest) {
       }));
 
     const afternoonStudents = operationalManifest
-      .filter((s) => s.trip_type !== 'morning_only')
+      .filter((s) => (s.trip_type as string) !== 'morning_only' && (s.trip_type as string) !== 'morning')
       .map((s) => ({
         ...s,
         status: s.is_canceled_by_parent
@@ -1238,15 +1245,17 @@ export async function GET(request: NextRequest) {
       },
       activity_feed: activityFeed,
       announcements,
-      wallet: {
-        balance: walletBalance,
-        todayEarnings,
-        monthEarnings,
-        eduSave: eduSaveBalance,
-        eduInsuRedActive,
-        eduInsuRedPlan: escortProfile?.selectedInsuredPlan || null,
-        transactions: walletTransactions,
-      },
+      wallet: isSchoolEscort
+        ? null
+        : {
+            balance: walletBalance,
+            todayEarnings,
+            monthEarnings,
+            eduSave: eduSaveBalance,
+            eduInsuRedActive,
+            eduInsuRedPlan: escortProfile?.selectedInsuredPlan || null,
+            transactions: walletTransactions,
+          },
       emergencies: activeEmergencyDispatches,
       assignments: liveAssignments,
       bookings: liveBookings,
@@ -1283,8 +1292,36 @@ export async function POST(request: NextRequest) {
     const supabase = getAdminClient();
     const primarySchoolId = school_id || session?.roles?.find((r: any) => r.school_id)?.school_id;
 
+    // Resolve escort category to protect school escorts from multi-school dispatch and wallet operations
+    let isSchoolEscortPost = false;
+    if (session?.user_id) {
+      try {
+        const { data: escortProf } = await supabase
+          .from('escort_applications')
+          .select('id, user_id, escort_type, application_data')
+          .or(`id.eq.${session.user_id},user_id.eq.${session.user_id}`)
+          .limit(1)
+          .maybeSingle();
+        if (escortProf) {
+          const cat = resolveEscortCategory(escortProf);
+          isSchoolEscortPost = cat === 'school_escort';
+        }
+      } catch (err) {
+        console.warn('[dashboard-live] post escort category lookup notice:', err);
+      }
+    }
+    if (!isSchoolEscortPost && session?.roles?.some((r: any) => r.role === 'school_escort')) {
+      isSchoolEscortPost = true;
+    }
+
     // Action 1: Toggle Availability (do not change CM/application status)
     if (action === 'toggle_availability') {
+      if (isSchoolEscortPost) {
+        return NextResponse.json(
+          { error: 'School escorts cannot be assigned to other schools; they are dedicated staff bound to their assigned school.' },
+          { status: 403 }
+        );
+      }
       const availableForOtherSchools = Boolean(body.availableForOtherSchools);
       const appId = body.appId;
       if (session?.user_id || appId) {
@@ -1686,6 +1723,12 @@ export async function POST(request: NextRequest) {
 
     // Action 5: Fund Wallet
     if (action === 'fund_wallet') {
+      if (isSchoolEscortPost) {
+        return NextResponse.json(
+          { error: 'School escorts do not utilize wallet systems; compensation is managed through school payroll.' },
+          { status: 403 }
+        );
+      }
       if (session?.user_id && amount) {
         const { data: prof } = await supabase
           .from('user_profiles')
@@ -1720,6 +1763,12 @@ export async function POST(request: NextRequest) {
 
     // Action 6: Request Withdrawal
     if (action === 'withdraw_wallet') {
+      if (isSchoolEscortPost) {
+        return NextResponse.json(
+          { error: 'School escorts do not utilize wallet systems; compensation is managed through school payroll.' },
+          { status: 403 }
+        );
+      }
       if (session?.user_id && amount) {
         const { data: prof } = await supabase
           .from('user_profiles')

@@ -290,8 +290,17 @@ export default function ParentAttendanceView({
                 <strong className="text-xs font-black text-slate-900 block mt-0.5">
                   {attendanceData?.check_in_time ? formatTimeLagos(attendanceData.check_in_time) : '— Not Recorded'}
                 </strong>
+                {attendanceData?.check_in_location && (
+                  <div
+                    className="mt-1.5 flex items-center gap-1 text-[11px] font-medium text-emerald-800 bg-emerald-50 px-2 py-0.5 rounded border border-emerald-200/70"
+                    title={attendanceData.check_in_coords ? `GPS: ${attendanceData.check_in_coords}` : undefined}
+                  >
+                    <MapPin size={12} className="text-emerald-600 shrink-0" />
+                    <span className="truncate">At: {attendanceData.check_in_location}</span>
+                  </div>
+                )}
                 {attendanceData?.minutes_late ? (
-                  <span className="text-[10px] text-amber-600 font-bold">
+                  <span className="text-[10px] text-amber-600 font-bold block mt-1">
                     {attendanceData.minutes_late} min late arrival
                   </span>
                 ) : null}
@@ -302,7 +311,16 @@ export default function ParentAttendanceView({
                 <strong className="text-xs font-black text-slate-900 block mt-0.5">
                   {attendanceData?.check_out_time ? formatTimeLagos(attendanceData.check_out_time) : '— Not Dismissed Yet'}
                 </strong>
-                <span className="text-[10px] text-slate-400 font-medium">Standard school dismissal</span>
+                {attendanceData?.check_out_location && (
+                  <div
+                    className="mt-1.5 flex items-center gap-1 text-[11px] font-medium text-amber-800 bg-amber-50 px-2 py-0.5 rounded border border-amber-200/70"
+                    title={attendanceData.check_out_coords ? `GPS: ${attendanceData.check_out_coords}` : undefined}
+                  >
+                    <MapPin size={12} className="text-amber-600 shrink-0" />
+                    <span className="truncate">At: {attendanceData.check_out_location}</span>
+                  </div>
+                )}
+                <span className="text-[10px] text-slate-400 font-medium block mt-1">Standard school dismissal</span>
               </div>
             </div>
           </div>
@@ -322,6 +340,7 @@ export default function ParentAttendanceView({
                   <th className="pb-2.5">School Day</th>
                   <th className="pb-2.5">Gate Check-in</th>
                   <th className="pb-2.5">Gate Departure</th>
+                  <th className="pb-2.5">Gate Location</th>
                   <th className="pb-2.5 text-right">Status</th>
                 </tr>
               </thead>
@@ -343,6 +362,19 @@ export default function ParentAttendanceView({
                       </td>
                       <td className="py-3 text-slate-700">
                         {log.check_out_time ? formatTimeLagos(log.check_out_time) : '—'}
+                      </td>
+                      <td className="py-3 text-slate-600">
+                        {log.check_in_location || log.check_out_location ? (
+                          <span
+                            className="inline-flex items-center gap-1 text-[10px] font-medium text-emerald-800 bg-emerald-50 px-1.5 py-0.5 rounded border border-emerald-200/60 max-w-[150px] truncate"
+                            title={log.check_in_location || log.check_out_location}
+                          >
+                            <MapPin size={10} className="text-emerald-600 shrink-0" />
+                            <span className="truncate">{log.check_in_location || log.check_out_location}</span>
+                          </span>
+                        ) : (
+                          <span className="text-slate-400">—</span>
+                        )}
                       </td>
                       <td className="py-3 text-right">
                         <span className={`px-2.5 py-1 rounded-full text-[9px] font-black uppercase ${

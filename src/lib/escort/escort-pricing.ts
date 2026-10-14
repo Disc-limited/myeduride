@@ -255,63 +255,21 @@ export function resolveStoredEscortFare(input: {
       (a, b) => Date.parse(String(b.appliedAt || 0)) - Date.parse(String(a.appliedAt || 0))
     )[0] || null;
 
-  const assignStoredDaily = Number(
-    assignMeta?.fare_correction?.discountedFare ||
-      assignMeta?.discount?.discountedFare ||
-      assignMeta?.fareResult?.dailyFare ||
-      assignMeta?.daily_fare ||
-      assignMeta?.actual_amount_collected ||
-      0
-  );
-  const bookingStoredDaily = Number(
-    meta?.fare_correction?.discountedFare ||
-      meta?.discount?.discountedFare ||
-      meta?.fareResult?.dailyFare ||
-      meta?.daily_fare ||
-      meta?.actual_amount_collected ||
-      input.fareAmount ||
-      0
-  );
+  const hasDiscount = storedDiscount?.discountedFare != null && Number(storedDiscount.discountedFare) > 0;
+  const discountedDaily = hasDiscount ? Number(storedDiscount.discountedFare) : null;
 
-  const storedDaily = Number(
-    (storedDiscount?.discountedFare != null && Number(storedDiscount.discountedFare) > 0
-      ? storedDiscount.discountedFare
-      : 0) ||
-      (assignStoredDaily > 0 ? assignStoredDaily : 0) ||
-      bookingStoredDaily ||
-      0
-  );
+  // If a manual accountant or city manager discount exists on this student, respect it.
+  // Otherwise, ALWAYS dynamically compute from active city engine rates so City Manager fee adjustments reflect immediately.
+  const dailyFare = discountedDaily != null && discountedDaily > 0 ? discountedDaily : engine.dailyFare;
+  const standardDaily = engine.dailyFare;
+  const isDiscounted = Boolean(hasDiscount && standardDaily > dailyFare);
 
-  const standardDaily = Number(
-    storedDiscount?.originalFare ||
-      meta?.fare_correction?.originalFare ||
-      assignMeta?.fare_correction?.originalFare ||
-      meta?.fareResult?.originalDailyFare ||
-      assignMeta?.fareResult?.originalDailyFare ||
-      engine.dailyFare
-  );
-  const dailyFare = storedDaily > 0 ? storedDaily : engine.dailyFare;
-  const usedStored = storedDaily > 0;
-  const morningFare = usedStored
-    ? Number(
-        (storedDiscount && assignMeta?.fare_correction === storedDiscount
-          ? assignMeta?.fareResult?.morningFare || assignMeta?.morning_fare
-          : null) ||
-          assignMeta?.fareResult?.morningFare ||
-          assignMeta?.morning_fare ||
-          meta?.fareResult?.morningFare ||
-          meta?.morning_fare ||
-          (tripType === 'afternoon_only' ? 0 : tripType === 'morning_only' ? dailyFare : Math.round(dailyFare / 2))
-      )
+  const morningFare = isDiscounted
+    ? (tripType === 'afternoon_only' ? 0 : tripType === 'morning_only' ? dailyFare : Math.round(dailyFare / 2))
     : engine.morningFare;
-  const afternoonFare = usedStored
-    ? Number(
-        assignMeta?.fareResult?.afternoonFare ||
-          assignMeta?.afternoon_fare ||
-          meta?.fareResult?.afternoonFare ||
-          meta?.afternoon_fare ||
-          (tripType === 'morning_only' ? 0 : dailyFare - morningFare)
-      )
+
+  const afternoonFare = isDiscounted
+    ? (tripType === 'morning_only' ? 0 : tripType === 'afternoon_only' ? dailyFare : dailyFare - morningFare)
     : engine.afternoonFare;
 
   return {
@@ -323,9 +281,9 @@ export function resolveStoredEscortFare(input: {
     dailyFare,
     standardDailyFare: standardDaily,
     actualAmountCollected: dailyFare,
-    isDiscounted: Boolean(storedDiscount) || (standardDaily > 0 && dailyFare < standardDaily),
+    isDiscounted,
     discountDetails: storedDiscount,
-    usedStoredFare: usedStored,
+    usedStoredFare: isDiscounted,
     formattedMorningFare: formatNgn(morningFare),
     formattedAfternoonFare: formatNgn(afternoonFare),
     formattedDailyFare: formatNgn(dailyFare),

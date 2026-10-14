@@ -18,6 +18,7 @@ import {
   Zap,
   Clock,
   ArrowRight,
+  MapPin,
 } from 'lucide-react';
 import { toast } from 'sonner';
 
@@ -255,6 +256,19 @@ export default function EscortBatchReceptionModal({
               </button>
             </div>
           </div>
+        </div>
+
+        {/* Verified School Reception Terminal Banner */}
+        <div className="bg-slate-950 px-5 py-2.5 border-b border-slate-800 flex items-center justify-between text-xs">
+          <div className="flex items-center gap-1.5 text-slate-300">
+            <MapPin size={13} className="text-emerald-400 shrink-0" />
+            <span className="text-[11px] font-medium">
+              School Reception Terminal: <strong className="text-emerald-300">Campus Main Gate</strong>
+            </span>
+          </div>
+          <span className="text-[10px] uppercase font-bold text-slate-400 bg-slate-800/80 px-2 py-0.5 rounded border border-slate-700">
+            Location Verified
+          </span>
         </div>
 
         {mode === 'departure' ? (

@@ -57,12 +57,23 @@ export default function SchoolAdminDashboard() {
   const [stats, setStats] = useState({
     total_students: 0,
     total_teachers: 0,
+    total_staff: 0,
     total_parents: 0,
     total_escorts: 0,
     vehicles_online: 0,
+    total_vehicles: 0,
     safety_alerts: 0,
     student_stats: { present: 0, absent: 0, late: 0, total: 0 },
+    staff_stats: { present: 0, absent: 0, late: 0, total: 0 },
   });
+  const [vehicleTracker, setVehicleTracker] = useState({
+    onRoute: 0,
+    pickedUp: 0,
+    atSchool: 0,
+    arrived: 0,
+    delayed: 0,
+  });
+  const [attendanceTab, setAttendanceTab] = useState<'students' | 'staff'>('students');
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
@@ -147,78 +158,132 @@ export default function SchoolAdminDashboard() {
   }, [currentDate, calendarEventDates]);
 
   const loadDashboard = async () => {
+    setLoading(true);
     try {
-      const schoolData = await fetchData('get_school_admin_data', { role: 'school_admin' });
-      if (schoolData.school?.name) {
-        setSchoolName(schoolData.school.name);
+      const session = getSession();
+      let targetSchoolId = session?.primary_school_id || session?.primary_school?.id || '';
+      if (!targetSchoolId && session?.roles) {
+        const adminRole = session.roles.find((r: any) => r.role === 'school_admin' || r.role === 'super_admin');
+        if (adminRole?.school_id) {
+          targetSchoolId = adminRole.school_id;
+        }
       }
-      if (schoolData.school_id) {
-        setSchoolId(schoolData.school_id);
-      }
-      let escortMetrics = null;
+
+      // Fetch school metadata from authoritative get_school_admin_data endpoint
       try {
-        const escortRes = await fetch(`/api/school-admin/escorts?school_id=${schoolData.school_id}`, {
-          credentials: 'include',
+        const schoolData = await fetchData('get_school_admin_data', { role: 'school_admin', school_id: targetSchoolId });
+        if (schoolData?.school_id) {
+          targetSchoolId = schoolData.school_id;
+          setSchoolId(schoolData.school_id);
+        }
+        if (schoolData?.school?.name) {
+          setSchoolName(schoolData.school.name);
+        }
+      } catch (err) {
+        console.warn('[Dashboard] get_school_admin_data non-critical issue:', err);
+      }
+
+      if (!targetSchoolId) {
+        console.warn('[Dashboard] No schoolId could be resolved for this session.');
+        setLoading(false);
+        return;
+      }
+
+      // Fetch all core operational streams concurrently via Promise.allSettled
+      const [dashResult, escortResult, vehicleResult, notifResult, calResult] = await Promise.allSettled([
+        fetchData('get_school_dashboard', { school_id: targetSchoolId }),
+        fetch(`/api/school-admin/escorts?school_id=${targetSchoolId}`, { credentials: 'include' }).then((r) => r.json()),
+        fetch(`/api/school-admin/vehicles?school_id=${targetSchoolId}`, { credentials: 'include' }).then((r) => r.json()),
+        fetch(`/api/notifications/inbox?school_id=${targetSchoolId}&limit=10`, { credentials: 'include' }).then((r) => r.json()),
+        fetch(`/api/schools/calendar?school_id=${targetSchoolId}`, { credentials: 'include' }).then((r) => r.json()),
+      ]);
+
+      // 1. Core School Dashboard Data
+      let dashboardData: any = null;
+      if (dashResult.status === 'fulfilled' && dashResult.value && !dashResult.value.error) {
+        dashboardData = dashResult.value;
+      } else if (dashResult.status === 'rejected') {
+        console.error('[Dashboard] get_school_dashboard failed:', dashResult.reason);
+      }
+
+      // 2. Escort metrics
+      let escortMetrics: any = null;
+      if (escortResult.status === 'fulfilled' && escortResult.value?.success) {
+        escortMetrics = escortResult.value.metrics;
+      }
+
+      // 3. Vehicle fleet metrics
+      let vehicleMetrics: any = null;
+      if (vehicleResult.status === 'fulfilled' && vehicleResult.value?.success) {
+        vehicleMetrics = vehicleResult.value.metrics;
+      }
+
+      // Compute aggregated records
+      const totalStudents = dashboardData?.total_students ?? 0;
+      const totalTeachers = dashboardData?.total_teachers ?? 0;
+      const totalStaff = dashboardData?.total_staff ?? dashboardData?.total_teachers ?? 0;
+      const totalParents = dashboardData?.total_parents ?? 0;
+      const totalEscorts = escortMetrics?.total_escorts ?? dashboardData?.total_escorts ?? 0;
+      const vehiclesOnline = vehicleMetrics?.active_fleet ?? escortMetrics?.vehicles_assigned ?? dashboardData?.vehicles_online ?? 0;
+      const totalVehicles = vehicleMetrics?.total_vehicles ?? dashboardData?.total_vehicles ?? 0;
+      const safetyAlerts = dashboardData?.safety_alerts ?? 0;
+
+      const studentStats = dashboardData?.student_stats || { present: 0, absent: 0, late: 0, total: totalStudents };
+      const staffStats = dashboardData?.staff_stats || { present: 0, absent: 0, late: 0, total: totalStaff };
+
+      setStats({
+        total_students: totalStudents,
+        total_teachers: totalTeachers,
+        total_staff: totalStaff,
+        total_parents: totalParents,
+        total_escorts: totalEscorts,
+        vehicles_online: vehiclesOnline,
+        total_vehicles: totalVehicles,
+        safety_alerts: safetyAlerts,
+        student_stats: studentStats,
+        staff_stats: staffStats,
+      });
+
+      // Update vehicle movement live tracker
+      const activeDuty = escortMetrics?.active_on_duty || (vehiclesOnline > 0 ? 1 : 0);
+      setVehicleTracker({
+        onRoute: activeDuty,
+        pickedUp: escortMetrics?.students_connected || 0,
+        atSchool: Math.max(0, studentStats.present),
+        arrived: escortMetrics?.vehicles_assigned || (vehiclesOnline > 0 ? vehiclesOnline : 0),
+        delayed: studentStats.late || 0,
+      });
+
+      // Update Activity Timeline
+      if (dashboardData?.recent_activity && Array.isArray(dashboardData.recent_activity)) {
+        setDbActivities(dashboardData.recent_activity);
+      }
+
+      // Update Notifications
+      if (notifResult.status === 'fulfilled' && notifResult.value?.notifications && Array.isArray(notifResult.value.notifications)) {
+        setDbNotifications(notifResult.value.notifications);
+      }
+
+      // Update Calendar Events
+      if (calResult.status === 'fulfilled' && calResult.value?.events && Array.isArray(calResult.value.events)) {
+        const calJson = calResult.value;
+        const today = new Date().toISOString().slice(0, 10);
+        const upcoming = calJson.events
+          .filter((ev: any) => (ev.end_date || ev.start_date) >= today)
+          .slice(0, 4);
+        setUpcomingEvents(upcoming.length > 0 ? upcoming : calJson.events.slice(0, 4));
+
+        const dates = new Set<string>();
+        (calJson.days || []).forEach((d: any) => {
+          if (d.calendar_date) dates.add(d.calendar_date);
         });
-        const escortJson = await escortRes.json();
-        if (escortJson.success) {
-          escortMetrics = escortJson.metrics;
-        }
-      } catch {
-        /* ignore */
+        setCalendarEventDates(dates);
       }
-
-      if (dashboard) {
-        setStats({
-          total_students: dashboard.total_students ?? 0,
-          total_teachers: dashboard.total_teachers ?? 0,
-          total_parents: dashboard.total_parents ?? 0,
-          total_escorts: escortMetrics?.total_escorts ?? dashboard.total_escorts ?? 0,
-          vehicles_online: escortMetrics?.vehicles_assigned ?? dashboard.vehicles_online ?? 0,
-          safety_alerts: dashboard.safety_alerts ?? 0,
-          student_stats: dashboard.student_stats || { present: 0, absent: 0, late: 0, total: 0 },
-        });
-        if (Array.isArray(dashboard.recent_activity)) {
-          setDbActivities(dashboard.recent_activity);
-        }
-      }
-
-      // Fetch real notifications from inbox endpoint
-      try {
-        const notifRes = await fetchData(`notifications/inbox?school_id=${schoolData.school_id}&limit=10`);
-        if (notifRes?.notifications && Array.isArray(notifRes.notifications)) {
-          setDbNotifications(notifRes.notifications);
-        }
-      } catch {
-        /* ignore */
-      }
-
-      // Fetch official school calendar events & holidays
-      try {
-        const calRes = await fetch(`/api/schools/calendar?school_id=${schoolData.school_id}`, {
-          credentials: 'include',
-        });
-        const calJson = await calRes.json();
-        if (calJson?.events && Array.isArray(calJson.events)) {
-          const today = new Date().toISOString().slice(0, 10);
-          const upcoming = calJson.events
-            .filter((ev: any) => (ev.end_date || ev.start_date) >= today)
-            .slice(0, 4);
-          setUpcomingEvents(upcoming.length > 0 ? upcoming : calJson.events.slice(0, 4));
-
-          const dates = new Set<string>();
-          (calJson.days || []).forEach((d: any) => {
-            if (d.calendar_date) dates.add(d.calendar_date);
-          });
-          setCalendarEventDates(dates);
-        }
-      } catch {
-        /* ignore */
-      }
-    } catch {
-      /* ignore */
+    } catch (err) {
+      console.error('[Dashboard] loadDashboard unexpected error:', err);
+    } finally {
+      setLoading(false);
     }
-    setLoading(false);
   };
 
   const metricCards = useMemo(
@@ -226,15 +291,15 @@ export default function SchoolAdminDashboard() {
       {
         title: 'Students',
         value: stats.total_students,
-        change: 'Active',
+        change: stats.total_students > 0 ? `${stats.total_students} Enrolled` : 'Active Roster',
         bgColor: 'bg-emerald-50 text-emerald-600',
         icon: <Users size={20} />,
         href: '/dashboard/school-admin/students',
       },
       {
         title: 'Staff',
-        value: stats.total_teachers,
-        change: 'Active',
+        value: stats.total_staff || stats.total_teachers,
+        change: (stats.total_staff || stats.total_teachers) > 0 ? `${stats.total_staff || stats.total_teachers} Active` : 'All Members',
         bgColor: 'bg-amber-50 text-amber-600',
         icon: <GraduationCap size={20} />,
         href: '/dashboard/school-admin/staff',
@@ -242,7 +307,7 @@ export default function SchoolAdminDashboard() {
       {
         title: 'Parents',
         value: stats.total_parents,
-        change: 'Active',
+        change: stats.total_parents > 0 ? `${stats.total_parents} Linked` : 'Parent Profiles',
         bgColor: 'bg-blue-50 text-blue-600',
         icon: <UserCheck size={20} />,
         href: '/dashboard/school-admin/parents',
@@ -250,15 +315,15 @@ export default function SchoolAdminDashboard() {
       {
         title: 'Active Escorts',
         value: stats.total_escorts,
-        change: 'Active',
+        change: stats.total_escorts > 0 ? `${stats.total_escorts} On Pool` : 'Active Pool',
         bgColor: 'bg-teal-50 text-teal-700',
-        icon: <UserCheck size={20} />,
+        icon: <Shield size={20} />,
         href: '/dashboard/school-admin/escort',
       },
       {
-        title: 'Vehicles Online',
+        title: 'Vehicles',
         value: stats.vehicles_online,
-        change: 'Online',
+        change: stats.vehicles_online > 0 ? `${stats.vehicles_online} Online` : (stats.total_vehicles > 0 ? `${stats.total_vehicles} Registered` : 'Fleet Ready'),
         bgColor: 'bg-sky-50 text-sky-600',
         icon: <Car size={20} />,
         href: '/dashboard/school-admin/vehicles',
@@ -266,13 +331,13 @@ export default function SchoolAdminDashboard() {
       {
         title: 'Safety Alerts',
         value: stats.safety_alerts,
-        change: 'All Clear',
-        bgColor: 'bg-emerald-50 text-emerald-600',
+        change: stats.safety_alerts === 0 ? 'All Clear' : `${stats.safety_alerts} Active`,
+        bgColor: stats.safety_alerts === 0 ? 'bg-emerald-50 text-emerald-600' : 'bg-rose-50 text-rose-600',
         icon: <CheckCircle2 size={20} />,
         href: '/dashboard/school-admin/incidents',
       },
     ],
-    [stats.total_students, stats.total_teachers, stats.total_parents, stats.total_escorts, stats.vehicles_online, stats.safety_alerts]
+    [stats.total_students, stats.total_staff, stats.total_teachers, stats.total_parents, stats.total_escorts, stats.vehicles_online, stats.total_vehicles, stats.safety_alerts]
   );
 
   const quickActions = [
@@ -341,11 +406,14 @@ export default function SchoolAdminDashboard() {
   }, [dbNotifications]);
 
   const attendanceStats = useMemo(() => {
-    const sStats = stats.student_stats || { present: 0, absent: 0, late: 0, total: 0 };
-    const total = stats.total_students || sStats.total || 0;
-    const present = sStats.present || 0;
-    const absent = sStats.absent || 0;
-    const late = sStats.late || 0;
+    const isStudents = attendanceTab === 'students';
+    const sStats = isStudents ? stats.student_stats : stats.staff_stats;
+    const total = isStudents
+      ? (stats.total_students || sStats?.total || 0)
+      : (stats.total_staff || stats.total_teachers || sStats?.total || 0);
+    const present = sStats?.present || 0;
+    const absent = sStats?.absent || Math.max(0, total - present);
+    const late = sStats?.late || 0;
 
     const presentPct = total > 0 ? ((present / total) * 100).toFixed(1) : '0.0';
     const absentPct = total > 0 ? ((absent / total) * 100).toFixed(1) : '0.0';
@@ -369,8 +437,25 @@ export default function SchoolAdminDashboard() {
       presentDash,
       absentDash,
       lateDash,
+      label: isStudents ? 'Students' : 'Staff',
+      reportHref: isStudents ? '/dashboard/school-admin/attendance' : '/dashboard/school-admin/reports/staff-attendance',
     };
-  }, [stats.student_stats, stats.total_students]);
+  }, [attendanceTab, stats.student_stats, stats.staff_stats, stats.total_students, stats.total_staff, stats.total_teachers]);
+
+  const safetyMetrics = useMemo(() => {
+    const checks = [
+      { name: 'Gate Verification System', passed: true },
+      { name: 'Staff Verification', passed: (stats.total_staff || stats.total_teachers) > 0 },
+      { name: 'Student Roster Loaded', passed: stats.total_students > 0 },
+      { name: 'Parent Records Linked', passed: stats.total_parents > 0 },
+      { name: 'Zero Incident Alerts', passed: stats.safety_alerts === 0 },
+    ];
+    const passedCount = checks.filter((c) => c.passed).length;
+    const score = Math.round((passedCount / checks.length) * 100);
+    const rating = score >= 90 ? 'Excellent' : score >= 70 ? 'Good' : 'Needs Setup';
+    const ratingColor = score >= 90 ? 'text-emerald-600' : score >= 70 ? 'text-blue-600' : 'text-amber-600';
+    return { score, rating, ratingColor, checks };
+  }, [stats]);
 
   return (
     <div className="space-y-6 text-slate-800 pb-16">
@@ -428,15 +513,13 @@ export default function SchoolAdminDashboard() {
               <p className="text-xl font-black text-white tracking-tight mb-2">
                 {showWalletBalance ? '₦0.00' : '••••••••'}
               </p>
-              <button
-                type="button"
-                disabled
-                className="inline-flex items-center gap-1.5 px-3 py-1 bg-emerald-500/50 text-slate-900 font-extrabold text-xs rounded-xl cursor-not-allowed opacity-75 shadow-sm"
-                title="Wallet system not connected yet"
+              <Link
+                href="/dashboard/school-admin/wallet"
+                className="inline-flex items-center gap-1.5 px-3 py-1 bg-emerald-500 hover:bg-emerald-400 text-slate-900 font-extrabold text-xs rounded-xl shadow-sm transition"
               >
                 <span>Wallet Overview</span>
                 <ArrowRight size={14} />
-              </button>
+              </Link>
             </div>
           </div>
         </div>
@@ -465,14 +548,13 @@ export default function SchoolAdminDashboard() {
           </div>
 
           <div className="flex items-center justify-between pt-4 border-t border-slate-800 relative z-10">
-            <button
-              type="button"
-              disabled
-              className="inline-flex items-center gap-1.5 px-4 py-2 bg-blue-600/50 text-white/80 font-bold text-xs rounded-xl cursor-not-allowed opacity-75 shadow"
+            <Link
+              href="/dashboard/school-admin/escort"
+              className="inline-flex items-center gap-1.5 px-4 py-2 bg-blue-600 hover:bg-blue-500 text-white font-bold text-xs rounded-xl shadow transition"
             >
               <span>Learn More</span>
               <ArrowRight size={14} />
-            </button>
+            </Link>
 
             {/* Slider dots */}
             <div className="flex items-center gap-1.5">
@@ -498,7 +580,11 @@ export default function SchoolAdminDashboard() {
               <ChevronRight size={14} className="text-slate-300 group-hover:text-slate-600 transition-colors" />
             </div>
             <div>
-              <p className="text-2xl font-black text-slate-900 tracking-tight">{card.value}</p>
+              {loading ? (
+                <div className="h-7 w-16 bg-slate-100 rounded-lg animate-pulse mb-1" />
+              ) : (
+                <p className="text-2xl font-black text-slate-900 tracking-tight">{card.value}</p>
+              )}
               <p className="text-xs font-bold text-slate-800 mt-0.5">{card.title}</p>
               <p className="text-[11px] font-semibold text-emerald-600 mt-1">{card.change}</p>
             </div>
@@ -512,6 +598,30 @@ export default function SchoolAdminDashboard() {
         <div className="lg:col-span-4 bg-white rounded-3xl p-5 sm:p-6 border border-slate-200/80 shadow-sm flex flex-col justify-between">
           <div className="flex items-center justify-between mb-4">
             <h3 className="text-base font-extrabold text-slate-900">Today's Attendance</h3>
+            <div className="flex items-center bg-slate-100 p-0.5 rounded-xl border border-slate-200 text-xs font-bold">
+              <button
+                type="button"
+                onClick={() => setAttendanceTab('students')}
+                className={`px-2.5 py-1 rounded-lg transition-all ${
+                  attendanceTab === 'students'
+                    ? 'bg-white text-emerald-800 shadow-sm font-black'
+                    : 'text-slate-500 hover:text-slate-800'
+                }`}
+              >
+                Students
+              </button>
+              <button
+                type="button"
+                onClick={() => setAttendanceTab('staff')}
+                className={`px-2.5 py-1 rounded-lg transition-all ${
+                  attendanceTab === 'staff'
+                    ? 'bg-white text-emerald-800 shadow-sm font-black'
+                    : 'text-slate-500 hover:text-slate-800'
+                }`}
+              >
+                Staff
+              </button>
+            </div>
           </div>
 
           {/* SVG Donut Chart */}
@@ -563,7 +673,7 @@ export default function SchoolAdminDashboard() {
             </svg>
             <div className="absolute inset-0 flex flex-col items-center justify-center text-center">
               <span className="text-2xl font-black text-slate-900">{attendanceStats.overallPct}%</span>
-              <span className="text-[11px] font-bold text-slate-500 uppercase tracking-wider">Overall</span>
+              <span className="text-[11px] font-bold text-slate-500 uppercase tracking-wider">{attendanceStats.label}</span>
             </div>
           </div>
 
@@ -596,10 +706,10 @@ export default function SchoolAdminDashboard() {
           </div>
 
           <Link
-            href="/dashboard/school-admin/reports"
+            href={attendanceStats.reportHref}
             className="mt-4 pt-3 border-t border-slate-100 text-xs font-bold text-emerald-700 hover:text-emerald-800 flex items-center justify-center gap-1"
           >
-            <span>View Attendance Report</span>
+            <span>View {attendanceStats.label} Report</span>
             <ArrowRight size={14} />
           </Link>
         </div>
@@ -608,6 +718,9 @@ export default function SchoolAdminDashboard() {
         <div className="lg:col-span-5 bg-white rounded-3xl p-5 sm:p-6 border border-slate-200/80 shadow-sm flex flex-col justify-between">
           <div className="flex items-center justify-between mb-3">
             <h3 className="text-base font-extrabold text-slate-900">Vehicle Movement (Live Tracker)</h3>
+            <span className="text-xs font-bold text-emerald-700 bg-emerald-50 border border-emerald-200 px-2.5 py-0.5 rounded-full">
+              {stats.vehicles_online > 0 ? `${stats.vehicles_online} Online` : 'Standby'}
+            </span>
           </div>
 
           {/* Interactive Route Map Simulation */}
@@ -633,8 +746,8 @@ export default function SchoolAdminDashboard() {
 
             {/* Map Controls */}
             <div className="absolute right-3 top-3 bg-white/90 backdrop-blur rounded-xl shadow border border-slate-200 p-1 flex flex-col gap-1 text-slate-700">
-              <button type="button" className="p-1 hover:bg-slate-100 rounded"><Plus size={14} /></button>
-              <button type="button" className="p-1 hover:bg-slate-100 rounded"><Navigation size={14} /></button>
+              <Link href="/dashboard/school-admin/vehicles" className="p-1 hover:bg-slate-100 rounded" title="Vehicles"><Plus size={14} /></Link>
+              <Link href="/dashboard/school-admin/routes" className="p-1 hover:bg-slate-100 rounded" title="Routes"><Navigation size={14} /></Link>
             </div>
           </div>
 
@@ -642,35 +755,33 @@ export default function SchoolAdminDashboard() {
           <div className="grid grid-cols-5 gap-1 text-center py-2.5 bg-slate-50 rounded-2xl border border-slate-100 text-[11px] font-bold">
             <div>
               <p className="text-slate-400 text-[9px] uppercase">On Route</p>
-              <p className="text-emerald-700 font-black text-sm">0</p>
+              <p className="text-emerald-700 font-black text-sm">{vehicleTracker.onRoute}</p>
             </div>
             <div>
               <p className="text-slate-400 text-[9px] uppercase">Picked Up</p>
-              <p className="text-blue-700 font-black text-sm">0</p>
+              <p className="text-blue-700 font-black text-sm">{vehicleTracker.pickedUp}</p>
             </div>
             <div>
               <p className="text-slate-400 text-[9px] uppercase">At School</p>
-              <p className="text-slate-800 font-black text-sm">0</p>
+              <p className="text-slate-800 font-black text-sm">{vehicleTracker.atSchool}</p>
             </div>
             <div>
-              <p className="text-slate-400 text-[9px] uppercase">Arrived</p>
-              <p className="text-emerald-700 font-black text-sm">0</p>
+              <p className="text-slate-400 text-[9px] uppercase">Fleet Active</p>
+              <p className="text-emerald-700 font-black text-sm">{vehicleTracker.arrived}</p>
             </div>
             <div>
               <p className="text-slate-400 text-[9px] uppercase">Delayed</p>
-              <p className="text-rose-600 font-black text-sm">0</p>
+              <p className="text-rose-600 font-black text-sm">{vehicleTracker.delayed}</p>
             </div>
           </div>
 
-          <button
-            type="button"
-            disabled
-            className="mt-3 text-xs font-bold text-slate-400 flex items-center justify-center gap-1 cursor-not-allowed opacity-60 w-full"
-            title="Live tracker under development"
+          <Link
+            href="/dashboard/school-admin/vehicles"
+            className="mt-3 text-xs font-bold text-emerald-700 hover:text-emerald-800 flex items-center justify-center gap-1 w-full transition"
           >
-            <span>View Full Tracker</span>
+            <span>View Vehicle Fleet & Routes</span>
             <ArrowRight size={14} />
-          </button>
+          </Link>
         </div>
 
         {/* School Safety Score Card */}
@@ -692,30 +803,30 @@ export default function SchoolAdminDashboard() {
                   strokeWidth="10"
                   fill="transparent"
                   strokeDasharray="251.2"
-                  strokeDashoffset="24"
+                  strokeDashoffset={251.2 - (251.2 * safetyMetrics.score) / 100}
                   strokeLinecap="round"
                 />
               </svg>
               <div className="absolute flex flex-col items-center justify-center text-center">
-                <span className="text-3xl font-black text-slate-900">96</span>
+                <span className="text-3xl font-black text-slate-900">{safetyMetrics.score}</span>
                 <span className="text-[10px] text-slate-400 font-bold">/100</span>
-                <span className="text-[10px] font-bold text-emerald-600">Excellent</span>
+                <span className={`text-[10px] font-bold ${safetyMetrics.ratingColor}`}>{safetyMetrics.rating}</span>
               </div>
             </div>
           </div>
 
           {/* Safety Verification Checklist */}
           <div className="space-y-2 text-xs font-semibold pt-2 border-t border-slate-100">
-            {[
-              'Gate Compliance',
-              'Escort Verification',
-              'Driver Verification',
-              'Vehicle Inspection',
-              'Attendance Rate',
-            ].map((item) => (
-              <div key={item} className="flex items-center gap-2 text-slate-700">
-                <span className="w-4 h-4 rounded-full bg-emerald-100 text-emerald-700 flex items-center justify-center text-[10px] font-bold shrink-0">✓</span>
-                <span>{item}</span>
+            {safetyMetrics.checks.map((item) => (
+              <div key={item.name} className="flex items-center gap-2 text-slate-700">
+                <span
+                  className={`w-4 h-4 rounded-full flex items-center justify-center text-[10px] font-bold shrink-0 ${
+                    item.passed ? 'bg-emerald-100 text-emerald-700' : 'bg-slate-100 text-slate-400'
+                  }`}
+                >
+                  {item.passed ? '✓' : '•'}
+                </span>
+                <span className={item.passed ? 'text-slate-800' : 'text-slate-400'}>{item.name}</span>
               </div>
             ))}
           </div>
@@ -724,7 +835,7 @@ export default function SchoolAdminDashboard() {
             href="/dashboard/school-admin/audit"
             className="mt-4 pt-3 border-t border-slate-100 text-xs font-bold text-emerald-700 hover:text-emerald-800 flex items-center justify-center gap-1"
           >
-            <span>View Full Report</span>
+            <span>View Safety Audit</span>
             <ArrowRight size={14} />
           </Link>
         </div>
@@ -837,9 +948,12 @@ export default function SchoolAdminDashboard() {
         <div className="lg:col-span-5 bg-white rounded-3xl p-5 sm:p-6 border border-slate-200/80 shadow-sm space-y-4">
           <div className="flex items-center justify-between">
             <h3 className="text-base font-extrabold text-slate-900">Wallet & Billing</h3>
-            <span className="text-xs font-bold text-emerald-700 bg-emerald-50 border border-emerald-200 px-2 py-0.5 rounded-full">
-              Active Term
-            </span>
+            <Link
+              href="/dashboard/school-admin/wallet"
+              className="text-xs font-bold text-emerald-700 bg-emerald-50 hover:bg-emerald-100 border border-emerald-200 px-2.5 py-0.5 rounded-full transition"
+            >
+              Manage Wallet →
+            </Link>
           </div>
           <div className="grid grid-cols-2 gap-3">
             <div className="p-3.5 rounded-2xl bg-emerald-50 border border-emerald-100">

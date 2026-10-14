@@ -6,6 +6,11 @@ import { nowUtcIso } from '@/lib/utils/time';
 import { todayInLagos } from '@/lib/timezone';
 import { ensureDailyHandoverPin } from '@/lib/escort/handover-pin';
 import { resolveStoredEscortFare, parseEscortNotes } from '@/lib/escort/escort-pricing';
+import {
+  getActiveCityPricing,
+  resolveCityKeyFromLocations,
+  toEscortFareOverrides,
+} from '@/lib/escort/city-pricing';
 
 export const dynamic = 'force-dynamic';
 
@@ -23,106 +28,199 @@ export async function GET(request: NextRequest) {
     const unwrapRel = (rel: any) => (Array.isArray(rel) ? rel[0] : rel);
     const LIVE_ASSIGNMENT_STATUSES = ['active', 'pending_confirmation', 'pending'];
 
-    // 1. If childId provided, query real child and the escort actually assigned to them
-    let schoolEscort: any = null;
-    let childRecord: any = null;
+    // 1. Resolve all children linked to this parent login
+    const { data: allParentLinks } = await supabase
+      .from('student_parents')
+      .select('student_id')
+      .eq('parent_user_id', session.user_id);
 
-    if (childId) {
-      const { data: parentLink } = await supabase
-        .from('student_parents')
-        .select('student_id')
-        .eq('parent_user_id', session.user_id)
-        .eq('student_id', childId)
-        .maybeSingle();
+    const linkedStudentIds = (allParentLinks || [])
+      .map((l: any) => l.student_id)
+      .filter(Boolean);
 
-      if (!parentLink) {
-        return NextResponse.json(
-          { error: 'You are not linked to this student. Ask your school admin to connect your parent account.' },
-          { status: 403 }
-        );
-      }
+    if (childId && !linkedStudentIds.includes(childId)) {
+      return NextResponse.json(
+        { error: 'You are not linked to this student. Ask your school admin to connect your parent account.' },
+        { status: 403 }
+      );
+    }
 
-      const { data: student } = await supabase
+    const effectiveChildId = childId || linkedStudentIds[0] || null;
+
+    let allLinkedStudents: any[] = [];
+    if (linkedStudentIds.length > 0) {
+      const { data: stus } = await supabase
         .from('students')
         .select('id, first_name, last_name, school_id, house_address, house_lat, house_lng, house_landmark, school:schools(id, name, address, location_address, gps_lat, gps_lng)')
-        .eq('id', childId)
-        .maybeSingle();
+        .in('id', linkedStudentIds);
+      allLinkedStudents = stus || [];
+    }
 
-      childRecord = student;
+    let childRecord: any = allLinkedStudents.find((s) => s.id === effectiveChildId) || null;
 
-      if (student) {
-        const childSchoolName =
-          unwrapRel(student.school)?.name || 'School Campus';
+    // Fetch live assignments for all parent's children
+    let allLiveAssignments: any[] = [];
+    if (linkedStudentIds.length > 0) {
+      const { data: assignData } = await supabase
+        .from('escort_assignments')
+        .select('*, escort:escort_applications(id, full_name, phone, email, photo, passport_photograph, escort_type, operating_area, application_data, status), school:schools(id, name)')
+        .in('student_id', linkedStudentIds)
+        .in('status', LIVE_ASSIGNMENT_STATUSES)
+        .order('updated_at', { ascending: false });
+      allLiveAssignments = assignData || [];
+    }
 
-        const { data: liveAssignRows } = await supabase
-          .from('escort_assignments')
-          .select('*, escort:escort_applications(id, full_name, phone, email, photo, passport_photograph, escort_type, operating_area, application_data, status), school:schools(id, name)')
-          .eq('student_id', childId)
-          .in('status', LIVE_ASSIGNMENT_STATUSES)
-          .order('updated_at', { ascending: false })
-          .limit(8);
+    // Resolve active city pricing from child and school locations
+    const primarySchool = unwrapRel(childRecord?.school) || unwrapRel(allLinkedStudents[0]?.school);
+    const locCandidates = [
+      childRecord?.house_address,
+      allLinkedStudents[0]?.house_address,
+      primarySchool?.location_address,
+      primarySchool?.address,
+      primarySchool?.name,
+    ];
+    const resolvedCityKey = resolveCityKeyFromLocations(locCandidates);
+    const activeCityPricing = await getActiveCityPricing(resolvedCityKey);
+    const activeFareRates = toEscortFareOverrides(activeCityPricing);
 
-        const assignedRow =
-          (liveAssignRows || []).find((a: any) => a.status === 'active') ||
-          (liveAssignRows || [])[0] ||
-          null;
-        const assignedEscort = unwrapRel(assignedRow?.escort);
-        const assignedSchool = unwrapRel(assignedRow?.school);
+    // Compute multi-child fee summary across all parent's children
+    const perChildFees: any[] = [];
+    for (const child of allLinkedStudents) {
+      const childSch = unwrapRel(child.school);
+      const childLocs = [child.house_address, childSch?.location_address, childSch?.address];
+      const cCityKey = resolveCityKeyFromLocations(childLocs);
+      const cCityPricing = cCityKey === resolvedCityKey ? activeCityPricing : await getActiveCityPricing(cCityKey);
+      const cRates = toEscortFareOverrides(cCityPricing);
 
-        if (assignedEscort?.full_name) {
-          let appData = assignedEscort.application_data || {};
-          if (typeof appData === 'string') {
-            try { appData = JSON.parse(appData); } catch { appData = {}; }
-          }
-          const assignFare = resolveStoredEscortFare({
-            assignmentNotes: assignedRow?.notes,
-            notes: assignedRow?.notes,
-            distanceKm: appData.distance_km,
-            tripType: appData.trip_type,
-          });
-          schoolEscort = {
-            id: assignedEscort.id,
-            full_name: assignedEscort.full_name,
-            phone: assignedEscort.phone || '',
-            email: assignedEscort.email || '',
-            avatar_url: assignedEscort.photo || assignedEscort.passport_photograph || null,
-            driver_license: 'Verified on Record',
-            nin_verified: true,
-            escort_type: assignedEscort.escort_type === 'school_escort' ? 'School Escort' : 'MyEduRide Escort',
-            school_name: assignedSchool?.name || childSchoolName,
-            operational_status: assignedRow.status === 'active' ? 'Active On Duty' : 'Assigned — Awaiting Clearance',
-            vehicle: {
-              id: null,
-              reg_number: appData.assignedVehicle || appData.regNumber || appData.vehicle_plate || 'Certified Escort Vehicle',
-              make_model: appData.vehicleMakeModel || appData.vehicle || 'Certified Escort Fleet',
-              capacity: appData.capacity || null,
-              roadworthiness_expiry: 'Active',
-              insurance_status: 'Active',
-            },
-            route: {
-              code: appData.routeCode || 'RT',
-              name: assignedEscort.operating_area || 'Assigned Corridor',
-              departure_morning: '06:45 AM',
-              departure_afternoon: '03:15 PM',
-              child_designated_stop: 'Designated Home Doorstep',
-              total_stops: 4,
-            },
-            approval: {
-              status: assignedRow.status === 'active' ? 'CITY_MANAGER_APPROVED' : 'PENDING_CITY_MANAGER_APPROVAL',
-              badge: assignedRow.status === 'active' ? 'Verified Assigned Escort' : 'Assigned — City Manager Review',
-            },
-            daily_fare: assignFare.dailyFare,
-            morning_fare: assignFare.morningFare,
-            afternoon_fare: assignFare.afternoonFare,
-            standard_daily_fare: assignFare.standardDailyFare,
-            actual_amount_collected: assignFare.actualAmountCollected,
-            is_discounted: assignFare.isDiscounted,
-            discount_details: assignFare.discountDetails,
-            distance_km: assignFare.distanceKm,
-            used_stored_fare: assignFare.usedStoredFare,
-            service_charge: assignFare.serviceCharge,
-          };
+      const cAssigns = allLiveAssignments.filter((a) => a.student_id === child.id);
+      const activeAssign = cAssigns.find((a) => a.status === 'active') || cAssigns[0] || null;
+      const escortObj = unwrapRel(activeAssign?.escort);
+
+      let appData = escortObj?.application_data || {};
+      if (typeof appData === 'string') {
+        try { appData = JSON.parse(appData); } catch { appData = {}; }
+      }
+
+      const fare = resolveStoredEscortFare({
+        assignmentNotes: activeAssign?.notes,
+        notes: activeAssign?.notes,
+        distanceKm: appData.distance_km || 4.5,
+        tripType: appData.trip_type || 'both',
+        rates: cRates,
+      });
+
+      perChildFees.push({
+        child_id: child.id,
+        child_name: `${child.first_name || ''} ${child.last_name || ''}`.trim() || 'Student',
+        school_name: childSch?.name || 'School Campus',
+        daily_fare: fare.dailyFare,
+        morning_fare: fare.morningFare,
+        afternoon_fare: fare.afternoonFare,
+        standard_daily_fare: fare.standardDailyFare,
+        distance_km: fare.distanceKm,
+        trip_type: fare.tripType,
+        is_discounted: fare.isDiscounted,
+        discount_details: fare.discountDetails,
+        escort_name: escortObj?.full_name || null,
+        city_label: cCityPricing.city_label || cCityKey,
+        rate_per_km: cRates.rate_per_km,
+        service_charge_percent: cRates.service_charge_percent,
+        formatted_daily_fare: `₦${Number(fare.dailyFare || 0).toLocaleString()}`,
+        formatted_morning_fare: `₦${Number(fare.morningFare || 0).toLocaleString()}`,
+        formatted_afternoon_fare: `₦${Number(fare.afternoonFare || 0).toLocaleString()}`,
+      });
+    }
+
+    const totalDailyFee = perChildFees.reduce((acc, c) => acc + (Number(c.daily_fare) || 0), 0);
+    const totalMorningFee = perChildFees.reduce((acc, c) => acc + (Number(c.morning_fare) || 0), 0);
+    const totalAfternoonFee = perChildFees.reduce((acc, c) => acc + (Number(c.afternoon_fare) || 0), 0);
+
+    const multiChildSummary = {
+      children_count: perChildFees.length,
+      total_daily_fee: totalDailyFee,
+      total_morning_fee: totalMorningFee,
+      total_afternoon_fee: totalAfternoonFee,
+      formatted_total_daily: `₦${totalDailyFee.toLocaleString()}`,
+      formatted_total_morning: `₦${totalMorningFee.toLocaleString()}`,
+      formatted_total_afternoon: `₦${totalAfternoonFee.toLocaleString()}`,
+      active_rates: {
+        rate_per_km: activeFareRates.rate_per_km,
+        service_charge_percent: activeFareRates.service_charge_percent,
+        city_key: resolvedCityKey,
+        city_label: activeCityPricing.city_label || resolvedCityKey,
+      },
+      per_child_breakdown: perChildFees,
+    };
+
+    let schoolEscort: any = null;
+
+    if (childRecord) {
+      const childSchoolName =
+        unwrapRel(childRecord.school)?.name || 'School Campus';
+
+      const childAssignRows = allLiveAssignments.filter((a: any) => a.student_id === childRecord.id);
+      const assignedRow =
+        childAssignRows.find((a: any) => a.status === 'active') ||
+        childAssignRows[0] ||
+        null;
+      const assignedEscort = unwrapRel(assignedRow?.escort);
+      const assignedSchool = unwrapRel(assignedRow?.school);
+
+      if (assignedEscort?.full_name) {
+        let appData = assignedEscort.application_data || {};
+        if (typeof appData === 'string') {
+          try { appData = JSON.parse(appData); } catch { appData = {}; }
         }
+        const assignFare = resolveStoredEscortFare({
+          assignmentNotes: assignedRow?.notes,
+          notes: assignedRow?.notes,
+          distanceKm: appData.distance_km,
+          tripType: appData.trip_type,
+          rates: activeFareRates,
+        });
+        schoolEscort = {
+          id: assignedEscort.id,
+          full_name: assignedEscort.full_name,
+          phone: assignedEscort.phone || '',
+          email: assignedEscort.email || '',
+          avatar_url: assignedEscort.photo || assignedEscort.passport_photograph || null,
+          driver_license: 'Verified on Record',
+          nin_verified: true,
+          escort_type: assignedEscort.escort_type === 'school_escort' ? 'School Escort' : 'MyEduRide Escort',
+          school_name: assignedSchool?.name || childSchoolName,
+          operational_status: assignedRow.status === 'active' ? 'Active On Duty' : 'Assigned — Awaiting Clearance',
+          vehicle: {
+            id: null,
+            reg_number: appData.assignedVehicle || appData.regNumber || appData.vehicle_plate || 'Certified Escort Vehicle',
+            make_model: appData.vehicleMakeModel || appData.vehicle || 'Certified Escort Fleet',
+            capacity: appData.capacity || null,
+            roadworthiness_expiry: 'Active',
+            insurance_status: 'Active',
+          },
+          route: {
+            code: appData.routeCode || 'RT',
+            name: assignedEscort.operating_area || 'Assigned Corridor',
+            departure_morning: '06:45 AM',
+            departure_afternoon: '03:15 PM',
+            child_designated_stop: 'Designated Home Doorstep',
+            total_stops: 4,
+          },
+          approval: {
+            status: assignedRow.status === 'active' ? 'CITY_MANAGER_APPROVED' : 'PENDING_CITY_MANAGER_APPROVAL',
+            badge: assignedRow.status === 'active' ? 'Verified Assigned Escort' : 'Assigned — City Manager Review',
+          },
+          daily_fare: assignFare.dailyFare,
+          morning_fare: assignFare.morningFare,
+          afternoon_fare: assignFare.afternoonFare,
+          standard_daily_fare: assignFare.standardDailyFare,
+          actual_amount_collected: assignFare.actualAmountCollected,
+          is_discounted: assignFare.isDiscounted,
+          discount_details: assignFare.discountDetails,
+          distance_km: assignFare.distanceKm,
+          used_stored_fare: assignFare.usedStoredFare,
+          service_charge: assignFare.serviceCharge,
+        };
+      }
 
         // Keep route-staff escort as a fallback when no CM/school assignment row exists
         if (!schoolEscort) {
@@ -175,7 +273,6 @@ export async function GET(request: NextRequest) {
           }
         }
       }
-    }
 
     // 2. Pillar 2: Query verified MyEduRide platform escorts from `escort_applications`
     const { data: dbEscortApps } = await supabase
@@ -263,6 +360,7 @@ export async function GET(request: NextRequest) {
             assignmentNotes: matchedAssignment?.notes,
             distanceKm: meta.distance_km || parseEscortNotes(matchedAssignment?.notes).distance_km,
             tripType: meta.trip_type || parseEscortNotes(matchedAssignment?.notes).trip_type,
+            rates: activeFareRates,
           });
           const distanceKm = fare.distanceKm;
           const tripType = fare.tripType;
@@ -356,6 +454,7 @@ export async function GET(request: NextRequest) {
           const fare = resolveStoredEscortFare({
             assignmentNotes: assignedRow.notes,
             notes: assignedRow.notes,
+            rates: activeFareRates,
           });
           const ensured = ensureDailyHandoverPin(assignedRow.notes, pinDay);
           activeChildBookings.push({
@@ -536,7 +635,7 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({
       success: true,
       timestamp: nowUtcIso(),
-      child_id: childId,
+      child_id: effectiveChildId,
       safety_connect: {
         child: childRecord ? {
           id: childRecord.id,
@@ -552,6 +651,7 @@ export async function GET(request: NextRequest) {
         myeduride_escorts: myedurideEscorts,
         active_bookings: activeChildBookings,
         edrive: edriveTelemetry,
+        multi_child_summary: multiChildSummary,
       },
     });
   } catch (err: any) {

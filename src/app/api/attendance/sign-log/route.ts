@@ -9,6 +9,10 @@ import {
   loadDeparturePickupMaps,
   resolveDeparturePickupPerson,
 } from '@/lib/gate/departure-pickup-display';
+import {
+  resolveSchoolGateLocation,
+  resolveRecordLocation,
+} from '@/lib/attendance/location-resolver';
 
 export const dynamic = 'force-dynamic';
 
@@ -48,14 +52,7 @@ export async function GET(request: NextRequest) {
       .eq('id', schoolId)
       .maybeSingle();
 
-    const isSchoolPinned = school?.gps_lat != null && school?.gps_lng != null;
-    const terminalName = school?.location_address || school?.address || 'Main Campus Gate';
-    const coordsStr = isSchoolPinned
-      ? `${Number(school.gps_lat).toFixed(4)}, ${Number(school.gps_lng).toFixed(4)}`
-      : null;
-    const locationDisplay = isSchoolPinned
-      ? `${terminalName} (Geofence Verified)`
-      : terminalName;
+    const gateLocation = resolveSchoolGateLocation(school);
 
     const entries: {
       id: string;
@@ -68,6 +65,8 @@ export async function GET(request: NextRequest) {
       time_display: string;
       status?: string;
       location_name: string;
+      location_badge?: string;
+      action_location?: string;
       gps_coords?: string | null;
       geofence_verified: boolean;
       pickup_person?: {
@@ -91,15 +90,31 @@ export async function GET(request: NextRequest) {
     );
 
     if (entity === 'all' || entity === 'student') {
-      const { data: records } = await supabase
+      let records: any[] = [];
+      const primaryQuery = await supabase
         .from('attendance_records')
         .select(
-          'id, type, status, timestamp, student_id, student:students(first_name, last_name, student_id_number)'
+          'id, type, status, timestamp, student_id, location_name, gps_lat, gps_lng, geofence_verified, student:students(first_name, last_name, student_id_number)'
         )
         .eq('school_id', schoolId)
         .gte('timestamp', startIso)
         .lte('timestamp', endIso)
         .order('timestamp', { ascending: false });
+
+      if (!primaryQuery.error) {
+        records = primaryQuery.data || [];
+      } else {
+        const fallbackQuery = await supabase
+          .from('attendance_records')
+          .select(
+            'id, type, status, timestamp, student_id, student:students(first_name, last_name, student_id_number)'
+          )
+          .eq('school_id', schoolId)
+          .gte('timestamp', startIso)
+          .lte('timestamp', endIso)
+          .order('timestamp', { ascending: false });
+        records = fallbackQuery.data || [];
+      }
 
       for (const r of records || []) {
         const st = Array.isArray(r.student) ? r.student[0] : r.student;
@@ -119,6 +134,9 @@ export async function GET(request: NextRequest) {
                 notes: pickupPerson.notes,
               }
             : null;
+
+        const loc = resolveRecordLocation(r, gateLocation, r.type);
+
         entries.push({
           id: r.id,
           entity: 'student',
@@ -129,9 +147,11 @@ export async function GET(request: NextRequest) {
           timestamp: r.timestamp,
           time_display: formatTimeLagos(r.timestamp),
           status: r.status || undefined,
-          location_name: locationDisplay,
-          gps_coords: coordsStr,
-          geofence_verified: isSchoolPinned,
+          location_name: loc.location_name,
+          location_badge: loc.display_badge,
+          action_location: loc.action_label,
+          gps_coords: loc.gps_coords,
+          geofence_verified: loc.geofence_verified,
           pickup_person: pickupPerson,
           pickup_notice: pickupNotice,
         });
@@ -147,6 +167,9 @@ export async function GET(request: NextRequest) {
             : r.record_source === 'gate'
               ? 'Gate scan'
               : 'ID scan';
+
+        const loc = resolveRecordLocation(r, gateLocation, r.type);
+
         entries.push({
           id: r.id,
           entity: 'staff',
@@ -156,9 +179,11 @@ export async function GET(request: NextRequest) {
           type_label: r.type === 'clock_in' ? 'Staff sign in' : 'Staff sign out',
           timestamp: r.timestamp,
           time_display: formatTimeLagos(r.timestamp),
-          location_name: locationDisplay,
-          gps_coords: coordsStr,
-          geofence_verified: isSchoolPinned,
+          location_name: loc.location_name,
+          location_badge: loc.display_badge,
+          action_location: loc.action_label,
+          gps_coords: loc.gps_coords,
+          geofence_verified: loc.geofence_verified,
         });
       }
     }
@@ -169,9 +194,9 @@ export async function GET(request: NextRequest) {
       date: dateParam,
       school_id: schoolId,
       school_location: {
-        name: terminalName,
-        gps_coords: coordsStr,
-        is_pinned: isSchoolPinned,
+        name: gateLocation.location_name,
+        gps_coords: gateLocation.gps_coords,
+        is_pinned: gateLocation.geofence_verified,
         geofence_radius: 200,
       },
       entries,

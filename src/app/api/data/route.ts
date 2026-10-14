@@ -51,27 +51,36 @@ export async function POST(request: NextRequest) {
           );
         }
         
-        let query = supabase.from('user_school_roles').select('school_id').eq('user_id', session.user_id).eq('is_active', true);
-        if (isGateRole) {
-          query = query.in('role', ['gate_officer', 'gate_manager', 'security_officer', 'school_admin']);
-        } else {
-          query = query.eq('role', requestedRole);
+        let targetSchoolId = params?.school_id || null;
+        if (!targetSchoolId) {
+          let query = supabase.from('user_school_roles').select('school_id').eq('user_id', session.user_id).eq('is_active', true);
+          if (isGateRole) {
+            query = query.in('role', ['gate_officer', 'gate_manager', 'security_officer', 'school_admin']);
+          } else {
+            query = query.eq('role', requestedRole);
+          }
+
+          const roleRes = await withTimeout(
+            query.limit(1).maybeSingle(),
+            8000
+          ).catch(() => ({ data: null }));
+          
+          targetSchoolId = roleRes?.data?.school_id || (session as any)?.primary_school_id || (session as any)?.primary_school?.id || null;
         }
 
-        const roleRes = await withTimeout(
-          query.limit(1).maybeSingle(),
-          8000
-        ).catch(() => ({ data: null }));
-        
-        const role = roleRes?.data;
-        if (!role?.school_id) return NextResponse.json({ error: 'No school found', school: null, school_id: null }, { status: 200 });
+        if (!targetSchoolId && session.roles.some((r: any) => r.role === 'super_admin')) {
+          const firstSchool = await supabase.from('schools').select('id').limit(1).maybeSingle();
+          targetSchoolId = firstSchool?.data?.id || null;
+        }
+
+        if (!targetSchoolId) return NextResponse.json({ error: 'No school found', school: null, school_id: null }, { status: 200 });
         
         const schoolRes = await withTimeout(
-          supabase.from('schools').select('*').eq('id', role.school_id).maybeSingle(), 
+          supabase.from('schools').select('*').eq('id', targetSchoolId).maybeSingle(), 
           8000
         ).catch(() => ({ data: null }));
         
-        return NextResponse.json({ school: schoolRes?.data || null, school_id: role.school_id });
+        return NextResponse.json({ school: schoolRes?.data || null, school_id: targetSchoolId });
       }
 
       case 'get_school_dashboard': {
@@ -83,11 +92,24 @@ export async function POST(request: NextRequest) {
         const { startIso, endIso } = lagosDayBounds();
         const dateParam = todayInLagos();
 
-        // 1. Fetch totals
-        const { count: totalStudents } = await supabase.from('students').select('*', { count: 'exact', head: true }).eq('school_id', schoolId).eq('is_active', true);
-        const { count: totalTeachers } = await supabase.from('user_school_roles').select('*', { count: 'exact', head: true }).eq('school_id', schoolId).eq('role', 'teacher').eq('is_active', true);
-        const { count: totalEscortsRole } = await supabase.from('user_school_roles').select('*', { count: 'exact', head: true }).eq('school_id', schoolId).in('role', ['escort', 'driver']).eq('is_active', true);
-        const totalParents = await countSchoolParentsOnFile(supabase, schoolId);
+        // 1. Fetch totals concurrently
+        const [
+          { count: totalStudents },
+          { count: totalTeachers },
+          { count: totalEscortsRole },
+          { count: totalStaffRoles },
+          { count: totalVehicles },
+          { count: activeVehicles },
+          totalParents,
+        ] = await Promise.all([
+          supabase.from('students').select('*', { count: 'exact', head: true }).eq('school_id', schoolId).eq('is_active', true),
+          supabase.from('user_school_roles').select('*', { count: 'exact', head: true }).eq('school_id', schoolId).eq('role', 'teacher').eq('is_active', true),
+          supabase.from('user_school_roles').select('*', { count: 'exact', head: true }).eq('school_id', schoolId).in('role', ['escort', 'driver', 'school_escort']).eq('is_active', true),
+          supabase.from('user_school_roles').select('*', { count: 'exact', head: true }).eq('school_id', schoolId).in('role', ['school_admin', 'teacher', 'gate_officer', 'staff']).eq('is_active', true),
+          supabase.from('school_vehicles').select('*', { count: 'exact', head: true }).eq('school_id', schoolId),
+          supabase.from('school_vehicles').select('*', { count: 'exact', head: true }).eq('school_id', schoolId).eq('status', 'active'),
+          countSchoolParentsOnFile(supabase, schoolId),
+        ]);
 
         // 2. Student attendance records today
         const { data: liveAttendance } = await supabase
@@ -106,7 +128,8 @@ export async function POST(request: NextRequest) {
         const staffReport = await buildStaffDailyReport(supabase, schoolId, dateParam, startIso, endIso);
         const staffPresentCount = staffReport.filter(s => s.status === 'present').length;
         const staffLateCount = staffReport.filter(s => s.status === 'late').length;
-        const staffAbsentCount = staffReport.filter(s => s.status === 'absent').length;
+        const totalStaffCount = Math.max(staffReport.length, totalStaffRoles || 0, totalTeachers || 0);
+        const staffAbsentCount = Math.max(0, totalStaffCount - staffPresentCount);
 
         // 4. Fetch recent student activities
         const { data: recentActivity } = await supabase
@@ -156,14 +179,25 @@ export async function POST(request: NextRequest) {
           .sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime())
           .slice(0, 10);
 
+        // 7. Safety Incidents today
+        const { data: todayIncidents } = await supabase
+          .from('audit_logs')
+          .select('id')
+          .eq('school_id', schoolId)
+          .eq('action', 'gate_incident_reported')
+          .gte('created_at', startIso)
+          .lte('created_at', endIso);
+        const safetyAlerts = todayIncidents?.length || 0;
+
         return NextResponse.json({
           total_students: totalStudents || 0,
           total_teachers: totalTeachers || 0,
-          total_parents: totalParents,
-          total_staff: staffReport.length,
-          total_escorts: (totalEscortsRole && totalEscortsRole > 0) ? totalEscortsRole : 4,
-          vehicles_online: 4,
-          safety_alerts: 0,
+          total_parents: totalParents || 0,
+          total_staff: totalStaffCount,
+          total_escorts: totalEscortsRole || 0,
+          vehicles_online: activeVehicles || totalVehicles || 0,
+          total_vehicles: totalVehicles || 0,
+          safety_alerts: safetyAlerts,
           present_today: studentPresentCount, // fallback for legacy frontend code
           late_today: studentLateCount, // fallback
           absent_today: studentAbsentCount, // fallback
@@ -175,7 +209,7 @@ export async function POST(request: NextRequest) {
             absent: studentAbsentCount,
           },
           staff_stats: {
-            total: staffReport.length,
+            total: totalStaffCount,
             present: staffPresentCount,
             late: staffLateCount,
             absent: staffAbsentCount,

@@ -149,6 +149,8 @@ export function resolveCityKeyFromContext(candidates: (string | null | undefined
   return DEFAULT_CITY_KEY;
 }
 
+export const resolveCityKeyFromLocations = resolveCityKeyFromContext;
+
 function ratesFromRow(row: any): CityFareRates {
   const half = Number(row.rate_per_half_km);
   const fromCol = row.rate_per_km != null ? Number(row.rate_per_km) : NaN;
@@ -314,6 +316,12 @@ export async function activateDuePendingRates(cityKeyRaw?: string | null): Promi
     } catch (err) {
       console.warn('[city-pricing] activate adjustment notice:', err);
     }
+  }
+
+  try {
+    await rewriteStoredFaresForCity(cityKey, pending);
+  } catch (rewrErr) {
+    console.warn('[city-pricing] rewrite on activation notice:', rewrErr);
   }
 
   if (error) {
@@ -818,7 +826,7 @@ export async function publishCityPricing(input: PublishPricingInput): Promise<Pu
     if (error) return { success: false, error: error.message };
     nextConfig = configFromRow(updated);
 
-    if (mode === 'rewrite_stored') {
+    if (mode === 'rewrite_stored' || mode === 'immediate' || input.rewriteStored !== false) {
       rewriteCount = await rewriteStoredFaresForCity(cityKey, ratesAfter);
     }
   }

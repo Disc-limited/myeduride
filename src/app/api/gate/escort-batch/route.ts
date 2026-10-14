@@ -12,6 +12,8 @@ import {
   ESCORT_MAX_BATCH_SIZE,
   getEscortBatchStatus,
 } from '@/lib/escort/batch-capacity';
+import { parseEscortNotes, normalizeEscortTripType } from '@/lib/escort/escort-pricing';
+import { resolveSchoolGateLocation } from '@/lib/attendance/location-resolver';
 
 export const dynamic = 'force-dynamic';
 
@@ -216,6 +218,8 @@ export async function GET(request: NextRequest) {
       .select(`
         student_id,
         status,
+        notes,
+        booking_id,
         student:students(
           id,
           first_name,
@@ -241,11 +245,34 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ error: assignErr.message }, { status: 500 });
     }
 
+    const studentTripTypeMap = new Map<string, string>();
+    for (const a of assignments || []) {
+      const meta = parseEscortNotes(a.notes);
+      const tt = normalizeEscortTripType(meta.trip_type);
+      if (a.student_id) studentTripTypeMap.set(a.student_id, tt);
+    }
+
     const rawStudents = (assignments || [])
       .map((a) => a.student)
       .filter(Boolean);
 
     const studentIds = rawStudents.map((s) => s.id);
+
+    if (studentIds.length > 0) {
+      const { data: bList } = await supabase
+        .from('transport_bookings')
+        .select('student_id, notes')
+        .in('student_id', studentIds)
+        .order('created_at', { ascending: false });
+      for (const b of bList || []) {
+        if (b.student_id && (!studentTripTypeMap.has(b.student_id) || studentTripTypeMap.get(b.student_id) === 'both')) {
+          const bMeta = parseEscortNotes(b.notes);
+          if (bMeta.trip_type) {
+            studentTripTypeMap.set(b.student_id, normalizeEscortTripType(bMeta.trip_type));
+          }
+        }
+      }
+    }
 
     // 5. Fetch Today's Attendance Records for these students
     let arrivalsMap = new Map();
@@ -317,16 +344,22 @@ export async function GET(request: NextRequest) {
       today
     );
 
-    // Morning: only students already boarded at home (awaiting school drop-off).
-    // Afternoon: ready students first, still at school, not already with escort — max 9 seats.
+    // Morning: ONLY students designated for morning pickup AND actually picked up by escort today
+    // (awaiting school drop-off / gate reception). Students for afternoon MUST NOT show on morning gate list!
+    // Afternoon: students designated for afternoon transit (trip_type !== 'morning_only') who are present at school,
+    // not yet departed, and not already in escort custody — capped at batch capacity (9 seats).
     let activeStudentsSource = suggestedMode === 'arrival'
-      ? rawStudents.filter((st: any) => morningPickedUpStudentIds.has(st.id) && !arrivalsMap.has(st.id))
+      ? rawStudents.filter((st: any) => {
+          const tt = studentTripTypeMap.get(st.id) || 'both';
+          if (tt === 'afternoon_only' || tt === 'afternoon') return false;
+          return morningPickedUpStudentIds.has(st.id) && !arrivalsMap.has(st.id);
+        })
       : rawStudents.filter((st: any) => {
+          const tt = studentTripTypeMap.get(st.id) || 'both';
+          if (tt === 'morning_only' || tt === 'morning') return false;
           if (departuresMap.has(st.id) || afternoonOnBoardIds.has(st.id) || afternoonDroppedIds.has(st.id)) {
             return false;
           }
-          if (!arrivalsMap.has(st.id) && !morningPickedUpStudentIds.has(st.id)) return false;
-          if (readyStudentIds.size > 0) return readyStudentIds.has(st.id);
           return true;
         });
 
@@ -503,19 +536,24 @@ export async function POST(request: NextRequest) {
 
     let isLateArrival = false;
     let minutesLateVal: number | null = null;
-    if (mode === 'arrival') {
-      try {
-        const { data: schoolRow } = await supabase
-          .from('schools')
-          .select('late_threshold_time')
-          .eq('id', school_id)
-          .maybeSingle();
-        const lateThreshold = schoolRow?.late_threshold_time || '08:15:00';
+    let gateLocation = resolveSchoolGateLocation(null);
+
+    try {
+      const { data: schoolRow } = await supabase
+        .from('schools')
+        .select('id, name, address, location_address, location_landmark, gps_lat, gps_lng, late_threshold_time, late_threshold')
+        .eq('id', school_id)
+        .maybeSingle();
+
+      gateLocation = resolveSchoolGateLocation(schoolRow);
+
+      if (mode === 'arrival') {
+        const lateThreshold = schoolRow?.late_threshold_time || schoolRow?.late_threshold || '08:15:00';
         isLateArrival = isLateByThreshold(lateThreshold);
         minutesLateVal = isLateArrival ? minutesAfterThreshold(lateThreshold) : null;
-      } catch (lateErr) {
-        console.warn('[gate/escort-batch] late threshold check note:', lateErr);
       }
+    } catch (lateErr) {
+      console.warn('[gate/escort-batch] school location and late check note:', lateErr);
     }
 
     let insertedRecords: any[] = [];
@@ -530,12 +568,36 @@ export async function POST(request: NextRequest) {
         source: 'gate',
         minutes_late: minutesLateVal,
         timestamp,
+        location_name: gateLocation.location_name,
+        gps_lat: gateLocation.gps_lat,
+        gps_lng: gateLocation.gps_lng,
+        geofence_verified: gateLocation.geofence_verified,
       }));
 
-      const { data: inserted, error: insertErr } = await supabase
+      let { data: inserted, error: insertErr } = await supabase
         .from('attendance_records')
         .insert(attendanceRows)
         .select('id, student_id');
+
+      if (insertErr && /location_name|gps_lat|gps_lng|geofence_verified/i.test(insertErr.message)) {
+        const legacyRows = newStudentIds.map((sId: string) => ({
+          school_id,
+          student_id: sId,
+          type: mode,
+          verified_by_user_id: session.user_id,
+          verification_method: verificationMethod,
+          status: mode === 'arrival' ? (isLateArrival ? 'late' : 'on_time') : 'on_time',
+          source: 'gate',
+          minutes_late: minutesLateVal,
+          timestamp,
+        }));
+        const retry = await supabase
+          .from('attendance_records')
+          .insert(legacyRows)
+          .select('id, student_id');
+        inserted = retry.data;
+        insertErr = retry.error;
+      }
 
       if (insertErr) {
         console.error('[gate/escort-batch POST] attendance insert error:', insertErr);
@@ -606,6 +668,47 @@ export async function POST(request: NextRequest) {
         }
       } catch (tripErr) {
         console.warn('[gate/escort-batch] update daily trips notice:', tripErr);
+      }
+    }
+
+    // If morning arrival, immediately mark students dropped off at school for the escort
+    if (mode === 'arrival' && targetEscortId) {
+      try {
+        for (const sId of releaseIds) {
+          const { data: existingTrip } = await supabase
+            .from('escort_student_daily_trips')
+            .select('id')
+            .eq('trip_date', todayDate)
+            .in('escort_id', escortTokens)
+            .eq('student_id', sId)
+            .maybeSingle();
+
+          if (existingTrip) {
+            await supabase
+              .from('escort_student_daily_trips')
+              .update({
+                morning_dropped_off: true,
+                morning_dropped_off_at: timestamp,
+                updated_at: timestamp,
+              })
+              .eq('id', existingTrip.id);
+          } else {
+            await supabase
+              .from('escort_student_daily_trips')
+              .insert({
+                trip_date: todayDate,
+                escort_id: targetEscortId,
+                student_id: sId,
+                school_id,
+                morning_picked_up: true,
+                morning_dropped_off: true,
+                morning_dropped_off_at: timestamp,
+                updated_at: timestamp,
+              });
+          }
+        }
+      } catch (tripErr) {
+        console.warn('[gate/escort-batch] update morning arrival trips notice:', tripErr);
       }
     }
 

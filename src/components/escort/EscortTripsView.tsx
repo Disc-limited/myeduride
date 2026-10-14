@@ -283,8 +283,12 @@ export default function EscortTripsView({
               <span>Vehicle: <strong className="text-slate-800 font-bold">{vehicle.vehicle_name || vehicle.name || 'Transit Shuttle'}</strong> ({vehicle.plate_number || vehicle.regNumber || 'Plate Pending'})</span>
               <span>•</span>
               <span>Capacity: <strong className="text-slate-800 font-bold">{vehicle.capacity || 14} Seats</strong></span>
-              <span>•</span>
-              <span>CM Approved Earnings: <strong className="text-emerald-700 font-black">{earnings.formatted_total_daily_earnings || '₦0'}</strong></span>
+              {!isSchoolEscort && (
+                <>
+                  <span>•</span>
+                  <span>CM Approved Earnings: <strong className="text-emerald-700 font-black">{earnings.formatted_total_daily_earnings || '₦0'}</strong></span>
+                </>
+              )}
             </p>
           </div>
 

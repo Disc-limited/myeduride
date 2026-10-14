@@ -3,6 +3,10 @@ import { timestampToLagosDateKey } from '@/lib/attendance/lagos-dates';
 import { isCountableSchoolDay } from '@/lib/attendance/school-days';
 import type { NonSchoolDay } from '@/lib/attendance/non-school-days';
 import { staffStatusFromClockIn, type StaffDayStatus } from '@/lib/attendance/staff-late';
+import {
+  resolveSchoolGateLocation,
+  resolveRecordLocation,
+} from '@/lib/attendance/location-resolver';
 
 const STAFF_REPORT_ROLES = ['staff', 'teacher', 'gate_officer', 'school_admin'] as const;
 
@@ -10,7 +14,15 @@ const STAFF_REPORT_ROLES = ['staff', 'teacher', 'gate_officer', 'school_admin'] 
 const COUNTABLE_VERIFICATION = new Set(['id_card_scan', 'face_recognition', 'manual']);
 
 type StaffRoleRow = { user_id: string; role: string; full_name: string; job_title: string };
-type StaffScanRow = { user_id: string; type: string; timestamp: string };
+type StaffScanRow = {
+  user_id: string;
+  type: string;
+  timestamp: string;
+  location_name?: string | null;
+  gps_lat?: number | null;
+  gps_lng?: number | null;
+  geofence_verified?: boolean | null;
+};
 
 function isCountableStaffScan(row: { verification_method?: string | null }) {
   const method = row.verification_method?.trim();
@@ -113,7 +125,7 @@ async function fetchStaffAttendanceScans(
   const baseQuery = () =>
     supabase
       .from('staff_attendance')
-      .select('user_id, type, timestamp, verification_method')
+      .select('user_id, type, timestamp, verification_method, location_name, gps_lat, gps_lng, geofence_verified')
       .eq('school_id', schoolId)
       .in('user_id', userIds)
       .in('type', ['clock_in', 'clock_out'])
@@ -123,18 +135,33 @@ async function fetchStaffAttendanceScans(
 
   let { data, error } = await baseQuery();
 
-  if (error && /verification_method/i.test(error.message)) {
+  if (error && /location_name|gps_lat|gps_lng|geofence_verified|verification_method/i.test(error.message)) {
     const legacy = await supabase
       .from('staff_attendance')
-      .select('user_id, type, timestamp')
+      .select('user_id, type, timestamp, verification_method')
       .eq('school_id', schoolId)
       .in('user_id', userIds)
       .in('type', ['clock_in', 'clock_out'])
       .gte('timestamp', rangeStartIso)
       .lte('timestamp', rangeEndIso)
       .order('timestamp', { ascending: true });
-    data = legacy.data as typeof data;
-    error = legacy.error;
+
+    if (legacy.error && /verification_method/i.test(legacy.error.message)) {
+      const ultraLegacy = await supabase
+        .from('staff_attendance')
+        .select('user_id, type, timestamp')
+        .eq('school_id', schoolId)
+        .in('user_id', userIds)
+        .in('type', ['clock_in', 'clock_out'])
+        .gte('timestamp', rangeStartIso)
+        .lte('timestamp', rangeEndIso)
+        .order('timestamp', { ascending: true });
+      data = ultraLegacy.data as typeof data;
+      error = ultraLegacy.error;
+    } else {
+      data = legacy.data as typeof data;
+      error = legacy.error;
+    }
   }
 
   if (error) {
@@ -166,6 +193,11 @@ export type StaffDailyRow = {
   clock_in_time: string | null;
   clock_out_time: string | null;
   minutes_late: number | null;
+  clock_in_location: string | null;
+  clock_out_location: string | null;
+  clock_in_coords: string | null;
+  clock_out_coords: string | null;
+  geofence_verified: boolean;
 };
 
 export async function fetchSchoolLateThreshold(
@@ -189,6 +221,13 @@ export async function buildStaffDailyReport(
 
   const lateThreshold = opts?.lateThreshold ?? (await fetchSchoolLateThreshold(supabase, schoolId));
 
+  const { data: schoolRow } = await supabase
+    .from('schools')
+    .select('id, name, address, location_address, location_landmark, gps_lat, gps_lng')
+    .eq('id', schoolId)
+    .maybeSingle();
+  const gateLocation = resolveSchoolGateLocation(schoolRow);
+
   if (opts?.excluded) {
     return roles.map((r) => ({
       user_id: r.user_id,
@@ -198,36 +237,53 @@ export async function buildStaffDailyReport(
       clock_in_time: null,
       clock_out_time: null,
       minutes_late: null,
+      clock_in_location: null,
+      clock_out_location: null,
+      clock_in_coords: null,
+      clock_out_coords: null,
+      geofence_verified: false,
     }));
   }
 
   const userIds = roles.map((r) => r.user_id);
   const scans = await fetchStaffAttendanceScans(supabase, schoolId, userIds, rangeStartIso, rangeEndIso);
 
-  const clockInByUser: Record<string, string> = {};
-  const clockOutByUser: Record<string, string> = {};
+  const clockInByUser: Record<string, StaffScanRow> = {};
+  const clockOutByUser: Record<string, StaffScanRow> = {};
 
   for (const r of scans) {
     if (timestampToLagosDateKey(r.timestamp) !== dayKey) continue;
     if (r.type === 'clock_in' && !clockInByUser[r.user_id]) {
-      clockInByUser[r.user_id] = r.timestamp;
+      clockInByUser[r.user_id] = r;
     }
     if (r.type === 'clock_out' && !clockOutByUser[r.user_id]) {
-      clockOutByUser[r.user_id] = r.timestamp;
+      clockOutByUser[r.user_id] = r;
     }
   }
 
   return roles.map((r) => {
-    const clockIn = clockInByUser[r.user_id] || null;
+    const inScan = clockInByUser[r.user_id];
+    const outScan = clockOutByUser[r.user_id];
+    const clockIn = inScan?.timestamp || null;
+    const clockOut = outScan?.timestamp || null;
     const { status, minutes_late } = staffStatusFromClockIn(clockIn, lateThreshold);
+
+    const inLoc = inScan ? resolveRecordLocation(inScan, gateLocation, 'clock_in') : null;
+    const outLoc = outScan ? resolveRecordLocation(outScan, gateLocation, 'clock_out') : null;
+
     return {
       user_id: r.user_id,
       full_name: r.full_name,
       role: r.job_title,
       status,
       clock_in_time: clockIn,
-      clock_out_time: clockOutByUser[r.user_id] || null,
+      clock_out_time: clockOut,
       minutes_late,
+      clock_in_location: inLoc ? inLoc.display_badge : null,
+      clock_out_location: outLoc ? outLoc.display_badge : null,
+      clock_in_coords: inLoc?.gps_coords || null,
+      clock_out_coords: outLoc?.gps_coords || null,
+      geofence_verified: inLoc ? inLoc.geofence_verified : gateLocation.geofence_verified,
     };
   });
 }

@@ -292,6 +292,7 @@ export default function SafetyConnectView({
               <SchoolEscortView
                 childrenList={childrenList}
                 escortData={data?.school_escort || null}
+                multiChildSummary={data?.multi_child_summary || null}
                 onSelectSafetyPillar={(p) => setActivePillar(p as SafetyPillarTab)}
               />
             )}

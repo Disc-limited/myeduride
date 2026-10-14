@@ -58,6 +58,22 @@ export default function AddSchoolEscortPage() {
   // Password Visibility
   const [showPassword, setShowPassword] = useState(false);
 
+  // Email validation & duplicate checking
+  const [emailStatus, setEmailStatus] = useState<{
+    checking: boolean;
+    error: string | null;
+    available: boolean;
+  }>({ checking: false, error: null, available: false });
+  const emailDebounceTimerRef = useRef<NodeJS.Timeout | null>(null);
+
+  // Username validation & duplicate checking
+  const [usernameStatus, setUsernameStatus] = useState<{
+    checking: boolean;
+    error: string | null;
+    available: boolean;
+  }>({ checking: false, error: null, available: false });
+  const usernameDebounceTimerRef = useRef<NodeJS.Timeout | null>(null);
+
   // Form State
   const [form, setForm] = useState({
     // Step 1: Personal Info
@@ -111,6 +127,75 @@ export default function AddSchoolEscortPage() {
     assignedRouteId: '',
   });
 
+  // Check if escort email is valid and available
+  const checkEmailAvailability = async (emailToCheck: string): Promise<boolean> => {
+    const trimmed = (emailToCheck || '').trim().toLowerCase();
+    if (!trimmed) {
+      setEmailStatus({ checking: false, error: null, available: false });
+      return true;
+    }
+
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    if (!emailRegex.test(trimmed)) {
+      setEmailStatus({
+        checking: false,
+        error: 'Please enter a valid email address (e.g. name@example.com).',
+        available: false,
+      });
+      return false;
+    }
+
+    setEmailStatus({ checking: true, error: null, available: false });
+    try {
+      const res = await fetch(`/api/escorts/check-email?email=${encodeURIComponent(trimmed)}`);
+      const data = await res.json();
+      if (data.exists) {
+        setEmailStatus({
+          checking: false,
+          error: data.message || `The email "${trimmed}" is already in use by an existing escort or account.`,
+          available: false,
+        });
+        return false;
+      } else {
+        setEmailStatus({ checking: false, error: null, available: true });
+        return true;
+      }
+    } catch (err) {
+      console.warn('Failed to verify email availability:', err);
+      setEmailStatus({ checking: false, error: null, available: false });
+      return true;
+    }
+  };
+
+  // Check if username is available
+  const checkUsernameAvailability = async (unameToCheck: string): Promise<boolean> => {
+    const trimmed = (unameToCheck || '').trim().toLowerCase();
+    if (!trimmed) {
+      setUsernameStatus({ checking: false, error: null, available: false });
+      return true;
+    }
+
+    setUsernameStatus({ checking: true, error: null, available: false });
+    try {
+      const res = await fetch(`/api/escorts/check-email?emailOrUsername=${encodeURIComponent(trimmed)}`);
+      const data = await res.json();
+      if (data.exists) {
+        setUsernameStatus({
+          checking: false,
+          error: data.message || `The username "${trimmed}" is already taken.`,
+          available: false,
+        });
+        return false;
+      } else {
+        setUsernameStatus({ checking: false, error: null, available: true });
+        return true;
+      }
+    } catch (err) {
+      setUsernameStatus({ checking: false, error: null, available: false });
+      return true;
+    }
+  };
+
   // Auto-suggest username when Full Name changes
   const handleFullNameChange = (name: string) => {
     const cleanName = name.toLowerCase().replace(/[^a-z0-9]/g, '.');
@@ -120,6 +205,7 @@ export default function AddSchoolEscortPage() {
       fullName: name,
       username: prev.username === '' || prev.username.startsWith('escort.') ? autoUsername : prev.username,
     }));
+    setUsernameStatus({ checking: false, error: null, available: false });
   };
 
   // Generate a random secure password
@@ -216,7 +302,7 @@ export default function AddSchoolEscortPage() {
   };
 
   // Validation before step transition
-  const handleNextStep = () => {
+  const handleNextStep = async () => {
     if (currentStep === 1) {
       if (!form.fullName.trim()) {
         toast.error('Please enter the escort full name');
@@ -226,10 +312,38 @@ export default function AddSchoolEscortPage() {
         toast.error('Please enter a valid phone number');
         return;
       }
+
+      // Email validation if provided
+      if (form.email.trim()) {
+        if (emailStatus.error) {
+          toast.error(emailStatus.error);
+          return;
+        }
+        const isEmailOk = await checkEmailAvailability(form.email);
+        if (!isEmailOk) {
+          toast.error(emailStatus.error || 'The email address entered is already in use.');
+          return;
+        }
+      }
+
       if (!form.username.trim()) {
         toast.error('Please specify a username for the escort dashboard login');
         return;
       }
+
+      // Username validation
+      if (usernameStatus.error) {
+        toast.error(usernameStatus.error);
+        return;
+      }
+      if (form.username.trim()) {
+        const isUsernameOk = await checkUsernameAvailability(form.username);
+        if (!isUsernameOk) {
+          toast.error(usernameStatus.error || 'The chosen username is already taken.');
+          return;
+        }
+      }
+
       if (!form.password.trim()) {
         toast.error('Please set a temporary login password');
         return;
@@ -247,6 +361,28 @@ export default function AddSchoolEscortPage() {
 
   // Final Form Submission
   const handleSubmit = async () => {
+    if (emailStatus.error) {
+      toast.error(emailStatus.error);
+      setCurrentStep(1);
+      return;
+    }
+    if (form.email.trim()) {
+      const isEmailOk = await checkEmailAvailability(form.email);
+      if (!isEmailOk) {
+        toast.error('Cannot register escort: email address is already registered.');
+        setCurrentStep(1);
+        return;
+      }
+    }
+    if (form.username.trim()) {
+      const isUsernameOk = await checkUsernameAvailability(form.username);
+      if (!isUsernameOk) {
+        toast.error('Cannot register escort: username is already taken.');
+        setCurrentStep(1);
+        return;
+      }
+    }
+
     setSubmitting(true);
     try {
       const res = await fetch('/api/school-admin/escorts/create', {
@@ -256,8 +392,16 @@ export default function AddSchoolEscortPage() {
       });
 
       const json = await res.json();
-      if (!res.ok) {
-        throw new Error(json.error || 'Failed to onboard escort');
+      if (!res.ok || json.error) {
+        const errMsg = json.error || 'Failed to onboard escort';
+        if (errMsg.toLowerCase().includes('email')) {
+          setEmailStatus({ checking: false, error: errMsg, available: false });
+          setCurrentStep(1);
+        } else if (errMsg.toLowerCase().includes('username')) {
+          setUsernameStatus({ checking: false, error: errMsg, available: false });
+          setCurrentStep(1);
+        }
+        throw new Error(errMsg);
       }
 
       setCreatedEscortData(json);
@@ -510,16 +654,67 @@ export default function AddSchoolEscortPage() {
 
                     {/* Email Address */}
                     <div className="sm:col-span-1 space-y-1.5">
-                      <label className="text-[11px] font-extrabold text-slate-700">
-                        Email Address
-                      </label>
-                      <input
-                        type="email"
-                        placeholder="Enter email address"
-                        value={form.email}
-                        onChange={(e) => setForm({ ...form, email: e.target.value })}
-                        className="w-full px-3.5 py-2.5 rounded-xl border border-slate-200 bg-white text-xs font-medium text-slate-900 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-all"
-                      />
+                      <div className="flex items-center justify-between">
+                        <label className="text-[11px] font-extrabold text-slate-700">
+                          Email Address
+                        </label>
+                        {emailStatus.checking && (
+                          <span className="text-[10px] text-blue-600 font-semibold flex items-center gap-1">
+                            <RefreshCw className="w-2.5 h-2.5 animate-spin" /> Checking...
+                          </span>
+                        )}
+                        {!emailStatus.checking && emailStatus.available && form.email && (
+                          <span className="text-[10px] text-emerald-600 font-semibold flex items-center gap-1">
+                            <CheckCircle2 className="w-2.5 h-2.5" /> Email available
+                          </span>
+                        )}
+                      </div>
+                      <div className="relative">
+                        <input
+                          type="email"
+                          placeholder="Enter email address"
+                          value={form.email}
+                          onChange={(e) => {
+                            const val = e.target.value;
+                            setForm({ ...form, email: val });
+                            setEmailStatus({ checking: false, error: null, available: false });
+                            if (emailDebounceTimerRef.current) clearTimeout(emailDebounceTimerRef.current);
+                            if (val.trim().length > 3) {
+                              emailDebounceTimerRef.current = setTimeout(() => {
+                                checkEmailAvailability(val);
+                              }, 600);
+                            }
+                          }}
+                          onBlur={() => {
+                            if (form.email.trim()) {
+                              checkEmailAvailability(form.email);
+                            }
+                          }}
+                          className={`w-full px-3.5 py-2.5 rounded-xl border text-xs font-medium text-slate-900 placeholder:text-slate-400 focus:outline-none transition-all ${
+                            emailStatus.error
+                              ? 'border-rose-400 bg-rose-50/40 focus:ring-2 focus:ring-rose-500/20 focus:border-rose-500 pr-9'
+                              : emailStatus.available
+                              ? 'border-emerald-400 bg-emerald-50/20 focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500 pr-9'
+                              : 'border-slate-200 bg-white focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500'
+                          }`}
+                        />
+                        {emailStatus.error && (
+                          <div className="absolute right-3 top-2.5 text-rose-500 pointer-events-none">
+                            <AlertCircle className="w-4 h-4" />
+                          </div>
+                        )}
+                        {!emailStatus.checking && emailStatus.available && form.email && (
+                          <div className="absolute right-3 top-2.5 text-emerald-600 pointer-events-none">
+                            <CheckCircle2 className="w-4 h-4" />
+                          </div>
+                        )}
+                      </div>
+                      {emailStatus.error && (
+                        <p className="text-[11px] font-semibold text-rose-600 flex items-center gap-1 mt-1 bg-rose-50 border border-rose-200 rounded-lg p-2">
+                          <AlertCircle className="w-3.5 h-3.5 shrink-0" />
+                          <span>{emailStatus.error}</span>
+                        </p>
+                      )}
                     </div>
 
                     {/* Closest Landmark */}
@@ -858,17 +1053,64 @@ export default function AddSchoolEscortPage() {
                   <div className="space-y-1.5">
                     <label className="text-[11px] font-extrabold text-slate-700 flex items-center justify-between">
                       <span>Username / Login ID <span className="text-rose-500">*</span></span>
-                      <span className="text-[10px] text-slate-400 font-normal">Auto-suggested from name</span>
+                      {usernameStatus.checking ? (
+                        <span className="text-[10px] text-blue-600 font-semibold flex items-center gap-1">
+                          <RefreshCw className="w-2.5 h-2.5 animate-spin" /> Checking...
+                        </span>
+                      ) : !usernameStatus.checking && usernameStatus.available && form.username ? (
+                        <span className="text-[10px] text-emerald-600 font-semibold flex items-center gap-1">
+                          <CheckCircle2 className="w-2.5 h-2.5" /> Username available
+                        </span>
+                      ) : (
+                        <span className="text-[10px] text-slate-400 font-normal">Auto-suggested from name</span>
+                      )}
                     </label>
                     <div className="relative">
                       <input
                         type="text"
                         placeholder="e.g. escort.david"
                         value={form.username}
-                        onChange={(e) => setForm({ ...form, username: e.target.value.toLowerCase().trim() })}
-                        className="w-full px-3.5 py-2.5 rounded-xl border border-slate-200 bg-white text-xs font-bold text-blue-900 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-all"
+                        onChange={(e) => {
+                          const val = e.target.value.toLowerCase().trim();
+                          setForm({ ...form, username: val });
+                          setUsernameStatus({ checking: false, error: null, available: false });
+                          if (usernameDebounceTimerRef.current) clearTimeout(usernameDebounceTimerRef.current);
+                          if (val.length >= 3) {
+                            usernameDebounceTimerRef.current = setTimeout(() => {
+                              checkUsernameAvailability(val);
+                            }, 600);
+                          }
+                        }}
+                        onBlur={() => {
+                          if (form.username.trim()) {
+                            checkUsernameAvailability(form.username);
+                          }
+                        }}
+                        className={`w-full px-3.5 py-2.5 rounded-xl border text-xs font-bold text-blue-900 placeholder:text-slate-400 focus:outline-none transition-all ${
+                          usernameStatus.error
+                            ? 'border-rose-400 bg-rose-50/40 focus:ring-2 focus:ring-rose-500/20 focus:border-rose-500 pr-9'
+                            : usernameStatus.available
+                            ? 'border-emerald-400 bg-emerald-50/20 focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500 pr-9'
+                            : 'border-slate-200 bg-white focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500'
+                        }`}
                       />
+                      {usernameStatus.error && (
+                        <div className="absolute right-3 top-2.5 text-rose-500 pointer-events-none">
+                          <AlertCircle className="w-4 h-4" />
+                        </div>
+                      )}
+                      {!usernameStatus.checking && usernameStatus.available && form.username && (
+                        <div className="absolute right-3 top-2.5 text-emerald-600 pointer-events-none">
+                          <CheckCircle2 className="w-4 h-4" />
+                        </div>
+                      )}
                     </div>
+                    {usernameStatus.error && (
+                      <p className="text-[11px] font-semibold text-rose-600 flex items-center gap-1 mt-1 bg-rose-50 border border-rose-200 rounded-lg p-2">
+                        <AlertCircle className="w-3.5 h-3.5 shrink-0" />
+                        <span>{usernameStatus.error}</span>
+                      </p>
+                    )}
                   </div>
 
                   {/* Password with Generator */}
@@ -1401,6 +1643,15 @@ export default function AddSchoolEscortPage() {
                   {form.phone ? `+234 ${form.phone}` : '—'}
                 </span>
               </div>
+
+              {form.email && (
+                <div className="flex justify-between items-center py-1 border-b border-slate-50">
+                  <span className="text-slate-500 font-medium">Email</span>
+                  <span className="font-bold text-slate-800 truncate max-w-[160px]">
+                    {form.email}
+                  </span>
+                </div>
+              )}
 
               <div className="flex justify-between items-center py-1 border-b border-slate-50">
                 <span className="text-slate-500 font-medium">Username</span>

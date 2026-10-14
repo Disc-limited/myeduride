@@ -21,6 +21,10 @@ import {
 } from '@/lib/attendance/staff-report';
 import { normalizeArrivalStatus } from '@/lib/attendance/status';
 import { fetchReportStudents } from '@/lib/attendance/report-students';
+import {
+  resolveSchoolGateLocation,
+  resolveRecordLocation,
+} from '@/lib/attendance/location-resolver';
 
 export const dynamic = 'force-dynamic';
 
@@ -249,6 +253,13 @@ export async function GET(request: NextRequest) {
       });
     }
 
+    const { data: schRow } = await supabase
+      .from('schools')
+      .select('id, name, address, location_address, location_landmark, gps_lat, gps_lng')
+      .eq('id', resolvedSchoolId)
+      .maybeSingle();
+    const gateLoc = resolveSchoolGateLocation(schRow);
+
     let records: {
       student_id: string;
       type: string;
@@ -256,19 +267,23 @@ export async function GET(request: NextRequest) {
       timestamp: string;
       minutes_late: number | null;
       source: string | null;
+      location_name?: string | null;
+      gps_lat?: number | null;
+      gps_lng?: number | null;
+      geofence_verified?: boolean | null;
     }[] = [];
 
     if (studentIds.length > 0) {
       const recRes = await supabase
         .from('attendance_records')
-        .select('student_id, type, status, timestamp, minutes_late, source')
+        .select('student_id, type, status, timestamp, minutes_late, source, location_name, gps_lat, gps_lng, geofence_verified')
         .eq('school_id', resolvedSchoolId)
         .in('student_id', studentIds)
         .gte('timestamp', rangeStartIso)
         .lte('timestamp', rangeEndIso)
         .order('timestamp', { ascending: true });
 
-      if (recRes.error && /minutes_late|source/i.test(recRes.error.message)) {
+      if (recRes.error && /location_name|gps_lat|gps_lng|geofence_verified|minutes_late|source/i.test(recRes.error.message)) {
         const legacy = await supabase
           .from('attendance_records')
           .select('student_id, type, status, timestamp')
@@ -286,29 +301,44 @@ export async function GET(request: NextRequest) {
       }
     }
 
-    const { data: departures } =
-      studentIds.length > 0
-        ? await supabase
-            .from('attendance_records')
-            .select('student_id, timestamp')
-            .eq('school_id', resolvedSchoolId)
-            .in('student_id', studentIds)
-            .eq('type', 'departure')
-            .gte('timestamp', rangeStartIso)
-            .lte('timestamp', rangeEndIso)
-            .order('timestamp', { ascending: false })
-        : { data: [] };
+    let departures: any[] = [];
+    if (studentIds.length > 0) {
+      const depRes = await supabase
+        .from('attendance_records')
+        .select('student_id, timestamp, location_name, gps_lat, gps_lng, geofence_verified')
+        .eq('school_id', resolvedSchoolId)
+        .in('student_id', studentIds)
+        .eq('type', 'departure')
+        .gte('timestamp', rangeStartIso)
+        .lte('timestamp', rangeEndIso)
+        .order('timestamp', { ascending: false });
 
-    const departureMap: Record<string, Record<string, string>> = {};
+      if (depRes.error && /location_name|gps_lat|gps_lng|geofence_verified/i.test(depRes.error.message)) {
+        const legacyDep = await supabase
+          .from('attendance_records')
+          .select('student_id, timestamp')
+          .eq('school_id', resolvedSchoolId)
+          .in('student_id', studentIds)
+          .eq('type', 'departure')
+          .gte('timestamp', rangeStartIso)
+          .lte('timestamp', rangeEndIso)
+          .order('timestamp', { ascending: false });
+        departures = legacyDep.data || [];
+      } else {
+        departures = depRes.data || [];
+      }
+    }
+
+    const departureMap: Record<string, Record<string, any>> = {};
     for (const d of departures || []) {
       const dayKey = timestampToLagosDateKey(d.timestamp);
       if (!departureMap[d.student_id]) departureMap[d.student_id] = {};
       if (!departureMap[d.student_id][dayKey]) {
-        departureMap[d.student_id][dayKey] = d.timestamp;
+        departureMap[d.student_id][dayKey] = d;
       }
     }
 
-    const arrivalMap: Record<string, Record<string, { status: string; timestamp: string; minutes_late: number | null; source: string | null }>> = {};
+    const arrivalMap: Record<string, Record<string, any>> = {};
     for (const r of records || []) {
       if (r.type !== 'arrival') continue;
       const dayKey = timestampToLagosDateKey(r.timestamp);
@@ -363,6 +393,10 @@ export async function GET(request: NextRequest) {
         const rawStatus = arrival ? arrival.status : 'absent';
         const status =
           rawStatus === 'on_time' ? 'present' : rawStatus === 'absent' ? 'absent' : rawStatus;
+
+        const inLoc = arrival ? resolveRecordLocation(arrival, gateLoc, 'arrival') : null;
+        const outLoc = departure ? resolveRecordLocation(departure, gateLoc, 'departure') : null;
+
         return {
           student_id: s.id,
           student_id_number: s.student_id_number,
@@ -373,9 +407,14 @@ export async function GET(request: NextRequest) {
           status: departure && !arrival ? 'dismissed' : status,
           dismissed: !!departure,
           check_in_time: arrival?.timestamp || null,
-          check_out_time: departure || null,
+          check_out_time: departure?.timestamp || (typeof departure === 'string' ? departure : null),
           minutes_late: arrival?.minutes_late ?? null,
           source: arrival?.source || null,
+          check_in_location: inLoc ? inLoc.display_badge : null,
+          check_out_location: outLoc ? outLoc.display_badge : null,
+          check_in_coords: inLoc?.gps_coords || null,
+          check_out_coords: outLoc?.gps_coords || null,
+          geofence_verified: inLoc ? inLoc.geofence_verified : gateLoc.geofence_verified,
         };
       });
 
@@ -391,6 +430,8 @@ export async function GET(request: NextRequest) {
           status: r.status,
           check_in_time: r.check_in_time || '',
           check_out_time: r.check_out_time || '',
+          check_in_location: r.check_in_location || '',
+          check_out_location: r.check_out_location || '',
           minutes_late: r.minutes_late ?? '',
         }));
         for (const s of staffReport) {
@@ -401,6 +442,8 @@ export async function GET(request: NextRequest) {
             status: s.status,
             check_in_time: s.clock_in_time || '',
             check_out_time: s.clock_out_time || '',
+            check_in_location: s.clock_in_location || '',
+            check_out_location: s.clock_out_location || '',
             minutes_late: s.minutes_late ?? '',
           });
         }

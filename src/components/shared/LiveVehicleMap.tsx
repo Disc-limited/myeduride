@@ -1,15 +1,18 @@
 'use client';
 
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, useMemo } from 'react';
 import { loadLeaflet } from '@/lib/leaflet-loader';
 import { VehicleMotionAnimator, MotionPoint } from '@/lib/navigation/vehicle-motion-engine';
 import { LatLngPoint } from '@/lib/navigation/road-router';
+import { useSpatialCluster, SpatialClusterPoint } from '@/lib/maps/useSpatialCluster';
 
 export type LiveMapPin = {
+  id?: string | number;
   lat: number;
   lng: number;
   label?: string;
   kind?: 'home' | 'school' | 'stop' | 'other';
+  data?: Record<string, any>;
 };
 
 export type LiveVehicleMapProps = {
@@ -29,6 +32,8 @@ export type LiveVehicleMapProps = {
   /** Hide OSM/Leaflet footer attribution for a clean map chrome (default true). */
   hideAttribution?: boolean;
   showZoom?: boolean;
+  /** Enable QuadTree/K-D tree spatial clustering for large batches of pins (default: auto if pins >= 15) */
+  enableClustering?: boolean;
 };
 
 function pinColor(kind?: LiveMapPin['kind']) {
@@ -78,6 +83,7 @@ export default function LiveVehicleMap({
   centerPinKind,
   hideAttribution = true,
   showZoom = true,
+  enableClustering,
 }: LiveVehicleMapProps) {
   const [isMapReady, setIsMapReady] = useState(false);
   const containerRef = useRef<HTMLDivElement>(null);
@@ -99,6 +105,35 @@ export default function LiveVehicleMap({
   useEffect(() => {
     followVehicleRef.current = followVehicle;
   }, [followVehicle]);
+
+  // Client-side QuadTree spatial cluster engine
+  const clusterPoints = useMemo<SpatialClusterPoint[]>(() => {
+    return (pins || [])
+      .filter(
+        (p) =>
+          p.lat != null &&
+          p.lng != null &&
+          Number.isFinite(Number(p.lat)) &&
+          Number.isFinite(Number(p.lng))
+      )
+      .map((p, idx) => ({
+        id: p.id ?? `pin-${idx}`,
+        lat: Number(p.lat),
+        lng: Number(p.lng),
+        kind: p.kind,
+        label: p.label,
+        data: p.data,
+      }));
+  }, [pins]);
+
+  const shouldCluster = enableClustering ?? clusterPoints.length >= 15;
+
+  const { getClusters, getClusterExpansionZoom, isReady: isClusterReady } = useSpatialCluster({
+    points: clusterPoints,
+    radius: 45,
+    maxZoom: 16,
+    minPoints: 2,
+  });
 
   // Init map once
   useEffect(() => {
@@ -259,44 +294,132 @@ export default function LiveVehicleMap({
     }).addTo(map);
   }, [mapType, hideAttribution]);
 
-  // LAYER 1: Static Route Pins (School, Homes, Stops)
+  // LAYER 1: Route Pins (School, Homes, Stops) with QuadTree Spatial Clustering
   useEffect(() => {
     const L = leafletRef.current;
     const map = mapRef.current;
     const group = pinsGroupRef.current;
     if (!L || !map || !group) return;
 
-    group.clearLayers();
+    const renderPins = () => {
+      group.clearLayers();
 
-    const bounds: [number, number][] = [];
+      if (shouldCluster && isClusterReady) {
+        let bbox: [number, number, number, number] = [-180, -90, 180, 90];
+        try {
+          const b = map.getBounds();
+          bbox = [b.getWest(), b.getSouth(), b.getEast(), b.getNorth()];
+        } catch {
+          /* ignore */
+        }
+        const zoom = map.getZoom() || 14;
+        const features = getClusters(bbox, zoom);
 
-    pins.forEach((pin) => {
-      if (pin.lat == null || pin.lng == null) return;
-      const lat = Number(pin.lat);
-      const lng = Number(pin.lng);
-      if (!Number.isFinite(lat) || !Number.isFinite(lng)) return;
-      bounds.push([lat, lng]);
+        features.forEach((feat) => {
+          const [lng, lat] = feat.geometry.coordinates;
 
-      const color = pinColor(pin.kind);
-      const icon = L.divIcon({
-        className: 'live-vehicle-static-pin',
-        html: `
-          <div style="display:flex;flex-direction:column;align-items:center;transform:translate(-50%,-100%);">
-            <div style="background:${color};color:#fff;width:30px;height:30px;border-radius:9999px;border:2.5px solid #fff;box-shadow:0 4px 12px rgba(0,0,0,.25);display:flex;align-items:center;justify-content:center;font:800 8.5px/1 sans-serif;">
-              ${pinShort(pin.kind)}
-            </div>
-            ${
-              pin.label
-                ? `<div style="margin-top:2px;background:#0f172a;color:#fff;font:700 9.5px/1.2 sans-serif;padding:2px 7px;border-radius:5px;white-space:nowrap;border:1px solid #334155;box-shadow:0 2px 6px rgba(0,0,0,0.25);">${pin.label}</div>`
-                : ''
+          if (feat.properties.cluster) {
+            const count = feat.properties.point_count || 2;
+            const clusterId = feat.properties.cluster_id;
+
+            // Modern glowing emerald/indigo QuadTree cluster pill
+            const clusterIcon = L.divIcon({
+              className: 'live-map-cluster-marker',
+              html: `
+                <div style="position:relative;width:44px;height:44px;display:flex;align-items:center;justify-content:center;cursor:pointer;">
+                  <div style="position:absolute;inset:0;border-radius:9999px;background:rgba(16,185,129,0.3);animation:liveVehiclePing 2s cubic-bezier(0,0,0.2,1) infinite;"></div>
+                  <div style="position:relative;background:linear-gradient(135deg, #059669 0%, #10b981 100%);color:#ffffff;min-width:36px;height:36px;padding:0 6px;border-radius:9999px;border:2.5px solid #ffffff;box-shadow:0 8px 16px -2px rgba(0,0,0,0.35);display:flex;align-items:center;justify-content:center;font-weight:900;font-size:12px;font-family:sans-serif;letter-spacing:-0.2px;">
+                    ${count}
+                  </div>
+                </div>
+              `,
+              iconSize: [44, 44],
+              iconAnchor: [22, 22],
+            });
+
+            const marker = L.marker([lat, lng], { icon: clusterIcon, zIndexOffset: 400 }).addTo(group);
+
+            marker.on('click', () => {
+              if (clusterId != null) {
+                const targetZoom = getClusterExpansionZoom(clusterId);
+                map.flyTo([lat, lng], Math.min(targetZoom, 18), { animate: true, duration: 0.45 });
+              }
+            });
+
+            marker.bindTooltip(`${count} locations (Click to zoom & expand)`, {
+              direction: 'top',
+              offset: [0, -18],
+            });
+          } else {
+            // Leaf point
+            const kind = feat.properties.kind as LiveMapPin['kind'];
+            const label = feat.properties.label;
+            const color = pinColor(kind);
+
+            const icon = L.divIcon({
+              className: 'live-vehicle-static-pin',
+              html: `
+                <div style="display:flex;flex-direction:column;align-items:center;transform:translate(-50%,-100%);">
+                  <div style="background:${color};color:#fff;width:30px;height:30px;border-radius:9999px;border:2.5px solid #fff;box-shadow:0 4px 12px rgba(0,0,0,.25);display:flex;align-items:center;justify-content:center;font:800 8.5px/1 sans-serif;">
+                    ${pinShort(kind)}
+                  </div>
+                  ${
+                    label
+                      ? `<div style="margin-top:2px;background:#0f172a;color:#fff;font:700 9.5px/1.2 sans-serif;padding:2px 7px;border-radius:5px;white-space:nowrap;border:1px solid #334155;box-shadow:0 2px 6px rgba(0,0,0,0.25);">${label}</div>`
+                      : ''
+                  }
+                </div>
+              `,
+              iconSize: [36, 50],
+              iconAnchor: [18, 50],
+            });
+
+            const marker = L.marker([lat, lng], { icon }).addTo(group);
+            if (label) {
+              marker.bindPopup(`<div style="font-family:sans-serif;padding:2px;font-size:12px;font-weight:600;color:#0f172a;">${label}</div>`);
             }
-          </div>
-        `,
-        iconSize: [36, 50],
-        iconAnchor: [18, 50],
-      });
-      L.marker([lat, lng], { icon }).addTo(group);
-    });
+          }
+        });
+      } else {
+        // Direct unclustered pins
+        pins.forEach((pin) => {
+          if (pin.lat == null || pin.lng == null) return;
+          const lat = Number(pin.lat);
+          const lng = Number(pin.lng);
+          if (!Number.isFinite(lat) || !Number.isFinite(lng)) return;
+
+          const color = pinColor(pin.kind);
+          const icon = L.divIcon({
+            className: 'live-vehicle-static-pin',
+            html: `
+              <div style="display:flex;flex-direction:column;align-items:center;transform:translate(-50%,-100%);">
+                <div style="background:${color};color:#fff;width:30px;height:30px;border-radius:9999px;border:2.5px solid #fff;box-shadow:0 4px 12px rgba(0,0,0,.25);display:flex;align-items:center;justify-content:center;font:800 8.5px/1 sans-serif;">
+                  ${pinShort(pin.kind)}
+                </div>
+                ${
+                  pin.label
+                    ? `<div style="margin-top:2px;background:#0f172a;color:#fff;font:700 9.5px/1.2 sans-serif;padding:2px 7px;border-radius:5px;white-space:nowrap;border:1px solid #334155;box-shadow:0 2px 6px rgba(0,0,0,0.25);">${pin.label}</div>`
+                    : ''
+                }
+              </div>
+            `,
+            iconSize: [36, 50],
+            iconAnchor: [18, 50],
+          });
+          const marker = L.marker([lat, lng], { icon }).addTo(group);
+          if (pin.label) {
+            marker.bindPopup(`<div style="font-family:sans-serif;padding:2px;font-size:12px;font-weight:600;color:#0f172a;">${pin.label}</div>`);
+          }
+        });
+      }
+    };
+
+    renderPins();
+
+    if (shouldCluster) {
+      map.on('moveend', renderPins);
+      map.on('zoomend', renderPins);
+    }
 
     // Dynamic centering when not actively following vehicle
     if (!followVehicleRef.current || vehicleLat == null) {
@@ -304,21 +427,36 @@ export default function LiveVehicleMap({
         const focal = pins.find((p) => p.kind === centerPinKind && p.lat != null && p.lng != null);
         if (focal) {
           map.setView([Number(focal.lat), Number(focal.lng)], 16);
-          return;
+          return () => {
+            if (shouldCluster) {
+              map.off('moveend', renderPins);
+              map.off('zoomend', renderPins);
+            }
+          };
         }
       }
 
-      if (bounds.length >= 2) {
+      const allCoords = clusterPoints.map((p) => [p.lat, p.lng] as [number, number]);
+      if (allCoords.length >= 2 && !hasInitialFitRef.current) {
+        hasInitialFitRef.current = true;
         try {
-          map.fitBounds(bounds, { padding: [48, 48], maxZoom: 15 });
+          map.fitBounds(allCoords, { padding: [48, 48], maxZoom: 15 });
         } catch {
           /* ignore */
         }
-      } else if (bounds.length === 1) {
-        map.setView(bounds[0], 15);
+      } else if (allCoords.length === 1 && !hasInitialFitRef.current) {
+        hasInitialFitRef.current = true;
+        map.setView(allCoords[0], 15);
       }
     }
-  }, [isMapReady, pins, centerPinKind]);
+
+    return () => {
+      if (shouldCluster) {
+        map.off('moveend', renderPins);
+        map.off('zoomend', renderPins);
+      }
+    };
+  }, [isMapReady, pins, shouldCluster, isClusterReady, centerPinKind]);
 
   // LAYER 2: Bolt Active Route Polyline Path (Signature Vibrant Green Corridor)
   useEffect(() => {

@@ -2153,10 +2153,38 @@ export async function POST(request: NextRequest) {
         (a: any) => a.id === escort_id || a.user_id === escort_id || a.appId === escort_id || a.escort_code === escort_id
       );
 
-      let correctionData: any = null;
+      const isUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(escort_id);
+      let targetDbRow: any = null;
+      try {
+        let query = db.from('escort_applications').select('id, user_id, application_data, status, notes, full_name, email, phone');
+        if (isUuid) {
+          query = query.or(`id.eq.${escort_id},user_id.eq.${escort_id}`);
+        } else {
+          query = query.eq('id', escort_id);
+        }
+        const { data: dbRows } = await query;
+        targetDbRow = dbRows?.[0] || null;
+      } catch (e) {
+        console.warn('[approve_escort_correction] DB query notice:', e);
+      }
+
+      let dbAppData: any = {};
+      if (targetDbRow?.application_data) {
+        if (typeof targetDbRow.application_data === 'string') {
+          try { dbAppData = JSON.parse(targetDbRow.application_data); } catch { dbAppData = {}; }
+        } else if (typeof targetDbRow.application_data === 'object') {
+          dbAppData = targetDbRow.application_data;
+        }
+      }
+
+      const correctionData: any =
+        (escortApp as any)?.proposed_correction ||
+        dbAppData?.proposed_correction ||
+        (targetDbRow as any)?.proposed_correction ||
+        null;
+
       if (escortApp) {
         const appAny = escortApp as any;
-        correctionData = appAny.proposed_correction;
         if (correctionData) {
           if (correctionData.fullName) {
             appAny.fullName = correctionData.fullName;
@@ -2175,32 +2203,43 @@ export async function POST(request: NextRequest) {
         }
 
         appAny.status = 'CITY_MANAGER_APPROVED';
-        delete (escortApp as any).proposed_correction;
+        delete appAny.proposed_correction;
         saveFileStore(fileStore);
       }
 
       try {
+        delete dbAppData.proposed_correction;
+        delete dbAppData.correction_data;
+        dbAppData.status = 'CITY_MANAGER_APPROVED';
+
+        const targetId = targetDbRow?.id || escort_id;
+        const updatePayload: any = {
+          status: 'CITY_MANAGER_APPROVED',
+          notes: notes || 'School Escort correction approved by City Manager',
+          application_data: JSON.stringify(dbAppData),
+          updated_at: new Date().toISOString(),
+        };
         if (correctionData) {
+          if (correctionData.fullName) updatePayload.full_name = correctionData.fullName;
+          if (correctionData.phone) updatePayload.phone = correctionData.phone;
+          if (correctionData.email) updatePayload.email = correctionData.email;
+          if (correctionData.operatingArea) updatePayload.operating_area = correctionData.operatingArea;
+          if (correctionData.nin) updatePayload.nin = correctionData.nin;
+        }
+
+        await db.from('escort_applications').update(updatePayload).eq('id', targetId);
+
+        const targetUserId = targetDbRow?.user_id || (isUuid ? escort_id : null);
+        if (targetUserId && correctionData) {
           await db
             .from('user_profiles')
             .update({
               full_name: correctionData.fullName || undefined,
               phone: correctionData.phone || undefined,
               email: correctionData.email || undefined,
+              updated_at: new Date().toISOString(),
             })
-            .eq('id', escort_id);
-
-          await db
-            .from('escort_applications')
-            .update({
-              status: 'CITY_MANAGER_APPROVED',
-              full_name: correctionData.fullName || undefined,
-              phone: correctionData.phone || undefined,
-              email: correctionData.email || undefined,
-              operating_area: correctionData.operatingArea || undefined,
-              proposed_correction: null,
-            })
-            .or(`id.eq.${escort_id},user_id.eq.${escort_id}`);
+            .eq('id', targetUserId);
         }
       } catch (e) {
         console.warn('[approve_escort_correction] Supabase sync notice:', e);
@@ -2228,6 +2267,30 @@ export async function POST(request: NextRequest) {
         (a: any) => a.id === escort_id || a.user_id === escort_id || a.appId === escort_id || a.escort_code === escort_id
       );
 
+      const isUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(escort_id);
+      let targetDbRow: any = null;
+      try {
+        let query = db.from('escort_applications').select('id, user_id, application_data, status, notes');
+        if (isUuid) {
+          query = query.or(`id.eq.${escort_id},user_id.eq.${escort_id}`);
+        } else {
+          query = query.eq('id', escort_id);
+        }
+        const { data: dbRows } = await query;
+        targetDbRow = dbRows?.[0] || null;
+      } catch (e) {
+        console.warn('[reject_escort_correction] DB query notice:', e);
+      }
+
+      let dbAppData: any = {};
+      if (targetDbRow?.application_data) {
+        if (typeof targetDbRow.application_data === 'string') {
+          try { dbAppData = JSON.parse(targetDbRow.application_data); } catch { dbAppData = {}; }
+        } else if (typeof targetDbRow.application_data === 'object') {
+          dbAppData = targetDbRow.application_data;
+        }
+      }
+
       if (escortApp) {
         escortApp.status = 'CITY_MANAGER_APPROVED';
         delete (escortApp as any).proposed_correction;
@@ -2236,13 +2299,21 @@ export async function POST(request: NextRequest) {
       }
 
       try {
+        delete dbAppData.proposed_correction;
+        delete dbAppData.correction_data;
+        dbAppData.status = 'CITY_MANAGER_APPROVED';
+        dbAppData.correction_rejection_reason = rejection_reason || 'Correction rejected by City Manager';
+
+        const targetId = targetDbRow?.id || escort_id;
         await db
           .from('escort_applications')
           .update({
             status: 'CITY_MANAGER_APPROVED',
-            proposed_correction: null,
+            notes: rejection_reason || 'Correction rejected by City Manager',
+            application_data: JSON.stringify(dbAppData),
+            updated_at: new Date().toISOString(),
           })
-          .or(`id.eq.${escort_id},user_id.eq.${escort_id}`);
+          .eq('id', targetId);
       } catch (e) {
         console.warn('[reject_escort_correction] Supabase sync notice:', e);
       }
@@ -2255,6 +2326,7 @@ export async function POST(request: NextRequest) {
         success: true,
         message: 'School Escort correction rejected.',
         escort_id,
+        status: 'CITY_MANAGER_APPROVED',
       });
     }
 

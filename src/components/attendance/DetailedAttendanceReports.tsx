@@ -2,7 +2,7 @@
 'use client';
 
 import { useCallback, useEffect, useState, useMemo } from 'react';
-import { Download, BarChart3, Users, UserCheck, Search, Filter } from 'lucide-react';
+import { Download, BarChart3, Users, UserCheck, Search, Filter, MapPin } from 'lucide-react';
 import { toast } from 'sonner';
 import { formatTimeLagos, todayInLagos } from '@/lib/timezone';
 
@@ -282,6 +282,7 @@ export default function DetailedAttendanceReports({
                   <th className="text-left px-3 py-2 text-xs text-slate-500">Attendance Status</th>
                   <th className="text-left px-3 py-2 text-xs text-slate-500">Sign-in Time</th>
                   <th className="text-left px-3 py-2 text-xs text-slate-500">Sign-out Time</th>
+                  <th className="text-left px-3 py-2 text-xs text-slate-500">Sign-in / Out Location</th>
                   {data.type === 'daily' && (
                     <th className="text-left px-3 py-2 text-xs text-slate-500">Late (mins)</th>
                   )}
@@ -311,6 +312,31 @@ export default function DetailedAttendanceReports({
                     <td className="px-3 py-2 whitespace-nowrap text-xs text-slate-700 font-mono">
                       {formatTimeLagos(r.clock_out_time) || '—'}
                     </td>
+                    <td className="px-3 py-2 text-xs text-slate-700">
+                      <div className="flex flex-col gap-1 max-w-[220px]">
+                        {r.clock_in_location ? (
+                          <span
+                            className="inline-flex items-center gap-1 text-[11px] font-medium text-emerald-800 bg-emerald-50/90 border border-emerald-200/70 px-1.5 py-0.5 rounded"
+                            title={r.clock_in_coords ? `GPS: ${r.clock_in_coords}` : undefined}
+                          >
+                            <MapPin size={11} className="text-emerald-600 shrink-0" />
+                            <span className="truncate">In: {r.clock_in_location}</span>
+                          </span>
+                        ) : null}
+                        {r.clock_out_location ? (
+                          <span
+                            className="inline-flex items-center gap-1 text-[11px] font-medium text-amber-800 bg-amber-50/90 border border-amber-200/70 px-1.5 py-0.5 rounded"
+                            title={r.clock_out_coords ? `GPS: ${r.clock_out_coords}` : undefined}
+                          >
+                            <MapPin size={11} className="text-amber-600 shrink-0" />
+                            <span className="truncate">Out: {r.clock_out_location}</span>
+                          </span>
+                        ) : null}
+                        {!r.clock_in_location && !r.clock_out_location && (
+                          <span className="text-slate-400 text-xs">—</span>
+                        )}
+                      </div>
+                    </td>
                     {data.type === 'daily' && (
                       <td className="px-3 py-2 text-xs font-semibold">
                         {r.minutes_late ? (
@@ -324,7 +350,7 @@ export default function DetailedAttendanceReports({
                 ))}
                 {filteredStaffReport.length === 0 && (
                   <tr>
-                    <td colSpan={6} className="px-3 py-8 text-center text-slate-400 text-xs">
+                    <td colSpan={7} className="px-3 py-8 text-center text-slate-400 text-xs">
                       No staff records matched the selected role or search query.
                     </td>
                   </tr>
@@ -362,6 +388,7 @@ export default function DetailedAttendanceReports({
                   <th className="text-left px-3 py-2 text-xs text-slate-500">Status</th>
                   <th className="text-left px-3 py-2 text-xs text-slate-500">Check-in</th>
                   <th className="text-left px-3 py-2 text-xs text-slate-500">Check-out</th>
+                  <th className="text-left px-3 py-2 text-xs text-slate-500">Sign-in / Out Location</th>
                   <th className="text-left px-3 py-2 text-xs text-slate-500">Late (min)</th>
                 </tr>
               </thead>
@@ -380,6 +407,31 @@ export default function DetailedAttendanceReports({
                     </td>
                     <td className="px-3 py-2 whitespace-nowrap">{formatTimeLagos(r.check_in_time)}</td>
                     <td className="px-3 py-2 whitespace-nowrap">{formatTimeLagos(r.check_out_time)}</td>
+                    <td className="px-3 py-2 text-xs text-slate-700">
+                      <div className="flex flex-col gap-1 max-w-[220px]">
+                        {r.check_in_location ? (
+                          <span
+                            className="inline-flex items-center gap-1 text-[11px] font-medium text-emerald-800 bg-emerald-50/90 border border-emerald-200/70 px-1.5 py-0.5 rounded"
+                            title={r.check_in_coords ? `GPS: ${r.check_in_coords}` : undefined}
+                          >
+                            <MapPin size={11} className="text-emerald-600 shrink-0" />
+                            <span className="truncate">In: {r.check_in_location}</span>
+                          </span>
+                        ) : null}
+                        {r.check_out_location ? (
+                          <span
+                            className="inline-flex items-center gap-1 text-[11px] font-medium text-amber-800 bg-amber-50/90 border border-amber-200/70 px-1.5 py-0.5 rounded"
+                            title={r.check_out_coords ? `GPS: ${r.check_out_coords}` : undefined}
+                          >
+                            <MapPin size={11} className="text-amber-600 shrink-0" />
+                            <span className="truncate">Out: {r.check_out_location}</span>
+                          </span>
+                        ) : null}
+                        {!r.check_in_location && !r.check_out_location && (
+                          <span className="text-slate-400 text-xs">—</span>
+                        )}
+                      </div>
+                    </td>
                     <td className="px-3 py-2">{r.minutes_late ?? '—'}</td>
                   </tr>
                 ))}

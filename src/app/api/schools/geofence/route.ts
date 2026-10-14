@@ -3,6 +3,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { getSessionFromRequest } from '@/lib/auth/auth-server';
 import { getAdminClient } from '@/lib/supabase/admin';
 import { calculateHaversineDistance } from '@/lib/types/tracking-types';
+import { verifySchoolGeofenceWithPostGIS } from '@/lib/maps/spatial-db';
 
 export const dynamic = 'force-dynamic';
 
@@ -75,14 +76,22 @@ export async function GET(request: NextRequest) {
           summary: 'School campus gate is not yet pinned with GPS coordinates.',
         };
       } else {
-        const dist = Math.round(calculateHaversineDistance(testLat, testLng, latVal, lngVal));
-        const inside = dist <= DEFAULT_GEOFENCE_RADIUS_METERS;
+        const spatialCheck = await verifySchoolGeofenceWithPostGIS(
+          supabase,
+          targetSchoolId,
+          testLat,
+          testLng,
+          DEFAULT_GEOFENCE_RADIUS_METERS
+        );
+        const dist = spatialCheck.actual_distance_meters;
+        const inside = spatialCheck.is_inside;
         testResult = {
           client_lat: testLat,
           client_lng: testLng,
           distance_meters: dist,
           is_inside_geofence: inside,
           status: inside ? 'inside_geofence' : 'outside_geofence',
+          spatial_engine: spatialCheck.method,
           summary: inside
             ? `Inside School Geofence (${dist}m from Campus Gate)`
             : `Outside School Geofence (${dist}m away from Campus Gate; Perimeter is ${DEFAULT_GEOFENCE_RADIUS_METERS}m)`,

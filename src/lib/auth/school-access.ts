@@ -17,7 +17,15 @@ export function canManageSchool(session: AppSession, schoolId: string): boolean 
 
 export function canViewSchoolDashboard(session: AppSession, schoolId: string): boolean {
   if (sessionHasRole(session, 'super_admin')) return true;
-  return hasRole(session, 'school_admin', schoolId);
+  if (hasRole(session, 'school_admin', schoolId)) return true;
+  const sessAny = session as any;
+  if (
+    sessionHasRole(session, 'school_admin') &&
+    (sessAny?.primary_school?.id === schoolId || sessAny?.primary_school_id === schoolId)
+  ) {
+    return true;
+  }
+  return false;
 }
 
 /** Full student roster for a school (admin / gate). */

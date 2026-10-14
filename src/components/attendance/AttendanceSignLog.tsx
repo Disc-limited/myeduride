@@ -41,7 +41,7 @@ export default function AttendanceSignLog({
   const filteredEntries = searchable && searchQuery.trim()
     ? entries.filter((e) => {
         const q = searchQuery.toLowerCase();
-        const hay = `${e.name} ${e.type_label} ${e.detail || ''} ${e.time_display || ''} ${e.pickup_person?.pickup_person_name || ''} ${e.pickup_notice?.pickup_person_name || ''}`.toLowerCase();
+        const hay = `${e.name} ${e.type_label} ${e.detail || ''} ${e.time_display || ''} ${e.location_name || ''} ${e.location_badge || ''} ${e.action_location || ''} ${e.pickup_person?.pickup_person_name || ''} ${e.pickup_notice?.pickup_person_name || ''}`.toLowerCase();
         return hay.includes(q);
       })
     : entries;
@@ -50,7 +50,7 @@ export default function AttendanceSignLog({
     <div className="space-y-4">
       <div>
         <h2 className="text-lg font-bold text-slate-900">{title}</h2>
-        <p className="text-xs text-slate-500">Student check-in/out and staff gate scans (Lagos date)</p>
+        <p className="text-xs text-slate-500">Student check-in/out and staff gate scans with verified reception location</p>
       </div>
 
       <div className="grid grid-cols-2 gap-3">
@@ -75,7 +75,7 @@ export default function AttendanceSignLog({
             type="search"
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
-            placeholder="Search student name, date, time, or pickup person…"
+            placeholder="Search student, staff, location, gate, or time…"
             className="input pl-9"
           />
         </div>
@@ -102,14 +102,31 @@ export default function AttendanceSignLog({
                 )}
               </div>
               <div className="flex-1 min-w-0">
-                <p className="text-sm font-medium truncate">{e.name}</p>
+                <div className="flex flex-wrap items-center gap-2">
+                  <p className="text-sm font-semibold text-slate-900 truncate">{e.name}</p>
+                  <span className={`text-[10px] font-bold px-1.5 py-0.2 rounded ${
+                    e.entity === 'staff' ? 'bg-purple-100 text-purple-800' : 'bg-blue-100 text-blue-800'
+                  }`}>
+                    {e.entity === 'staff' ? 'STAFF' : 'STUDENT'}
+                  </span>
+                </div>
                 <div className="flex flex-wrap items-center gap-1.5 text-xs text-slate-500 mt-0.5">
-                  <span>{e.type_label}</span>
+                  <span className="font-medium text-slate-700">{e.type_label}</span>
                   {e.detail && <span>· {e.detail}</span>}
-                  {e.location_name && (
-                    <span className="inline-flex items-center gap-1 text-[11px] text-emerald-800 bg-emerald-50 border border-emerald-200/80 px-1.5 py-0.5 rounded-md font-medium">
+                  {(e.location_name || e.action_location) && (
+                    <span
+                      title={e.gps_coords ? `GPS: ${e.gps_coords}` : 'School Gate Reception'}
+                      className="inline-flex items-center gap-1 text-[11px] text-emerald-800 bg-emerald-50 border border-emerald-200/90 px-2 py-0.5 rounded-md font-medium"
+                    >
                       <MapPin size={10} className="text-emerald-600 shrink-0" />
-                      <span className="truncate max-w-[200px]">{e.location_name}</span>
+                      <span className="truncate max-w-[280px]">
+                        {e.action_location || e.location_badge || e.location_name}
+                      </span>
+                      {e.geofence_verified && (
+                        <span className="text-[9px] text-emerald-600 bg-emerald-100/80 px-1 py-0.2 rounded font-bold uppercase tracking-wider">
+                          Verified
+                        </span>
+                      )}
                     </span>
                   )}
                 </div>

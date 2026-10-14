@@ -3,6 +3,10 @@ import { getAdminClient } from '@/lib/supabase/admin';
 import { getSessionFromRequest, sessionHasRole } from '@/lib/session';
 import { todayInLagos, formatTimeLagos } from '@/lib/timezone';
 import { lagosDayBoundsFromDateStr } from '@/lib/attendance/lagos-dates';
+import {
+  resolveSchoolGateLocation,
+  resolveRecordLocation,
+} from '@/lib/attendance/location-resolver';
 
 export const dynamic = 'force-dynamic';
 
@@ -30,6 +34,10 @@ type ActivityEntry = {
   timestamp: string;
   time_display: string;
   details: Record<string, unknown>;
+  location_name: string;
+  location_badge?: string;
+  gps_coords?: string | null;
+  geofence_verified: boolean;
   source: 'gate_activity' | 'attendance';
 };
 
@@ -79,6 +87,13 @@ export async function GET(request: NextRequest) {
     const { startIso, endIso } = lagosDayBoundsFromDateStr(dateParam);
     const supabase = getAdminClient();
 
+    const { data: schRow } = await supabase
+      .from('schools')
+      .select('id, name, address, location_address, location_landmark, gps_lat, gps_lng')
+      .eq('id', schoolId)
+      .maybeSingle();
+    const gateLoc = resolveSchoolGateLocation(schRow);
+
     // Canonical select; fall back to legacy columns if schema differs
     let rows: any[] = [];
     const canonicalSelect = await supabase
@@ -120,10 +135,12 @@ export async function GET(request: NextRequest) {
       }
     }
 
-    const { data: attendanceRows, error: attErr } = await supabase
+    let attendanceRows: any[] = [];
+    const primaryAtt = await supabase
       .from('attendance_records')
       .select(
         `id, student_id, type, verification_method, verified_by_user_id, timestamp, source, status,
+         location_name, gps_lat, gps_lng, geofence_verified,
          student:students(first_name, last_name, student_id_number, class:school_classes(name))`
       )
       .eq('school_id', schoolId)
@@ -132,8 +149,21 @@ export async function GET(request: NextRequest) {
       .lte('timestamp', endIso)
       .order('timestamp', { ascending: false });
 
-    if (attErr) {
-      console.warn('[gate/activity-log] attendance backfill:', attErr.message);
+    if (!primaryAtt.error) {
+      attendanceRows = primaryAtt.data || [];
+    } else {
+      const fallbackAtt = await supabase
+        .from('attendance_records')
+        .select(
+          `id, student_id, type, verification_method, verified_by_user_id, timestamp, source, status,
+           student:students(first_name, last_name, student_id_number, class:school_classes(name))`
+        )
+        .eq('school_id', schoolId)
+        .in('type', ['arrival', 'departure'])
+        .gte('timestamp', startIso)
+        .lte('timestamp', endIso)
+        .order('timestamp', { ascending: false });
+      attendanceRows = fallbackAtt.data || [];
     }
 
     const officerIds = new Set<string>();
@@ -172,6 +202,17 @@ export async function GET(request: NextRequest) {
         ? `${st.first_name} ${st.last_name}`.trim()
         : details.staff_name || r.actor_name || 'Staff';
 
+      const actLoc = resolveRecordLocation(
+        {
+          location_name: details.location_name || r.location_name,
+          gps_lat: details.gps_lat || r.gps_lat,
+          gps_lng: details.gps_lng || r.gps_lng,
+          geofence_verified: details.geofence_verified ?? r.geofence_verified,
+        },
+        gateLoc,
+        actionType
+      );
+
       entries.push({
         id: r.id,
         action_type: actionType,
@@ -187,6 +228,10 @@ export async function GET(request: NextRequest) {
         timestamp: r.created_at,
         time_display: formatTimeLagos(r.created_at),
         details,
+        location_name: actLoc.location_name,
+        location_badge: actLoc.display_badge,
+        gps_coords: actLoc.gps_coords,
+        geofence_verified: actLoc.geofence_verified,
         source: 'gate_activity',
       });
     }
@@ -222,10 +267,14 @@ export async function GET(request: NextRequest) {
       const st = attendanceStudent;
       const officer = a.verified_by_user_id ? officerById[a.verified_by_user_id] || {} : {};
       const studentName = st ? `${st.first_name} ${st.last_name}`.trim() : 'Student';
+      const attLoc = resolveRecordLocation(a, gateLoc, a.type);
       const details = {
         attendance_record_id: a.id,
         attendance_type: a.type,
         verification_method: a.verification_method,
+        location_name: attLoc.location_name,
+        gps_coords: attLoc.gps_coords,
+        geofence_verified: attLoc.geofence_verified,
         backfilled_from_attendance: true,
       };
 
@@ -244,6 +293,10 @@ export async function GET(request: NextRequest) {
         timestamp: a.timestamp,
         time_display: formatTimeLagos(a.timestamp),
         details,
+        location_name: attLoc.location_name,
+        location_badge: attLoc.display_badge,
+        gps_coords: attLoc.gps_coords,
+        geofence_verified: attLoc.geofence_verified,
         source: 'attendance',
       });
     }

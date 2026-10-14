@@ -2,7 +2,7 @@
 'use client';
 
 import { useCallback, useEffect, useState } from 'react';
-import { Search } from 'lucide-react';
+import { Search, MapPin, ShieldCheck } from 'lucide-react';
 import { toast } from 'sonner';
 import { todayInLagos } from '@/lib/timezone';
 
@@ -45,7 +45,7 @@ export default function GateActivitiesReport({ schoolId, title = 'Gate activitie
   const filtered = entries.filter((e) => {
     const q = searchQuery.toLowerCase().trim();
     if (!q) return true;
-    const hay = `${e.student_name} ${e.class_name} ${e.student_id_number} ${e.action_label} ${e.pickup_person_name || ''} ${e.gate_officer_name} ${e.time_display} ${date}`.toLowerCase();
+    const hay = `${e.student_name} ${e.class_name} ${e.student_id_number} ${e.action_label} ${e.pickup_person_name || ''} ${e.gate_officer_name} ${e.location_name || ''} ${e.time_display} ${date}`.toLowerCase();
     return hay.includes(q);
   });
 
@@ -77,7 +77,7 @@ export default function GateActivitiesReport({ schoolId, title = 'Gate activitie
               type="search"
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
-              placeholder="Student, officer, pickup, time…"
+              placeholder="Student, officer, pickup, location, time…"
               className="input pl-9 min-h-[44px]"
             />
           </div>
@@ -100,6 +100,23 @@ export default function GateActivitiesReport({ schoolId, title = 'Gate activitie
                     </p>
                   )}
                   <p className="text-sm text-slate-600 mt-0.5">{e.action_label}</p>
+                  {e.location_name && (
+                    <div className="flex flex-wrap items-center gap-1.5 mt-1.5">
+                      <span
+                        className="inline-flex items-center gap-1 text-xs font-semibold px-2 py-0.5 rounded-full bg-emerald-50 text-emerald-800 border border-emerald-200"
+                        title={e.gps_coords ? `GPS: ${e.gps_coords}` : undefined}
+                      >
+                        <MapPin size={12} className="text-emerald-600 shrink-0" />
+                        <span>{e.location_name}</span>
+                      </span>
+                      {e.geofence_verified && (
+                        <span className="inline-flex items-center gap-1 text-[11px] font-medium px-1.5 py-0.5 rounded bg-blue-50 text-blue-700 border border-blue-200">
+                          <ShieldCheck size={11} className="text-blue-600 shrink-0" />
+                          <span>Geofence Verified</span>
+                        </span>
+                      )}
+                    </div>
+                  )}
                   {e.pickup_person_name && (
                     <p className="text-sm text-blue-800 mt-1">
                       Received by: <strong>{e.pickup_person_name}</strong>

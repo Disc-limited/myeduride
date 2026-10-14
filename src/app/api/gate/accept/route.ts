@@ -21,6 +21,10 @@ import {
 import { assertGateDayOpen } from '@/lib/gate/school-day-gate';
 import { writeAuditLog } from '@/lib/audit/log';
 import { writeGateActivityLog } from '@/lib/gate/activity-log';
+import {
+  resolveSchoolGateLocation,
+  resolveRecordLocation,
+} from '@/lib/attendance/location-resolver';
 
 export const dynamic = 'force-dynamic';
 
@@ -52,13 +56,28 @@ export async function POST(request: NextRequest) {
     const nowIso = nowUtcIso();
 
     let lateThreshold = '08:15';
-    if (bodySchoolId || student_id) {
-      const sid = bodySchoolId || (student_id ? (await supabase.from('students').select('school_id').eq('id', student_id).single()).data?.school_id : null);
-      if (sid) {
-        const { data: sch } = await supabase.from('schools').select('late_threshold').eq('id', sid).single();
-        if (sch?.late_threshold) lateThreshold = sch.late_threshold;
-      }
+    let schoolRow: any = null;
+    const targetSchoolId = bodySchoolId || (student_id ? (await supabase.from('students').select('school_id').eq('id', student_id).single()).data?.school_id : null);
+    if (targetSchoolId) {
+      const { data: sch } = await supabase
+        .from('schools')
+        .select('id, name, address, location_address, location_landmark, gps_lat, gps_lng, late_threshold')
+        .eq('id', targetSchoolId)
+        .maybeSingle();
+      schoolRow = sch;
+      if (sch?.late_threshold) lateThreshold = sch.late_threshold;
     }
+
+    const gateLocation = resolveSchoolGateLocation(schoolRow);
+    const resolvedLocation = resolveRecordLocation(
+      {
+        location_name: body.location_name,
+        gps_lat: body.gps_lat ?? body.client_lat,
+        gps_lng: body.gps_lng ?? body.client_lng,
+      },
+      gateLocation,
+      type
+    );
 
     const isLate = type === 'arrival' && isLateByThreshold(lateThreshold);
     const minutesLate = isLate ? minutesAfterThreshold(lateThreshold) : null;
@@ -153,6 +172,10 @@ export async function POST(request: NextRequest) {
         verified_by_user_id: verifiedBy,
         timestamp: nowIso,
         record_source: isAdminScan ? 'admin' : 'gate',
+        location_name: resolvedLocation.location_name,
+        gps_lat: gateLocation.gps_lat,
+        gps_lng: gateLocation.gps_lng,
+        geofence_verified: resolvedLocation.geofence_verified,
       };
 
       let { data, error } = await supabase
@@ -161,18 +184,22 @@ export async function POST(request: NextRequest) {
         .select()
         .single();
 
-      if (error && /record_source/i.test(error.message)) {
+      if (error && /location_name|gps_lat|gps_lng|geofence_verified|record_source/i.test(error.message)) {
+        const fallbackPayload: Record<string, unknown> = {
+          user_id: effectiveUserId,
+          school_id: schoolId,
+          gate_session_id: gate_session_id || null,
+          type: staffType,
+          verification_method: dbStaffMethod,
+          verified_by_user_id: verifiedBy,
+          timestamp: nowIso,
+        };
+        if (!/record_source/i.test(error.message)) {
+          fallbackPayload.record_source = isAdminScan ? 'admin' : 'gate';
+        }
         const legacy = await supabase
           .from('staff_attendance')
-          .insert({
-            user_id: effectiveUserId,
-            school_id: schoolId,
-            gate_session_id: gate_session_id || null,
-            type: staffType,
-            verification_method: dbStaffMethod,
-            verified_by_user_id: verifiedBy,
-            timestamp: nowIso,
-          })
+          .insert(fallbackPayload)
           .select()
           .single();
         data = legacy.data;
@@ -191,7 +218,13 @@ export async function POST(request: NextRequest) {
         action: `gate_staff_${staffType}`,
         entity_type: 'staff_attendance',
         entity_id: data?.id,
-        details: { verification_method, record_source: isAdminScan ? 'admin' : 'gate' },
+        details: {
+          verification_method,
+          record_source: isAdminScan ? 'admin' : 'gate',
+          location_name: resolvedLocation.location_name,
+          gps_coords: resolvedLocation.gps_coords,
+          geofence_verified: resolvedLocation.geofence_verified,
+        },
       });
 
       const { data: staffProfile } = await supabase
@@ -209,6 +242,9 @@ export async function POST(request: NextRequest) {
           staff_name: staffProfile?.full_name || 'Staff',
           verification_method,
           record_source: isAdminScan ? 'admin' : 'gate',
+          location_name: resolvedLocation.location_name,
+          gps_coords: resolvedLocation.gps_coords,
+          geofence_verified: resolvedLocation.geofence_verified,
         },
       });
 
@@ -218,6 +254,11 @@ export async function POST(request: NextRequest) {
         is_late: staffIsLate,
         minutes_late: staffMinutesLate,
         person_type: 'staff',
+        location_name: resolvedLocation.location_name,
+        location_badge: resolvedLocation.display_badge,
+        action_location: resolvedLocation.action_label,
+        gps_coords: resolvedLocation.gps_coords,
+        geofence_verified: resolvedLocation.geofence_verified,
       });
     }
 
@@ -324,22 +365,49 @@ export async function POST(request: NextRequest) {
       ? 'id_card_scan'
       : 'manual';
 
-    const { data, error } = await supabase
+    const studentPayload: Record<string, unknown> = {
+      student_id,
+      school_id: schoolId,
+      gate_session_id: gate_session_id || null,
+      type,
+      verification_method: dbStudentMethod,
+      verified_by_user_id: verifiedBy,
+      status: type === 'arrival' ? (isLate ? 'late' : 'on_time') : 'on_time',
+      source: 'gate',
+      minutes_late: minutesLate,
+      timestamp: nowIso,
+      location_name: resolvedLocation.location_name,
+      gps_lat: gateLocation.gps_lat,
+      gps_lng: gateLocation.gps_lng,
+      geofence_verified: resolvedLocation.geofence_verified,
+    };
+
+    let { data, error } = await supabase
       .from('attendance_records')
-      .insert({
-        student_id,
-        school_id: schoolId,
-        gate_session_id: gate_session_id || null,
-        type,
-        verification_method: dbStudentMethod,
-        verified_by_user_id: verifiedBy,
-        status: type === 'arrival' ? (isLate ? 'late' : 'on_time') : 'on_time',
-        source: 'gate',
-        minutes_late: minutesLate,
-        timestamp: nowIso,
-      })
+      .insert(studentPayload)
       .select()
       .single();
+
+    if (error && /location_name|gps_lat|gps_lng|geofence_verified/i.test(error.message)) {
+      const legacy = await supabase
+        .from('attendance_records')
+        .insert({
+          student_id,
+          school_id: schoolId,
+          gate_session_id: gate_session_id || null,
+          type,
+          verification_method: dbStudentMethod,
+          verified_by_user_id: verifiedBy,
+          status: type === 'arrival' ? (isLate ? 'late' : 'on_time') : 'on_time',
+          source: 'gate',
+          minutes_late: minutesLate,
+          timestamp: nowIso,
+        })
+        .select()
+        .single();
+      data = legacy.data;
+      error = legacy.error;
+    }
 
     if (error) {
       console.error('[gate/accept] attendance_records:', error.message, { student_id, schoolId, type });
@@ -464,6 +532,9 @@ export async function POST(request: NextRequest) {
             : isOverrideDeparture
               ? 'Physical ID card misplaced or lost'
               : undefined),
+        location_name: resolvedLocation.location_name,
+        gps_coords: resolvedLocation.gps_coords,
+        geofence_verified: resolvedLocation.geofence_verified,
         override_type: isOverrideArrival ? 'arrival' : isOverrideDeparture ? 'departure' : undefined,
       },
     });
@@ -490,6 +561,11 @@ export async function POST(request: NextRequest) {
       success: true,
       record: data,
       is_late: isLate,
+      location_name: resolvedLocation.location_name,
+      location_badge: resolvedLocation.display_badge,
+      action_location: resolvedLocation.action_label,
+      gps_coords: resolvedLocation.gps_coords,
+      geofence_verified: resolvedLocation.geofence_verified,
       parents_notified: notifyResult.notified,
       notify_skipped: notifyResult.skipped,
       activity_logged: activityResult.ok,

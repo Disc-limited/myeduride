@@ -7,6 +7,10 @@ export type StaffSignLogRow = {
   user_id: string;
   record_source?: string | null;
   full_name: string;
+  location_name?: string | null;
+  gps_lat?: number | null;
+  gps_lng?: number | null;
+  geofence_verified?: boolean | null;
 };
 
 /** Staff gate scans for sign-in/out log (resilient if optional columns missing). */
@@ -17,6 +21,7 @@ export async function fetchStaffSignLogRows(
   endIso: string
 ): Promise<StaffSignLogRow[]> {
   const attempts = [
+    'id, type, timestamp, user_id, record_source, location_name, gps_lat, gps_lng, geofence_verified, user:user_profiles!staff_attendance_user_id_fkey(full_name)',
     'id, type, timestamp, user_id, record_source, user:user_profiles!staff_attendance_user_id_fkey(full_name)',
     'id, type, timestamp, user_id, user:user_profiles!staff_attendance_user_id_fkey(full_name)',
     'id, type, timestamp, user_id',
@@ -28,6 +33,10 @@ export async function fetchStaffSignLogRows(
     timestamp: string;
     user_id: string;
     record_source?: string | null;
+    location_name?: string | null;
+    gps_lat?: number | null;
+    gps_lng?: number | null;
+    geofence_verified?: boolean | null;
     user?: { full_name?: string } | { full_name?: string }[];
   };
 
@@ -46,7 +55,7 @@ export async function fetchStaffSignLogRows(
       rows = data as unknown as RawRow[];
       break;
     }
-    if (!/record_source|user_profiles|relationship/i.test(error.message)) {
+    if (!/record_source|location_name|gps_lat|gps_lng|geofence_verified|user_profiles|relationship/i.test(error.message)) {
       console.warn('[staff-sign-log]', error.message);
       return [];
     }
@@ -80,6 +89,10 @@ export async function fetchStaffSignLogRows(
       user_id: r.user_id,
       record_source: r.record_source,
       full_name: embedded?.full_name || nameByUser[r.user_id] || 'Staff',
+      location_name: r.location_name || null,
+      gps_lat: r.gps_lat != null ? Number(r.gps_lat) : null,
+      gps_lng: r.gps_lng != null ? Number(r.gps_lng) : null,
+      geofence_verified: r.geofence_verified != null ? Boolean(r.geofence_verified) : null,
     };
   });
 }

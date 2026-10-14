@@ -68,6 +68,45 @@ export async function POST(request: NextRequest) {
 
     const supabase = getAdminClient();
 
+    // Check if email already exists in escort_applications or user_profiles
+    if (email && typeof email === 'string' && email.trim()) {
+      const normalizedEmail = email.toLowerCase().trim();
+      const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+      if (!emailRegex.test(normalizedEmail)) {
+        return NextResponse.json({ error: 'Please enter a valid email address' }, { status: 400 });
+      }
+
+      const { data: existingEscortApp } = await supabase
+        .from('escort_applications')
+        .select('id, email, full_name, escort_code')
+        .ilike('email', normalizedEmail)
+        .maybeSingle();
+
+      if (existingEscortApp) {
+        return NextResponse.json(
+          {
+            error: `An escort application with the email "${email}" already exists (${existingEscortApp.escort_code || existingEscortApp.full_name || 'Registered'}). Please use a different email address.`,
+          },
+          { status: 409 }
+        );
+      }
+
+      const { data: existingProfile } = await supabase
+        .from('user_profiles')
+        .select('id, email, full_name, role')
+        .ilike('email', normalizedEmail)
+        .maybeSingle();
+
+      if (existingProfile) {
+        return NextResponse.json(
+          {
+            error: `The email "${email}" is already registered to an existing account (${existingProfile.full_name || existingProfile.role || 'User'}). Please use a different email address.`,
+          },
+          { status: 409 }
+        );
+      }
+    }
+
     // Fetch school name from database
     let schoolName = session?.primary_school?.name || (session as any)?.school_name || null;
     if (!schoolName && schoolId) {
@@ -83,6 +122,21 @@ export async function POST(request: NextRequest) {
     // 1. Create or link Auth User & User Profile
     const finalUsername = (username || `escort.${fullName.toLowerCase().replace(/[^a-z0-9]/g, '')}`).slice(0, 30);
     const finalPassword = password || `EduRide#${Math.floor(1000 + Math.random() * 9000)}`;
+
+    if (finalUsername) {
+      const { data: existingUsernameProfile } = await supabase
+        .from('user_profiles')
+        .select('id, username')
+        .eq('username', finalUsername.toLowerCase().trim())
+        .maybeSingle();
+
+      if (existingUsernameProfile) {
+        return NextResponse.json(
+          { error: `The username "${finalUsername}" is already taken. Please choose a different username.` },
+          { status: 409 }
+        );
+      }
+    }
 
     const authResult = await ensureAuthUser(supabase, {
       username: finalUsername,
@@ -243,6 +297,30 @@ export async function POST(request: NextRequest) {
 
     if (escortError) {
       console.error('[escorts/create] escort_applications error:', escortError);
+      let errorMsg = 'Failed to create escort application';
+      if (
+        escortError.code === '23505' ||
+        escortError.message?.toLowerCase().includes('unique') ||
+        escortError.message?.toLowerCase().includes('duplicate')
+      ) {
+        if (
+          escortError.message?.includes('email') ||
+          escortError.details?.includes('email') ||
+          escortError.message?.includes('escort_applications_email_key')
+        ) {
+          errorMsg = `An escort application with the email "${email || finalUsername}" already exists.`;
+        } else if (
+          escortError.message?.includes('escort_code') ||
+          escortError.details?.includes('escort_code')
+        ) {
+          errorMsg = 'An escort with this escort code already exists. Please retry.';
+        } else {
+          errorMsg = escortError.details || escortError.message || 'Duplicate escort application record.';
+        }
+      } else if (escortError.message) {
+        errorMsg = escortError.message;
+      }
+      return NextResponse.json({ error: errorMsg }, { status: 400 });
     }
 
     // Sync to file store fallback

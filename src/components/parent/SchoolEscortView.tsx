@@ -32,6 +32,7 @@ import InteractiveLocationPickerModal from '@/components/shared/InteractiveLocat
 interface SchoolEscortViewProps {
   childrenList?: any[];
   escortData?: any;
+  multiChildSummary?: any;
   onOpenEduChat?: () => void;
   onSelectSafetyPillar?: (pillar: string) => void;
   className?: string;
@@ -40,6 +41,7 @@ interface SchoolEscortViewProps {
 export default function SchoolEscortView({
   childrenList = [],
   escortData,
+  multiChildSummary,
   onOpenEduChat,
   onSelectSafetyPillar,
   className = '',
@@ -285,13 +287,106 @@ export default function SchoolEscortView({
       {/* ------------------------------------------------------------------------- */}
       {/* ACTUAL DAILY CHARGE                                                        */}
       {/* ------------------------------------------------------------------------- */}
-      {(escortData?.daily_fare != null || escortData?.actual_amount_collected != null) && (
+      {/* ------------------------------------------------------------------------- */}
+      {/* ACTUAL DAILY CHARGE (MULTI-CHILD & SINGLE-CHILD SUMMARY)                  */}
+      {/* ------------------------------------------------------------------------- */}
+      {multiChildSummary && multiChildSummary.children_count > 1 ? (
+        <div className="bg-gradient-to-br from-white to-slate-50 p-4 sm:p-5 rounded-3xl border border-slate-200/90 shadow-xs space-y-4">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+            <div>
+              <div className="flex items-center gap-2">
+                <h2 className="text-sm font-black text-slate-900">Total Daily Escort Fee</h2>
+                <span className="font-mono font-bold text-[10px] text-emerald-800 bg-emerald-50 px-2 py-0.5 rounded-full border border-emerald-200">
+                  {multiChildSummary.children_count} Children Linked
+                </span>
+                <span className="text-[10px] text-slate-400 font-semibold">
+                  ⚡ Auto-Synced with City Rates
+                </span>
+              </div>
+              <p className="text-[11px] text-slate-500 font-medium">
+                Live daily total you pay per day for all your children combined
+              </p>
+            </div>
+            {multiChildSummary.active_rates?.rate_per_km != null && (
+              <span className="font-mono text-[11px] text-slate-600 bg-slate-100 px-2.5 py-1 rounded-xl self-start sm:self-auto">
+                ₦{multiChildSummary.active_rates.rate_per_km}/km + {multiChildSummary.active_rates.service_charge_percent}% service
+              </span>
+            )}
+          </div>
+
+          {/* Top Multi-Child Aggregate Counters */}
+          <div className="grid grid-cols-3 gap-2 text-center">
+            <div className="p-2.5 rounded-2xl bg-white border border-slate-200/80 shadow-2xs">
+              <span className="text-[10px] text-slate-500 font-bold block">All Kids Morning</span>
+              <span className="font-black text-slate-900 text-sm sm:text-base">
+                ₦{Number(multiChildSummary.total_morning_fee || 0).toLocaleString()}
+              </span>
+            </div>
+            <div className="p-2.5 rounded-2xl bg-white border border-slate-200/80 shadow-2xs">
+              <span className="text-[10px] text-slate-500 font-bold block">All Kids Afternoon</span>
+              <span className="font-black text-slate-900 text-sm sm:text-base">
+                ₦{Number(multiChildSummary.total_afternoon_fee || 0).toLocaleString()}
+              </span>
+            </div>
+            <div className="p-2.5 rounded-2xl bg-emerald-600 text-white shadow-xs">
+              <span className="text-[10px] text-emerald-100 font-bold block">Total Paid Per Day</span>
+              <span className="font-black text-sm sm:text-base">
+                ₦{Number(multiChildSummary.total_daily_fee || 0).toLocaleString()}
+              </span>
+            </div>
+          </div>
+
+          {/* Individual Child Breakdown Table / Cards */}
+          <div className="space-y-2 pt-1">
+            <span className="text-[11px] font-extrabold text-slate-700 block uppercase tracking-wider">
+              Child-by-Child Breakdown:
+            </span>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+              {(multiChildSummary.per_child_breakdown || []).map((ch: any) => (
+                <div
+                  key={ch.child_id}
+                  className="p-3 rounded-2xl bg-white border border-slate-200/90 flex flex-col justify-between gap-2 text-xs"
+                >
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <span className="font-black text-slate-900 block">{ch.child_name}</span>
+                      <span className="text-[10px] text-slate-500 block truncate max-w-[170px]">
+                        {ch.school_name}
+                      </span>
+                    </div>
+                    {ch.distance_km != null && (
+                      <span className="font-mono text-[10px] text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded-md border border-emerald-200 font-bold">
+                        {ch.distance_km} km
+                      </span>
+                    )}
+                  </div>
+                  <div className="flex items-center justify-between border-t border-slate-100 pt-1.5 text-[11px]">
+                    <div className="space-x-1.5 text-slate-600">
+                      <span>AM: <strong className="text-slate-900">₦{Number(ch.morning_fare || 0).toLocaleString()}</strong></span>
+                      <span>•</span>
+                      <span>PM: <strong className="text-slate-900">₦{Number(ch.afternoon_fare || 0).toLocaleString()}</strong></span>
+                    </div>
+                    <span className="font-black text-emerald-700">
+                      ₦{Number(ch.daily_fare || 0).toLocaleString()}/day
+                    </span>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        </div>
+      ) : (escortData?.daily_fare != null || escortData?.actual_amount_collected != null) ? (
         <div className="bg-white p-4 sm:p-5 rounded-3xl border border-slate-200/90 shadow-xs space-y-3">
           <div className="flex items-center justify-between gap-2">
             <div>
-              <h2 className="text-sm font-black text-slate-900">Actual Daily Charge</h2>
+              <div className="flex items-center gap-2">
+                <h2 className="text-sm font-black text-slate-900">Actual Daily Charge</h2>
+                <span className="text-[10px] text-slate-400 font-semibold">
+                  ⚡ Auto-Synced with City Rates
+                </span>
+              </div>
               <p className="text-[11px] text-slate-500 font-medium">
-                Amount charged for today&apos;s escort service
+                Exact amount charged for today&apos;s escort service
               </p>
             </div>
             {escortData.distance_km != null && (
@@ -337,7 +432,7 @@ export default function SchoolEscortView({
             </p>
           )}
         </div>
-      )}
+      ) : null}
 
       {/* ------------------------------------------------------------------------- */}
       {/* ROW 2: PRIMARY OPERATIONAL CONSOLE (3 COLUMNS OR EMPTY STATE) */}

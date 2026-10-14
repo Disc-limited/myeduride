@@ -4,6 +4,7 @@ import { getAdminClient } from '@/lib/supabase/admin';
 import { getSessionFromRequest } from '@/lib/session';
 import { canAccessGateOperations } from '@/lib/gate/access';
 import { nowUtcIso, todayInLagos } from '@/lib/timezone';
+import { resolveSchoolGateLocation } from '@/lib/attendance/location-resolver';
 
 export const dynamic = 'force-dynamic';
 
@@ -51,6 +52,14 @@ export async function POST(request: NextRequest) {
     const day = todayInLagos();
     const verifiedBy = session.user_id;
 
+    // Authoritative campus gate location for this school
+    const { data: schoolRow } = await supabase
+      .from('schools')
+      .select('id, name, address, location_address, location_landmark, gps_lat, gps_lng')
+      .eq('id', school_id)
+      .maybeSingle();
+    const gateLoc = resolveSchoolGateLocation(schoolRow);
+
     // ------------------------------------------------------------------------
     // ACTION 1: STUDENT DROP-OFF (Morning Arrival)
     // ------------------------------------------------------------------------
@@ -63,7 +72,7 @@ export async function POST(request: NextRequest) {
 
       for (const studentId of student_ids) {
         // Record arrival in attendance_records
-        const { data: attRecord, error: attError } = await supabase
+        let { data: attRecord, error: attError } = await supabase
           .from('attendance_records')
           .insert({
             student_id: studentId,
@@ -74,9 +83,32 @@ export async function POST(request: NextRequest) {
             verification_method: 'id_card_scan',
             verified_by_user_id: verifiedBy,
             source: 'gate',
+            location_name: gateLoc.location_name,
+            gps_lat: gateLoc.gps_lat,
+            gps_lng: gateLoc.gps_lng,
+            geofence_verified: gateLoc.geofence_verified,
           })
           .select()
           .single();
+
+        if (attError && /location_name|gps_lat|gps_lng|geofence_verified/i.test(attError.message)) {
+          const retry = await supabase
+            .from('attendance_records')
+            .insert({
+              student_id: studentId,
+              school_id: school_id,
+              timestamp: nowIso,
+              type: 'arrival',
+              status: 'on_time',
+              verification_method: 'id_card_scan',
+              verified_by_user_id: verifiedBy,
+              source: 'gate',
+            })
+            .select()
+            .single();
+          attRecord = retry.data;
+          attError = retry.error;
+        }
 
         if (attError) {
           console.warn(`[parent-reception dropoff] Attendance insert warning for student ${studentId}:`, attError);
@@ -96,16 +128,21 @@ export async function POST(request: NextRequest) {
             parent_name: parent_name || 'Parent',
             parent_phone: parent_phone || null,
             mode: 'morning_dropoff',
+            location_name: gateLoc.location_name,
+            gps_coords: gateLoc.gps_coords,
+            geofence_verified: gateLoc.geofence_verified,
           },
         });
 
-        results.push({ student_id: studentId, status: 'checked_in' });
+        results.push({ student_id: studentId, status: 'checked_in', location: gateLoc.location_name });
       }
 
       return NextResponse.json({
         success: true,
-        message: `Successfully checked in ${results.length} student(s) with parent drop-off`,
+        message: `Successfully checked in ${results.length} student(s) at ${gateLoc.location_name} with parent drop-off`,
         results,
+        location: gateLoc.location_name,
+        location_badge: gateLoc.display_badge,
       });
     }
 
@@ -121,7 +158,7 @@ export async function POST(request: NextRequest) {
 
       for (const studentId of student_ids) {
         // Record departure in attendance_records
-        const { data: attRecord, error: attError } = await supabase
+        let { data: attRecord, error: attError } = await supabase
           .from('attendance_records')
           .insert({
             student_id: studentId,
@@ -132,9 +169,32 @@ export async function POST(request: NextRequest) {
             verification_method: 'id_card_scan',
             verified_by_user_id: verifiedBy,
             source: 'gate',
+            location_name: gateLoc.location_name,
+            gps_lat: gateLoc.gps_lat,
+            gps_lng: gateLoc.gps_lng,
+            geofence_verified: gateLoc.geofence_verified,
           })
           .select()
           .single();
+
+        if (attError && /location_name|gps_lat|gps_lng|geofence_verified/i.test(attError.message)) {
+          const retry = await supabase
+            .from('attendance_records')
+            .insert({
+              student_id: studentId,
+              school_id: school_id,
+              timestamp: nowIso,
+              type: 'departure',
+              status: 'on_time',
+              verification_method: 'id_card_scan',
+              verified_by_user_id: verifiedBy,
+              source: 'gate',
+            })
+            .select()
+            .single();
+          attRecord = retry.data;
+          attError = retry.error;
+        }
 
         if (attError) {
           console.warn(`[parent-reception pickup] Attendance insert warning for student ${studentId}:`, attError);
@@ -167,16 +227,21 @@ export async function POST(request: NextRequest) {
             parent_phone: parent_phone || null,
             mode: 'afternoon_pickup_release',
             overrides_bus: true,
+            location_name: gateLoc.location_name,
+            gps_coords: gateLoc.gps_coords,
+            geofence_verified: gateLoc.geofence_verified,
           },
         });
 
-        results.push({ student_id: studentId, status: 'released' });
+        results.push({ student_id: studentId, status: 'released', location: gateLoc.location_name });
       }
 
       return NextResponse.json({
         success: true,
-        message: `Successfully released ${results.length} student(s) to parent ${parent_name || ''}`,
+        message: `Successfully released ${results.length} student(s) at ${gateLoc.location_name} to parent ${parent_name || ''}`,
         results,
+        location: gateLoc.location_name,
+        location_badge: gateLoc.display_badge,
       });
     }
 

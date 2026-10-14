@@ -33,6 +33,8 @@ import { cityManagerEscortApprovalSuite } from './unit/city-manager-escort-appro
 import { parentSchoolRouteDistanceSuite } from './unit/parent-school-route-distance.test';
 import { escortStudentVisibilitySuite } from './unit/escort-student-visibility.test';
 import { escortEduChatCommunicationSuite } from './unit/escort-educhat-communication.test';
+import { cityPricingSuite } from './unit/city-pricing-manifest-invariants.test';
+import { signInOutLocationSuite } from './unit/sign-in-out-location.test';
 import { pickupControlApiSuite } from './integration/pickup-control-api.test';
 import { escortApisSuite } from './integration/escort-apis.test';
 import { routesVehiclesApiSuite } from './integration/routes-vehicles-api.test';
@@ -96,6 +98,8 @@ async function runAllTests() {
     parentSchoolRouteDistanceSuite,
     escortStudentVisibilitySuite,
     escortEduChatCommunicationSuite,
+    cityPricingSuite,
+    signInOutLocationSuite,
     pickupControlApiSuite,
     escortApisSuite,
     routesVehiclesApiSuite,

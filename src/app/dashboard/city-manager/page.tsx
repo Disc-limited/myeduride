@@ -362,12 +362,13 @@ function CityManagerDashboardContent() {
     (a) => resolveEscortCategory(a) === 'shared_ride_escort'
   ).length;
   const countCorrections = escortApplications.filter(
-    (a) => a.status === 'CORRECTION_PENDING' || !!a.proposed_correction
+    (a) => a.status === 'CORRECTION_PENDING' && !!a.proposed_correction && typeof a.proposed_correction === 'object'
   ).length;
 
   const filteredEscortApplications = escortApplications.filter((app) => {
     if (escortPillarFilter === 'all') return true;
-    if (escortPillarFilter === 'corrections') return app.status === 'CORRECTION_PENDING' || !!app.proposed_correction;
+    if (escortPillarFilter === 'corrections')
+      return app.status === 'CORRECTION_PENDING' && !!app.proposed_correction && typeof app.proposed_correction === 'object';
     if (escortPillarFilter === 'school') return resolveEscortCategory(app) === 'school_escort';
     if (escortPillarFilter === 'shared_ride') return resolveEscortCategory(app) === 'shared_ride_escort';
     if (escortPillarFilter === 'myeduride') return resolveEscortCategory(app) === 'myeduride_escort';
@@ -481,6 +482,137 @@ function CityManagerDashboardContent() {
       });
     } catch (e) {
       console.warn('[city-manager] escalate API update notice:', e);
+    }
+  };
+
+  // Action 4b: Approve Escort Correction Submitted by School Admin
+  const handleApproveEscortCorrection = async (appId: string) => {
+    if (!appId) return;
+    const target = escortApplications.find((a) => a.id === appId);
+    const correction = target?.proposed_correction;
+
+    const loadingToast = toast.loading('Approving proposed escort correction...');
+    try {
+      const res = await fetch('/api/city-manager/operations', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          action: 'approve_escort_correction',
+          escort_id: appId,
+          notes: 'Approved by City Manager',
+        }),
+      });
+      const data = await res.json();
+      toast.dismiss(loadingToast);
+
+      if (!res.ok || data.error) {
+        throw new Error(data.error || 'Failed to approve correction');
+      }
+
+      setEscortApplications((prev) =>
+        prev.map((a) => {
+          if (a.id === appId) {
+            const updated = { ...a, status: 'CITY_MANAGER_APPROVED', proposed_correction: null };
+            if (correction) {
+              if (correction.fullName) {
+                updated.fullName = correction.fullName;
+                updated.name = correction.fullName;
+              }
+              if (correction.phone) updated.phone = correction.phone;
+              if (correction.email) updated.email = correction.email;
+              if (correction.address) updated.address = correction.address;
+              if (correction.operatingArea) {
+                updated.operatingArea = correction.operatingArea;
+                updated.operating_area = correction.operatingArea;
+              }
+              if (correction.emergencyContactName) updated.emergencyContact = correction.emergencyContactName;
+              if (correction.nin) updated.nin = correction.nin;
+              if (correction.driverLicense) updated.driversLicence = correction.driverLicense;
+            }
+            delete (updated as any).proposed_correction;
+            return updated;
+          }
+          return a;
+        })
+      );
+
+      toast.success(data.message || 'Escort correction approved and live profile updated!');
+
+      // Re-fetch detail to synchronize state
+      fetch(`/api/escorts/applications?appId=${encodeURIComponent(appId)}`)
+        .then((r) => r.json())
+        .then((d) => {
+          const detail = d?.application || d?.applications?.[0];
+          if (detail) {
+            setEscortApplications((prev) => prev.map((a) => (a.id === detail.id ? { ...a, ...detail } : a)));
+          }
+        })
+        .catch(() => {});
+    } catch (err: any) {
+      toast.dismiss(loadingToast);
+      console.error('[city-manager] approve correction error:', err);
+      toast.error(err.message || 'Failed to approve escort correction.');
+    }
+  };
+
+  // Action 4c: Reject Escort Correction Submitted by School Admin
+  const handleRejectEscortCorrection = async (appId: string) => {
+    if (!appId) return;
+    const reason = window.prompt(
+      'Enter reason for rejecting this correction (optional):',
+      'Correction details do not match verified records'
+    ) || 'Correction rejected by City Manager';
+
+    const loadingToast = toast.loading('Rejecting proposed correction...');
+    try {
+      const res = await fetch('/api/city-manager/operations', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          action: 'reject_escort_correction',
+          escort_id: appId,
+          rejection_reason: reason,
+        }),
+      });
+      const data = await res.json();
+      toast.dismiss(loadingToast);
+
+      if (!res.ok || data.error) {
+        throw new Error(data.error || 'Failed to reject correction');
+      }
+
+      setEscortApplications((prev) =>
+        prev.map((a) => {
+          if (a.id === appId) {
+            const updated = {
+              ...a,
+              status: 'CITY_MANAGER_APPROVED',
+              proposed_correction: null,
+              correction_rejection_reason: reason,
+            };
+            delete (updated as any).proposed_correction;
+            return updated;
+          }
+          return a;
+        })
+      );
+
+      toast.info(data.message || 'Escort correction rejected.');
+
+      // Re-fetch detail to synchronize state
+      fetch(`/api/escorts/applications?appId=${encodeURIComponent(appId)}`)
+        .then((r) => r.json())
+        .then((d) => {
+          const detail = d?.application || d?.applications?.[0];
+          if (detail) {
+            setEscortApplications((prev) => prev.map((a) => (a.id === detail.id ? { ...a, ...detail } : a)));
+          }
+        })
+        .catch(() => {});
+    } catch (err: any) {
+      toast.dismiss(loadingToast);
+      console.error('[city-manager] reject correction error:', err);
+      toast.error(err.message || 'Failed to reject escort correction.');
     }
   };
 
@@ -1001,7 +1133,7 @@ function CityManagerDashboardContent() {
               </div>
 
               {/* SCHOOL ADMIN PROPOSED CORRECTION APPROVAL CARD */}
-              {(selectedApp?.status === 'CORRECTION_PENDING' || selectedApp?.proposed_correction) && (
+              {selectedApp?.status === 'CORRECTION_PENDING' && !!selectedApp?.proposed_correction && typeof selectedApp.proposed_correction === 'object' && (
                 <div className="p-4 rounded-2xl bg-amber-950/40 border-2 border-amber-500/80 text-xs space-y-3 shadow-lg animate-in fade-in">
                   <div className="flex flex-wrap items-center justify-between gap-2 border-b border-amber-500/30 pb-2">
                     <div className="flex items-center gap-2">

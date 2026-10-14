@@ -15,6 +15,10 @@ import {
 } from '@/lib/attendance/school-calendar';
 import { isCountableSchoolDay } from '@/lib/attendance/school-days';
 import { dayStatusColor, resolveCalendarDayStatus } from '@/lib/attendance/status';
+import {
+  resolveSchoolGateLocation,
+  resolveRecordLocation,
+} from '@/lib/attendance/location-resolver';
 
 export const dynamic = 'force-dynamic';
 
@@ -62,36 +66,74 @@ export async function GET(request: NextRequest) {
       termParam
     );
 
-    const { data: arrivals, error: arrErr } = await supabase
+    const { data: schoolRow } = studentSchoolId
+      ? await supabase
+          .from('schools')
+          .select('id, name, address, location_address, location_landmark, gps_lat, gps_lng')
+          .eq('id', studentSchoolId)
+          .maybeSingle()
+      : { data: null };
+    const gateLoc = resolveSchoolGateLocation(schoolRow);
+
+    let arrivals: any[] = [];
+    const arrQuery = await supabase
       .from('attendance_records')
-      .select('student_id, type, status, timestamp, minutes_late')
+      .select('student_id, type, status, timestamp, minutes_late, location_name, gps_lat, gps_lng, geofence_verified')
       .eq('student_id', studentId)
       .eq('type', 'arrival')
       .gte('timestamp', rangeStartIso)
       .lte('timestamp', rangeEndIso)
       .order('timestamp', { ascending: true });
 
-    if (arrErr) return NextResponse.json({ error: arrErr.message }, { status: 500 });
+    if (!arrQuery.error) {
+      arrivals = arrQuery.data || [];
+    } else {
+      const fallbackArr = await supabase
+        .from('attendance_records')
+        .select('student_id, type, status, timestamp, minutes_late')
+        .eq('student_id', studentId)
+        .eq('type', 'arrival')
+        .gte('timestamp', rangeStartIso)
+        .lte('timestamp', rangeEndIso)
+        .order('timestamp', { ascending: true });
+      if (fallbackArr.error) return NextResponse.json({ error: fallbackArr.error.message }, { status: 500 });
+      arrivals = fallbackArr.data || [];
+    }
 
-    const { data: departures } = await supabase
+    let departures: any[] = [];
+    const depQuery = await supabase
       .from('attendance_records')
-      .select('student_id, timestamp')
+      .select('student_id, type, timestamp, location_name, gps_lat, gps_lng, geofence_verified')
       .eq('student_id', studentId)
       .eq('type', 'departure')
       .gte('timestamp', rangeStartIso)
       .lte('timestamp', rangeEndIso)
       .order('timestamp', { ascending: false });
 
-    const arrivalByDay: Record<string, { status: string; timestamp: string; minutes_late: number | null }> = {};
+    if (!depQuery.error) {
+      departures = depQuery.data || [];
+    } else {
+      const fallbackDep = await supabase
+        .from('attendance_records')
+        .select('student_id, timestamp')
+        .eq('student_id', studentId)
+        .eq('type', 'departure')
+        .gte('timestamp', rangeStartIso)
+        .lte('timestamp', rangeEndIso)
+        .order('timestamp', { ascending: false });
+      departures = fallbackDep.data || [];
+    }
+
+    const arrivalByDay: Record<string, any> = {};
     for (const a of arrivals || []) {
       const d = timestampToLagosDateKey(a.timestamp);
       if (!arrivalByDay[d]) arrivalByDay[d] = a;
     }
 
-    const departureByDay: Record<string, string> = {};
+    const departureByDay: Record<string, any> = {};
     for (const d of departures || []) {
       const day = timestampToLagosDateKey(d.timestamp);
-      if (!departureByDay[day]) departureByDay[day] = d.timestamp;
+      if (!departureByDay[day]) departureByDay[day] = d;
     }
 
     const today = todayInLagos();
@@ -126,12 +168,21 @@ export async function GET(request: NextRequest) {
               todayLagos: today,
               isExcluded,
             });
+
+      const inLoc = arrival ? resolveRecordLocation(arrival, gateLoc, 'arrival') : null;
+      const outLoc = departure ? resolveRecordLocation(departure, gateLoc, 'departure') : null;
+
       return NextResponse.json({
         type: 'daily',
         date: dayKey,
         status,
         check_in_time: arrival?.timestamp || null,
-        check_out_time: departure || null,
+        check_out_time: departure?.timestamp || (typeof departure === 'string' ? departure : null),
+        check_in_location: inLoc ? inLoc.display_badge : null,
+        check_out_location: outLoc ? outLoc.display_badge : null,
+        check_in_coords: inLoc?.gps_coords || null,
+        check_out_coords: outLoc?.gps_coords || null,
+        geofence_verified: inLoc ? inLoc.geofence_verified : gateLoc.geofence_verified,
         minutes_late: arrival?.minutes_late ?? null,
       });
     }
@@ -149,13 +200,22 @@ export async function GET(request: NextRequest) {
         todayLagos: today,
         isExcluded,
       });
+
+      const inLoc = arrival ? resolveRecordLocation(arrival, gateLoc, 'arrival') : null;
+      const outLoc = departure ? resolveRecordLocation(departure, gateLoc, 'departure') : null;
+
       return {
         date: dayKey,
         is_weekend: isWeekend,
         is_school_day: isSchoolDay(dayKey),
         status,
         check_in_time: arrival?.timestamp || null,
-        check_out_time: departure || null,
+        check_out_time: departure?.timestamp || (typeof departure === 'string' ? departure : null),
+        check_in_location: inLoc ? inLoc.display_badge : null,
+        check_out_location: outLoc ? outLoc.display_badge : null,
+        check_in_coords: inLoc?.gps_coords || null,
+        check_out_coords: outLoc?.gps_coords || null,
+        geofence_verified: inLoc ? inLoc.geofence_verified : gateLoc.geofence_verified,
         minutes_late: arrival?.minutes_late ?? null,
         color: dayStatusColor(status),
       };

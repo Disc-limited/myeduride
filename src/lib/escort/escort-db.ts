@@ -108,7 +108,11 @@ function mapEscortApplicationRow(row: any, parsed: any = {}) {
     fingerprintToken: row.fingerprint_token || parsed.fingerprintToken,
     status: row.status || 'PENDING_CITY_MANAGER_REVIEW',
     notes: row.notes || parsed.notes || null,
-    proposed_correction: row.notes || row.proposed_correction || parsed.proposed_correction || null,
+    proposed_correction: (parsed && typeof parsed.proposed_correction === 'object' && parsed.proposed_correction !== null)
+      ? parsed.proposed_correction
+      : (row && typeof row.proposed_correction === 'object' && row.proposed_correction !== null)
+        ? row.proposed_correction
+        : null,
     city: row.city || row.lga || parsed.city || 'Lagos',
     state: row.state || parsed.state || 'Lagos',
     operatingArea: row.operating_area || parsed.operatingArea || 'Lagos Mainland',
@@ -204,6 +208,8 @@ export function saveFileStore(apps: EscortApplicationData[]) {
       fs.mkdirSync(dir, { recursive: true });
     }
     fs.writeFileSync(DATA_FILE, JSON.stringify(apps, null, 2), 'utf-8');
+    memoryEscortApplications.length = 0;
+    memoryEscortApplications.push(...apps);
   } catch (err) {
     console.warn('[escort-db] File store write error:', err);
   }
@@ -247,7 +253,7 @@ export async function checkEscortEmailOrUsernameExists(
       const { data: profile } = await supabase
         .from('user_profiles')
         .select('id, email')
-        .eq('email', normalized)
+        .ilike('email', normalized)
         .maybeSingle();
 
       if (profile) {
@@ -260,13 +266,13 @@ export async function checkEscortEmailOrUsernameExists(
       const { data: escortApp } = await supabase
         .from('escort_applications')
         .select('id, email')
-        .eq('email', normalized)
+        .ilike('email', normalized)
         .maybeSingle();
 
       if (escortApp) {
         return {
           exists: true,
-          message: `An escort application with the email address "${emailOrUsername}" is already registered and under review.`,
+          message: `An escort application with the email address "${emailOrUsername}" is already registered.`,
         };
       }
     } else {
@@ -449,15 +455,18 @@ export async function getEscortApplications(city?: string, options?: GetEscortAp
   }
 
   // 2. Merge in file store applications & pending corrections
-  const fileRecords = memoryEscortApplications.length > 0 ? memoryEscortApplications : loadFileStore();
+  const fileRecords = loadFileStore();
   fileRecords.forEach((fileRec) => {
     const existing = allApps.find(
       (a) => a.id === fileRec.id || (fileRec.emailOrUsername && a.email?.toLowerCase() === fileRec.emailOrUsername?.toLowerCase())
     );
     if (existing) {
-      if (fileRec.status === 'CORRECTION_PENDING' || fileRec.proposed_correction) {
+      if (fileRec.status === 'CORRECTION_PENDING' && fileRec.proposed_correction) {
         existing.status = fileRec.status || existing.status;
-        existing.proposed_correction = fileRec.proposed_correction || existing.proposed_correction;
+        existing.proposed_correction = fileRec.proposed_correction;
+      } else if (fileRec.status && fileRec.status !== 'CORRECTION_PENDING') {
+        existing.status = fileRec.status;
+        delete existing.proposed_correction;
       }
       if (fileRec.escortType || fileRec.escortCategory) {
         existing.escortType = fileRec.escortType || fileRec.escortCategory;
