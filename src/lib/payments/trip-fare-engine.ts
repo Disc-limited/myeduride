@@ -199,6 +199,87 @@ export class TripFareEngine {
   }
 
   /**
+   * Cancels and refunds any active escrow hold for a student when a parent indicates
+   * "Not Going" before the agreed morning pickup time.
+   */
+  public static async cancelStudentTripEscrow(
+    studentId: string,
+    reason: string = 'Parent declared Not Going before pickup cutoff'
+  ) {
+    const supabase = getAdminClient();
+    try {
+      const { data, error } = await supabase.rpc('cancel_trip_escrow_hold', {
+        p_student_id: studentId,
+        p_reason: reason,
+      });
+
+      if (error) {
+        console.warn('[TripFareEngine] cancel_trip_escrow_hold RPC note:', error);
+        return { success: false, error: error.message };
+      }
+
+      return data || { success: true };
+    } catch (err: any) {
+      console.error('[TripFareEngine] cancelStudentTripEscrow error:', err);
+      return { success: false, error: err.message };
+    }
+  }
+
+  /**
+   * Automatic daily fee deduction when agreed pickup time is met.
+   * If student was NOT canceled before cutoff, locks and commits today's fare.
+   */
+  public static async autoDeductTripFeeIfPastCutoff(params: {
+    studentId: string;
+    parentUserId: string;
+    schoolId: string;
+    grossKobo?: number;
+    sessionId?: string;
+    escortWalletId?: string;
+    escortId?: string;
+  }) {
+    const supabase = getAdminClient();
+    const today = new Date().toISOString().slice(0, 10);
+
+    // 1. Check if student already canceled
+    const { data: dailyTrip } = await supabase
+      .from('escort_student_daily_trips')
+      .select('id, is_canceled_by_parent, fee_deducted')
+      .eq('student_id', params.studentId)
+      .eq('trip_date', today)
+      .maybeSingle();
+
+    if (dailyTrip?.is_canceled_by_parent) {
+      return { success: false, reason: 'TRIP_CANCELED_BY_PARENT_BEFORE_CUTOFF' };
+    }
+
+    if (dailyTrip?.fee_deducted) {
+      return { success: true, reason: 'FEE_ALREADY_DEDUCTED' };
+    }
+
+    // 2. Authorize and lock the fee in escrow
+    const authResult = await this.authorizeStudentTrip(params);
+
+    if (authResult.success && authResult.authorized) {
+      // 3. Mark fee as deducted in escort_student_daily_trips
+      await supabase
+        .from('escort_student_daily_trips')
+        .update({
+          fee_status: 'deducted',
+          fee_deducted: true,
+          fee_deducted_at: new Date().toISOString(),
+          fee_amount_kobo: params.grossKobo || this.DEFAULT_DAILY_FEE_KOBO,
+          cutoff_passed: true,
+          updated_at: new Date().toISOString(),
+        })
+        .eq('student_id', params.studentId)
+        .eq('trip_date', today);
+    }
+
+    return authResult;
+  }
+
+  /**
    * Insufficient funds notification with exact approved regulatory wording.
    */
   private static async notifyParentInsufficientFunds(

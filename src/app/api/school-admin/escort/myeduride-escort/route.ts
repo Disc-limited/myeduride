@@ -108,9 +108,28 @@ export async function GET(request: NextRequest) {
       .from('transport_bookings')
       .select('*, student:students(id, first_name, last_name, student_id_number, photo_url, house_address, house_lat, house_lng, house_landmark, custom_fields)')
       .eq('school_id', primarySchoolId)
+      .not('status', 'in', '(cancelled,canceled,rejected,reassigned)')
       .order('created_at', { ascending: false });
 
-    const connectedBookings = (bookingsData || []).map((b: any) => {
+    // Deduplicate by student_id, prioritizing assigned/active and most recent booking
+    const sortedBookings = [...(bookingsData || [])].sort((a: any, b: any) => {
+      const aActive = a.status === 'assigned' || a.status === 'active';
+      const bActive = b.status === 'assigned' || b.status === 'active';
+      if (aActive && !bActive) return -1;
+      if (!aActive && bActive) return 1;
+      return new Date(b.created_at || 0).getTime() - new Date(a.created_at || 0).getTime();
+    });
+
+    const uniqueBookings: any[] = [];
+    const seenBookingStudentIds = new Set<string>();
+    for (const b of sortedBookings) {
+      const sid = b.student_id || b.student?.id;
+      if (sid && seenBookingStudentIds.has(sid)) continue;
+      if (sid) seenBookingStudentIds.add(sid);
+      uniqueBookings.push(b);
+    }
+
+    const connectedBookings = uniqueBookings.map((b: any) => {
       let meta: any = {};
       try {
         if (b.notes && b.notes.startsWith('{')) {

@@ -6,6 +6,8 @@ import { todayInLagos, nowUtcIso } from '@/lib/utils/time';
 import { isLagosWeekend } from '@/lib/attendance/lagos-dates';
 import { TripCancellationEvent } from '@/lib/types/trip-cancellation-types';
 import { invalidateOpsCache } from '@/lib/city-manager/ops-cache';
+import { resolveStudentPickupCutoff } from '@/lib/escort/pickup-cutoff';
+import { TripFareEngine } from '@/lib/payments/trip-fare-engine';
 
 export const dynamic = 'force-dynamic';
 
@@ -52,6 +54,25 @@ export async function POST(request: NextRequest) {
     const studentName = `${student.first_name || ''} ${student.last_name || ''}`.trim() || 'Student';
     const schoolObj = Array.isArray(student.school) ? student.school[0] : student.school;
     const schoolName = schoolObj?.name || 'School Campus';
+
+    // 1.1 Strict Cutoff Enforcement: Verify if scheduled pickup time has arrived
+    const cutoffInfo = await resolveStudentPickupCutoff(supabase, child_id, student.school_id, today);
+
+    if (cutoffInfo.isPastCutoff) {
+      // The agreed pickup time has already arrived or passed!
+      // Parents can only indicate Not Going BEFORE the scheduled pickup time.
+      // Once the agreed pickup time is met, the transport vehicle is dispatched and the fee is locked.
+      return NextResponse.json(
+        {
+          error: 'PICKUP_CUTOFF_EXPIRED',
+          message: `The agreed pickup time (${cutoffInfo.agreedPickupTime}) has already arrived. "Not Going" can only be indicated before your scheduled pickup time. The transport service has been dispatched and today's daily fee has been locked.`,
+          agreed_pickup_time: cutoffInfo.agreedPickupTime,
+          current_lagos_time: cutoffInfo.currentLagosTime,
+          fee_locked: true,
+        },
+        { status: 400 }
+      );
+    }
 
     // 2. Locate Assigned Escort for this student using multi-strategy resolution
     let escortId: string | null = null;
@@ -175,6 +196,10 @@ export async function POST(request: NextRequest) {
       canceled_at: nowIso,
       cancellation_reason: reason,
       cancellation_notes: notes || null,
+      fee_status: 'waived',
+      fee_deducted: false,
+      agreed_pickup_time: cutoffInfo.agreedPickupTime,
+      cutoff_passed: false,
       updated_at: nowIso,
     };
 
@@ -194,6 +219,16 @@ export async function POST(request: NextRequest) {
         school_id: student.school_id,
         ...tripPayload,
       });
+    }
+
+    // 3.1 Cancel and refund any active escrow hold since notice was submitted before pickup cutoff
+    try {
+      await TripFareEngine.cancelStudentTripEscrow(
+        child_id,
+        `Parent marked Not Going before scheduled pickup cutoff (${cutoffInfo.agreedPickupTime})`
+      );
+    } catch (refErr) {
+      console.warn('[trip-cancellation] cancelStudentTripEscrow note:', refErr);
     }
 
     try {
@@ -253,7 +288,10 @@ export async function POST(request: NextRequest) {
       notes: notes || undefined,
       canceled_at: nowIso,
       date: today,
-    };
+      fee_waived: true,
+      removed_from_pickup_list: true,
+      agreed_pickup_time: cutoffInfo.agreedPickupTime,
+    } as any;
 
     // Helper: subscribe before send so Supabase Realtime WebSocket does not drop the message
     const broadcastEvent = async (channelName: string) => {
@@ -305,8 +343,8 @@ export async function POST(request: NextRequest) {
           user_id: targetUser,
           school_id: student.school_id,
           student_id: child_id,
-          title: `🚫 Trip Canceled: ${studentName}`,
-          message: `${studentName} will not be attending school today (${reason}). Today's pickup has been canceled. Please do NOT proceed to this address.`,
+          title: `🚫 Stop Removed: ${studentName}`,
+          message: `${studentName} was marked Not Going before pickup cutoff (${cutoffInfo.agreedPickupTime}). This stop has been removed from today's pickup queue. Please bypass this address. No transport fee was charged.`,
           type: 'trip_canceled',
           is_read: false,
           created_at: nowIso,
@@ -318,8 +356,8 @@ export async function POST(request: NextRequest) {
       // Web Push to Escort
       try {
         await sendPushToUser(supabase, targetUser, {
-          title: `🚫 Pickup Canceled: ${studentName}`,
-          message: `${studentName} is not going to school today (${reason}). Stop removed from route.`,
+          title: `🚫 Stop Removed: ${studentName}`,
+          message: `${studentName} was marked Not Going before ${cutoffInfo.agreedPickupTime}. Stop removed from pickup route.`,
           type: 'system',
           url: '/dashboard/escort',
         });
@@ -400,7 +438,7 @@ export async function POST(request: NextRequest) {
 
     return NextResponse.json({
       success: true,
-      message: `Trip successfully canceled for ${studentName}. Both your assigned escort and city operations manager have been notified immediately.`,
+      message: `Trip successfully canceled for ${studentName}. Stop removed from driver's pickup list and transport fee waived.`,
       student_id: child_id,
       student_name: studentName,
       escort_id: escortId,
@@ -409,6 +447,10 @@ export async function POST(request: NextRequest) {
       date: today,
       reason,
       status: 'canceled',
+      fee_status: 'waived',
+      fee_deducted: false,
+      agreed_pickup_time: cutoffInfo.agreedPickupTime,
+      removed_from_pickup_list: true,
     });
   } catch (err: any) {
     console.error('[trip-cancellation] Error:', err);

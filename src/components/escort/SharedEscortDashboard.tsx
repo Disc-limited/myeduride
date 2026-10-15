@@ -585,6 +585,8 @@ export default function SharedEscortDashboard({
 
   const activeMorningList = sortedMorningList.filter((s: any) => !s.is_canceled_by_parent);
   const canceledMorningList = morningList.filter((s: any) => s.is_canceled_by_parent);
+  const activeAfternoonList = afternoonList.filter((s: any) => !s.is_canceled_by_parent);
+  const canceledAfternoonList = afternoonList.filter((s: any) => s.is_canceled_by_parent);
 
   const droppedOffList = liveDashboardData?.students?.dropped_off || activeMorningList.filter((s: any) => s.dropped || s.status === 'DROPPED_OFF' || s.morning_status === 'DROPPED_OFF_AT_SCHOOL');
   const morningPickedCount = activeMorningList.filter(isPicked).length;
@@ -592,11 +594,11 @@ export default function SharedEscortDashboard({
   const nextPickup = activeMorningList.find((s: any) => !isPicked(s)) || null;
   const tripStatus = liveDashboardData?.escort?.today_trip_status;
   const morningTripActive = tripStatus === 'in_progress';
-  const afternoonReleased = afternoonList.filter((s: any) => s.picked || s.afternoon_status === 'PICKED_UP_FROM_GATE' || s.afternoon_status === 'SAFE_AT_HOME').length;
-  const allHome = afternoonList.length > 0 && afternoonList.every((s: any) => s.dropped || s.afternoon_status === 'SAFE_AT_HOME');
+  const afternoonReleased = activeAfternoonList.filter((s: any) => s.picked || s.afternoon_status === 'PICKED_UP_FROM_GATE' || s.afternoon_status === 'SAFE_AT_HOME').length;
+  const allHome = activeAfternoonList.length > 0 && activeAfternoonList.every((s: any) => s.dropped || s.afternoon_status === 'SAFE_AT_HOME');
   const schoolLat = liveDashboardData?.school?.gps_lat;
   const schoolLng = liveDashboardData?.school?.gps_lng;
-  const mapPins = morningList.filter((s: any) => s.house_lat && s.house_lng);
+  const mapPins = activeMorningList.filter((s: any) => s.house_lat && s.house_lng);
   const liveMapPins = [
     ...(schoolLat != null && schoolLng != null
       ? [{
@@ -1368,61 +1370,50 @@ export default function SharedEscortDashboard({
           )}
 
           <div className="space-y-2.5">
-            {sortedMorningList.length === 0 ? (
+            {activeMorningList.length === 0 ? (
               <div className="p-8 text-center bg-slate-50 rounded-xl border border-slate-100 text-slate-400">
                 <Users className="w-6 h-6 mx-auto mb-1 text-slate-300" />
                 <p className="font-bold text-slate-600">No Morning Pickups</p>
                 <p className="text-[10px]">Assigned students for morning transport will list here.</p>
               </div>
             ) : (
-              sortedMorningList.map((stu: any, index: number) => {
-                const isCanceled = Boolean(stu.is_canceled_by_parent);
+              activeMorningList.map((stu: any, index: number) => {
                 const isNotReady = Boolean(stu.is_not_ready_yet && !isPicked(stu));
                 return (
                   <div
                     key={stu.id || index}
                     className={`p-2.5 rounded-xl border flex items-center justify-between gap-2 transition-all ${
-                      isCanceled
-                        ? 'bg-rose-50/70 border-rose-200 opacity-75'
-                        : isNotReady
-                          ? 'bg-amber-50/80 border-amber-200/90 shadow-2xs'
-                          : 'bg-slate-50 border-slate-200'
+                      isNotReady
+                        ? 'bg-amber-50/80 border-amber-200/90 shadow-2xs'
+                        : 'bg-slate-50 border-slate-200'
                     }`}
                   >
                     <div className="flex items-center gap-2.5 min-w-0">
                       <span
                         className={`w-5 h-5 rounded-full ${
-                          isCanceled
-                            ? 'bg-rose-400'
-                            : isNotReady
-                              ? 'bg-amber-500'
-                              : index === 0
-                                ? 'bg-purple-600'
-                                : 'bg-slate-700'
+                          isNotReady
+                            ? 'bg-amber-500'
+                            : index === 0
+                              ? 'bg-purple-600'
+                              : 'bg-slate-700'
                         } text-white font-extrabold text-[10px] flex items-center justify-center shrink-0`}
                       >
-                        {isCanceled ? '✕' : isNotReady ? '⏳' : index + 1}
+                        {isNotReady ? '⏳' : index + 1}
                       </span>
                       <div
                         className={`w-7 h-7 rounded-full ${
-                          isCanceled
-                            ? 'bg-rose-100 text-rose-700'
-                            : isNotReady
-                              ? 'bg-amber-100 text-amber-900 ring-2 ring-amber-300'
-                              : index === 0
-                                ? 'bg-purple-100 text-purple-700'
-                                : 'bg-slate-100 text-slate-800'
+                          isNotReady
+                            ? 'bg-amber-100 text-amber-900 ring-2 ring-amber-300'
+                            : index === 0
+                              ? 'bg-purple-100 text-purple-700'
+                              : 'bg-slate-100 text-slate-800'
                         } font-bold flex items-center justify-center text-xs shrink-0`}
                       >
                         {stu.avatar || stu.name?.substring(0, 2)?.toUpperCase() || 'ST'}
                       </div>
                       <div className="min-w-0">
                         <div className="flex items-center gap-1.5">
-                          <h5
-                            className={`font-extrabold text-xs truncate ${
-                              isCanceled ? 'line-through text-slate-500' : 'text-slate-900'
-                            }`}
-                          >
+                          <h5 className="font-extrabold text-xs truncate text-slate-900">
                             {stu.name}
                           </h5>
                           {isNotReady && (
@@ -1432,19 +1423,13 @@ export default function SharedEscortDashboard({
                           )}
                         </div>
                         <p className="text-[10px] text-slate-500 truncate">
-                          {isCanceled
-                            ? `🚫 Not Going: ${stu.cancellation_reason || 'Absent'}`
-                            : isNotReady
-                              ? `⏳ Pickup shifted to ~${stu.shifted_pickup_time || 'Later'}: ${stu.not_ready_reason || 'Extra time needed'}`
-                              : stu.address}
+                          {isNotReady
+                            ? `⏳ Pickup shifted to ~${stu.shifted_pickup_time || 'Later'}: ${stu.not_ready_reason || 'Extra time needed'}`
+                            : stu.address}
                         </p>
                       </div>
                     </div>
-                    {isCanceled ? (
-                      <span className="px-2 py-0.5 rounded bg-rose-100 text-rose-800 font-extrabold text-[9px] shrink-0 border border-rose-200">
-                        CANCELED
-                      </span>
-                    ) : isNotReady ? (
+                    {isNotReady ? (
                       <span className="px-2 py-0.5 rounded bg-amber-100 text-amber-900 font-extrabold text-[9px] shrink-0 border border-amber-300 flex items-center gap-1 animate-pulse">
                         ⏳ NOT READY
                       </span>
@@ -1461,6 +1446,29 @@ export default function SharedEscortDashboard({
                 );
               })
             )}
+
+            {/* Dedicated Canceled Students Notice: Instant notification that student was removed before cutoff */}
+            {canceledMorningList.length > 0 && (
+              <div className="mt-3 p-2.5 rounded-xl bg-rose-50/70 border border-rose-200 text-xs">
+                <div className="flex items-center justify-between font-bold mb-1.5 text-[11px]">
+                  <span className="flex items-center gap-1.5 text-rose-800">
+                    <span className="w-2 h-2 rounded-full bg-rose-500 inline-block" />
+                    Not Going Today ({canceledMorningList.length})
+                  </span>
+                  <span className="text-[10px] text-rose-600 font-extrabold">Fee Waived</span>
+                </div>
+                <div className="space-y-1">
+                  {canceledMorningList.map((cs: any) => (
+                    <div key={cs.id} className="flex items-center justify-between text-[11px] text-slate-600 bg-white/90 p-1.5 rounded-lg border border-rose-100">
+                      <span className="font-semibold text-slate-700 truncate max-w-[150px]">{cs.name}</span>
+                      <span className="text-[10px] text-rose-600 italic truncate max-w-[130px]">
+                        {cs.cancellation_reason || 'Absent'}
+                      </span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
           </div>
 
           <div className="pt-2 border-t border-slate-100 space-y-2">
@@ -1469,7 +1477,7 @@ export default function SharedEscortDashboard({
             </p>
             <button
               type="button"
-              disabled={(morningList.length === 0 && !morningTripStarted && !morningTripActive) || isProcessingTripAction}
+              disabled={(activeMorningList.length === 0 && !morningTripStarted && !morningTripActive) || isProcessingTripAction}
               onClick={handleStartMorningTrip}
               className={`w-full py-2.5 px-4 rounded-xl ${
                 morningTripStarted || morningTripActive
@@ -1495,7 +1503,7 @@ export default function SharedEscortDashboard({
             <h4 className="font-extrabold text-slate-900 text-xs uppercase tracking-wider">
               DROPPED OFF LIST
             </h4>
-            <span className="text-[10px] text-slate-400 font-medium">{droppedOffList.length} of {morningList.length} Dropped</span>
+            <span className="text-[10px] text-slate-400 font-medium">{droppedOffList.length} of {activeMorningList.length} Dropped</span>
           </div>
 
           {droppedOffList.length === 0 ? (
@@ -1543,14 +1551,14 @@ export default function SharedEscortDashboard({
           </div>
 
           <div className="space-y-2">
-            {afternoonList.length === 0 ? (
+            {activeAfternoonList.length === 0 ? (
               <div className="p-8 text-center bg-slate-50 rounded-xl border border-slate-100 text-slate-400">
                 <Building className="w-6 h-6 mx-auto mb-1 text-slate-300" />
                 <p className="font-bold text-slate-600">No Afternoon Pickups</p>
                 <p className="text-[10px]">Students ready for gate release will list here.</p>
               </div>
             ) : (
-              afternoonList.map((stu: any, index: number) => (
+              activeAfternoonList.map((stu: any, index: number) => (
                 <div key={stu.id || index} className="p-2.5 rounded-xl bg-slate-50 border border-slate-200 flex items-center gap-2.5">
                   <span className="w-5 h-5 rounded-full bg-purple-600 text-white font-extrabold text-[10px] flex items-center justify-center shrink-0">
                     {index + 1}
@@ -1564,6 +1572,22 @@ export default function SharedEscortDashboard({
                   </div>
                 </div>
               ))
+            )}
+
+            {canceledAfternoonList.length > 0 && (
+              <div className="mt-2 p-2 rounded-xl bg-rose-50/70 border border-rose-200 text-xs">
+                <div className="flex items-center justify-between font-bold mb-1 text-[11px] text-rose-800">
+                  <span>Not Attending Afternoon ({canceledAfternoonList.length})</span>
+                  <span className="text-[10px] text-rose-600">Removed</span>
+                </div>
+                <div className="space-y-1">
+                  {canceledAfternoonList.map((cs: any) => (
+                    <div key={cs.id} className="text-[11px] text-slate-600 bg-white/90 p-1 rounded border border-rose-100 truncate">
+                      {cs.name} <span className="text-slate-400">({cs.cancellation_reason || 'Absent'})</span>
+                    </div>
+                  ))}
+                </div>
+              </div>
             )}
           </div>
 
@@ -1704,8 +1728,8 @@ export default function SharedEscortDashboard({
               <span className="font-mono text-slate-500 text-[11px] font-semibold">Scheduled</span>
             </div>
 
-            {afternoonList.length > 0 ? (
-              afternoonList.map((stu: any, idx: number) => (
+            {activeAfternoonList.length > 0 ? (
+              activeAfternoonList.map((stu: any, idx: number) => (
                 <div key={stu.id || idx} className="relative flex items-center justify-between">
                   <span className="absolute -left-[21px] w-4 h-4 rounded-full bg-emerald-600 text-white font-extrabold text-[10px] flex items-center justify-center">{idx + 2}</span>
                   <div>
@@ -1760,7 +1784,7 @@ export default function SharedEscortDashboard({
                 onClick={() => onNavChange?.('wallet')}
                 className="px-3.5 py-1.5 rounded-full bg-white text-slate-900 font-extrabold text-xs hover:bg-slate-100 transition-all shadow-sm cursor-pointer"
               >
-                Fund Wallet
+                Withdraw
               </button>
             </div>
 
@@ -1805,8 +1829,8 @@ export default function SharedEscortDashboard({
               onClick={() => onNavChange?.('wallet')}
               className="p-2 rounded-xl bg-slate-50 hover:bg-slate-100 border border-slate-200 flex flex-col items-center gap-1 transition-all"
             >
-              <RotateCcw className="w-4 h-4 text-emerald-600" />
-              <span>Transfer</span>
+              <Building className="w-4 h-4 text-emerald-600" />
+              <span>Bank Details</span>
             </button>
 
             <button

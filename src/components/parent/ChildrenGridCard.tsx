@@ -44,6 +44,11 @@ export interface ChildStudent {
   delayed_minutes?: number | null;
   shifted_pickup_time?: string | null;
   not_ready_reason?: string | null;
+  agreed_pickup_time?: string | null;
+  is_past_pickup_time?: boolean;
+  can_cancel_today?: boolean;
+  fee_status?: string | null;
+  fee_deducted?: boolean;
 }
 
 interface ChildrenGridCardProps {
@@ -387,25 +392,37 @@ export default function ChildrenGridCard({
 
                 <button
                   type="button"
-                  disabled={isWeekend || child.is_canceled_today}
+                  disabled={isWeekend || child.is_canceled_today || Boolean(child.is_past_pickup_time)}
                   onClick={() => onCancelTrip?.(child)}
                   title={
                     isWeekend
                       ? 'School is closed on weekends'
                       : child.is_canceled_today
                         ? 'Trip is already marked as canceled today'
-                        : `Click if ${fullName} is not going to school today`
+                        : child.is_past_pickup_time
+                          ? `Agreed pickup time (${child.agreed_pickup_time || 'this morning'}) has passed. Fee is deducted and trip cannot be canceled.`
+                          : `Click if ${fullName} is not going to school today (Must indicate before ${child.agreed_pickup_time || 'agreed pickup time'} to avoid daily fee)`
                   }
                   className={`w-full text-xs font-extrabold py-2 px-2.5 rounded-xl flex items-center justify-center gap-1.5 transition-all ${
                     isWeekend
                       ? 'bg-slate-100 text-slate-400 border border-slate-200 cursor-not-allowed opacity-75'
                       : child.is_canceled_today
                         ? 'bg-rose-50 text-rose-800 border border-rose-200 opacity-80 cursor-not-allowed'
-                        : 'bg-rose-50 hover:bg-rose-100 text-rose-700 border border-rose-200 shadow-2xs hover:border-rose-300 cursor-pointer'
+                        : child.is_past_pickup_time
+                          ? 'bg-slate-100 text-slate-400 border border-slate-200 cursor-not-allowed opacity-75'
+                          : 'bg-rose-50 hover:bg-rose-100 text-rose-700 border border-rose-200 shadow-2xs hover:border-rose-300 cursor-pointer'
                   }`}
                 >
                   <XCircle className="w-3.5 h-3.5 text-rose-600 shrink-0" />
-                  <span>{isWeekend ? 'Weekend (No School)' : child.is_canceled_today ? 'Trip Canceled' : '🚫 Not Going'}</span>
+                  <span>
+                    {isWeekend
+                      ? 'Weekend (No School)'
+                      : child.is_canceled_today
+                        ? 'Trip Canceled'
+                        : child.is_past_pickup_time
+                          ? `Locked (Past ${child.agreed_pickup_time || 'Time'})`
+                          : '🚫 Not Going'}
+                  </span>
                 </button>
 
                 <button

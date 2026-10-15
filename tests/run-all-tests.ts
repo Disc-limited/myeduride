@@ -35,6 +35,8 @@ import { escortStudentVisibilitySuite } from './unit/escort-student-visibility.t
 import { escortEduChatCommunicationSuite } from './unit/escort-educhat-communication.test';
 import { cityPricingSuite } from './unit/city-pricing-manifest-invariants.test';
 import { signInOutLocationSuite } from './unit/sign-in-out-location.test';
+import { tripCancellationCutoffSuite } from './unit/trip-cancellation-cutoff.test';
+import { schoolWalletInvariantsSuite } from './unit/school-wallet-invariants.test';
 import { pickupControlApiSuite } from './integration/pickup-control-api.test';
 import { escortApisSuite } from './integration/escort-apis.test';
 import { routesVehiclesApiSuite } from './integration/routes-vehicles-api.test';
@@ -100,6 +102,8 @@ async function runAllTests() {
     escortEduChatCommunicationSuite,
     cityPricingSuite,
     signInOutLocationSuite,
+    tripCancellationCutoffSuite,
+    schoolWalletInvariantsSuite,
     pickupControlApiSuite,
     escortApisSuite,
     routesVehiclesApiSuite,

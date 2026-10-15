@@ -623,9 +623,17 @@ export async function GET(request: NextRequest) {
     });
 
     const enrichedEscortsList = escortsList.map((e: any) => {
-      const activeAssignments = formattedAssignments.filter(
+      const rawActiveAssignments = formattedAssignments.filter(
         (a: any) => a.escort_application_id === e.id || a.escort?.id === e.id
       );
+      const activeAssignments: any[] = [];
+      const seenEscortStudentIds = new Set<string>();
+      for (const a of rawActiveAssignments) {
+        const sid = a.student_id || a.student?.id;
+        if (sid && seenEscortStudentIds.has(sid)) continue;
+        if (sid) seenEscortStudentIds.add(sid);
+        activeAssignments.push(a);
+      }
       const assignedSchool = schoolsList.find((s: any) => s.id === e.school_id) ||
         (activeAssignments.length > 0 ? activeAssignments[0].school : null);
 

@@ -18,6 +18,9 @@ interface CancelTripModalProps {
     school?: { name?: string; primary_color?: string };
     class?: { name?: string };
     escort_name?: string;
+    agreed_pickup_time?: string | null;
+    is_past_pickup_time?: boolean;
+    can_cancel_today?: boolean;
   } | null;
   onTripCanceled?: (childId: string, reason: string) => void;
 }
@@ -49,7 +52,12 @@ export default function CancelTripModal({
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (isSubmitting) return;
+    if (isSubmitting || child.is_past_pickup_time) {
+      if (child.is_past_pickup_time) {
+        toast.error('Agreed pickup time has passed. Transport fee is locked and cannot be canceled.');
+      }
+      return;
+    }
 
     const chosenReasonLabel =
       selectedReason === 'other' && customReasonText.trim()
@@ -175,12 +183,31 @@ export default function CancelTripModal({
         </div>
 
         {/* Notice Info Banner */}
-        <div className="p-3 rounded-2xl bg-amber-50 border border-amber-200/70 text-amber-900 flex items-start gap-2.5 text-xs">
-          <AlertCircle className="w-4 h-4 text-amber-600 shrink-0 mt-0.5" />
-          <p className="leading-snug">
-            <strong>Instant Delivery:</strong> As soon as you confirm, your assigned escort and city operations manager will receive a high-priority alert and this stop will be automatically removed from today&apos;s morning route.
-          </p>
-        </div>
+        {child.is_past_pickup_time ? (
+          <div className="p-3.5 rounded-2xl bg-rose-50 border border-rose-200 text-rose-900 flex items-start gap-2.5 text-xs">
+            <AlertCircle className="w-4 h-4 text-rose-600 shrink-0 mt-0.5" />
+            <div className="leading-snug space-y-1">
+              <p className="font-extrabold text-rose-800">
+                Agreed Pickup Time Has Passed ({child.agreed_pickup_time || 'This Morning'})
+              </p>
+              <p className="text-slate-600">
+                Once the scheduled pickup time arrives, &quot;Not Going&quot; is locked and the system automatically deducts today&apos;s daily transport fee to honour driver route commitments.
+              </p>
+            </div>
+          </div>
+        ) : (
+          <div className="p-3.5 rounded-2xl bg-amber-50 border border-amber-200/70 text-amber-900 flex items-start gap-2.5 text-xs">
+            <AlertCircle className="w-4 h-4 text-amber-600 shrink-0 mt-0.5" />
+            <div className="leading-snug space-y-1">
+              <p>
+                <strong>Timely Notice Policy:</strong> Scheduled pickup is <strong>{child.agreed_pickup_time || '07:15 AM'}</strong>.
+              </p>
+              <p className="text-slate-600">
+                Confirming before this time immediately removes {fullName} from the driver&apos;s pickup list and completely waives today&apos;s transport fee.
+              </p>
+            </div>
+          </div>
+        )}
 
         {/* Form */}
         <form onSubmit={handleSubmit} className="space-y-4 text-xs">
@@ -255,13 +282,18 @@ export default function CancelTripModal({
             </button>
             <button
               type="submit"
-              disabled={isSubmitting}
-              className="px-5 py-2.5 rounded-xl bg-rose-600 hover:bg-rose-700 text-white font-extrabold transition-all shadow-md shadow-rose-600/20 flex items-center gap-2 cursor-pointer disabled:opacity-50"
+              disabled={isSubmitting || Boolean(child.is_past_pickup_time)}
+              className="px-5 py-2.5 rounded-xl bg-rose-600 hover:bg-rose-700 text-white font-extrabold transition-all shadow-md shadow-rose-600/20 flex items-center gap-2 cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
             >
               {isSubmitting ? (
                 <>
                   <Loader2 className="w-4 h-4 animate-spin" />
                   <span>Notifying Escort &amp; City Manager…</span>
+                </>
+              ) : child.is_past_pickup_time ? (
+                <>
+                  <Ban className="w-4 h-4" />
+                  <span>Locked (Past Agreed Pickup Time)</span>
                 </>
               ) : (
                 <>

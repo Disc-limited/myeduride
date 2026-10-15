@@ -14,7 +14,12 @@ export default function WalletSubscriptionPage() {
       id: 'basic',
       name: 'Essential Safety',
       price: '₦25,000 / month',
-      features: ['Up to 100 Students', 'Basic Gate Check-in Scan', 'Daily Parent SMS Notices', 'Standard Support'],
+      features: [
+        'Up to 100 Students',
+        'Basic Gate Check-in Scan',
+        'Daily Parent SMS Notices',
+        'Standard Support',
+      ],
     },
     {
       id: 'enterprise',
@@ -33,50 +38,53 @@ export default function WalletSubscriptionPage() {
   ];
 
   return (
-    <div className="space-y-6 font-sans text-slate-800 p-4 md:p-6 max-w-4xl mx-auto">
+    <div className="mx-auto max-w-4xl space-y-6 p-4 font-sans text-slate-800 md:p-6">
       <Link
         href="/dashboard/school-admin/wallet"
-        className="inline-flex items-center gap-1.5 text-xs font-bold text-slate-500 hover:text-slate-900 cursor-pointer"
+        className="inline-flex cursor-pointer items-center gap-1.5 text-xs font-bold text-slate-500 hover:text-slate-900"
       >
         <ArrowLeft size={14} /> Back to Wallet Overview
       </Link>
 
-      <div className="bg-white rounded-3xl p-6 md:p-8 border border-slate-200 shadow-xs space-y-6">
+      <div className="shadow-xs space-y-6 rounded-3xl border border-slate-200 bg-white p-6 md:p-8">
         <div className="flex items-center gap-3 border-b border-slate-100 pb-4">
-          <div className="w-12 h-12 rounded-2xl bg-purple-100 text-purple-800 flex items-center justify-center font-black">
+          <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-purple-100 font-black text-purple-800">
             <CreditCard size={22} />
           </div>
           <div>
             <h2 className="text-xl font-black text-slate-900">School Platform Subscriptions</h2>
-            <p className="text-xs text-slate-500 font-medium">Manage your institution's MyEduRide software tier, active safety modules, and renewal schedules.</p>
+            <p className="text-xs font-medium text-slate-500">
+              Manage your institution's MyEduRide software tier, active safety modules, and renewal
+              schedules.
+            </p>
           </div>
         </div>
 
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
+        <div className="grid grid-cols-1 gap-5 md:grid-cols-2">
           {plans.map((p) => (
             <div
               key={p.id}
               onClick={() => setSelectedPlan(p.id)}
-              className={`p-6 rounded-3xl border transition-all cursor-pointer space-y-4 relative ${
+              className={`relative cursor-pointer space-y-4 rounded-3xl border p-6 transition-all ${
                 selectedPlan === p.id
-                  ? 'border-purple-500 bg-purple-50/40 ring-2 ring-purple-500/20 shadow-md'
-                  : 'border-slate-200 hover:border-slate-300 bg-white'
+                  ? 'border-purple-500 bg-purple-50/40 shadow-md ring-2 ring-purple-500/20'
+                  : 'border-slate-200 bg-white hover:border-slate-300'
               }`}
             >
               {p.popular && (
-                <span className="absolute -top-3 right-6 bg-purple-600 text-white text-[10px] font-black px-3 py-0.5 rounded-full uppercase tracking-wider shadow-sm">
+                <span className="absolute -top-3 right-6 rounded-full bg-purple-600 px-3 py-0.5 text-[10px] font-black uppercase tracking-wider text-white shadow-sm">
                   Active Tier
                 </span>
               )}
               <div>
-                <h3 className="font-black text-slate-900 text-base">{p.name}</h3>
-                <p className="text-xl font-black text-purple-700 mt-1">{p.price}</p>
+                <h3 className="text-base font-black text-slate-900">{p.name}</h3>
+                <p className="mt-1 text-xl font-black text-purple-700">{p.price}</p>
               </div>
 
-              <div className="space-y-2 pt-2 border-t border-slate-100">
+              <div className="space-y-2 border-t border-slate-100 pt-2">
                 {p.features.map((f, i) => (
-                  <p key={i} className="text-xs text-slate-700 font-medium flex items-center gap-2">
-                    <CheckCircle2 size={14} className="text-purple-600 shrink-0" />
+                  <p key={i} className="flex items-center gap-2 text-xs font-medium text-slate-700">
+                    <CheckCircle2 size={14} className="shrink-0 text-purple-600" />
                     <span>{f}</span>
                   </p>
                 ))}
@@ -85,7 +93,7 @@ export default function WalletSubscriptionPage() {
               <button
                 type="button"
                 onClick={() => toast.success(`Active plan is ${p.name}`)}
-                className={`w-full py-2.5 rounded-xl font-black text-xs transition-all cursor-pointer ${
+                className={`w-full cursor-pointer rounded-xl py-2.5 text-xs font-black transition-all ${
                   selectedPlan === p.id
                     ? 'bg-purple-600 text-white shadow-md'
                     : 'bg-slate-100 text-slate-700 hover:bg-slate-200'

@@ -3,7 +3,10 @@ import { getAdminClient } from '@/lib/supabase/admin';
 import { getSessionFromRequest } from '@/lib/session';
 import { todayInLagos, lagosDayBounds } from '@/lib/timezone';
 import { getEscortApplications } from '@/lib/escort/escort-db';
-import { findEscortApplicationForSession, resolveEscortCategory } from '@/lib/escort/escort-category';
+import {
+  findEscortApplicationForSession,
+  resolveEscortCategory,
+} from '@/lib/escort/escort-category';
 import { nowUtcIso } from '@/lib/utils/time';
 import { checkSchoolTimingClash } from '@/lib/escort/escort-scheduler';
 import { calculateEscortFare, normalizeEscortTripType } from '@/lib/escort/escort-pricing';
@@ -14,6 +17,8 @@ import {
   cityLabelForKey,
 } from '@/lib/escort/city-pricing';
 import { ensureAutoReadyForPickup, isDismissalWindowOpen } from '@/lib/gate/auto-ready-pickup';
+import { computeCutoffFromTimeString } from '@/lib/escort/pickup-cutoff';
+import { TripFareEngine } from '@/lib/payments/trip-fare-engine';
 
 export const dynamic = 'force-dynamic';
 
@@ -34,19 +39,23 @@ export async function GET(request: NextRequest) {
 
     // 1. Resolve ONLY the logged-in escort (avoid loading all applications)
     if (session?.user_id) {
-      escortProfile = (await getEscortApplications(undefined, { applicationId: session.user_id }))[0] || null;
+      escortProfile =
+        (await getEscortApplications(undefined, { applicationId: session.user_id }))[0] || null;
     }
     if (!escortProfile && session?.email) {
       try {
         const { data: byEmail } = await supabase
           .from('escort_applications')
-          .select('id, user_id, email, full_name, escort_code, status, phone, photo, school_id, primary_school_id, secondary_school_id, ready_for_pickup, ready_for_pickup_at, today_trip_status, today_trip_declined_reason, today_trip_accepted_at, house_lat, house_lng, residential_address, closest_landmark, available_for_other_schools, escort_type, application_data, created_at')
+          .select(
+            'id, user_id, email, full_name, escort_code, status, phone, photo, school_id, primary_school_id, secondary_school_id, ready_for_pickup, ready_for_pickup_at, today_trip_status, today_trip_declined_reason, today_trip_accepted_at, house_lat, house_lng, residential_address, closest_landmark, available_for_other_schools, escort_type, application_data, created_at'
+          )
           .ilike('email', session.email)
           .order('created_at', { ascending: false })
           .limit(1)
           .maybeSingle();
         if (byEmail) {
-          escortProfile = (await getEscortApplications(undefined, { applicationId: byEmail.id }))[0] || byEmail;
+          escortProfile =
+            (await getEscortApplications(undefined, { applicationId: byEmail.id }))[0] || byEmail;
         }
       } catch (err) {
         console.warn('[dashboard-live] email escort lookup notice:', err);
@@ -65,7 +74,9 @@ export async function GET(request: NextRequest) {
             .maybeSingle();
           if (byUsernameProfile?.id) {
             escortProfile =
-              (await getEscortApplications(undefined, { applicationId: byUsernameProfile.id }))[0] || null;
+              (
+                await getEscortApplications(undefined, { applicationId: byUsernameProfile.id })
+              )[0] || null;
           }
         }
 
@@ -78,7 +89,10 @@ export async function GET(request: NextRequest) {
             orFilters.push(`email.ilike.${session.email}`);
           }
           if (username) {
-            orFilters.push(`email.ilike.${username}@myeduride.local`, `escort_code.ilike.${username}`);
+            orFilters.push(
+              `email.ilike.${username}@myeduride.local`,
+              `escort_code.ilike.${username}`
+            );
           }
 
           if (orFilters.length > 0) {
@@ -173,7 +187,9 @@ export async function GET(request: NextRequest) {
 
     if (escortIdentifiers.length > 0) {
       const uuidIds = escortIdentifiers.filter((id) =>
-        /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(String(id))
+        /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(
+          String(id)
+        )
       );
       if (uuidIds.length > 0) {
         const { data: escortRoutes } = await supabase
@@ -189,8 +205,7 @@ export async function GET(request: NextRequest) {
 
         if (escortRoutes && escortRoutes.length > 0) {
           assignedRoute =
-            (schoolId && escortRoutes.find((r) => r.school_id === schoolId)) ||
-            escortRoutes[0];
+            (schoolId && escortRoutes.find((r) => r.school_id === schoolId)) || escortRoutes[0];
         }
       }
     }
@@ -204,9 +219,10 @@ export async function GET(request: NextRequest) {
 
       if (routes && routes.length > 0) {
         assignedRoute =
-          routes.find((r) =>
-            escortIdentifiers.includes(r.assigned_escort_user_id) ||
-            escortIdentifiers.includes(r.assigned_escort_id)
+          routes.find(
+            (r) =>
+              escortIdentifiers.includes(r.assigned_escort_user_id) ||
+              escortIdentifiers.includes(r.assigned_escort_id)
           ) || null;
       }
     }
@@ -231,9 +247,21 @@ export async function GET(request: NextRequest) {
     }
 
     if (!assignedVehicle) {
-      const registeredName = escortProfile?.vehicle?.type || escortProfile?.vehicleType || escortProfile?.vehicle_type || null;
-      const registeredPlate = escortProfile?.vehicle?.regNumber || escortProfile?.regNumber || escortProfile?.reg_number || null;
-      const registeredCapacity = escortProfile?.vehicle?.seatCapacity || escortProfile?.seatCapacity || escortProfile?.seat_capacity || null;
+      const registeredName =
+        escortProfile?.vehicle?.type ||
+        escortProfile?.vehicleType ||
+        escortProfile?.vehicle_type ||
+        null;
+      const registeredPlate =
+        escortProfile?.vehicle?.regNumber ||
+        escortProfile?.regNumber ||
+        escortProfile?.reg_number ||
+        null;
+      const registeredCapacity =
+        escortProfile?.vehicle?.seatCapacity ||
+        escortProfile?.seatCapacity ||
+        escortProfile?.seat_capacity ||
+        null;
       if (registeredName || registeredPlate) {
         assignedVehicle = {
           vehicle_name: registeredName,
@@ -271,28 +299,38 @@ export async function GET(request: NextRequest) {
       if (a.school_id) distinctSchoolIds.add(a.school_id);
     }
     if (escortProfile?.primary_school_id) distinctSchoolIds.add(escortProfile.primary_school_id);
-    if (escortProfile?.secondary_school_id) distinctSchoolIds.add(escortProfile.secondary_school_id);
+    if (escortProfile?.secondary_school_id)
+      distinctSchoolIds.add(escortProfile.secondary_school_id);
     if (escortProfile?.school_id) distinctSchoolIds.add(escortProfile.school_id);
     if (escortProfile?.schoolId) distinctSchoolIds.add(escortProfile.schoolId);
     if (Array.isArray(escortProfile?.allocatedSchoolIds)) {
-      escortProfile.allocatedSchoolIds.forEach((id: string) => { if (id) distinctSchoolIds.add(id); });
+      escortProfile.allocatedSchoolIds.forEach((id: string) => {
+        if (id) distinctSchoolIds.add(id);
+      });
     }
     if (Array.isArray(escortProfile?.allocated_school_ids)) {
-      escortProfile.allocated_school_ids.forEach((id: string) => { if (id) distinctSchoolIds.add(id); });
+      escortProfile.allocated_school_ids.forEach((id: string) => {
+        if (id) distinctSchoolIds.add(id);
+      });
     }
     let profileAppData: any = {};
     if (escortProfile?.application_data) {
       try {
-        profileAppData = typeof escortProfile.application_data === 'string'
-          ? JSON.parse(escortProfile.application_data)
-          : escortProfile.application_data;
+        profileAppData =
+          typeof escortProfile.application_data === 'string'
+            ? JSON.parse(escortProfile.application_data)
+            : escortProfile.application_data;
       } catch {}
     }
     if (Array.isArray(profileAppData?.allocated_school_ids)) {
-      profileAppData.allocated_school_ids.forEach((id: string) => { if (id) distinctSchoolIds.add(id); });
+      profileAppData.allocated_school_ids.forEach((id: string) => {
+        if (id) distinctSchoolIds.add(id);
+      });
     }
     if (Array.isArray(profileAppData?.allocatedSchoolIds)) {
-      profileAppData.allocatedSchoolIds.forEach((id: string) => { if (id) distinctSchoolIds.add(id); });
+      profileAppData.allocatedSchoolIds.forEach((id: string) => {
+        if (id) distinctSchoolIds.add(id);
+      });
     }
     if (schoolId) distinctSchoolIds.add(schoolId);
 
@@ -302,14 +340,19 @@ export async function GET(request: NextRequest) {
       try {
         const { data: sList } = await supabase
           .from('schools')
-          .select('id, name, address, gps_lat, gps_lng, student_gate_start, school_start_time, student_gate_end, dismissal_start_time, dismissal_end_time')
+          .select(
+            'id, name, address, gps_lat, gps_lng, student_gate_start, school_start_time, student_gate_end, dismissal_start_time, dismissal_end_time'
+          )
           .in('id', Array.from(distinctSchoolIds));
         if (sList && sList.length > 0) {
           assignedSchools = sList;
           const assignmentSchoolIds = liveAssignments.map((a) => a.school_id).filter(Boolean);
           const preferredSchool =
             sList.find((s: any) => assignmentSchoolIds.includes(s.id)) || sList[0];
-          if (!schoolData?.id || (assignmentSchoolIds.length > 0 && !assignmentSchoolIds.includes(schoolData.id))) {
+          if (
+            !schoolData?.id ||
+            (assignmentSchoolIds.length > 0 && !assignmentSchoolIds.includes(schoolData.id))
+          ) {
             schoolData = preferredSchool;
           }
         }
@@ -338,9 +381,12 @@ export async function GET(request: NextRequest) {
             afternoon_gap_mins: clash.afternoonGapMins,
             school_a_times: clash.schoolATimes,
             school_b_times: clash.schoolBTimes,
-            status_label: assignedSchools.length > 2
-              ? `${assignedSchools.length}-Campus Transit Corridor`
-              : (!clash.hasClash ? 'Dual-School Non-Clashing Schedule' : 'Schedule Clashing Alert'),
+            status_label:
+              assignedSchools.length > 2
+                ? `${assignedSchools.length}-Campus Transit Corridor`
+                : !clash.hasClash
+                  ? 'Dual-School Non-Clashing Schedule'
+                  : 'Schedule Clashing Alert',
           };
         }
       } catch (sErr) {
@@ -375,9 +421,7 @@ export async function GET(request: NextRequest) {
     const assignmentBookingIds = liveAssignments.map((a) => a.booking_id).filter(Boolean);
     let liveBookings: any[] = [];
     try {
-      let bQuery = supabase
-        .from('transport_bookings')
-        .select(`
+      let bQuery = supabase.from('transport_bookings').select(`
           *,
           student:students(id, first_name, last_name, photo_url, student_id_number, house_address, house_lat, house_lng, house_landmark, house_notes, custom_fields, school_classes(name)),
           parent:user_profiles!parent_user_id(full_name, phone)
@@ -405,21 +449,29 @@ export async function GET(request: NextRequest) {
       }
     }
 
-    const approvedAssignments = liveAssignments.filter((a) => a.status === 'active' || a.status === 'completed');
+    const approvedAssignments = liveAssignments.filter(
+      (a) => a.status === 'active' || a.status === 'completed'
+    );
     const cmStudentIds = approvedAssignments.map((a) => a.student_id).filter(Boolean);
-    const bookingStudentIds = liveBookings.map((b) => b.student_id || b.student?.id).filter(Boolean);
-    const allTargetStudentIds = Array.from(new Set([...routeStudentIds, ...cmStudentIds, ...bookingStudentIds]));
+    const bookingStudentIds = liveBookings
+      .map((b) => b.student_id || b.student?.id)
+      .filter(Boolean);
+    const allTargetStudentIds = Array.from(
+      new Set([...routeStudentIds, ...cmStudentIds, ...bookingStudentIds])
+    );
 
     let assignedStudents: any[] = [];
     if (allTargetStudentIds.length > 0) {
       const { data: stList } = await supabase
         .from('students')
-        .select(`
-          id, first_name, last_name, student_id_number, photo_url, is_active, school_id,
+        .select(
+          `
+          id, first_name, last_name, student_id_number, photo_url, is_active, school_id, parent_id,
           house_address, house_lat, house_lng, house_landmark, house_notes, house_pinned_at, custom_fields,
           class:school_classes(name),
           school:schools(id, name, address, gps_lat, gps_lng, location_address)
-        `)
+        `
+        )
         .in('id', allTargetStudentIds);
 
       assignedStudents = stList || [];
@@ -431,8 +483,13 @@ export async function GET(request: NextRequest) {
         const existingIdx = assignedStudents.findIndex((s) => s.id === b.student.id);
         const pickupAddr = b.pickup_address || b.student?.house_address || null;
         if (existingIdx >= 0) {
-          assignedStudents[existingIdx].parent_name = b.parent?.full_name || assignedStudents[existingIdx].parent_name;
-          assignedStudents[existingIdx].parent_phone = b.parent?.phone || assignedStudents[existingIdx].parent_phone;
+          assignedStudents[existingIdx].parent_name =
+            b.parent?.full_name || assignedStudents[existingIdx].parent_name;
+          assignedStudents[existingIdx].parent_phone =
+            b.parent?.phone || assignedStudents[existingIdx].parent_phone;
+          if (b.parent_id || b.parent?.id) {
+            assignedStudents[existingIdx].parent_id = b.parent_id || b.parent?.id;
+          }
           if (pickupAddr) {
             assignedStudents[existingIdx].pickup_address = pickupAddr;
           }
@@ -451,6 +508,7 @@ export async function GET(request: NextRequest) {
             photo_url: b.student.photo_url || null,
             is_active: true,
             class: b.student.school_classes || b.student.class,
+            parent_id: b.parent_id || b.parent?.id || null,
             parent_name: b.parent?.full_name || null,
             parent_phone: b.parent?.phone || null,
             pickup_address: pickupAddr,
@@ -497,7 +555,8 @@ export async function GET(request: NextRequest) {
     const extractStoredFare = (stId: string): number | null => {
       const matchAssignment = liveAssignments.find((a) => a.student_id === stId);
       const matchBooking = liveBookings.find(
-        (b) => b.student_id === stId || b.student?.id === stId || b.id === matchAssignment?.booking_id
+        (b) =>
+          b.student_id === stId || b.student?.id === stId || b.id === matchAssignment?.booking_id
       );
 
       if (matchAssignment?.daily_fare && Number(matchAssignment.daily_fare) > 0) {
@@ -511,7 +570,10 @@ export async function GET(request: NextRequest) {
       }
       if (matchBooking?.notes) {
         try {
-          const parsed = typeof matchBooking.notes === 'string' ? JSON.parse(matchBooking.notes) : matchBooking.notes;
+          const parsed =
+            typeof matchBooking.notes === 'string'
+              ? JSON.parse(matchBooking.notes)
+              : matchBooking.notes;
           if (parsed?.fareResult?.dailyFare) return Number(parsed.fareResult.dailyFare);
           if (parsed?.dailyFare) return Number(parsed.dailyFare);
           if (parsed?.daily_fare) return Number(parsed.daily_fare);
@@ -519,7 +581,9 @@ export async function GET(request: NextRequest) {
           if (parsed?.distance_km != null) {
             return calculateEscortFare(
               Number(parsed.distance_km),
-              parsed.trip_type === 'morning_only' || parsed.trip_type === 'afternoon_only' ? parsed.trip_type : 'both',
+              parsed.trip_type === 'morning_only' || parsed.trip_type === 'afternoon_only'
+                ? parsed.trip_type
+                : 'both',
               fareRates
             ).dailyFare;
           }
@@ -527,7 +591,10 @@ export async function GET(request: NextRequest) {
       }
       if (matchAssignment?.notes) {
         try {
-          const parsed = typeof matchAssignment.notes === 'string' ? JSON.parse(matchAssignment.notes) : matchAssignment.notes;
+          const parsed =
+            typeof matchAssignment.notes === 'string'
+              ? JSON.parse(matchAssignment.notes)
+              : matchAssignment.notes;
           if (parsed?.fareResult?.dailyFare) return Number(parsed.fareResult.dailyFare);
           if (parsed?.dailyFare) return Number(parsed.dailyFare);
         } catch {
@@ -544,15 +611,22 @@ export async function GET(request: NextRequest) {
     const extractDiscountInfo = (stId: string): any => {
       const matchAssignment = liveAssignments.find((a) => a.student_id === stId);
       const matchBooking = liveBookings.find(
-        (b) => b.student_id === stId || b.student?.id === stId || b.id === matchAssignment?.booking_id
+        (b) =>
+          b.student_id === stId || b.student?.id === stId || b.id === matchAssignment?.booking_id
       );
       if (matchBooking?.notes) {
         try {
-          const parsed = typeof matchBooking.notes === 'string' ? JSON.parse(matchBooking.notes) : matchBooking.notes;
+          const parsed =
+            typeof matchBooking.notes === 'string'
+              ? JSON.parse(matchBooking.notes)
+              : matchBooking.notes;
           if (parsed?.discount) return parsed.discount;
         } catch {}
       }
-      if (matchAssignment?.notes && String(matchAssignment.notes).includes('Accountant Discounted Fare')) {
+      if (
+        matchAssignment?.notes &&
+        String(matchAssignment.notes).includes('Accountant Discounted Fare')
+      ) {
         return {
           discountedFare: extractStoredFare(stId),
           note: matchAssignment.notes,
@@ -573,20 +647,27 @@ export async function GET(request: NextRequest) {
       dualSchoolSchedule.status_label = !isSchoolEscort
         ? dualSchoolSchedule.is_multi_school
           ? `${dualSchoolSchedule.total_schools}-Campus Transit Coverage`
-          : (dualSchoolSchedule.clash_detected
+          : dualSchoolSchedule.clash_detected
             ? 'Dual-school same-time pickup'
-            : 'Dual-school coverage')
+            : 'Dual-school coverage'
         : dualSchoolSchedule.status_label;
     }
 
-    const computeHaversineDistanceKm = (lat1: number, lon1: number, lat2: number, lon2: number): number => {
+    const computeHaversineDistanceKm = (
+      lat1: number,
+      lon1: number,
+      lat2: number,
+      lon2: number
+    ): number => {
       const R = 6371;
       const dLat = ((lat2 - lat1) * Math.PI) / 180;
       const dLon = ((lon2 - lon1) * Math.PI) / 180;
       const a =
         Math.sin(dLat / 2) * Math.sin(dLat / 2) +
-        Math.cos((lat1 * Math.PI) / 180) * Math.cos((lat2 * Math.PI) / 180) *
-        Math.sin(dLon / 2) * Math.sin(dLon / 2);
+        Math.cos((lat1 * Math.PI) / 180) *
+          Math.cos((lat2 * Math.PI) / 180) *
+          Math.sin(dLon / 2) *
+          Math.sin(dLon / 2);
       const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
       return Math.round(R * c * 100) / 100;
     };
@@ -604,7 +685,9 @@ export async function GET(request: NextRequest) {
         .eq('trip_date', today);
 
       if (allKnownStudentIds.length > 0 && escortIdentifiers.length > 0) {
-        tripQuery.or(`student_id.in.(${allKnownStudentIds.join(',')}),escort_id.in.(${escortIdentifiers.join(',')})`);
+        tripQuery.or(
+          `student_id.in.(${allKnownStudentIds.join(',')}),escort_id.in.(${escortIdentifiers.join(',')})`
+        );
       } else if (allKnownStudentIds.length > 0) {
         tripQuery.in('student_id', allKnownStudentIds);
       } else if (escortIdentifiers.length > 0) {
@@ -620,7 +703,9 @@ export async function GET(request: NextRequest) {
     // Map students into rich manifest with City Manager approval, location, directions, and conditional pricing
     const studentManifest = assignedStudents.map((st) => {
       const arrival = attendanceToday.find((a) => a.student_id === st.id && a.type === 'arrival');
-      const departure = attendanceToday.find((a) => a.student_id === st.id && a.type === 'departure');
+      const departure = attendanceToday.find(
+        (a) => a.student_id === st.id && a.type === 'departure'
+      );
       const trip = todayDailyTrips.find((t) => t.student_id === st.id);
 
       const isCanceledByParent = Boolean(trip?.is_canceled_by_parent);
@@ -664,7 +749,8 @@ export async function GET(request: NextRequest) {
 
       const matchAssignment = liveAssignments.find((a) => a.student_id === st.id);
       const isCmApproved = matchAssignment ? matchAssignment.status === 'active' : true;
-      const cmStatusLabel = matchAssignment?.status === 'pending_confirmation' ? 'pending_approval' : 'approved';
+      const cmStatusLabel =
+        matchAssignment?.status === 'pending_confirmation' ? 'pending_approval' : 'approved';
       const assignmentSchool = unwrapRel(matchAssignment?.school);
       const studentSchool = unwrapRel(st.school);
       const rowSchool =
@@ -674,10 +760,30 @@ export async function GET(request: NextRequest) {
         null;
       const assignedSchoolName = rowSchool?.name || 'Assigned School';
 
-      const schoolLat = rowSchool?.gps_lat != null ? Number(rowSchool.gps_lat) : (schoolData?.gps_lat ? Number(schoolData.gps_lat) : null);
-      const schoolLng = rowSchool?.gps_lng != null ? Number(rowSchool.gps_lng) : (schoolData?.gps_lng ? Number(schoolData.gps_lng) : null);
-      const rawHouseLat = st.house_lat != null && !isNaN(Number(st.house_lat)) ? Number(st.house_lat) : (st.custom_fields?.house_lat != null && !isNaN(Number(st.custom_fields.house_lat)) ? Number(st.custom_fields.house_lat) : null);
-      const rawHouseLng = st.house_lng != null && !isNaN(Number(st.house_lng)) ? Number(st.house_lng) : (st.custom_fields?.house_lng != null && !isNaN(Number(st.custom_fields.house_lng)) ? Number(st.custom_fields.house_lng) : null);
+      const schoolLat =
+        rowSchool?.gps_lat != null
+          ? Number(rowSchool.gps_lat)
+          : schoolData?.gps_lat
+            ? Number(schoolData.gps_lat)
+            : null;
+      const schoolLng =
+        rowSchool?.gps_lng != null
+          ? Number(rowSchool.gps_lng)
+          : schoolData?.gps_lng
+            ? Number(schoolData.gps_lng)
+            : null;
+      const rawHouseLat =
+        st.house_lat != null && !isNaN(Number(st.house_lat))
+          ? Number(st.house_lat)
+          : st.custom_fields?.house_lat != null && !isNaN(Number(st.custom_fields.house_lat))
+            ? Number(st.custom_fields.house_lat)
+            : null;
+      const rawHouseLng =
+        st.house_lng != null && !isNaN(Number(st.house_lng))
+          ? Number(st.house_lng)
+          : st.custom_fields?.house_lng != null && !isNaN(Number(st.custom_fields.house_lng))
+            ? Number(st.custom_fields.house_lng)
+            : null;
       const houseLat = rawHouseLat;
       const houseLng = rawHouseLng;
 
@@ -692,19 +798,26 @@ export async function GET(request: NextRequest) {
       }
 
       const matchBooking = liveBookings.find(
-        (b) => b.student_id === st.id || b.student?.id === st.id || b.id === matchAssignment?.booking_id
+        (b) =>
+          b.student_id === st.id || b.student?.id === st.id || b.id === matchAssignment?.booking_id
       );
 
       let tripType = 'both';
       if (matchBooking?.notes) {
         try {
-          const pb = typeof matchBooking.notes === 'string' ? JSON.parse(matchBooking.notes) : matchBooking.notes;
+          const pb =
+            typeof matchBooking.notes === 'string'
+              ? JSON.parse(matchBooking.notes)
+              : matchBooking.notes;
           if (pb?.trip_type) tripType = pb.trip_type;
         } catch {}
       }
       if (matchAssignment?.notes && tripType === 'both') {
         try {
-          const pa = typeof matchAssignment.notes === 'string' ? JSON.parse(matchAssignment.notes) : matchAssignment.notes;
+          const pa =
+            typeof matchAssignment.notes === 'string'
+              ? JSON.parse(matchAssignment.notes)
+              : matchAssignment.notes;
           if (pa?.trip_type) tripType = pa.trip_type;
         } catch {}
       }
@@ -717,32 +830,52 @@ export async function GET(request: NextRequest) {
         normalizedTripType,
         fareRates
       );
-      const isDiscounted = discountInfo?.discountedFare != null && Number(discountInfo.discountedFare) > 0;
-      const effectiveDailyFare = isDiscounted ? Number(discountInfo.discountedFare) : fareEngine.dailyFare;
+      const isDiscounted =
+        discountInfo?.discountedFare != null && Number(discountInfo.discountedFare) > 0;
+      const effectiveDailyFare = isDiscounted
+        ? Number(discountInfo.discountedFare)
+        : fareEngine.dailyFare;
 
       const dailyFare = isSchoolEscort ? null : effectiveDailyFare;
       const morningFare = isSchoolEscort
         ? null
-        : (isDiscounted
-            ? (normalizedTripType === 'afternoon_only' ? 0 : normalizedTripType === 'morning_only' ? effectiveDailyFare : Math.round(effectiveDailyFare / 2))
-            : fareEngine.morningFare);
+        : isDiscounted
+          ? normalizedTripType === 'afternoon_only'
+            ? 0
+            : normalizedTripType === 'morning_only'
+              ? effectiveDailyFare
+              : Math.round(effectiveDailyFare / 2)
+          : fareEngine.morningFare;
       const afternoonFare = isSchoolEscort
         ? null
-        : (isDiscounted
-            ? (normalizedTripType === 'morning_only' ? 0 : normalizedTripType === 'afternoon_only' ? effectiveDailyFare : effectiveDailyFare - (morningFare || 0))
-            : fareEngine.afternoonFare);
+        : isDiscounted
+          ? normalizedTripType === 'morning_only'
+            ? 0
+            : normalizedTripType === 'afternoon_only'
+              ? effectiveDailyFare
+              : effectiveDailyFare - (morningFare || 0)
+          : fareEngine.afternoonFare;
 
-      const cls = Array.isArray(st.class) ? st.class[0]?.name : (st.class?.name || st.class_name || 'MyEduRide Transit');
+      const cls = Array.isArray(st.class)
+        ? st.class[0]?.name
+        : st.class?.name || st.class_name || 'MyEduRide Transit';
       const hasHousePin = houseLat != null && houseLng != null;
-      const navUrl = directionsUrl || (hasHousePin
-        ? `https://www.google.com/maps/dir/?api=1&destination=${houseLat},${houseLng}`
-        : null);
+      const navUrl =
+        directionsUrl ||
+        (hasHousePin
+          ? `https://www.google.com/maps/dir/?api=1&destination=${houseLat},${houseLng}`
+          : null);
 
-      const resolvedHouseAddr = st.house_address || (st.custom_fields?.address ? String(st.custom_fields.address) : null) || st.pickup_address || null;
+      const resolvedHouseAddr =
+        st.house_address ||
+        (st.custom_fields?.address ? String(st.custom_fields.address) : null) ||
+        st.pickup_address ||
+        null;
 
       return {
         id: st.id,
-        name: st.name || `${st.first_name || ''} ${st.last_name || ''}`.trim() || 'Assigned Student',
+        name:
+          st.name || `${st.first_name || ''} ${st.last_name || ''}`.trim() || 'Assigned Student',
         student_id_number: st.student_id_number || null,
         class_name: cls,
         photo_url: st.photo_url || null,
@@ -751,7 +884,12 @@ export async function GET(request: NextRequest) {
         school_name: assignedSchoolName,
         school_lat: schoolLat,
         school_lng: schoolLng,
-        school_address: rowSchool?.location_address || rowSchool?.address || schoolData?.location_address || schoolData?.address || null,
+        school_address:
+          rowSchool?.location_address ||
+          rowSchool?.address ||
+          schoolData?.location_address ||
+          schoolData?.address ||
+          null,
         city_manager_status: cmStatusLabel,
         city_manager_approved: isCmApproved,
         show_price: !isSchoolEscort,
@@ -760,11 +898,15 @@ export async function GET(request: NextRequest) {
         morning_fare: morningFare,
         afternoon_fare: afternoonFare,
         formatted_morning_fare: morningFare != null ? `₦${morningFare.toLocaleString()}` : null,
-        formatted_afternoon_fare: afternoonFare != null ? `₦${afternoonFare.toLocaleString()}` : null,
+        formatted_afternoon_fare:
+          afternoonFare != null ? `₦${afternoonFare.toLocaleString()}` : null,
         discount_applied: Boolean(discountInfo),
         discount_amount: discountInfo?.variance || null,
         accountant_ref: discountInfo?.accountantApprovalRef || null,
-        discount_note: discountInfo ? (discountInfo.discountReason || `Accountant Approved Concession (Ref: ${discountInfo.accountantApprovalRef || 'ACC'})`) : null,
+        discount_note: discountInfo
+          ? discountInfo.discountReason ||
+            `Accountant Approved Concession (Ref: ${discountInfo.accountantApprovalRef || 'ACC'})`
+          : null,
         pickup_address: resolvedHouseAddr,
         house_address: resolvedHouseAddr,
         house_lat: houseLat,
@@ -795,7 +937,11 @@ export async function GET(request: NextRequest) {
         afternoon_proximity_notified_at: trip?.afternoon_proximity_notified_at || null,
         is_morning_proximity_notified: Boolean(trip?.morning_proximity_notified_at),
         is_afternoon_proximity_notified: Boolean(trip?.afternoon_proximity_notified_at),
-        pickup_time: st.pickup_time || routeStops.find((r: any) => r.student_id === st.id)?.pickup_time || null,
+        pickup_time:
+          st.pickup_time ||
+          routeStops.find((r: any) => r.student_id === st.id)?.pickup_time ||
+          null,
+        parent_id: st.parent_id || null,
         parent_phone: st.parent_phone || null,
         parent_name: st.parent_name || null,
         billable_km: distanceKm != null ? Math.max(1, Math.ceil(distanceKm)) : null,
@@ -806,11 +952,58 @@ export async function GET(request: NextRequest) {
       };
     });
 
-    // Compute Today's Total Earnings Summary for Escort
-    const approvedStudentsCount = studentManifest.filter((s) => s.city_manager_approved).length;
-    const totalDailyEarnings = studentManifest.reduce((acc, s) => acc + (s.city_manager_approved && s.daily_fare ? s.daily_fare : 0), 0);
-    const morningProjected = studentManifest.reduce((acc, s) => acc + (s.city_manager_approved && (s.trip_type as string) !== 'afternoon_only' && (s.trip_type as string) !== 'afternoon' && s.morning_fare ? s.morning_fare : 0), 0);
-    const afternoonProjected = studentManifest.reduce((acc, s) => acc + (s.city_manager_approved && (s.trip_type as string) !== 'morning_only' && (s.trip_type as string) !== 'morning' && s.afternoon_fare ? s.afternoon_fare : 0), 0);
+    const operationalManifest = studentManifest.filter((s) => s.city_manager_approved);
+
+    // Auto-deduct daily transport fee for active students whose agreed pickup time has arrived
+    for (const s of operationalManifest) {
+      if (!s.is_canceled_by_parent) {
+        const cutoff = computeCutoffFromTimeString(s.pickup_time);
+        if (cutoff.isPastCutoff) {
+          const tripRow = todayDailyTrips.find((t) => t.student_id === s.id);
+          if (!tripRow?.fee_deducted) {
+            try {
+              await TripFareEngine.autoDeductTripFeeIfPastCutoff({
+                studentId: s.id,
+                parentUserId: s.parent_id,
+                schoolId: s.school_id || schoolId || '',
+                grossKobo: s.daily_fare ? Math.round(Number(s.daily_fare) * 100) : undefined,
+                escortId: escortProfile?.id || (session?.user_id as string),
+              });
+            } catch (err) {
+              console.warn('[dashboard-live] autoDeductTripFeeIfPastCutoff notice:', s.id, err);
+            }
+          }
+        }
+      }
+    }
+
+    // Compute Today's Total Earnings Summary for Escort (excluding students canceled before cutoff)
+    const billableStudents = operationalManifest.filter((s) => !s.is_canceled_by_parent);
+    const approvedStudentsCount = billableStudents.length;
+    const totalDailyEarnings = billableStudents.reduce(
+      (acc, s) => acc + (s.daily_fare ? Number(s.daily_fare) : 0),
+      0
+    );
+    const morningProjected = billableStudents.reduce(
+      (acc, s) =>
+        acc +
+        ((s.trip_type as string) !== 'afternoon_only' &&
+        (s.trip_type as string) !== 'afternoon' &&
+        s.morning_fare
+          ? Number(s.morning_fare)
+          : 0),
+      0
+    );
+    const afternoonProjected = billableStudents.reduce(
+      (acc, s) =>
+        acc +
+        ((s.trip_type as string) !== 'morning_only' &&
+        (s.trip_type as string) !== 'morning' &&
+        s.afternoon_fare
+          ? Number(s.afternoon_fare)
+          : 0),
+      0
+    );
 
     const earningsSummary = isSchoolEscort
       ? {
@@ -821,9 +1014,9 @@ export async function GET(request: NextRequest) {
           formatted_morning_projected: null,
           afternoon_projected: null,
           formatted_afternoon_projected: null,
-          total_students: studentManifest.length,
+          total_students: billableStudents.length,
           approved_students_count: approvedStudentsCount,
-          pending_students_count: studentManifest.length - approvedStudentsCount,
+          pending_students_count: 0,
         }
       : {
           is_school_salaried: false,
@@ -833,53 +1026,82 @@ export async function GET(request: NextRequest) {
           formatted_morning_projected: `₦${morningProjected.toLocaleString()}`,
           afternoon_projected: afternoonProjected,
           formatted_afternoon_projected: `₦${afternoonProjected.toLocaleString()}`,
-          total_students: studentManifest.length,
+          total_students: billableStudents.length,
           approved_students_count: approvedStudentsCount,
-          pending_students_count: studentManifest.length - approvedStudentsCount,
+          pending_students_count: 0,
           agreed_rate_per_km: fareRates.rate_per_km,
           operating_city: resolvedCityKey,
           operating_city_label: cityPricing.city_label || cityLabelForKey(resolvedCityKey),
           route_name: assignedRoute?.name || null,
         };
 
-    const operationalManifest = studentManifest.filter((s) => s.city_manager_approved);
+    // Active Morning list strictly removes students whose parents marked "Not Going"
     const morningStudents = operationalManifest
-      .filter((s) => (s.trip_type as string) !== 'afternoon_only' && (s.trip_type as string) !== 'afternoon')
+      .filter(
+        (s) =>
+          !s.is_canceled_by_parent &&
+          (s.trip_type as string) !== 'afternoon_only' &&
+          (s.trip_type as string) !== 'afternoon'
+      )
       .map((s) => ({
         ...s,
-        status: s.is_canceled_by_parent
-          ? 'CANCELED'
-          : (s.morning_status === 'DROPPED_OFF_AT_SCHOOL'
-              ? 'DROPPED_OFF'
-              : (s.morning_status === 'PICKED_UP_FROM_HOME'
-                  ? 'ON_BOARD'
-                  : 'SCHEDULED')),
-        picked: !s.is_canceled_by_parent && (s.morning_status === 'PICKED_UP_FROM_HOME' || s.morning_status === 'DROPPED_OFF_AT_SCHOOL'),
-        dropped: !s.is_canceled_by_parent && (s.morning_status === 'DROPPED_OFF_AT_SCHOOL'),
-        is_canceled: Boolean(s.is_canceled_by_parent),
+        status:
+          s.morning_status === 'DROPPED_OFF_AT_SCHOOL'
+            ? 'DROPPED_OFF'
+            : s.morning_status === 'PICKED_UP_FROM_HOME'
+              ? 'ON_BOARD'
+              : 'SCHEDULED',
+        picked:
+          s.morning_status === 'PICKED_UP_FROM_HOME' ||
+          s.morning_status === 'DROPPED_OFF_AT_SCHOOL',
+        dropped: s.morning_status === 'DROPPED_OFF_AT_SCHOOL',
+        is_canceled: false,
         address: s.house_address || s.pickup_address,
         time: s.pickup_time,
         avatar: s.photo_url,
         distance: s.distance_km != null ? `${s.distance_km} km` : null,
       }));
 
+    // Active Afternoon list strictly removes students whose parents marked "Not Going"
     const afternoonStudents = operationalManifest
-      .filter((s) => (s.trip_type as string) !== 'morning_only' && (s.trip_type as string) !== 'morning')
+      .filter(
+        (s) =>
+          !s.is_canceled_by_parent &&
+          (s.trip_type as string) !== 'morning_only' &&
+          (s.trip_type as string) !== 'morning'
+      )
       .map((s) => ({
         ...s,
-        status: s.is_canceled_by_parent
-          ? 'CANCELED'
-          : (s.afternoon_status === 'SAFE_AT_HOME'
-              ? 'DROPPED_OFF'
-              : (s.afternoon_status === 'PICKED_UP_FROM_GATE'
-                  ? 'ON_BOARD'
-                  : 'SCHEDULED')),
-        picked: !s.is_canceled_by_parent && (s.afternoon_status === 'PICKED_UP_FROM_GATE' || s.afternoon_status === 'SAFE_AT_HOME'),
-        dropped: !s.is_canceled_by_parent && (s.afternoon_status === 'SAFE_AT_HOME'),
-        is_canceled: Boolean(s.is_canceled_by_parent),
+        status:
+          s.afternoon_status === 'SAFE_AT_HOME'
+            ? 'DROPPED_OFF'
+            : s.afternoon_status === 'PICKED_UP_FROM_GATE'
+              ? 'ON_BOARD'
+              : 'SCHEDULED',
+        picked:
+          s.afternoon_status === 'PICKED_UP_FROM_GATE' || s.afternoon_status === 'SAFE_AT_HOME',
+        dropped: s.afternoon_status === 'SAFE_AT_HOME',
+        is_canceled: false,
         note: s.school_name ? `Pick from ${s.school_name} Gate` : 'Pick from school gate',
         address: s.house_address || s.pickup_address,
         avatar: s.photo_url,
+      }));
+
+    // Dedicated list of canceled students for audit and escort awareness
+    const canceledStudents = operationalManifest
+      .filter((s) => Boolean(s.is_canceled_by_parent))
+      .map((s) => ({
+        id: s.id,
+        name: s.name,
+        photo_url: s.photo_url,
+        parent_name: s.parent_name,
+        parent_phone: s.parent_phone,
+        cancellation_reason: s.cancellation_reason || 'Not going today',
+        pickup_time: s.pickup_time,
+        trip_type: s.trip_type,
+        canceled_at: s.canceled_at || today,
+        status: 'CANCELED',
+        is_canceled: true,
       }));
 
     // 6. Fetch Emergency Deputising Dispatches
@@ -888,7 +1110,9 @@ export async function GET(request: NextRequest) {
       const { data: emergencies } = await supabase
         .from('emergency_deputising')
         .select('*')
-        .or(`original_escort_user_id.eq.${session.user_id},deputy_escort_user_id.eq.${session.user_id}`)
+        .or(
+          `original_escort_user_id.eq.${session.user_id},deputy_escort_user_id.eq.${session.user_id}`
+        )
         .order('created_at', { ascending: false })
         .limit(5);
 
@@ -935,11 +1159,37 @@ export async function GET(request: NextRequest) {
     let walletRow: any = null;
     if (session?.user_id) {
       try {
-        const { data: w } = await supabase
+        let { data: w } = await supabase
           .from('wallets')
           .select('*')
           .eq('user_id', session.user_id)
+          .eq('entity_type', 'escort')
           .maybeSingle();
+
+        if (!w) {
+          const { data: anyW } = await supabase
+            .from('wallets')
+            .select('*')
+            .eq('user_id', session.user_id)
+            .maybeSingle();
+          w = anyW;
+        }
+
+        if (!w) {
+          const { data: newW } = await supabase
+            .from('wallets')
+            .insert({
+              user_id: session.user_id,
+              entity_type: 'escort',
+              currency: 'NGN',
+              available_balance_kobo: 0,
+              status: 'active',
+            })
+            .select()
+            .single();
+          w = newW;
+        }
+
         walletRow = w;
       } catch (err) {
         console.warn('[dashboard-live] wallets fetch notice:', err);
@@ -947,17 +1197,31 @@ export async function GET(request: NextRequest) {
     }
 
     const walletBalance = Number(
-      walletRow?.balance ?? userProfile?.wallet_balance ?? escortProfile?.walletBalance ?? 0
+      walletRow?.available_balance_kobo !== undefined
+        ? Number(walletRow.available_balance_kobo) / 100
+        : (walletRow?.balance ?? userProfile?.wallet_balance ?? escortProfile?.walletBalance ?? 0)
     );
     const eduSaveBalance = Number(
-      walletRow?.edu_save ?? walletRow?.edusave ?? walletRow?.savings_balance ?? escortProfile?.eduSaveBalance ?? 0
+      walletRow?.edu_save ??
+        walletRow?.edusave ??
+        walletRow?.savings_balance ??
+        escortProfile?.eduSaveBalance ??
+        0
     );
     const eduInsuRedActive = Boolean(
-      escortProfile?.selectedInsuredPlan || escortProfile?.eduInsuRedActive || walletRow?.edu_insured_active
+      escortProfile?.selectedInsuredPlan ||
+      escortProfile?.eduInsuRedActive ||
+      walletRow?.edu_insured_active
     );
 
-    const displayName = userProfile?.full_name || escortProfile?.name || escortProfile?.fullName || session?.full_name || 'Escort Officer';
-    const escortCode = escortProfile?.escort_code || escortProfile?.escortIdCode || escortProfile?.id || null;
+    const displayName =
+      userProfile?.full_name ||
+      escortProfile?.name ||
+      escortProfile?.fullName ||
+      session?.full_name ||
+      'Escort Officer';
+    const escortCode =
+      escortProfile?.escort_code || escortProfile?.escortIdCode || escortProfile?.id || null;
 
     // 9. Resolve Driver Details only from a real school driver role
     let driverData: any = null;
@@ -989,9 +1253,12 @@ export async function GET(request: NextRequest) {
       }
     }
 
-    // 10. Compute live pickup & on-board queues from the real roster only
-    const pickedCount = studentManifest.filter((s) => s.status === 'ON_BOARD' || s.status === 'DROPPED_OFF').length;
-    const totalCount = studentManifest.length;
+    // 10. Compute live pickup & on-board queues from active students only (strictly excluding cancellations)
+    const activeManifest = operationalManifest.filter((s) => !s.is_canceled_by_parent);
+    const pickedCount = activeManifest.filter(
+      (s) => s.status === 'ON_BOARD' || s.status === 'DROPPED_OFF'
+    ).length;
+    const totalCount = activeManifest.length;
     const remainingCount = Math.max(0, totalCount - pickedCount);
     const progressPct = totalCount > 0 ? Math.round((pickedCount / totalCount) * 100) : 0;
 
@@ -1005,25 +1272,63 @@ export async function GET(request: NextRequest) {
       id: n.id,
       text: n.message || n.title || n.body || 'Notification',
       time: n.created_at
-        ? new Date(n.created_at).toLocaleTimeString('en-NG', { timeZone: 'Africa/Lagos', hour: '2-digit', minute: '2-digit' })
+        ? new Date(n.created_at).toLocaleTimeString('en-NG', {
+            timeZone: 'Africa/Lagos',
+            hour: '2-digit',
+            minute: '2-digit',
+          })
         : null,
       type: n.type || n.category || 'system',
     }));
 
-    const todayEarnings = isSchoolEscort
-      ? 0
-      : studentManifest.reduce((acc, s) => {
-          if (!s.city_manager_approved) return acc;
-          if (s.morning_status === 'PICKED_UP_FROM_HOME' || s.morning_status === 'DROPPED_OFF_AT_SCHOOL') {
-            acc += Number(s.morning_fare || 0);
-          }
-          if (s.afternoon_status === 'SAFE_AT_HOME') {
-            acc += Number(s.afternoon_fare || 0);
-          }
-          return acc;
-        }, 0);
+    // -------------------------------------------------------------
+    // Live Database Calculation of Today's Earnings & This Month's Earnings
+    // -------------------------------------------------------------
+    let walletTodayCreditsNgn = 0;
+    let walletMonthCreditsNgn = 0;
 
-    let monthEarnings = todayEarnings;
+    const monthStartIso = `${today.slice(0, 7)}-01T00:00:00.000Z`;
+
+    if (walletRow?.id) {
+      try {
+        const { data: credits } = await supabase
+          .from('wallet_transactions')
+          .select('amount_kobo, created_at, transaction_type')
+          .eq('wallet_id', walletRow.id)
+          .eq('transaction_type', 'CREDIT')
+          .gte('created_at', monthStartIso);
+
+        for (const c of credits || []) {
+          const kobo = Number(c.amount_kobo || 0);
+          const ngn = kobo / 100;
+          walletMonthCreditsNgn += ngn;
+
+          if (c.created_at && (c.created_at >= startIso || c.created_at.startsWith(today))) {
+            walletTodayCreditsNgn += ngn;
+          }
+        }
+      } catch (err) {
+        console.warn('[dashboard-live] wallet credits fetch notice:', err);
+      }
+    }
+
+    // Also include any completed trip fares today
+    const tripTodayEarnings = studentManifest.reduce((acc, s) => {
+      if (!s.city_manager_approved) return acc;
+      if (
+        s.morning_status === 'PICKED_UP_FROM_HOME' ||
+        s.morning_status === 'DROPPED_OFF_AT_SCHOOL'
+      ) {
+        acc += Number(s.morning_fare || 0);
+      }
+      if (s.afternoon_status === 'SAFE_AT_HOME') {
+        acc += Number(s.afternoon_fare || 0);
+      }
+      return acc;
+    }, 0);
+
+    // Also include historical trip fares this month
+    let tripMonthEarnings = tripTodayEarnings;
     const monthStart = `${today.slice(0, 7)}-01`;
     try {
       if (escortIdentifiers.length > 0) {
@@ -1034,8 +1339,13 @@ export async function GET(request: NextRequest) {
           .gte('trip_date', monthStart)
           .lte('trip_date', today);
 
-        const fareByStudent = new Map(studentManifest.map((s) => [s.id, { morning: Number(s.morning_fare || 0), afternoon: Number(s.afternoon_fare || 0) }]));
-        monthEarnings = (monthTrips || []).reduce((acc: number, trip: any) => {
+        const fareByStudent = new Map(
+          studentManifest.map((s) => [
+            s.id,
+            { morning: Number(s.morning_fare || 0), afternoon: Number(s.afternoon_fare || 0) },
+          ])
+        );
+        tripMonthEarnings = (monthTrips || []).reduce((acc: number, trip: any) => {
           const fares = fareByStudent.get(trip.student_id);
           if (!fares) return acc;
           if (trip.morning_picked_up) acc += fares.morning;
@@ -1047,24 +1357,48 @@ export async function GET(request: NextRequest) {
       console.warn('[dashboard-live] month trips fetch notice:', err);
     }
 
+    const todayEarnings = walletTodayCreditsNgn + tripTodayEarnings;
+    const monthEarnings = walletMonthCreditsNgn + tripMonthEarnings;
+
     const oneWayKm = studentManifest.reduce((acc, s) => acc + (Number(s.distance_km) || 0), 0);
-    const plannedTrips = (morningStudents.length > 0 ? 1 : 0) + (afternoonStudents.length > 0 ? 1 : 0);
+    const plannedTrips =
+      (morningStudents.length > 0 ? 1 : 0) + (afternoonStudents.length > 0 ? 1 : 0);
     const completedTripLegs =
       (morningDroppedCount === morningStudents.length && morningStudents.length > 0 ? 1 : 0) +
       (afternoonHomeCount === afternoonStudents.length && afternoonStudents.length > 0 ? 1 : 0);
     const totalDistanceKm = Math.round(oneWayKm * 10) / 10;
 
     let walletTransactions: any[] = [];
-    if (session?.user_id) {
+    if (walletRow?.id) {
       try {
         const { data: txs } = await supabase
           .from('wallet_transactions')
-          .select('id, title, description, amount, type, status, created_at')
-          .eq('user_id', session.user_id)
+          .select(
+            'id, description, amount_kobo, transaction_type, channel, status, reference, created_at, metadata'
+          )
+          .eq('wallet_id', walletRow.id)
           .order('created_at', { ascending: false })
-          .limit(12);
-        walletTransactions = txs || [];
-      } catch {
+          .limit(20);
+
+        walletTransactions = (txs || []).map((t: any) => ({
+          id: t.id,
+          title:
+            t.channel === 'SCHOOL_STIPEND_CREDIT'
+              ? 'School Stipend Disbursement'
+              : t.channel === 'ESCORT_PAYOUT'
+                ? 'Bank Payout Withdrawal'
+                : t.description || 'Wallet Transaction',
+          description: t.description || 'Wallet Transfer',
+          amount: Number(t.amount_kobo) / 100,
+          type: t.transaction_type === 'CREDIT' ? 'credit' : 'debit',
+          channel: t.channel,
+          status: t.status || 'COMPLETED',
+          reference: t.reference,
+          created_at: t.created_at,
+          metadata: t.metadata,
+        }));
+      } catch (e) {
+        console.warn('[dashboard-live] transactions fetch notice:', e);
         walletTransactions = [];
       }
     }
@@ -1074,14 +1408,18 @@ export async function GET(request: NextRequest) {
     const migoHints = [
       nextPendingStudent
         ? `Next pickup: ${nextPendingStudent.name}${nextPendingStudent.address ? ` at ${nextPendingStudent.address}` : ''}.`
-        : (morningStudents.length > 0 ? 'All morning pickups on this roster are complete.' : 'No students are assigned to you yet.'),
+        : morningStudents.length > 0
+          ? 'All morning pickups on this roster are complete.'
+          : 'No students are assigned to you yet.',
       'Scan the student ID card or enter the parent phone code before boarding.',
       'Board up to 9 students, drop them at school, then pick the next batch. Max 18 trips to and fro today.',
       'Keep communication professional with parents, school, and City Manager.',
     ];
 
     const { getEscortBatchStatus } = await import('@/lib/escort/batch-capacity');
-    const escortBatchIds = [escortProfile?.id, escortProfile?.user_id, session?.user_id].filter(Boolean);
+    const escortBatchIds = [escortProfile?.id, escortProfile?.user_id, session?.user_id].filter(
+      Boolean
+    );
     const hour = new Date().getHours();
     const batchPhase = hour < 12 ? 'morning' : 'afternoon';
     const batch = await getEscortBatchStatus(supabase, escortBatchIds as string[], batchPhase);
@@ -1091,12 +1429,15 @@ export async function GET(request: NextRequest) {
     try {
       const sessionOrFilters: string[] = [];
       if (escortProfile?.id) sessionOrFilters.push(`escort_id.eq.${escortProfile.id}`);
-      if (escortProfile?.user_id) sessionOrFilters.push(`escort_user_id.eq.${escortProfile.user_id}`);
+      if (escortProfile?.user_id)
+        sessionOrFilters.push(`escort_user_id.eq.${escortProfile.user_id}`);
       if (session?.user_id) sessionOrFilters.push(`escort_user_id.eq.${session.user_id}`);
       if (sessionOrFilters.length > 0) {
         const { data: sessionRows } = await supabase
           .from('vehicle_active_sessions')
-          .select('id, school_id, escort_id, escort_user_id, trip_type, status, current_lat, current_lng, current_speed_kmh, current_heading, battery_level, started_at, last_ping_at')
+          .select(
+            'id, school_id, escort_id, escort_user_id, trip_type, status, current_lat, current_lng, current_speed_kmh, current_heading, battery_level, started_at, last_ping_at'
+          )
           .eq('status', 'in_progress')
           .or(sessionOrFilters.join(','))
           .order('started_at', { ascending: false })
@@ -1120,10 +1461,14 @@ export async function GET(request: NextRequest) {
             escort_user_id: activeSession.escort_user_id,
             trip_type: activeSession.trip_type,
             status: activeSession.status,
-            current_lat: activeSession.current_lat != null ? Number(activeSession.current_lat) : null,
-            current_lng: activeSession.current_lng != null ? Number(activeSession.current_lng) : null,
-            current_speed_kmh: activeSession.current_speed_kmh != null ? Number(activeSession.current_speed_kmh) : 0,
-            current_heading: activeSession.current_heading != null ? Number(activeSession.current_heading) : 0,
+            current_lat:
+              activeSession.current_lat != null ? Number(activeSession.current_lat) : null,
+            current_lng:
+              activeSession.current_lng != null ? Number(activeSession.current_lng) : null,
+            current_speed_kmh:
+              activeSession.current_speed_kmh != null ? Number(activeSession.current_speed_kmh) : 0,
+            current_heading:
+              activeSession.current_heading != null ? Number(activeSession.current_heading) : 0,
             battery_level: activeSession.battery_level ?? null,
             started_at: activeSession.started_at,
             last_ping_at: activeSession.last_ping_at,
@@ -1140,7 +1485,11 @@ export async function GET(request: NextRequest) {
         photo: userProfile?.avatar_url || escortProfile?.photo || null,
         availableForOtherSchools: Boolean(escortProfile?.availableForOtherSchools),
         status: escortProfile?.status || null,
-        is_online: Boolean(escortProfile?.ready_for_pickup || escortProfile?.today_trip_status === 'accepted' || escortProfile?.today_trip_status === 'in_progress'),
+        is_online: Boolean(
+          escortProfile?.ready_for_pickup ||
+          escortProfile?.today_trip_status === 'accepted' ||
+          escortProfile?.today_trip_status === 'in_progress'
+        ),
         today_trip_status: escortProfile?.today_trip_status || 'pending',
         today_trip_declined_reason: escortProfile?.today_trip_declined_reason || null,
         today_trip_accepted_at: escortProfile?.today_trip_accepted_at || null,
@@ -1160,7 +1509,8 @@ export async function GET(request: NextRequest) {
         is_school_escort: isSchoolEscort,
         is_myeduride_escort: !isSchoolEscort,
         primary_school_id: escortProfile?.primary_school_id || schoolData?.id || null,
-        school_id: escortProfile?.school_id || escortProfile?.primary_school_id || schoolData?.id || null,
+        school_id:
+          escortProfile?.school_id || escortProfile?.primary_school_id || schoolData?.id || null,
       },
       school: schoolData
         ? {
@@ -1174,8 +1524,10 @@ export async function GET(request: NextRequest) {
             landmark: schoolData.location_landmark || '',
             is_pinned: schoolData.gps_lat != null && schoolData.gps_lng != null,
             logo_url: schoolData.logo_url || null,
-            student_gate_start: schoolData.student_gate_start || schoolData.school_start_time || null,
-            dismissal_start_time: schoolData.dismissal_start_time || schoolData.student_gate_end || null,
+            student_gate_start:
+              schoolData.student_gate_start || schoolData.school_start_time || null,
+            dismissal_start_time:
+              schoolData.dismissal_start_time || schoolData.student_gate_end || null,
             dismissal_end_time: schoolData.dismissal_end_time || null,
           }
         : null,
@@ -1206,6 +1558,7 @@ export async function GET(request: NextRequest) {
         manifest: studentManifest,
         morning: morningStudents,
         afternoon: afternoonStudents,
+        canceled: canceledStudents,
         dropped_off: morningStudents.filter((s) => s.dropped),
         total: totalCount,
         picked: pickedCount,
@@ -1221,21 +1574,28 @@ export async function GET(request: NextRequest) {
         morning_dropped: morningDroppedCount,
         afternoon_released: afternoonReleasedCount,
         afternoon_home: afternoonHomeCount,
-        departure_time: assignedRoute?.morning_pickup_time || schoolData?.student_gate_start || null,
+        departure_time:
+          assignedRoute?.morning_pickup_time || schoolData?.student_gate_start || null,
         est_completion: schoolData?.school_start_time || null,
       },
       tracking: {
-        current_location: escortProfile?.today_trip_status === 'in_progress' ? 'In transit' : 'Standby',
+        current_location:
+          escortProfile?.today_trip_status === 'in_progress' ? 'In transit' : 'Standby',
         next_stop: nextPendingStudent
           ? {
               name: nextPendingStudent.name,
               address: nextPendingStudent.address || null,
-              distance: nextPendingStudent.distance || (nextPendingStudent.distance_km != null ? `${nextPendingStudent.distance_km} km` : null),
+              distance:
+                nextPendingStudent.distance ||
+                (nextPendingStudent.distance_km != null
+                  ? `${nextPendingStudent.distance_km} km`
+                  : null),
             }
           : null,
-        eta_school: nextPendingStudent?.estimated_transit_mins != null
-          ? `${nextPendingStudent.estimated_transit_mins} min`
-          : null,
+        eta_school:
+          nextPendingStudent?.estimated_transit_mins != null
+            ? `${nextPendingStudent.estimated_transit_mins} min`
+            : null,
       },
       migo: {
         greeting: `Good morning, ${firstName}!`,
@@ -1245,17 +1605,23 @@ export async function GET(request: NextRequest) {
       },
       activity_feed: activityFeed,
       announcements,
-      wallet: isSchoolEscort
-        ? null
-        : {
-            balance: walletBalance,
-            todayEarnings,
-            monthEarnings,
-            eduSave: eduSaveBalance,
-            eduInsuRedActive,
-            eduInsuRedPlan: escortProfile?.selectedInsuredPlan || null,
-            transactions: walletTransactions,
-          },
+      wallet: {
+        id: walletRow?.id || null,
+        balance: walletBalance,
+        available_balance: walletBalance,
+        todayEarnings,
+        monthEarnings,
+        eduSave: eduSaveBalance,
+        eduInsuRedActive,
+        eduInsuRedPlan: escortProfile?.selectedInsuredPlan || null,
+        transactions: walletTransactions,
+        payout_bank: {
+          bank_name: walletRow?.virtual_bank_name || null,
+          account_number: walletRow?.payout_account_number || null,
+          account_name: walletRow?.payout_account_name || null,
+          verified: walletRow?.payout_bank_verified || false,
+        },
+      },
       emergencies: activeEmergencyDispatches,
       assignments: liveAssignments,
       bookings: liveBookings,
@@ -1318,7 +1684,10 @@ export async function POST(request: NextRequest) {
     if (action === 'toggle_availability') {
       if (isSchoolEscortPost) {
         return NextResponse.json(
-          { error: 'School escorts cannot be assigned to other schools; they are dedicated staff bound to their assigned school.' },
+          {
+            error:
+              'School escorts cannot be assigned to other schools; they are dedicated staff bound to their assigned school.',
+          },
           { status: 403 }
         );
       }
@@ -1327,18 +1696,34 @@ export async function POST(request: NextRequest) {
       if (session?.user_id || appId) {
         try {
           let target = appId
-            ? await supabase.from('escort_applications').select('id, status, application_data').eq('id', appId).maybeSingle()
-            : await supabase.from('escort_applications').select('id, status, application_data').eq('user_id', session?.user_id).maybeSingle();
+            ? await supabase
+                .from('escort_applications')
+                .select('id, status, application_data')
+                .eq('id', appId)
+                .maybeSingle()
+            : await supabase
+                .from('escort_applications')
+                .select('id, status, application_data')
+                .eq('user_id', session?.user_id)
+                .maybeSingle();
 
           if (!target.data && session?.user_id) {
-            target = await supabase.from('escort_applications').select('id, status, application_data').eq('user_id', session.user_id).maybeSingle();
+            target = await supabase
+              .from('escort_applications')
+              .select('id, status, application_data')
+              .eq('user_id', session.user_id)
+              .maybeSingle();
           }
 
           if (target.data?.id) {
             let appDataObj: any = {};
             const raw = target.data.application_data;
             if (typeof raw === 'string') {
-              try { appDataObj = JSON.parse(raw); } catch { appDataObj = {}; }
+              try {
+                appDataObj = JSON.parse(raw);
+              } catch {
+                appDataObj = {};
+              }
             } else if (raw && typeof raw === 'object') {
               appDataObj = raw;
             }
@@ -1353,7 +1738,9 @@ export async function POST(request: NextRequest) {
 
             const { updateEscortApplicationStatus } = await import('@/lib/escort/escort-db');
             const currentStatus = (target.data.status || 'CITY_MANAGER_APPROVED') as any;
-            await updateEscortApplicationStatus(target.data.id, currentStatus, undefined, { availableForOtherSchools });
+            await updateEscortApplicationStatus(target.data.id, currentStatus, undefined, {
+              availableForOtherSchools,
+            });
           }
         } catch (e) {
           console.warn('[dashboard-live] toggle_availability notice:', e);
@@ -1410,7 +1797,11 @@ export async function POST(request: NextRequest) {
           emergencySchoolId = assign?.school_id;
         }
         if (!emergencySchoolId) {
-          const { data: firstSchool } = await supabase.from('schools').select('id').limit(1).maybeSingle();
+          const { data: firstSchool } = await supabase
+            .from('schools')
+            .select('id')
+            .limit(1)
+            .maybeSingle();
           emergencySchoolId = firstSchool?.id || '00000000-0000-0000-0000-000000000001';
         }
 
@@ -1429,7 +1820,8 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({
         success: true,
         today_trip_status: 'declined',
-        message: "Trip decline recorded. City Manager has been urgently alerted to dispatch an emergency pool escort.",
+        message:
+          'Trip decline recorded. City Manager has been urgently alerted to dispatch an emergency pool escort.',
       });
     }
 
@@ -1499,7 +1891,11 @@ export async function POST(request: NextRequest) {
             .single();
 
           const { getEscortBatchStatus } = await import('@/lib/escort/batch-capacity');
-          const batch = await getEscortBatchStatus(supabase, [escortAppId, session.user_id], 'morning');
+          const batch = await getEscortBatchStatus(
+            supabase,
+            [escortAppId, session.user_id],
+            'morning'
+          );
 
           return NextResponse.json({
             success: true,
@@ -1511,7 +1907,11 @@ export async function POST(request: NextRequest) {
         }
 
         const { getEscortBatchStatus } = await import('@/lib/escort/batch-capacity');
-        const batch = await getEscortBatchStatus(supabase, [escortAppId, session.user_id], 'morning');
+        const batch = await getEscortBatchStatus(
+          supabase,
+          [escortAppId, session.user_id],
+          'morning'
+        );
 
         return NextResponse.json({
           success: true,
@@ -1533,7 +1933,13 @@ export async function POST(request: NextRequest) {
 
     // Action 2: Start Trip
     if (action === 'start_trip') {
-      const { trip_type, lat: bodyLat, lng: bodyLng, heading: bodyHeading, speedKmh: bodySpeed } = body;
+      const {
+        trip_type,
+        lat: bodyLat,
+        lng: bodyLng,
+        heading: bodyHeading,
+        speedKmh: bodySpeed,
+      } = body;
       const tripKind = trip_type === 'afternoon' ? 'afternoon_dropoff' : 'morning_pickup';
       let createdSessionId: string | null = null;
       let createdSchoolId: string | null = null;
@@ -1570,10 +1976,14 @@ export async function POST(request: NextRequest) {
           .eq('status', 'in_progress');
 
         if (schoolForSession) {
-          const clientLat = bodyLat != null && Number.isFinite(Number(bodyLat)) ? Number(bodyLat) : null;
-          const clientLng = bodyLng != null && Number.isFinite(Number(bodyLng)) ? Number(bodyLng) : null;
-          const initialLat = clientLat ?? (appRow?.house_lat != null ? Number(appRow.house_lat) : null);
-          const initialLng = clientLng ?? (appRow?.house_lng != null ? Number(appRow.house_lng) : null);
+          const clientLat =
+            bodyLat != null && Number.isFinite(Number(bodyLat)) ? Number(bodyLat) : null;
+          const clientLng =
+            bodyLng != null && Number.isFinite(Number(bodyLng)) ? Number(bodyLng) : null;
+          const initialLat =
+            clientLat ?? (appRow?.house_lat != null ? Number(appRow.house_lat) : null);
+          const initialLng =
+            clientLng ?? (appRow?.house_lng != null ? Number(appRow.house_lng) : null);
 
           const { data: insertedSession, error: insertErr } = await supabase
             .from('vehicle_active_sessions')
@@ -1607,7 +2017,12 @@ export async function POST(request: NextRequest) {
         started_at: nowUtcIso(),
         sessionId: createdSessionId,
         activeSession: createdSessionId
-          ? { id: createdSessionId, school_id: createdSchoolId, trip_type: tripKind, status: 'in_progress' }
+          ? {
+              id: createdSessionId,
+              school_id: createdSchoolId,
+              trip_type: tripKind,
+              status: 'in_progress',
+            }
           : null,
         message: `${trip_type === 'afternoon' ? 'Afternoon drop-off' : 'Morning pickup'} trip started successfully. Live tracking enabled.`,
       });
@@ -1666,25 +2081,42 @@ export async function POST(request: NextRequest) {
       } else if (action === 'afternoon_home_dropoff') {
         resolvedStatus = 'SAFE_AT_HOME';
       } else if (action === 'morning_school_dropoff' || action === 'afternoon_school_pickup') {
-        return NextResponse.json({
-          error: 'School sign-in and sign-out are completed by the Gate Officer after scanning the escort ID card.',
-        }, { status: 400 });
+        return NextResponse.json(
+          {
+            error:
+              'School sign-in and sign-out are completed by the Gate Officer after scanning the escort ID card.',
+          },
+          { status: 400 }
+        );
       } else {
         resolvedStatus = status || action;
       }
 
       let targetSchoolId = primarySchoolId;
       if (!targetSchoolId) {
-        const { data: stRec } = await supabase.from('students').select('school_id').eq('id', student_id).maybeSingle();
+        const { data: stRec } = await supabase
+          .from('students')
+          .select('school_id')
+          .eq('id', student_id)
+          .maybeSingle();
         targetSchoolId = stRec?.school_id;
       }
       if (!targetSchoolId) {
-        const { data: assignRec } = await supabase.from('escort_assignments').select('school_id').eq('student_id', student_id).limit(1).maybeSingle();
+        const { data: assignRec } = await supabase
+          .from('escort_assignments')
+          .select('school_id')
+          .eq('student_id', student_id)
+          .limit(1)
+          .maybeSingle();
         targetSchoolId = assignRec?.school_id;
       }
 
       const { data: escortApp } = session?.user_id
-        ? await supabase.from('escort_applications').select('id, user_id').eq('user_id', session.user_id).maybeSingle()
+        ? await supabase
+            .from('escort_applications')
+            .select('id, user_id')
+            .eq('user_id', session.user_id)
+            .maybeSingle()
         : { data: null };
       const escortTripId = escortApp?.id || session?.user_id;
       const todayDate = todayInLagos();
@@ -1697,12 +2129,21 @@ export async function POST(request: NextRequest) {
         .in('escort_id', [escortTripId, escortApp?.user_id, session?.user_id].filter(Boolean))
         .maybeSingle();
 
-      const tripPatch = action === 'afternoon_home_dropoff'
-        ? { afternoon_dropped_off: true, afternoon_dropped_off_at: stamp, afternoon_picked_up: true, updated_at: stamp }
-        : { morning_picked_up: true, morning_picked_up_at: stamp, updated_at: stamp };
+      const tripPatch =
+        action === 'afternoon_home_dropoff'
+          ? {
+              afternoon_dropped_off: true,
+              afternoon_dropped_off_at: stamp,
+              afternoon_picked_up: true,
+              updated_at: stamp,
+            }
+          : { morning_picked_up: true, morning_picked_up_at: stamp, updated_at: stamp };
 
       if (existingTrip) {
-        await supabase.from('escort_student_daily_trips').update(tripPatch).eq('id', existingTrip.id);
+        await supabase
+          .from('escort_student_daily_trips')
+          .update(tripPatch)
+          .eq('id', existingTrip.id);
       } else if (targetSchoolId && escortTripId) {
         await supabase.from('escort_student_daily_trips').insert({
           trip_date: todayDate,
@@ -1721,87 +2162,126 @@ export async function POST(request: NextRequest) {
       });
     }
 
-    // Action 5: Fund Wallet
-    if (action === 'fund_wallet') {
-      if (isSchoolEscortPost) {
+    // Action 6: Request Withdrawal / Payout
+    if (action === 'withdraw_wallet') {
+      if (!session?.user_id || !amount) {
+        return NextResponse.json({ error: 'User ID and amount are required' }, { status: 400 });
+      }
+
+      const numAmount = Number(amount);
+      if (isNaN(numAmount) || numAmount < 500) {
+        return NextResponse.json({ error: 'Minimum withdrawal amount is ₦500' }, { status: 400 });
+      }
+
+      const amountKobo = Math.round(numAmount * 100);
+
+      // Find or provision escort wallet
+      let { data: w } = await supabase
+        .from('wallets')
+        .select('*')
+        .eq('user_id', session.user_id)
+        .eq('entity_type', 'escort')
+        .maybeSingle();
+
+      if (!w) {
+        const { data: anyW } = await supabase
+          .from('wallets')
+          .select('*')
+          .eq('user_id', session.user_id)
+          .maybeSingle();
+        w = anyW;
+      }
+
+      if (!w) {
+        return NextResponse.json({ error: 'Escort wallet not found' }, { status: 404 });
+      }
+
+      if (Number(w.available_balance_kobo || 0) < amountKobo) {
         return NextResponse.json(
-          { error: 'School escorts do not utilize wallet systems; compensation is managed through school payroll.' },
-          { status: 403 }
+          {
+            error: `Insufficient wallet balance. Available: ₦${(
+              Number(w.available_balance_kobo || 0) / 100
+            ).toLocaleString()}`,
+          },
+          { status: 400 }
         );
       }
-      if (session?.user_id && amount) {
-        const { data: prof } = await supabase
-          .from('user_profiles')
-          .select('wallet_balance')
-          .eq('id', session.user_id)
-          .maybeSingle();
 
-        const currentBal = Number(prof?.wallet_balance || 0);
-        const newBal = currentBal + Number(amount);
+      const ref = `WTH-ESC-${Date.now().toString().slice(-6)}-${Math.random()
+        .toString(36)
+        .substring(2, 6)
+        .toUpperCase()}`;
 
-        await supabase
-          .from('user_profiles')
-          .update({ wallet_balance: newBal })
-          .eq('id', session.user_id);
-
-        try {
-          const { data: w } = await supabase.from('wallets').select('id').eq('user_id', session.user_id).maybeSingle();
-          if (w?.id) {
-            await supabase.from('wallets').update({ balance: newBal }).eq('id', w.id);
-          }
-        } catch (err) {
-          console.warn('[dashboard-live] wallets fund sync notice:', err);
+      const { data: deductResult, error: deductErr } = await supabase.rpc(
+        'execute_atomic_wallet_deduction',
+        {
+          p_wallet_id: w.id,
+          p_amount_kobo: amountKobo,
+          p_channel: 'ESCORT_PAYOUT',
+          p_reference: ref,
+          p_description: `Commercial bank payout withdrawal: ₦${numAmount.toLocaleString()}`,
+          p_metadata: {
+            user_id: session.user_id,
+            requested_by_name: (session as any).full_name || 'Escort Officer',
+            payout_bank: w.virtual_bank_name || null,
+            payout_account: w.payout_account_number || null,
+          },
         }
+      );
 
-        return NextResponse.json({
-          success: true,
-          newBalance: newBal,
-          message: `₦${Number(amount).toLocaleString()} funded successfully to wallet.`,
-        });
+      if (deductErr || !deductResult?.success) {
+        return NextResponse.json(
+          {
+            error: deductResult?.error || deductErr?.message || 'Withdrawal could not be processed',
+          },
+          { status: 500 }
+        );
       }
+
+      const newBalNgn = Number(deductResult.balance_after_kobo) / 100;
+
+      // Sync user_profiles
+      await supabase
+        .from('user_profiles')
+        .update({ wallet_balance: newBalNgn })
+        .eq('id', session.user_id);
+
+      return NextResponse.json({
+        success: true,
+        reference: ref,
+        newBalance: newBalNgn,
+        message: `Payout request for ₦${numAmount.toLocaleString()} submitted successfully. Funds will transfer to your bank.`,
+      });
     }
 
-    // Action 6: Request Withdrawal
-    if (action === 'withdraw_wallet') {
-      if (isSchoolEscortPost) {
+    // Action: Update Payout Bank Account
+    if (action === 'update_payout_bank') {
+      if (!session?.user_id) {
+        return NextResponse.json({ error: 'Not authenticated' }, { status: 401 });
+      }
+      const { bank_name, account_number, account_name } = body;
+      if (!account_number || !bank_name) {
         return NextResponse.json(
-          { error: 'School escorts do not utilize wallet systems; compensation is managed through school payroll.' },
-          { status: 403 }
+          { error: 'Bank name and account number are required' },
+          { status: 400 }
         );
       }
-      if (session?.user_id && amount) {
-        const { data: prof } = await supabase
-          .from('user_profiles')
-          .select('wallet_balance')
-          .eq('id', session.user_id)
-          .maybeSingle();
 
-        const currentBal = Number(prof?.wallet_balance || 0);
-        if (currentBal < Number(amount)) {
-          return NextResponse.json({ error: 'Insufficient wallet balance.' }, { status: 400 });
-        }
+      await supabase
+        .from('wallets')
+        .update({
+          virtual_bank_name: bank_name,
+          payout_account_number: account_number,
+          payout_account_name: account_name || null,
+          payout_bank_verified: true,
+          updated_at: new Date().toISOString(),
+        })
+        .eq('user_id', session.user_id);
 
-        const newBal = currentBal - Number(amount);
-        await supabase
-          .from('user_profiles')
-          .update({ wallet_balance: newBal })
-          .eq('id', session.user_id);
-
-        try {
-          const { data: w } = await supabase.from('wallets').select('id').eq('user_id', session.user_id).maybeSingle();
-          if (w?.id) {
-            await supabase.from('wallets').update({ balance: newBal }).eq('id', w.id);
-          }
-        } catch (err) {
-          console.warn('[dashboard-live] wallets withdraw sync notice:', err);
-        }
-
-        return NextResponse.json({
-          success: true,
-          newBalance: newBal,
-          message: `Payout request for ₦${Number(amount).toLocaleString()} submitted to City Manager.`,
-        });
-      }
+      return NextResponse.json({
+        success: true,
+        message: 'Payout commercial bank account updated successfully!',
+      });
     }
 
     // Action 7: Report Emergency / Breakdown

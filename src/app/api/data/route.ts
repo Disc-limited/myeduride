@@ -11,6 +11,7 @@ import { getLagosWeekday } from '@/lib/attendance/lagos-dates';
 import { getSessionFromRequest } from '@/lib/session';
 import { countSchoolParentsOnFile } from '@/lib/school/school-parents-list';
 import { buildStaffDailyReport } from '@/lib/attendance/staff-report';
+import { computeCutoffFromTimeString } from '@/lib/escort/pickup-cutoff';
 
 export const dynamic = 'force-dynamic';
 export const revalidate = 0;
@@ -703,7 +704,7 @@ export async function POST(request: NextRequest) {
             .eq('date', today),
           supabase
             .from('escort_student_daily_trips')
-            .select('student_id, morning_picked_up, morning_picked_up_at, afternoon_picked_up, afternoon_picked_up_at, afternoon_dropped_off, afternoon_dropped_off_at, is_canceled_by_parent, cancellation_reason, canceled_at')
+            .select('student_id, morning_picked_up, morning_picked_up_at, afternoon_picked_up, afternoon_picked_up_at, afternoon_dropped_off, afternoon_dropped_off_at, is_canceled_by_parent, cancellation_reason, canceled_at, agreed_pickup_time, fee_status, fee_deducted, fee_amount_kobo')
             .in('student_id', ids)
             .eq('trip_date', today),
         ]);
@@ -731,7 +732,7 @@ export async function POST(request: NextRequest) {
         const dailyTripMap = new Map(dailyTrips?.map((t: any) => [t.student_id, t]) || []);
         const linkByStudent = new Map(links.map((l: any) => [l.student_id, l]));
 
-        const [{ data: escortAssigns }, { data: routeAssigns }, { data: activeSessions }] = await Promise.all([
+        const [{ data: escortAssigns }, { data: routeAssigns }, { data: activeSessions }, { data: bookings }] = await Promise.all([
           supabase
             .from('escort_assignments')
             .select('student_id, escort_application_id, escort:escort_applications(id, full_name, user_id)')
@@ -746,7 +747,14 @@ export async function POST(request: NextRequest) {
             .from('vehicle_active_sessions')
             .select('id, escort_id, escort_user_id, route_id, trip_type, status')
             .eq('status', 'in_progress'),
+          supabase
+            .from('transport_bookings')
+            .select('student_id, pickup_time')
+            .in('student_id', ids)
+            .eq('status', 'active'),
         ]);
+
+        const bookingMap = new Map((bookings || []).map((b: any) => [b.student_id, b]));
 
         const escortByStudent = new Map(
           (escortAssigns || []).map((row: any) => {
@@ -820,6 +828,9 @@ export async function POST(request: NextRequest) {
 
           const safeAtHomeTime = trip?.afternoon_dropped_off_at || (isSafeAtHome ? departure?.timestamp : null) || null;
           const isCanceledToday = Boolean(trip?.is_canceled_by_parent);
+          const bookingPickupTime = bookingMap.get(s.id)?.pickup_time || null;
+          const candidatePickupTime = trip?.agreed_pickup_time || bookingPickupTime || '07:15 AM';
+          const cutoff = computeCutoffFromTimeString(candidatePickupTime);
 
           return {
             ...s,
@@ -850,6 +861,12 @@ export async function POST(request: NextRequest) {
             is_canceled_today: isCanceledToday,
             cancellation_reason: trip?.cancellation_reason || null,
             canceled_at: trip?.canceled_at || null,
+            agreed_pickup_time: cutoff.agreedPickupTime,
+            is_past_pickup_time: cutoff.isPastCutoff,
+            can_cancel_today: !isCanceledToday && cutoff.canCancel,
+            cancellation_cutoff_time: cutoff.agreedPickupTime,
+            fee_status: trip?.fee_status || (cutoff.isPastCutoff ? 'deducted' : (isCanceledToday ? 'waived' : 'pending')),
+            fee_deducted: Boolean(trip?.fee_deducted || (cutoff.isPastCutoff && !isCanceledToday)),
             today_status_label: isCanceledToday
               ? 'Not Going Today'
               : isInTransit

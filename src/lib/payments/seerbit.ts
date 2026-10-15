@@ -27,6 +27,7 @@ export class SeerBitClient {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ key: `${this.secretKey}.${this.publicKey}` }),
+        signal: AbortSignal.timeout(3000),
       });
 
       if (!res.ok) {
@@ -61,18 +62,27 @@ export class SeerBitClient {
   }> {
     const pubKey = this.publicKey || 'SBTESTPUBK_MOCK_KEY';
 
+    const targetCallback = params.callbackUrl || this.callbackUrl;
+    const separator = targetCallback.includes('?') ? '&' : '?';
+
     // If sandbox / test mock environment
     if (!this.secretKey || this.secretKey.startsWith('SBTESTSECK_MOCK')) {
       return {
         success: true,
         reference: params.reference,
-        checkoutUrl: `${this.callbackUrl}&reference=${params.reference}&mock_success=true`,
+        checkoutUrl: `${targetCallback}${separator}reference=${params.reference}&mock_success=true`,
         publicKey: pubKey,
       };
     }
 
     try {
       const token = await this.getAuthToken();
+      const sanitizedFullName =
+        (params.fullName || 'MyEduRide User')
+          .replace(/[^a-zA-Z\s]/g, '')
+          .replace(/\s+/g, ' ')
+          .trim() || 'MyEduRide Customer';
+
       const payload = {
         publicKey: pubKey,
         amount: params.amountNgn.toFixed(2),
@@ -80,7 +90,7 @@ export class SeerBitClient {
         country: 'NG',
         paymentReference: params.reference,
         email: params.email,
-        fullName: params.fullName,
+        fullName: sanitizedFullName,
         mobileNumber: params.phoneNumber || '',
         callbackUrl: params.callbackUrl || this.callbackUrl,
         customization: params.customization || {
@@ -100,15 +110,18 @@ export class SeerBitClient {
           Authorization: `Bearer ${token}`,
         },
         body: JSON.stringify(payload),
+        signal: AbortSignal.timeout(6000),
       });
 
       const data = await res.json();
       if (!res.ok || data.status !== 'SUCCESS') {
+        const errorMsg = data.data?.message || data.message || 'SeerBit checkout initialization failed';
+        console.error('[SeerBit] Checkout init failed response:', data);
         return {
           success: false,
           reference: params.reference,
           publicKey: pubKey,
-          error: data.message || 'SeerBit checkout initialization failed',
+          error: errorMsg,
         };
       }
 
@@ -225,6 +238,7 @@ export class SeerBitClient {
           bankCode: '035', // Wema Bank
           reference: params.reference,
         }),
+        signal: AbortSignal.timeout(3000),
       });
 
       const data = await res.json();

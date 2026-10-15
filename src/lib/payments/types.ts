@@ -31,6 +31,7 @@ export type TransactionChannel =
   | 'MAINTENANCE_FEE'
   | 'REGISTRATION_FEE'
   | 'VERIFICATION_FEE'
+  | 'DAILY_GATE_FEE'
   | 'REFUND'
   | 'SYSTEM_ADJUSTMENT';
 

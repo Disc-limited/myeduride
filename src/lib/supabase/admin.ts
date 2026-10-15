@@ -19,6 +19,18 @@ export function getAdminClient() {
     throw new Error('NEXT_PUBLIC_SUPABASE_URL is not configured correctly');
   }
 
+  // In Node.js < 22 server environments, ensure a mock WebSocket constructor exists
+  // so Supabase realtime-js factory does not throw when creating admin database client.
+  if (typeof globalThis.WebSocket === 'undefined') {
+    (globalThis as any).WebSocket = class MockServerWebSocket {
+      constructor() {}
+      close() {}
+      send() {}
+      addEventListener() {}
+      removeEventListener() {}
+    };
+  }
+
   return createClient(url, serviceKey, {
     auth: { autoRefreshToken: false, persistSession: false },
   });

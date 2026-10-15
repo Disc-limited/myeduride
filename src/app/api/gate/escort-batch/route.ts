@@ -90,7 +90,7 @@ export async function GET(request: NextRequest) {
             assigned_student_ids: [],
           });
         }
-        if (a.student_id) {
+        if (a.student_id && !escortsMap.get(escortAppId).assigned_student_ids.includes(a.student_id)) {
           escortsMap.get(escortAppId).assigned_student_ids.push(a.student_id);
         }
       }
@@ -252,9 +252,18 @@ export async function GET(request: NextRequest) {
       if (a.student_id) studentTripTypeMap.set(a.student_id, tt);
     }
 
-    const rawStudents = (assignments || [])
+    const unmappedStudents = (assignments || [])
       .map((a) => a.student)
       .filter(Boolean);
+
+    const rawStudents: any[] = [];
+    const seenRawStudentIds = new Set<string>();
+    for (const s of unmappedStudents) {
+      if (s?.id && !seenRawStudentIds.has(s.id)) {
+        seenRawStudentIds.add(s.id);
+        rawStudents.push(s);
+      }
+    }
 
     const studentIds = rawStudents.map((s) => s.id);
 

@@ -39,7 +39,10 @@ import PickupVerificationModal from '@/components/escort/PickupVerificationModal
 import IncidentReportModal from '@/components/escort/IncidentReportModal';
 import EscortIdCardModal from '@/components/escort/EscortIdCardModal';
 import { CityPricingReadOnlyPanel } from '@/components/shared/CityPricingPanel';
-import { findEscortApplicationForSession, resolveEscortCategory } from '@/lib/escort/escort-category';
+import {
+  findEscortApplicationForSession,
+  resolveEscortCategory,
+} from '@/lib/escort/escort-category';
 
 export default function MyEduRideEscortDashboardPage() {
   const router = useRouter();
@@ -98,11 +101,12 @@ export default function MyEduRideEscortDashboardPage() {
     fetch(`/api/escorts/applications${appQuery}`, { credentials: 'include', cache: 'no-store' })
       .then((res) => res.json())
       .then((data) => {
-        const apps = data?.applications && Array.isArray(data.applications)
-          ? data.applications
-          : data?.application
-            ? [data.application]
-            : [];
+        const apps =
+          data?.applications && Array.isArray(data.applications)
+            ? data.applications
+            : data?.application
+              ? [data.application]
+              : [];
         if (apps.length > 0) {
           const matched = findEscortApplicationForSession(apps, s) || apps[0];
           if (matched && resolveEscortCategory(matched) === 'school_escort') {
@@ -171,7 +175,11 @@ export default function MyEduRideEscortDashboardPage() {
     });
 
     const hour = Number(
-      new Intl.DateTimeFormat('en-GB', { timeZone: 'Africa/Lagos', hour: '2-digit', hour12: false }).format(currentTime)
+      new Intl.DateTimeFormat('en-GB', {
+        timeZone: 'Africa/Lagos',
+        hour: '2-digit',
+        hour12: false,
+      }).format(currentTime)
     );
     const greeting = hour < 12 ? 'Good Morning' : hour < 17 ? 'Good Afternoon' : 'Good Evening';
 
@@ -194,17 +202,10 @@ export default function MyEduRideEscortDashboardPage() {
     'MyEduRide Escort';
 
   const escortCode =
-    liveDashboardData?.escort?.code ||
-    escortData?.escort_code ||
-    escortData?.escortIdCode ||
-    null;
+    liveDashboardData?.escort?.code || escortData?.escort_code || escortData?.escortIdCode || null;
 
   const assignedSchoolNames = Array.from(
-    new Set(
-      (liveDashboardData?.assigned_schools || [])
-        .map((s: any) => s?.name)
-        .filter(Boolean)
-    )
+    new Set((liveDashboardData?.assigned_schools || []).map((s: any) => s?.name).filter(Boolean))
   );
   const schoolName =
     assignedSchoolNames.length > 0
@@ -251,12 +252,11 @@ export default function MyEduRideEscortDashboardPage() {
   ];
 
   return (
-    <div className="min-h-screen bg-[#F4F6F9] text-slate-800 font-sans flex flex-col lg:flex-row relative">
-      
+    <div className="relative flex min-h-screen flex-col bg-[#F4F6F9] font-sans text-slate-800 lg:flex-row">
       {/* MOBILE BACKDROP OVERLAY */}
       {sidebarOpen && (
         <div
-          className="fixed inset-0 bg-slate-950/70 z-40 lg:hidden backdrop-blur-xs transition-opacity animate-in fade-in duration-200"
+          className="backdrop-blur-xs animate-in fade-in fixed inset-0 z-40 bg-slate-950/70 transition-opacity duration-200 lg:hidden"
           onClick={() => setSidebarOpen(false)}
           aria-hidden="true"
         />
@@ -264,28 +264,30 @@ export default function MyEduRideEscortDashboardPage() {
 
       {/* 1. SIDEBAR (#0A1128 Dark Navy Blue) - Slide-over drawer on mobile, static on desktop */}
       <aside
-        className={`fixed lg:static top-0 left-0 bottom-0 z-50 w-72 lg:w-64 bg-[#0A1128] text-white flex flex-col justify-between p-4 shrink-0 shadow-2xl border-r border-slate-800 transition-transform duration-300 ease-in-out min-h-screen ${
+        className={`fixed bottom-0 left-0 top-0 z-50 flex min-h-screen w-72 shrink-0 flex-col justify-between border-r border-slate-800 bg-[#0A1128] p-4 text-white shadow-2xl transition-transform duration-300 ease-in-out lg:static lg:w-64 ${
           sidebarOpen ? 'translate-x-0' : '-translate-x-full lg:translate-x-0'
         }`}
       >
         <div className="space-y-5">
           {/* Top Brand Logo & Mobile Close Button */}
-          <div className="flex items-center justify-between pb-3 border-b border-white/10">
+          <div className="flex items-center justify-between border-b border-white/10 pb-3">
             <div className="flex flex-col">
               <div className="flex items-center gap-2">
-                <div className="w-8 h-8 rounded-xl bg-gradient-to-tr from-emerald-500 via-teal-500 to-emerald-700 flex items-center justify-center font-black text-white text-sm shadow-md">
+                <div className="flex h-8 w-8 items-center justify-center rounded-xl bg-gradient-to-tr from-emerald-500 via-teal-500 to-emerald-700 text-sm font-black text-white shadow-md">
                   🛡️
                 </div>
-                <span className="font-extrabold text-white text-base md:text-lg tracking-tight">MyEduRide</span>
+                <span className="text-base font-extrabold tracking-tight text-white md:text-lg">
+                  MyEduRide
+                </span>
               </div>
-              <span className="text-[9px] font-bold text-emerald-300 uppercase tracking-widest pl-10">
+              <span className="pl-10 text-[9px] font-bold uppercase tracking-widest text-emerald-300">
                 The Student Safety Platform
               </span>
             </div>
             <button
               type="button"
               onClick={() => setSidebarOpen(false)}
-              className="lg:hidden text-slate-400 hover:text-white p-1.5 rounded-xl hover:bg-white/10 transition-colors cursor-pointer"
+              className="cursor-pointer rounded-xl p-1.5 text-slate-400 transition-colors hover:bg-white/10 hover:text-white lg:hidden"
               aria-label="Close navigation menu"
             >
               <X size={20} />
@@ -293,21 +295,28 @@ export default function MyEduRideEscortDashboardPage() {
           </div>
 
           {/* Quick Escort Profile Card on Mobile */}
-          <div className="lg:hidden p-3 rounded-2xl bg-white/5 border border-white/10 flex items-center gap-3">
-            {(liveDashboardData?.escort?.photo || escortData?.photo) ? (
-            <img
-              src={liveDashboardData?.escort?.photo || escortData?.photo}
-              alt="MyEduRide Escort"
-              className="w-10 h-10 rounded-xl object-cover border-2 border-emerald-500 shrink-0"
-            />
+          <div className="flex items-center gap-3 rounded-2xl border border-white/10 bg-white/5 p-3 lg:hidden">
+            {liveDashboardData?.escort?.photo || escortData?.photo ? (
+              <img
+                src={liveDashboardData?.escort?.photo || escortData?.photo}
+                alt="MyEduRide Escort"
+                className="h-10 w-10 shrink-0 rounded-xl border-2 border-emerald-500 object-cover"
+              />
             ) : (
-              <div className="w-10 h-10 rounded-xl bg-emerald-600 text-white font-black flex items-center justify-center shrink-0">
-                {escortName.split(' ').map((n: string) => n[0]).join('').slice(0, 2).toUpperCase()}
+              <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-emerald-600 font-black text-white">
+                {escortName
+                  .split(' ')
+                  .map((n: string) => n[0])
+                  .join('')
+                  .slice(0, 2)
+                  .toUpperCase()}
               </div>
             )}
             <div className="min-w-0 flex-1">
-              <h3 className="font-extrabold text-white text-xs truncate">{escortName}</h3>
-              <p className="text-[10px] text-emerald-300 font-mono font-bold mt-0.5">ID: {escortCode}</p>
+              <h3 className="truncate text-xs font-extrabold text-white">{escortName}</h3>
+              <p className="mt-0.5 font-mono text-[10px] font-bold text-emerald-300">
+                ID: {escortCode}
+              </p>
             </div>
           </div>
 
@@ -315,14 +324,21 @@ export default function MyEduRideEscortDashboardPage() {
           <nav className="space-y-0.5 text-xs font-semibold">
             {navItems.map((item) => {
               const Icon = item.icon;
-              const active = activeNav === item.id || (item.id === 'schedule' && (activeNav === 'roster' || activeNav === 'assignments'));
+              const active =
+                activeNav === item.id ||
+                (item.id === 'schedule' && (activeNav === 'roster' || activeNav === 'assignments'));
               return (
                 <button
                   key={item.id}
                   type="button"
-                  onClick={() => { setActiveNav(item.id); setSidebarOpen(false); }}
-                  className={`w-full flex items-center justify-between px-3.5 py-2 rounded-xl transition-all cursor-pointer ${
-                    active ? 'bg-emerald-600 text-white shadow-md font-extrabold' : 'text-slate-300 hover:bg-white/10 hover:text-white'
+                  onClick={() => {
+                    setActiveNav(item.id);
+                    setSidebarOpen(false);
+                  }}
+                  className={`flex w-full cursor-pointer items-center justify-between rounded-xl px-3.5 py-2 transition-all ${
+                    active
+                      ? 'bg-emerald-600 font-extrabold text-white shadow-md'
+                      : 'text-slate-300 hover:bg-white/10 hover:text-white'
                   }`}
                 >
                   <div className="flex items-center gap-3">
@@ -330,10 +346,14 @@ export default function MyEduRideEscortDashboardPage() {
                     <span>{item.label}</span>
                   </div>
                   {item.badge ? (
-                    <span className="px-1.5 py-0.5 rounded-md bg-emerald-400 text-slate-950 font-black text-[9px]">{item.badge}</span>
+                    <span className="rounded-md bg-emerald-400 px-1.5 py-0.5 text-[9px] font-black text-slate-950">
+                      {item.badge}
+                    </span>
                   ) : null}
                   {item.count ? (
-                    <span className="px-2 py-0.5 rounded-full bg-rose-500 text-white font-black text-[10px]">{item.count}</span>
+                    <span className="rounded-full bg-rose-500 px-2 py-0.5 text-[10px] font-black text-white">
+                      {item.count}
+                    </span>
                   ) : null}
                 </button>
               );
@@ -341,8 +361,11 @@ export default function MyEduRideEscortDashboardPage() {
 
             <button
               type="button"
-              onClick={() => { setShowAccountModal(true); setSidebarOpen(false); }}
-              className="w-full flex items-center gap-3 px-3.5 py-2 rounded-xl text-slate-300 hover:bg-white/10 hover:text-white transition-all cursor-pointer"
+              onClick={() => {
+                setShowAccountModal(true);
+                setSidebarOpen(false);
+              }}
+              className="flex w-full cursor-pointer items-center gap-3 rounded-xl px-3.5 py-2 text-slate-300 transition-all hover:bg-white/10 hover:text-white"
             >
               <Settings size={16} />
               <span>Settings</span>
@@ -351,7 +374,7 @@ export default function MyEduRideEscortDashboardPage() {
             <button
               type="button"
               onClick={handleLogout}
-              className="lg:hidden w-full flex items-center gap-3 px-3.5 py-2.5 rounded-xl text-red-400 hover:bg-red-500/20 hover:text-red-300 transition-all font-extrabold cursor-pointer border border-red-500/20 mt-2"
+              className="mt-2 flex w-full cursor-pointer items-center gap-3 rounded-xl border border-red-500/20 px-3.5 py-2.5 font-extrabold text-red-400 transition-all hover:bg-red-500/20 hover:text-red-300 lg:hidden"
             >
               <LogOut size={16} />
               <span>Log Out</span>
@@ -360,25 +383,29 @@ export default function MyEduRideEscortDashboardPage() {
         </div>
 
         {/* Sidebar Footer Cards */}
-        <div className="pt-3 border-t border-white/10 space-y-3">
-          <div className="p-3 rounded-2xl bg-white/5 border border-white/10 flex items-center justify-between gap-2">
-            <span className="text-[11px] font-bold text-white leading-tight">Available for Other Schools</span>
+        <div className="space-y-3 border-t border-white/10 pt-3">
+          <div className="flex items-center justify-between gap-2 rounded-2xl border border-white/10 bg-white/5 p-3">
+            <span className="text-[11px] font-bold leading-tight text-white">
+              Available for Other Schools
+            </span>
             <button
               type="button"
               onClick={handleToggleAvailability}
-              className={`w-11 h-6 rounded-full transition-all relative p-0.5 shrink-0 ${isAvailable ? 'bg-emerald-500' : 'bg-slate-600'}`}
+              className={`relative h-6 w-11 shrink-0 rounded-full p-0.5 transition-all ${isAvailable ? 'bg-emerald-500' : 'bg-slate-600'}`}
               aria-pressed={isAvailable}
             >
-              <span className={`block w-5 h-5 rounded-full bg-white shadow-sm transition-all ${isAvailable ? 'translate-x-5' : 'translate-x-0'}`} />
+              <span
+                className={`block h-5 w-5 rounded-full bg-white shadow-sm transition-all ${isAvailable ? 'translate-x-5' : 'translate-x-0'}`}
+              />
             </button>
           </div>
 
-          <div className="p-3 rounded-2xl bg-white/5 border border-white/10 space-y-1">
-            <span className="text-[9px] font-bold text-slate-400 uppercase tracking-wider block">
+          <div className="space-y-1 rounded-2xl border border-white/10 bg-white/5 p-3">
+            <span className="block text-[9px] font-bold uppercase tracking-wider text-slate-400">
               Unique Communication ID
             </span>
             <div className="flex items-center justify-between">
-              <span className="font-mono text-xs font-bold text-white tracking-wide">
+              <span className="font-mono text-xs font-bold tracking-wide text-white">
                 {escortCode || '—'}
               </span>
               {escortCode && (
@@ -388,7 +415,7 @@ export default function MyEduRideEscortDashboardPage() {
                     navigator.clipboard.writeText(escortCode);
                     toast.success('Communication ID copied');
                   }}
-                  className="text-slate-400 hover:text-white transition-all cursor-pointer"
+                  className="cursor-pointer text-slate-400 transition-all hover:text-white"
                   title="Copy ID"
                 >
                   <FileText size={14} />
@@ -397,21 +424,29 @@ export default function MyEduRideEscortDashboardPage() {
             </div>
             <button
               type="button"
-              onClick={() => { setShowIdCardModal(true); setSidebarOpen(false); }}
-              className="w-full mt-2 py-1.5 px-2.5 rounded-xl bg-emerald-500/20 hover:bg-emerald-500/30 border border-emerald-500/30 text-emerald-300 hover:text-white text-[10px] font-extrabold flex items-center justify-center gap-1.5 transition-all cursor-pointer shadow-xs"
+              onClick={() => {
+                setShowIdCardModal(true);
+                setSidebarOpen(false);
+              }}
+              className="shadow-xs mt-2 flex w-full cursor-pointer items-center justify-center gap-1.5 rounded-xl border border-emerald-500/30 bg-emerald-500/20 px-2.5 py-1.5 text-[10px] font-extrabold text-emerald-300 transition-all hover:bg-emerald-500/30 hover:text-white"
             >
               <QrCode size={13} className="text-emerald-400" />
               <span>Show Gate QR Pass</span>
             </button>
           </div>
 
-          <div className="p-3 rounded-2xl bg-white/5 border border-white/10 flex items-center gap-3">
-            <div className="w-8 h-8 rounded-xl bg-emerald-500/20 text-emerald-400 flex items-center justify-center shrink-0">
+          <div className="flex items-center gap-3 rounded-2xl border border-white/10 bg-white/5 p-3">
+            <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-xl bg-emerald-500/20 text-emerald-400">
               <Headphones size={18} />
             </div>
             <div>
-              <span className="text-[10px] text-slate-400 font-medium block">Need Help? 24/7 Support</span>
-              <a href="tel:08091234567" className="font-extrabold text-xs text-white hover:text-emerald-300 font-mono">
+              <span className="block text-[10px] font-medium text-slate-400">
+                Need Help? 24/7 Support
+              </span>
+              <a
+                href="tel:08091234567"
+                className="font-mono text-xs font-extrabold text-white hover:text-emerald-300"
+              >
                 0809 123 4567
               </a>
             </div>
@@ -420,29 +455,31 @@ export default function MyEduRideEscortDashboardPage() {
       </aside>
 
       {/* 2. RIGHT MAIN CONTENT WRAPPER */}
-      <div className="flex-1 flex flex-col min-w-0">
-        
+      <div className="flex min-w-0 flex-1 flex-col">
         {/* TOP HEADER BAR */}
-        <header className="bg-white border-b border-slate-200 sticky top-0 z-30 shadow-xs">
+        <header className="shadow-xs sticky top-0 z-30 border-b border-slate-200 bg-white">
           {/* Mobile: identity row, then labeled actions */}
-          <div className="lg:hidden px-3.5 pt-2.5 pb-2.5 space-y-2.5">
+          <div className="space-y-2.5 px-3.5 pb-2.5 pt-2.5 lg:hidden">
             <div className="flex items-center gap-2.5">
               <button
                 type="button"
                 onClick={() => setSidebarOpen(true)}
-                className="p-2.5 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 transition-colors shrink-0"
+                className="shrink-0 rounded-xl bg-slate-100 p-2.5 text-slate-700 transition-colors hover:bg-slate-200"
                 aria-label="Open Navigation Menu"
               >
                 <Menu size={20} />
               </button>
               <div className="min-w-0 flex-1">
-                <p className="text-[11px] text-slate-400 font-semibold leading-none">
+                <p className="text-[11px] font-semibold leading-none text-slate-400">
                   {clockDisplay.greeting}
                 </p>
-                <h2 className="font-black text-slate-900 text-base leading-tight truncate mt-0.5" title={escortName}>
+                <h2
+                  className="mt-0.5 truncate text-base font-black leading-tight text-slate-900"
+                  title={escortName}
+                >
                   {escortName}
                 </h2>
-                <p className="text-[10px] text-slate-500 font-medium truncate mt-0.5">
+                <p className="mt-0.5 truncate text-[10px] font-medium text-slate-500">
                   {escortCode ? `ID ${escortCode}` : 'Escort ID pending'}
                   {schoolName ? ` · ${schoolName}` : null}
                 </p>
@@ -454,23 +491,34 @@ export default function MyEduRideEscortDashboardPage() {
                 title="Escort Account Settings"
                 aria-label="Account settings"
               >
-                {photoSrc(session?.avatar_url) || photoSrc(liveDashboardData?.escort?.photo) || photoSrc(escortData?.photo) ? (
+                {photoSrc(session?.avatar_url) ||
+                photoSrc(liveDashboardData?.escort?.photo) ||
+                photoSrc(escortData?.photo) ? (
                   <img
-                    src={(photoSrc(session?.avatar_url) || photoSrc(liveDashboardData?.escort?.photo) || photoSrc(escortData?.photo)) as string}
+                    src={
+                      (photoSrc(session?.avatar_url) ||
+                        photoSrc(liveDashboardData?.escort?.photo) ||
+                        photoSrc(escortData?.photo)) as string
+                    }
                     alt=""
-                    className="w-10 h-10 rounded-full object-cover border-2 border-emerald-500"
+                    className="h-10 w-10 rounded-full border-2 border-emerald-500 object-cover"
                   />
                 ) : (
-                  <div className="w-10 h-10 rounded-full bg-emerald-600 text-white font-black flex items-center justify-center border-2 border-emerald-500 text-xs">
-                    {escortName.split(' ').map((n: string) => n[0]).join('').slice(0, 2).toUpperCase()}
+                  <div className="flex h-10 w-10 items-center justify-center rounded-full border-2 border-emerald-500 bg-emerald-600 text-xs font-black text-white">
+                    {escortName
+                      .split(' ')
+                      .map((n: string) => n[0])
+                      .join('')
+                      .slice(0, 2)
+                      .toUpperCase()}
                   </div>
                 )}
-                <span className="absolute bottom-0 right-0 w-2.5 h-2.5 rounded-full bg-emerald-500 border-2 border-white" />
+                <span className="absolute bottom-0 right-0 h-2.5 w-2.5 rounded-full border-2 border-white bg-emerald-500" />
               </button>
               <button
                 type="button"
                 onClick={handleLogout}
-                className="p-2.5 rounded-xl bg-red-50 hover:bg-red-100 text-red-600 border border-red-200 shrink-0"
+                className="shrink-0 rounded-xl border border-red-200 bg-red-50 p-2.5 text-red-600 hover:bg-red-100"
                 title="Log Out"
                 aria-label="Log Out"
               >
@@ -482,7 +530,7 @@ export default function MyEduRideEscortDashboardPage() {
               <button
                 type="button"
                 onClick={() => setShowIdCardModal(true)}
-                className="min-h-[52px] rounded-xl bg-[#0A1128] text-white flex flex-col items-center justify-center gap-0.5"
+                className="flex min-h-[52px] flex-col items-center justify-center gap-0.5 rounded-xl bg-[#0A1128] text-white"
               >
                 <QrCode size={16} className="text-emerald-400" />
                 <span className="text-[10px] font-bold">Pass</span>
@@ -490,7 +538,7 @@ export default function MyEduRideEscortDashboardPage() {
               <button
                 type="button"
                 onClick={() => setIncidentModalOpen(true)}
-                className="min-h-[52px] rounded-xl bg-amber-50 text-amber-800 border border-amber-200 flex flex-col items-center justify-center gap-0.5"
+                className="flex min-h-[52px] flex-col items-center justify-center gap-0.5 rounded-xl border border-amber-200 bg-amber-50 text-amber-800"
               >
                 <AlertTriangle size={16} />
                 <span className="text-[10px] font-bold">SOS</span>
@@ -498,26 +546,28 @@ export default function MyEduRideEscortDashboardPage() {
               <button
                 type="button"
                 onClick={() => setActiveNav('chat')}
-                className={`min-h-[52px] rounded-xl border flex flex-col items-center justify-center gap-0.5 relative ${
-                  activeNav === 'chat' ? 'bg-emerald-600 text-white border-emerald-600' : 'bg-slate-50 text-slate-700 border-slate-200'
+                className={`relative flex min-h-[52px] flex-col items-center justify-center gap-0.5 rounded-xl border ${
+                  activeNav === 'chat'
+                    ? 'border-emerald-600 bg-emerald-600 text-white'
+                    : 'border-slate-200 bg-slate-50 text-slate-700'
                 }`}
               >
                 <MessageSquare size={16} />
                 <span className="text-[10px] font-bold">Chat</span>
                 {chatUnreadTotal > 0 && (
-                  <span className="absolute top-1 right-1 min-w-4 h-4 px-0.5 rounded-full bg-rose-500 text-white text-[9px] font-black flex items-center justify-center">
+                  <span className="absolute right-1 top-1 flex h-4 min-w-4 items-center justify-center rounded-full bg-rose-500 px-0.5 text-[9px] font-black text-white">
                     {chatUnreadTotal}
                   </span>
                 )}
               </button>
               <button
                 type="button"
-                className="min-h-[52px] rounded-xl bg-slate-50 text-slate-700 border border-slate-200 flex flex-col items-center justify-center gap-0.5 relative"
+                className="relative flex min-h-[52px] flex-col items-center justify-center gap-0.5 rounded-xl border border-slate-200 bg-slate-50 text-slate-700"
               >
                 <Bell size={16} />
                 <span className="text-[10px] font-bold">Alerts</span>
                 {unreadNotifs > 0 && (
-                  <span className="absolute top-1 right-1 min-w-4 h-4 px-0.5 rounded-full bg-rose-500 text-white text-[9px] font-black flex items-center justify-center">
+                  <span className="absolute right-1 top-1 flex h-4 min-w-4 items-center justify-center rounded-full bg-rose-500 px-0.5 text-[9px] font-black text-white">
                     {Math.min(unreadNotifs, 99)}
                   </span>
                 )}
@@ -526,53 +576,67 @@ export default function MyEduRideEscortDashboardPage() {
           </div>
 
           {/* Desktop header: identity + account on top, compact actions below */}
-          <div className="hidden lg:block px-6 py-3">
+          <div className="hidden px-6 py-3 lg:block">
             <div className="flex items-center gap-4">
               <div className="min-w-0 flex-1">
-                <p className="text-[10px] text-slate-400 font-semibold">{clockDisplay.greeting},</p>
-                <div className="flex items-center gap-2 min-w-0">
-                  <h2 className="font-black text-slate-900 text-lg leading-tight truncate" title={escortName}>
+                <p className="text-[10px] font-semibold text-slate-400">{clockDisplay.greeting},</p>
+                <div className="flex min-w-0 items-center gap-2">
+                  <h2
+                    className="truncate text-lg font-black leading-tight text-slate-900"
+                    title={escortName}
+                  >
                     {escortName}
                   </h2>
-                  <span className="inline-flex px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-800 text-[10px] font-extrabold border border-emerald-200 shrink-0">
+                  <span className="inline-flex shrink-0 rounded-full border border-emerald-200 bg-emerald-100 px-2 py-0.5 text-[10px] font-extrabold text-emerald-800">
                     MyEduRide Escort
                   </span>
                 </div>
                 <p
-                  className="text-[11px] text-slate-500 font-medium truncate"
-                  title={
-                    [
-                      escortCode ? `Escort ID: ${escortCode}` : 'Escort ID pending',
-                      schoolName ? `Assigned School${assignedSchoolNames.length > 1 ? 's' : ''}: ${schoolName}` : '',
-                    ]
-                      .filter(Boolean)
-                      .join(' · ')
-                  }
+                  className="truncate text-[11px] font-medium text-slate-500"
+                  title={[
+                    escortCode ? `Escort ID: ${escortCode}` : 'Escort ID pending',
+                    schoolName
+                      ? `Assigned School${assignedSchoolNames.length > 1 ? 's' : ''}: ${schoolName}`
+                      : '',
+                  ]
+                    .filter(Boolean)
+                    .join(' · ')}
                 >
                   {escortCode ? <>Escort ID: {escortCode}</> : 'Escort ID pending'}
-                  {schoolName ? <> · {assignedSchoolNames.length > 1 ? 'Schools' : 'School'}: {schoolName}</> : null}
+                  {schoolName ? (
+                    <>
+                      {' '}
+                      · {assignedSchoolNames.length > 1 ? 'Schools' : 'School'}: {schoolName}
+                    </>
+                  ) : null}
                 </p>
               </div>
 
-              <div className="flex items-center gap-2 shrink-0">
-                <span className="inline-flex px-2.5 py-1 rounded-full bg-emerald-600 text-white text-[11px] font-bold items-center gap-1.5 border border-emerald-500">
-                  <span className="w-2 h-2 rounded-full bg-white animate-pulse" />
+              <div className="flex shrink-0 items-center gap-2">
+                <span className="inline-flex items-center gap-1.5 rounded-full border border-emerald-500 bg-emerald-600 px-2.5 py-1 text-[11px] font-bold text-white">
+                  <span className="h-2 w-2 animate-pulse rounded-full bg-white" />
                   I&apos;M ONLINE
                 </span>
                 <button
                   type="button"
                   onClick={handleToggleAvailability}
-                  className={`inline-flex px-2.5 py-1 rounded-full text-[11px] font-bold border ${
-                    isAvailable ? 'bg-emerald-50 text-emerald-800 border-emerald-200' : 'bg-slate-50 text-slate-600 border-slate-200'
+                  className={`inline-flex rounded-full border px-2.5 py-1 text-[11px] font-bold ${
+                    isAvailable
+                      ? 'border-emerald-200 bg-emerald-50 text-emerald-800'
+                      : 'border-slate-200 bg-slate-50 text-slate-600'
                   }`}
                 >
                   {isAvailable ? 'Available' : 'Primary only'}
                 </button>
-                <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-xl bg-slate-50 border border-slate-200">
+                <div className="flex items-center gap-1.5 rounded-xl border border-slate-200 bg-slate-50 px-2.5 py-1">
                   <Clock size={13} className="text-emerald-600" />
                   <div className="leading-tight">
-                    <span className="text-[11px] font-black text-slate-800 font-mono block">{clockDisplay.timeStr}</span>
-                    <span className="text-[9px] font-bold text-slate-400 block">{clockDisplay.dateStr}</span>
+                    <span className="block font-mono text-[11px] font-black text-slate-800">
+                      {clockDisplay.timeStr}
+                    </span>
+                    <span className="block text-[9px] font-bold text-slate-400">
+                      {clockDisplay.dateStr}
+                    </span>
                   </div>
                 </div>
                 <button
@@ -582,25 +646,36 @@ export default function MyEduRideEscortDashboardPage() {
                   title="Escort Account Settings"
                 >
                   <div className="relative">
-                    {photoSrc(session?.avatar_url) || photoSrc(liveDashboardData?.escort?.photo) || photoSrc(escortData?.photo) ? (
+                    {photoSrc(session?.avatar_url) ||
+                    photoSrc(liveDashboardData?.escort?.photo) ||
+                    photoSrc(escortData?.photo) ? (
                       <img
-                        src={(photoSrc(session?.avatar_url) || photoSrc(liveDashboardData?.escort?.photo) || photoSrc(escortData?.photo)) as string}
+                        src={
+                          (photoSrc(session?.avatar_url) ||
+                            photoSrc(liveDashboardData?.escort?.photo) ||
+                            photoSrc(escortData?.photo)) as string
+                        }
                         alt="MyEduRide Escort"
-                        className="w-9 h-9 rounded-full object-cover border-2 border-emerald-500"
+                        className="h-9 w-9 rounded-full border-2 border-emerald-500 object-cover"
                       />
                     ) : (
-                      <div className="w-9 h-9 rounded-full bg-emerald-600 text-white font-black flex items-center justify-center border-2 border-emerald-500 text-xs">
-                        {escortName.split(' ').map((n: string) => n[0]).join('').slice(0, 2).toUpperCase()}
+                      <div className="flex h-9 w-9 items-center justify-center rounded-full border-2 border-emerald-500 bg-emerald-600 text-xs font-black text-white">
+                        {escortName
+                          .split(' ')
+                          .map((n: string) => n[0])
+                          .join('')
+                          .slice(0, 2)
+                          .toUpperCase()}
                       </div>
                     )}
-                    <span className="absolute bottom-0 right-0 w-2.5 h-2.5 rounded-full bg-emerald-500 border-2 border-white" />
+                    <span className="absolute bottom-0 right-0 h-2.5 w-2.5 rounded-full border-2 border-white bg-emerald-500" />
                   </div>
                   <ChevronDown size={14} className="text-slate-600" />
                 </button>
                 <button
                   type="button"
                   onClick={handleLogout}
-                  className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-xl bg-red-50 hover:bg-red-100 text-red-600 border border-red-200 text-xs font-extrabold"
+                  className="inline-flex items-center gap-1 rounded-xl border border-red-200 bg-red-50 px-2.5 py-1.5 text-xs font-extrabold text-red-600 hover:bg-red-100"
                   title="Sign Out of MyEduRide Escort Account"
                 >
                   <LogOut size={14} />
@@ -610,11 +685,11 @@ export default function MyEduRideEscortDashboardPage() {
             </div>
 
             <div className="mt-2.5 flex items-center gap-2">
-              <div className="flex items-center gap-2 px-2.5 py-1 rounded-xl bg-slate-50 border border-slate-200">
-                <Wallet size={13} className="text-emerald-600 shrink-0" />
+              <div className="flex items-center gap-2 rounded-xl border border-slate-200 bg-slate-50 px-2.5 py-1">
+                <Wallet size={13} className="shrink-0 text-emerald-600" />
                 <div className="leading-tight">
-                  <span className="text-[9px] font-bold text-slate-400 block">Wallet</span>
-                  <span className="text-[11px] font-black text-slate-800 font-mono block">
+                  <span className="block text-[9px] font-bold text-slate-400">Wallet</span>
+                  <span className="block font-mono text-[11px] font-black text-slate-800">
                     ₦{walletBalance.toLocaleString('en-NG', { minimumFractionDigits: 2 })}
                   </span>
                 </div>
@@ -622,15 +697,19 @@ export default function MyEduRideEscortDashboardPage() {
               <button
                 type="button"
                 onClick={() => setActiveNav('wallet')}
-                className="inline-flex px-2.5 py-1.5 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-black items-center gap-1.5"
+                className="shadow-xs inline-flex cursor-pointer items-center gap-1.5 rounded-xl bg-emerald-600 px-2.5 py-1.5 text-xs font-black text-white transition-colors hover:bg-emerald-500"
+                title="View Escort Wallet & Request Bank Payout"
               >
-                <Plus size={14} />
-                Add Money
+                <svg className="h-3.5 w-3.5 shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                  <line x1="7" y1="17" x2="17" y2="7" />
+                  <polyline points="7 7 17 7 17 17" />
+                </svg>
+                Payout
               </button>
               <button
                 type="button"
                 onClick={() => setShowIdCardModal(true)}
-                className="px-2.5 py-1.5 rounded-xl bg-[#0A1128] hover:bg-slate-800 text-white border border-emerald-500/30 text-xs font-black flex items-center gap-1.5"
+                className="flex items-center gap-1.5 rounded-xl border border-emerald-500/30 bg-[#0A1128] px-2.5 py-1.5 text-xs font-black text-white hover:bg-slate-800"
                 title="Display Digital Escort Gate Pass with Scannable QR"
               >
                 <QrCode size={14} className="text-emerald-400" />
@@ -639,7 +718,7 @@ export default function MyEduRideEscortDashboardPage() {
               <button
                 type="button"
                 onClick={() => setIncidentModalOpen(true)}
-                className="px-2.5 py-1.5 rounded-xl bg-amber-50 hover:bg-amber-100 text-amber-800 border border-amber-300 text-xs font-black flex items-center gap-1"
+                className="flex items-center gap-1 rounded-xl border border-amber-300 bg-amber-50 px-2.5 py-1.5 text-xs font-black text-amber-800 hover:bg-amber-100"
                 title="Report Incident / Safety SOS"
               >
                 <AlertTriangle size={14} className="text-amber-600" />
@@ -648,26 +727,28 @@ export default function MyEduRideEscortDashboardPage() {
               <button
                 type="button"
                 onClick={() => setActiveNav('chat')}
-                className={`p-2 rounded-xl border relative ${
-                  activeNav === 'chat' ? 'bg-emerald-600 text-white border-emerald-600' : 'bg-slate-50 hover:bg-slate-100 text-slate-700 border-slate-200'
+                className={`relative rounded-xl border p-2 ${
+                  activeNav === 'chat'
+                    ? 'border-emerald-600 bg-emerald-600 text-white'
+                    : 'border-slate-200 bg-slate-50 text-slate-700 hover:bg-slate-100'
                 }`}
                 title="Open Communications"
               >
                 <MessageSquare size={16} />
                 {chatUnreadTotal > 0 && (
-                  <span className="absolute -top-1 -right-1 min-w-4 h-4 px-0.5 rounded-full bg-rose-500 text-white text-[9px] font-black flex items-center justify-center">
+                  <span className="absolute -right-1 -top-1 flex h-4 min-w-4 items-center justify-center rounded-full bg-rose-500 px-0.5 text-[9px] font-black text-white">
                     {chatUnreadTotal}
                   </span>
                 )}
               </button>
               <button
                 type="button"
-                className="p-2 rounded-xl border bg-slate-50 hover:bg-slate-100 text-slate-700 border-slate-200 relative"
+                className="relative rounded-xl border border-slate-200 bg-slate-50 p-2 text-slate-700 hover:bg-slate-100"
                 title="Notifications"
               >
                 <Bell size={16} />
                 {unreadNotifs > 0 && (
-                  <span className="absolute -top-1 -right-1 min-w-4 h-4 px-0.5 rounded-full bg-rose-500 text-white text-[9px] font-black flex items-center justify-center">
+                  <span className="absolute -right-1 -top-1 flex h-4 min-w-4 items-center justify-center rounded-full bg-rose-500 px-0.5 text-[9px] font-black text-white">
                     {Math.min(unreadNotifs, 99)}
                   </span>
                 )}
@@ -678,7 +759,7 @@ export default function MyEduRideEscortDashboardPage() {
         </header>
 
         {/* MAIN CANVAS BODY - Padded for mobile bottom bar */}
-        <main className="flex-1 p-3.5 sm:p-5 md:p-6 space-y-5 pb-24 lg:pb-8 max-w-7xl w-full mx-auto">
+        <main className="mx-auto w-full max-w-7xl flex-1 space-y-5 p-3.5 pb-24 sm:p-5 md:p-6 lg:pb-8">
           {activeNav === 'pricing' ? (
             <CityPricingReadOnlyPanel title="City Transport Pricing" />
           ) : (
@@ -696,23 +777,36 @@ export default function MyEduRideEscortDashboardPage() {
       </div>
 
       {/* MOBILE BOTTOM NAVIGATION BAR - Fixed, thumb-friendly app-like navigation */}
-      <nav className="lg:hidden fixed bottom-0 left-0 right-0 z-40 bg-[#0A1128]/95 backdrop-blur-md border-t border-slate-800/80 px-2 py-1.5 flex items-center justify-around shadow-2xl safe-area-inset-bottom">
+      <nav className="safe-area-inset-bottom fixed bottom-0 left-0 right-0 z-40 flex items-center justify-around border-t border-slate-800/80 bg-[#0A1128]/95 px-2 py-1.5 shadow-2xl backdrop-blur-md lg:hidden">
         <button
           type="button"
-          onClick={() => { setActiveNav('operations'); setSidebarOpen(false); }}
-          className={`flex flex-col items-center gap-0.5 py-1 px-2.5 rounded-xl transition-all cursor-pointer ${
-            activeNav === 'operations' ? 'text-emerald-400 font-black' : 'text-slate-400 hover:text-slate-200'
+          onClick={() => {
+            setActiveNav('operations');
+            setSidebarOpen(false);
+          }}
+          className={`flex cursor-pointer flex-col items-center gap-0.5 rounded-xl px-2.5 py-1 transition-all ${
+            activeNav === 'operations'
+              ? 'font-black text-emerald-400'
+              : 'text-slate-400 hover:text-slate-200'
           }`}
         >
-          <LayoutDashboard size={19} className={activeNav === 'operations' ? 'stroke-[2.5]' : 'stroke-2'} />
+          <LayoutDashboard
+            size={19}
+            className={activeNav === 'operations' ? 'stroke-[2.5]' : 'stroke-2'}
+          />
           <span className="text-[10px]">Home</span>
         </button>
 
         <button
           type="button"
-          onClick={() => { setActiveNav('trips'); setSidebarOpen(false); }}
-          className={`flex flex-col items-center gap-0.5 py-1 px-2.5 rounded-xl transition-all cursor-pointer ${
-            activeNav === 'trips' ? 'text-emerald-400 font-black' : 'text-slate-400 hover:text-slate-200'
+          onClick={() => {
+            setActiveNav('trips');
+            setSidebarOpen(false);
+          }}
+          className={`flex cursor-pointer flex-col items-center gap-0.5 rounded-xl px-2.5 py-1 transition-all ${
+            activeNav === 'trips'
+              ? 'font-black text-emerald-400'
+              : 'text-slate-400 hover:text-slate-200'
           }`}
         >
           <Navigation size={19} className={activeNav === 'trips' ? 'stroke-[2.5]' : 'stroke-2'} />
@@ -721,9 +815,17 @@ export default function MyEduRideEscortDashboardPage() {
 
         <button
           type="button"
-          onClick={() => { setActiveNav('students'); setSidebarOpen(false); }}
-          className={`flex flex-col items-center gap-0.5 py-1 px-2.5 rounded-xl transition-all cursor-pointer relative ${
-            activeNav === 'students' || activeNav === 'assignments' || activeNav === 'roster' || activeNav === 'schedule' ? 'text-emerald-400 font-black' : 'text-slate-400 hover:text-slate-200'
+          onClick={() => {
+            setActiveNav('students');
+            setSidebarOpen(false);
+          }}
+          className={`relative flex cursor-pointer flex-col items-center gap-0.5 rounded-xl px-2.5 py-1 transition-all ${
+            activeNav === 'students' ||
+            activeNav === 'assignments' ||
+            activeNav === 'roster' ||
+            activeNav === 'schedule'
+              ? 'font-black text-emerald-400'
+              : 'text-slate-400 hover:text-slate-200'
           }`}
         >
           <Users size={19} />
@@ -733,15 +835,20 @@ export default function MyEduRideEscortDashboardPage() {
         {/* 3. EduChat */}
         <button
           type="button"
-          onClick={() => { setActiveNav('chat'); setSidebarOpen(false); }}
-          className={`flex flex-col items-center gap-0.5 py-1 px-2.5 rounded-xl transition-all cursor-pointer relative ${
-            activeNav === 'chat' ? 'text-emerald-400 font-black' : 'text-slate-400 hover:text-slate-200'
+          onClick={() => {
+            setActiveNav('chat');
+            setSidebarOpen(false);
+          }}
+          className={`relative flex cursor-pointer flex-col items-center gap-0.5 rounded-xl px-2.5 py-1 transition-all ${
+            activeNav === 'chat'
+              ? 'font-black text-emerald-400'
+              : 'text-slate-400 hover:text-slate-200'
           }`}
         >
           <MessageSquare size={19} className={activeNav === 'chat' ? 'stroke-[2.5]' : 'stroke-2'} />
           <span className="text-[10px]">Chat</span>
           {chatUnreadTotal > 0 && (
-            <span className="absolute -top-0.5 right-1.5 w-4 h-4 rounded-full bg-rose-500 text-[9px] font-black text-white flex items-center justify-center animate-pulse shadow-xs">
+            <span className="shadow-xs absolute -top-0.5 right-1.5 flex h-4 w-4 animate-pulse items-center justify-center rounded-full bg-rose-500 text-[9px] font-black text-white">
               {chatUnreadTotal}
             </span>
           )}
@@ -749,9 +856,14 @@ export default function MyEduRideEscortDashboardPage() {
 
         <button
           type="button"
-          onClick={() => { setActiveNav('wallet'); setSidebarOpen(false); }}
-          className={`flex flex-col items-center gap-0.5 py-1 px-2.5 rounded-xl transition-all cursor-pointer ${
-            activeNav === 'wallet' || activeNav === 'earnings' ? 'text-emerald-400 font-black' : 'text-slate-400 hover:text-slate-200'
+          onClick={() => {
+            setActiveNav('wallet');
+            setSidebarOpen(false);
+          }}
+          className={`flex cursor-pointer flex-col items-center gap-0.5 rounded-xl px-2.5 py-1 transition-all ${
+            activeNav === 'wallet' || activeNav === 'earnings'
+              ? 'font-black text-emerald-400'
+              : 'text-slate-400 hover:text-slate-200'
           }`}
         >
           <Wallet size={19} />
@@ -762,7 +874,7 @@ export default function MyEduRideEscortDashboardPage() {
         <button
           type="button"
           onClick={() => setSidebarOpen(true)}
-          className="flex flex-col items-center gap-0.5 py-1 px-2.5 rounded-xl text-slate-400 hover:text-slate-200 transition-all cursor-pointer"
+          className="flex cursor-pointer flex-col items-center gap-0.5 rounded-xl px-2.5 py-1 text-slate-400 transition-all hover:text-slate-200"
         >
           <Menu size={19} />
           <span className="text-[10px]">Menu</span>
@@ -789,11 +901,7 @@ export default function MyEduRideEscortDashboardPage() {
         }}
       />
 
-      {showAccountModal && (
-        <AccountSettingsModal
-          onClose={() => setShowAccountModal(false)}
-        />
-      )}
+      {showAccountModal && <AccountSettingsModal onClose={() => setShowAccountModal(false)} />}
 
       {/* DIGITAL ON-SCREEN ESCORT GATE PASS MODAL */}
       <EscortIdCardModal
@@ -804,9 +912,18 @@ export default function MyEduRideEscortDashboardPage() {
           escort_code: escortCode,
           name: escortName,
           photo: liveDashboardData?.escort?.photo || escortData?.photo || session?.avatar_url,
-          vehicle_plate: liveDashboardData?.escort?.vehicle_plate || escortData?.regNumber || escortData?.vehicle?.regNumber,
-          vehicle_name: liveDashboardData?.escort?.vehicle_name || escortData?.vehicleType || escortData?.vehicle?.type,
-          operating_area: liveDashboardData?.escort?.operating_area || escortData?.operating_area || escortData?.city,
+          vehicle_plate:
+            liveDashboardData?.escort?.vehicle_plate ||
+            escortData?.regNumber ||
+            escortData?.vehicle?.regNumber,
+          vehicle_name:
+            liveDashboardData?.escort?.vehicle_name ||
+            escortData?.vehicleType ||
+            escortData?.vehicle?.type,
+          operating_area:
+            liveDashboardData?.escort?.operating_area ||
+            escortData?.operating_area ||
+            escortData?.city,
         }}
       />
     </div>

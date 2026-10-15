@@ -696,7 +696,24 @@ export async function getEscortApplications(city?: string, options?: GetEscortAp
     if (Array.isArray(assignments) && assignments.length > 0) {
       allApps = allApps.map((app) => {
         const matching = assignments.filter((a) => a.escort_application_id === app.id);
-        const assignedStudents = matching.map((a) => {
+        
+        // Deduplicate assignments by student_id (prioritizing active over pending_confirmation)
+        const sortedMatching = [...matching].sort((a: any, b: any) => {
+          if (a.status === 'active' && b.status !== 'active') return -1;
+          if (b.status === 'active' && a.status !== 'active') return 1;
+          return new Date(b.created_at || 0).getTime() - new Date(a.created_at || 0).getTime();
+        });
+        const uniqueMatching: any[] = [];
+        const seenStudentIds = new Set<string>();
+        for (const a of sortedMatching) {
+          const anySt = (a as any).student;
+          const sid = a.student_id || (Array.isArray(anySt) ? anySt[0]?.id : anySt?.id);
+          if (sid && seenStudentIds.has(sid)) continue;
+          if (sid) seenStudentIds.add(sid);
+          uniqueMatching.push(a);
+        }
+
+        const assignedStudents = uniqueMatching.map((a) => {
           const st = Array.isArray(a.student) ? a.student[0] : a.student;
           const sch = Array.isArray(a.school) ? a.school[0] : a.school;
           const cls = Array.isArray(st?.class) ? st.class[0] : st?.class;

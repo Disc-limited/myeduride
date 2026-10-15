@@ -69,7 +69,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
       setIsSessionValid(true);
       
       // Determine if user has any active staff roles
-      const isStaff = session.roles.some((r: any) =>
+      const isStaff = (session.roles || []).some((r: any) =>
         ['super_admin', 'school_admin', 'teacher', 'gate_officer', 'staff'].includes(r.role)
       );
       setShowChatButton(isStaff);

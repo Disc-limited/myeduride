@@ -96,7 +96,7 @@ export async function POST(request: NextRequest) {
     }
 
     // 4. Initialize SeerBit Checkout session
-    const callbackUrl = `${request.nextUrl.origin}/dashboard/parent?tab=wallet&reference=${reference}`;
+    const callbackUrl = `${request.nextUrl.origin}/api/wallet/callback?reference=${reference}`;
     const initRes = await SeerBitClient.initializePayment({
       amountNgn: rawAmount,
       email: session.email || `${session.username || 'parent'}@myeduride.com`,
