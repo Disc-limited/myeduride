@@ -27,6 +27,7 @@ import {
   ChevronRight,
 } from 'lucide-react';
 import { toast } from 'sonner';
+import { DigitalReceiptModal } from '@/components/shared/DigitalReceiptModal';
 
 interface WalletOverviewData {
   wallet: {
@@ -130,6 +131,9 @@ export default function SchoolWalletOverviewPage() {
           const json = await res.json();
           if (json.success && (json.status === 'SUCCESS' || json.credited)) {
             toast.success('School wallet credited successfully! 🏫💳', { id: verifyToastId });
+            if (json.receipt) {
+              setActiveReceipt(json.receipt);
+            }
           } else {
             toast.info(json.message || 'Payment is being processed by the gateway.', {
               id: verifyToastId,
@@ -705,96 +709,16 @@ export default function SchoolWalletOverviewPage() {
         </div>
       )}
 
-      {/* Transaction Receipt Modal */}
-      {activeReceipt && (
-        <div className="backdrop-blur-xs animate-in fade-in fixed inset-0 z-50 flex items-center justify-center bg-slate-900/60 p-4 duration-200">
-          <div className="w-full max-w-lg space-y-5 rounded-3xl border border-slate-100 bg-white p-6 shadow-2xl">
-            <div className="flex items-center justify-between border-b border-slate-100 pb-3">
-              <div className="flex items-center gap-2">
-                <Receipt className="text-emerald-600" size={20} />
-                <h3 className="text-base font-black text-slate-900">
-                  Institutional Transaction Receipt
-                </h3>
-              </div>
-              <button
-                onClick={() => setActiveReceipt(null)}
-                className="cursor-pointer rounded-xl p-1.5 text-slate-400 transition-colors hover:bg-slate-100 hover:text-slate-700"
-              >
-                <X size={18} />
-              </button>
-            </div>
-
-            <div className="space-y-3 rounded-2xl border border-slate-100 bg-slate-50 p-4">
-              <div className="flex items-center justify-between">
-                <span className="text-xs font-medium text-slate-500">Receipt ID:</span>
-                <span className="font-mono text-xs font-bold text-slate-900">
-                  {activeReceipt.id}
-                </span>
-              </div>
-              <div className="flex items-center justify-between">
-                <span className="text-xs font-medium text-slate-500">Reference:</span>
-                <span className="font-mono text-xs font-bold text-slate-900">
-                  {activeReceipt.reference}
-                </span>
-              </div>
-              <div className="flex items-center justify-between">
-                <span className="text-xs font-medium text-slate-500">Date & Time:</span>
-                <span className="text-xs font-bold text-slate-900">
-                  {new Date(activeReceipt.created_at).toLocaleString('en-NG')}
-                </span>
-              </div>
-              <div className="flex items-center justify-between">
-                <span className="text-xs font-medium text-slate-500">Channel:</span>
-                <span className="font-mono text-xs font-bold text-slate-900">
-                  {activeReceipt.channel}
-                </span>
-              </div>
-              <div className="flex items-center justify-between">
-                <span className="text-xs font-medium text-slate-500">Status:</span>
-                <span className="rounded-full bg-emerald-100 px-2 py-0.5 text-[10px] font-black uppercase text-emerald-800">
-                  {activeReceipt.status}
-                </span>
-              </div>
-              <div className="flex items-center justify-between border-t border-slate-200 pt-2">
-                <span className="text-sm font-black text-slate-800">Amount:</span>
-                <span
-                  className={`text-lg font-black ${
-                    activeReceipt.type === 'CREDIT' ? 'text-emerald-600' : 'text-slate-900'
-                  }`}
-                >
-                  {activeReceipt.type === 'CREDIT' ? '+' : '-'}₦
-                  {activeReceipt.amount_ngn.toLocaleString('en-NG', { minimumFractionDigits: 2 })}
-                </span>
-              </div>
-              <div className="flex items-center justify-between text-xs text-slate-500">
-                <span>Balance After:</span>
-                <span className="font-bold text-slate-700">
-                  ₦
-                  {activeReceipt.balance_after_ngn.toLocaleString('en-NG', {
-                    minimumFractionDigits: 2,
-                  })}
-                </span>
-              </div>
-            </div>
-
-            <div className="flex items-center gap-3">
-              <button
-                onClick={() => window.print()}
-                className="flex flex-1 cursor-pointer items-center justify-center gap-1.5 rounded-xl border border-slate-200 py-2.5 text-xs font-bold text-slate-700 transition-colors hover:bg-slate-50"
-              >
-                <Printer size={15} />
-                <span>Print Receipt</span>
-              </button>
-              <button
-                onClick={() => setActiveReceipt(null)}
-                className="flex-1 cursor-pointer rounded-xl bg-slate-900 py-2.5 text-xs font-bold text-white transition-colors hover:bg-slate-800"
-              >
-                Close
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
+      {/* Institutional Digital Receipt Modal */}
+      <DigitalReceiptModal
+        isOpen={!!activeReceipt}
+        onClose={() => setActiveReceipt(null)}
+        transaction={activeReceipt}
+        entityDetails={{
+          name: data?.wallet.school_name || 'Institutional School Account',
+          type: 'SCHOOL',
+        }}
+      />
     </div>
   );
 }

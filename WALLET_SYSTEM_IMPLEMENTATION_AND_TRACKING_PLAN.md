@@ -111,33 +111,31 @@ The wallet system is fortified by the **7-Layer Defensive Ring** from our Cybers
     - Payment Method (`Card Checkout`, `Virtual Account Transfer`, `USSD`).
     - Formatted Timestamp (`dd MMM yyyy, hh:mm A` in `Africa/Lagos`).
     - *Hardening:* Compute SHA-256 HMAC verification hash over the receipt payload to guarantee authenticity against tampering.
-- [ ] **2.2 Styled Email Receipt Template**:
-  - Build `src/lib/notifications/email-templates/payment-receipt.ts` with brand typography, transaction breakdown, and printable invoice styling.
-  - Integrate with `sendEmail()` in `src/lib/notifications/email-service.ts`.
-- [ ] **2.3 Payment Verification & Webhook Dispatch**:
-  - Update `src/app/api/parent/wallet/verify/route.ts` and `src/app/api/webhooks/seerbit/route.ts` to automatically dispatch the email receipt upon deposit success.
-  - Update school deposit verification route to trigger institutional email receipts.
-- [ ] **2.4 In-App Digital Receipt Modal**:
-  - Build `src/components/shared/DigitalReceiptModal.tsx` allowing parents and school admins to view, print, or download official receipts for any past credit transaction.
+- [x] **2.1 Standardized Cryptographic Receipt Engine**:
+  - Created `src/lib/payments/receipt-engine.ts` with SHA-256 HMAC verification.
+- [x] **2.2 Styled Email Receipt Template**:
+  - Built `src/lib/notifications/email-templates/payment-receipt.ts` & `payment-receipt-render.ts`.
+- [x] **2.3 Payment Verification & Webhook Dispatch**:
+  - Integrated in parent/school verification endpoints and SeerBit webhooks.
+- [x] **2.4 In-App Digital Receipt Modal**:
+  - Built `src/components/shared/DigitalReceiptModal.tsx` with isolated single-page print and Ctrl+P intercept.
 
 ---
 
 ### Phase 3: Gate System Daily Deduction & Daily Attendance Digest
-- [ ] **3.1 Gate Fee Migration & Stored Procedure**:
-  - Create migration `migrations/031_school_gate_daily_billing.sql`:
-    - Add `daily_gate_fee_kobo` column to `schools` (configurable per school, default e.g. ₦2,500/day or tier-based).
-    - Implement stored procedure `public.execute_daily_school_gate_deduction(p_school_id, p_date)`.
-    - *Hardening:* Uses pessimistic row lock (`SELECT FOR UPDATE`) on the school wallet. Deducts fee and writes immutable `DEBIT` ledger row (`GATE_SYSTEM_DAILY_ACCESS`).
-- [ ] **3.2 Automated Daily Attendance Roll-Call Engine**:
-  - Create `src/lib/attendance/daily-roll-call.ts`:
-    - Queries all enrolled students for the school: identifies Present (with arrival timestamps) vs. Absent.
-    - Queries all active staff members: identifies Signed-In (with timestamps) vs. Absent.
-    - Computes attendance rates, on-time arrivals, and late arrivals.
-- [ ] **3.3 Daily School Digest Dispatch Worker**:
-  - Create endpoint `src/app/api/cron/daily-gate-digest/route.ts`:
-    - Runs at morning gate closure (10:00 AM Lagos Time) and end-of-day (4:00 PM Lagos Time).
-    - Executes the daily gate fee deduction.
-    - Dispatches a consolidated Attendance & Absentee intelligence report to school administrators via in-app alert and email.
+- [x] **3.1 Gate Fee Migration & Stored Procedure**:
+  - Created `migrations/031_school_gate_daily_billing.sql` with `execute_daily_school_gate_deduction(p_school_id, p_date)`.
+  - Added pessimistic row locking (`SELECT FOR UPDATE`), deterministic idempotency key (`GATE-SYS-<school_id>-<YYYYMMDD>`), and immutable `DEBIT` ledger entry (`GATE_SYSTEM_DAILY_ACCESS`).
+- [x] **3.2 Automated Daily Attendance Roll-Call Engine**:
+  - Built `src/lib/attendance/daily-roll-call.ts`:
+    - Queries active enrolled students: categorizes Present vs Absent, on-time vs late against school cutoff.
+    - Queries active school staff: categorizes Signed-In vs Absent with arrival/departure timestamps.
+    - Aggregates class-by-class attendance rates and high-priority absentee highlights.
+- [x] **3.3 Daily School Digest Dispatch Worker**:
+  - Built `src/app/api/cron/daily-gate-digest/route.ts`:
+    - Supports morning gate closure (10:00 AM WAT) and end-of-day dismissal (6:00 PM WAT).
+    - Executes atomic gate fee deduction.
+    - Dispatches executive HTML email reports via `sendDailyGateDigestEmail()` and in-app alerts to verified school administrators.
 
 ---
 

@@ -90,8 +90,22 @@ export default function DashboardRouter() {
 
     if (userRoles.length === 1) {
       const singleRole = userRoles[0];
-      const targetHref = ROLE_CONFIG[singleRole]?.href || '/dashboard/escort';
+      const psId = session?.primary_school?.id || session?.primary_school_id;
+      let targetHref = ROLE_CONFIG[singleRole]?.href || '/dashboard/escort';
+      if ((singleRole === 'gate_officer' || singleRole === 'gate_manager' || singleRole === 'security_officer') && psId) {
+        targetHref = `/dashboard/gate?school_id=${psId}`;
+      }
       router.push(targetHref);
+      return;
+    } else if (
+      userRoles.includes('gate_officer') &&
+      !userRoles.includes('school_admin') &&
+      !userRoles.includes('super_admin') &&
+      userRoles.every((r) => r === 'gate_officer' || r === 'staff')
+    ) {
+      // Dedicated Gate Officers (who have gate_officer + baseline staff record)
+      const psId = session?.primary_school?.id || session?.primary_school_id;
+      router.push(psId ? `/dashboard/gate?school_id=${psId}` : '/dashboard/gate');
       return;
     } else if (userRoles.includes('city_manager') && userRoles.length === 1) {
       router.push('/dashboard/city-manager');
@@ -127,11 +141,16 @@ export default function DashboardRouter() {
           {roles.map((role) => {
             const config = ROLE_CONFIG[role] || FALLBACK_CONFIG;
             const IconComponent = config.icon || User;
+            const session = getSession();
+            const psId = session?.primary_school?.id || session?.primary_school_id;
+            const targetHref = (role === 'gate_officer' || role === 'gate_manager' || role === 'security_officer') && psId
+              ? `/dashboard/gate?school_id=${psId}`
+              : config.href;
 
             return (
               <button
                 key={role}
-                onClick={() => router.push(config.href)}
+                onClick={() => router.push(targetHref)}
                 className="w-full flex items-center gap-4 p-4 bg-white rounded-2xl border border-gray-100 shadow-sm hover:shadow-md hover:border-primary-200 transition-all text-left group"
               >
                 <div className={`w-12 h-12 rounded-xl bg-gradient-to-br ${config.gradient} flex items-center justify-center text-white shadow-sm`}>

@@ -39,7 +39,7 @@ import {
   Activity,
   BadgePercent,
 } from 'lucide-react';
-import { logout } from '@/lib/api';
+import { logout, getSession } from '@/lib/api';
 
 interface NavItem {
   label: string;
@@ -66,6 +66,7 @@ export function AdminSidebar({
   onToggleCollapse?: () => void;
 }) {
   const pathname = usePathname();
+  const [activeSchoolId, setActiveSchoolId] = useState('');
   const [openSubmenus, setOpenSubmenus] = useState<Record<string, boolean>>({
     Students: false,
     Parents: false,
@@ -73,6 +74,13 @@ export function AdminSidebar({
     'Escort Records': false,
     Reports: false,
   });
+
+  useEffect(() => {
+    const s = getSession();
+    if (s?.primary_school?.id || s?.primary_school_id) {
+      setActiveSchoolId(s.primary_school?.id || s.primary_school_id);
+    }
+  }, []);
 
   useEffect(() => {
     if (pathname.startsWith('/dashboard/school-admin/students')) {
@@ -148,7 +156,7 @@ export function AdminSidebar({
         { label: 'Pickup List', href: '/dashboard/school-admin/pickup-persons', icon: <Car size={18} /> },
         { label: 'Vehicles', href: '/dashboard/school-admin/vehicles', icon: <Car size={18} /> },
         { label: 'Routes', href: '/dashboard/school-admin/routes', icon: <MapPin size={18} /> },
-        { label: 'Gate Manager', href: '/dashboard/gate', icon: <DoorOpen size={18} /> },
+        { label: 'Gate Manager', href: activeSchoolId ? `/dashboard/gate?school_id=${activeSchoolId}` : '/dashboard/gate', icon: <DoorOpen size={18} /> },
         {
           label: 'Escort Verification Reports',
           href: '/dashboard/school-admin/reports/escort-verification',

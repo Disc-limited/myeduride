@@ -353,7 +353,7 @@ export default function SchoolAdminDashboard() {
     { label: 'Send Notice', icon: <Send size={18} />, color: 'bg-sky-100 text-sky-700', isNotice: true },
     { label: 'View Reports', icon: <FileText size={18} />, color: 'bg-cyan-100 text-cyan-700', href: '/dashboard/school-admin/reports' },
     { label: 'Wallet', icon: <WalletIcon size={18} />, color: 'bg-amber-100 text-amber-700', href: '/dashboard/school-admin/wallet' },
-    { label: 'Gate Manager', icon: <DoorOpen size={18} />, color: 'bg-rose-100 text-rose-700', href: '/dashboard/gate' },
+    { label: 'Gate Manager', icon: <DoorOpen size={18} />, color: 'bg-rose-100 text-rose-700', href: schoolId ? `/dashboard/gate?school_id=${schoolId}` : '/dashboard/gate' },
     { label: 'Ask Migo', icon: <Bot size={18} />, color: 'bg-emerald-600 text-white shadow-md shadow-emerald-900/30', href: '#migo', isMigo: true },
   ];
 

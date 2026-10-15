@@ -37,6 +37,8 @@ import { cityPricingSuite } from './unit/city-pricing-manifest-invariants.test';
 import { signInOutLocationSuite } from './unit/sign-in-out-location.test';
 import { tripCancellationCutoffSuite } from './unit/trip-cancellation-cutoff.test';
 import { schoolWalletInvariantsSuite } from './unit/school-wallet-invariants.test';
+import { receiptEngineSuite } from './unit/receipt-engine.test';
+import { dailyGateDeductionAndRollCallSuite } from './unit/daily-gate-deduction-and-roll-call.test';
 import { pickupControlApiSuite } from './integration/pickup-control-api.test';
 import { escortApisSuite } from './integration/escort-apis.test';
 import { routesVehiclesApiSuite } from './integration/routes-vehicles-api.test';
@@ -104,6 +106,8 @@ async function runAllTests() {
     signInOutLocationSuite,
     tripCancellationCutoffSuite,
     schoolWalletInvariantsSuite,
+    receiptEngineSuite,
+    dailyGateDeductionAndRollCallSuite,
     pickupControlApiSuite,
     escortApisSuite,
     routesVehiclesApiSuite,

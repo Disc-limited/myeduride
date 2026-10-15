@@ -26,6 +26,7 @@ import {
   Download,
 } from 'lucide-react';
 import { toast } from 'sonner';
+import { DigitalReceiptModal } from '@/components/shared/DigitalReceiptModal';
 
 interface WalletData {
   id: string;
@@ -148,6 +149,9 @@ export default function ParentWalletView({
               toast.success(`Payment verified! ₦${(data.amount_kobo / 100).toLocaleString()} credited to your wallet.`, {
                 id: 'seerbit-verify',
               });
+              if (data.receipt) {
+                setSelectedReceiptTx(data.receipt);
+              }
               fetchWallet(true);
             } else {
               toast.error(data.error || 'Payment verification pending. Your wallet will update once confirmed.', {
@@ -159,8 +163,17 @@ export default function ParentWalletView({
             toast.dismiss('seerbit-verify');
           })
           .finally(() => {
-            const cleanUrl = window.location.pathname + window.location.search.replace(/[?&]reference=[^&]+/, '').replace(/[?&]ref=[^&]+/, '');
-            window.history.replaceState({}, document.title, cleanUrl);
+            try {
+              const currentUrl = new URL(window.location.href);
+              currentUrl.searchParams.delete('reference');
+              currentUrl.searchParams.delete('ref');
+              currentUrl.searchParams.delete('paymentReference');
+              currentUrl.searchParams.delete('linkingreference');
+              currentUrl.searchParams.set('tab', 'wallet');
+              window.history.replaceState({}, document.title, currentUrl.pathname + currentUrl.search);
+            } catch {
+              // fallback
+            }
           });
       }
     }
@@ -688,130 +701,16 @@ export default function ParentWalletView({
         </div>
       )}
 
-      {/* Digital Receipt Modal (Phase 3 Requirement) */}
-      {selectedReceiptTx && (
-        <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4">
-          <div className="bg-white rounded-3xl max-w-lg w-full p-6 sm:p-8 shadow-2xl border border-slate-100 space-y-5 animate-in fade-in zoom-in duration-200">
-            {/* Receipt Header */}
-            <div className="flex items-start justify-between pb-4 border-b border-slate-100">
-              <div className="space-y-1">
-                <div className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full bg-emerald-50 text-emerald-800 text-[10px] font-black border border-emerald-200/80">
-                  <ShieldCheck className="w-3.5 h-3.5 text-emerald-600" />
-                  <span>OFFICIAL TRANSACTION RECEIPT</span>
-                </div>
-                <h2 className="text-xl font-black text-slate-900 tracking-tight">
-                  MyEduRide Transit Vault
-                </h2>
-                <p className="text-[11px] text-slate-400">
-                  CBN-Compliant Electronic Ledger Voucher
-                </p>
-              </div>
-
-              <button
-                type="button"
-                onClick={() => setSelectedReceiptTx(null)}
-                className="p-1.5 text-slate-400 hover:text-slate-700 rounded-xl hover:bg-slate-100 transition-colors cursor-pointer"
-              >
-                ✕
-              </button>
-            </div>
-
-            {/* Receipt Amount Box */}
-            <div className="bg-slate-50 p-4 rounded-2xl border border-slate-100 text-center space-y-1">
-              <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest block">
-                Total Transaction Amount
-              </span>
-              <div className="text-3xl font-black text-slate-900">
-                ₦{selectedReceiptTx.amount_ngn.toLocaleString('en-NG', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-              </div>
-              <div className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full bg-emerald-100 text-emerald-800 text-[11px] font-extrabold">
-                <CheckCircle2 className="w-3 h-3" />
-                <span>{selectedReceiptTx.status}</span>
-              </div>
-            </div>
-
-            {/* Details Table */}
-            <div className="space-y-2.5 text-xs">
-              <div className="flex items-center justify-between py-1 border-b border-slate-100">
-                <span className="text-slate-400 font-medium">Transaction Type</span>
-                <span className="font-extrabold text-slate-900">{selectedReceiptTx.transaction_type}</span>
-              </div>
-              <div className="flex items-center justify-between py-1 border-b border-slate-100">
-                <span className="text-slate-400 font-medium">Payment Channel</span>
-                <span className="font-extrabold text-slate-900">{selectedReceiptTx.channel}</span>
-              </div>
-              <div className="flex items-center justify-between py-1 border-b border-slate-100">
-                <span className="text-slate-400 font-medium">Payment Reference</span>
-                <span className="font-mono font-bold text-slate-700">{selectedReceiptTx.reference}</span>
-              </div>
-              <div className="flex items-center justify-between py-1 border-b border-slate-100">
-                <span className="text-slate-400 font-medium">Date &amp; Time</span>
-                <span className="font-medium text-slate-900">
-                  {new Date(selectedReceiptTx.created_at).toLocaleString('en-NG')}
-                </span>
-              </div>
-              <div className="flex items-center justify-between py-1 border-b border-slate-100">
-                <span className="text-slate-400 font-medium">Balance Before</span>
-                <span className="font-medium text-slate-700">
-                  ₦{selectedReceiptTx.balance_before_ngn.toLocaleString('en-NG', { minimumFractionDigits: 2 })}
-                </span>
-              </div>
-              <div className="flex items-center justify-between py-1 border-b border-slate-100">
-                <span className="text-slate-400 font-medium">Balance After</span>
-                <span className="font-black text-slate-900">
-                  ₦{selectedReceiptTx.balance_after_ngn.toLocaleString('en-NG', { minimumFractionDigits: 2 })}
-                </span>
-              </div>
-
-              {/* SHA-256 Ledger Integrity Proof */}
-              {selectedReceiptTx.row_integrity_hash && (
-                <div className="p-3 bg-emerald-50/60 rounded-xl border border-emerald-100 space-y-1">
-                  <div className="flex items-center justify-between">
-                    <span className="text-[10px] font-extrabold text-emerald-800 uppercase tracking-wider flex items-center gap-1">
-                      <ShieldCheck className="w-3.5 h-3.5 text-emerald-600" />
-                      Cryptographic Ledger Hash (SHA-256)
-                    </span>
-                    <button
-                      type="button"
-                      onClick={() => {
-                        navigator.clipboard.writeText(selectedReceiptTx.row_integrity_hash || '');
-                        setCopiedHash(true);
-                        toast.success('SHA-256 hash copied to clipboard');
-                        setTimeout(() => setCopiedHash(false), 2000);
-                      }}
-                      className="text-[10px] font-bold text-emerald-700 hover:text-emerald-900 cursor-pointer"
-                    >
-                      {copiedHash ? 'Copied!' : 'Copy'}
-                    </button>
-                  </div>
-                  <div className="font-mono text-[10px] text-slate-700 break-all bg-white/80 p-2 rounded-lg border border-emerald-100/60 select-all">
-                    {selectedReceiptTx.row_integrity_hash}
-                  </div>
-                </div>
-              )}
-            </div>
-
-            {/* Actions */}
-            <div className="flex items-center gap-3 pt-2">
-              <button
-                type="button"
-                onClick={() => window.print()}
-                className="flex-1 py-3 rounded-xl bg-slate-900 hover:bg-slate-800 text-white font-bold text-xs flex items-center justify-center gap-2 transition-all cursor-pointer shadow-sm"
-              >
-                <Printer className="w-4 h-4" />
-                <span>Print / Save Receipt</span>
-              </button>
-              <button
-                type="button"
-                onClick={() => setSelectedReceiptTx(null)}
-                className="px-5 py-3 rounded-xl border border-slate-200 text-slate-600 hover:text-slate-900 font-bold text-xs transition-all cursor-pointer"
-              >
-                Close
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
+      {/* Instant Digital Receipt Modal */}
+      <DigitalReceiptModal
+        isOpen={!!selectedReceiptTx}
+        onClose={() => setSelectedReceiptTx(null)}
+        transaction={selectedReceiptTx}
+        entityDetails={{
+          name: 'Parent / Guardian',
+          type: 'PARENT',
+        }}
+      />
     </div>
   );
 }

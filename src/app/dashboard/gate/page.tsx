@@ -1,8 +1,9 @@
 'use client';
 
-import { useState, useEffect, useRef, useMemo, useCallback } from 'react';
+import { useState, useEffect, useRef, useMemo, useCallback, Suspense } from 'react';
 import Link from 'next/link';
-import { fetchData, logout } from '@/lib/api';
+import { useSearchParams } from 'next/navigation';
+import { fetchData, logout, getSession } from '@/lib/api';
 import StudentAvatar from '@/components/shared/StudentAvatar';
 import {
   ShieldCheck,
@@ -72,11 +73,13 @@ function splitName(fullName: string) {
   return { first: parts[0] || '', last: parts.slice(1).join(' ') || '' };
 }
 
-export default function GateOfficerDashboard() {
+function GateOfficerDashboardInner() {
+  const searchParams = useSearchParams();
+  const querySchoolId = searchParams?.get('school_id') || '';
   const [activeNav, setActiveNav] = useState('dashboard');
   const [mobileOpen, setMobileOpen] = useState(false);
   const [currentTime, setCurrentTime] = useState<Date | null>(null);
-  const [schoolId, setSchoolId] = useState('');
+  const [schoolId, setSchoolId] = useState(querySchoolId);
   const [schoolInfo, setSchoolInfo] = useState({ name: 'School Campus', address: 'Campus Location', logo_url: '', primary_color: '#1B4D3E' });
   const [officerInfo, setOfficerInfo] = useState({ name: 'Gate Officer', role: 'Gate Officer', gate: 'Main Security Gate' });
 
@@ -183,7 +186,7 @@ export default function GateOfficerDashboard() {
     const timer = setInterval(() => setCurrentTime(new Date()), 1000);
     loadSchoolData();
     return () => clearInterval(timer);
-  }, []);
+  }, [querySchoolId]);
 
   // Poll Gate Dashboard API
   const loadGateData = useCallback(async () => {
@@ -263,7 +266,12 @@ export default function GateOfficerDashboard() {
 
   const loadSchoolData = async () => {
     try {
-      const data = await fetchData('get_school_admin_data', { role: 'gate_officer' });
+      const session = getSession();
+      const targetSchool = querySchoolId || session?.primary_school?.id || session?.primary_school_id;
+      const data = await fetchData('get_school_admin_data', {
+        role: 'gate_officer',
+        school_id: targetSchool || undefined,
+      });
       if (data.school_id) {
         setSchoolId(data.school_id);
       }
@@ -2825,5 +2833,21 @@ function LayoutDashboardIcon(props: any) {
       <rect width="7" height="9" x="14" y="12" rx="1" />
       <rect width="7" height="5" x="3" y="16" rx="1" />
     </svg>
+  );
+}
+
+export default function GateOfficerDashboard() {
+  return (
+    <Suspense
+      fallback={
+        <div className="min-h-screen bg-slate-100 flex items-center justify-center">
+          <div className="animate-pulse text-emerald-800 font-bold text-sm">
+            Loading Gate Dashboard...
+          </div>
+        </div>
+      }
+    >
+      <GateOfficerDashboardInner />
+    </Suspense>
   );
 }

@@ -110,10 +110,14 @@ export function RoleSwitcher({ showLogout = true, className = '' }: RoleSwitcher
                 const config = ROLE_CONFIG[role];
                 if (!config) return null;
                 const isCurrent = role === currentRole;
+                const activeSchoolId = session?.primary_school?.id || session?.primary_school_id;
+                const roleHref = (role === 'gate_officer' || role === 'gate_manager' || role === 'security_officer') && activeSchoolId
+                  ? `/dashboard/gate?school_id=${activeSchoolId}`
+                  : config.href;
                 return (
                   <Link
                     key={role}
-                    href={config.href}
+                    href={roleHref}
                     onClick={() => {
                       setOpen(false);
                       if (session && typeof session === 'object') {

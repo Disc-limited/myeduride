@@ -2,6 +2,8 @@ import { NextRequest, NextResponse } from 'next/server';
 import { getSessionFromRequest } from '@/lib/session';
 import { getAdminClient } from '@/lib/supabase/admin';
 import { SeerBitClient } from '@/lib/payments/seerbit';
+import { generateReceipt } from '@/lib/payments/receipt-engine';
+import { sendPaymentReceiptEmail } from '@/lib/notifications/email-templates/payment-receipt';
 
 export const dynamic = 'force-dynamic';
 
@@ -69,6 +71,7 @@ export async function POST(request: NextRequest) {
         amount_kobo: intent.amount_kobo || 0,
         available_balance_kobo: currentWallet?.available_balance_kobo || 0,
         available_balance_ngn: (currentWallet?.available_balance_kobo || 0) / 100,
+        receipt: intent.metadata?.receipt || null,
       });
     }
 
@@ -85,6 +88,44 @@ export async function POST(request: NextRequest) {
     if (isSuccessful) {
       const amountKobo = intent.amount_kobo || Math.round(Number(payments?.amount || 0) * 100);
 
+      // Resolve institutional details
+      let schoolName = intent.metadata?.school_name;
+      let adminEmail = intent.metadata?.admin_email || session.email;
+      let phone = session.phone;
+
+      if (!schoolName && schoolId) {
+        const { data: schoolData } = await supabase
+          .from('schools')
+          .select('name, email, phone')
+          .eq('id', schoolId)
+          .maybeSingle();
+
+        if (schoolData) {
+          schoolName = schoolData.name;
+          adminEmail = adminEmail || schoolData.email;
+          phone = phone || schoolData.phone;
+        }
+      }
+
+      schoolName = schoolName || 'Educational Institution';
+      adminEmail = adminEmail || 'billing@myeduride.com';
+      const gatewayRef = payments?.paymentReference || (payments as any)?.gatewayReference || reference;
+      const paymentChannel = payments?.paymentType || payments?.channelType || 'SEERBIT_CHECKOUT';
+
+      // Generate Standardized Institutional Receipt
+      const receiptData = generateReceipt({
+        transactionReference: reference,
+        gatewayReference: gatewayRef,
+        entityType: 'SCHOOL',
+        entityName: schoolName,
+        userEmail: adminEmail,
+        userPhone: phone || undefined,
+        amountKobo,
+        paymentChannel,
+        timestamp: new Date(),
+        description: 'Institutional Wallet Deposit (Safe Passage & Gate Security)',
+      });
+
       // 5. Execute atomic database ledger credit
       const { data: creditResult, error: creditErr } = await supabase.rpc(
         'execute_atomic_wallet_credit',
@@ -95,9 +136,10 @@ export async function POST(request: NextRequest) {
           p_reference: reference,
           p_description: `Institutional wallet deposit verified (${payments?.paymentType || 'Online Checkout'})`,
           p_metadata: {
-            seerbit_reference: payments?.paymentReference || reference,
+            seerbit_reference: gatewayRef,
             verified_via: 'SCHOOL_CLIENT_REDIRECT_VERIFY',
             school_id: schoolId,
+            receipt: receiptData,
           },
           p_payment_intent_id: intent.id,
         }
@@ -108,15 +150,31 @@ export async function POST(request: NextRequest) {
         throw creditErr;
       }
 
+      // Attach final balance to receipt
+      if (creditResult?.balance_after_kobo) {
+        receiptData.balanceAfterNgn = creditResult.balance_after_kobo / 100;
+      }
+
       // 6. Update intent record
       await supabase
         .from('payment_intents')
         .update({
           status: 'SUCCESS',
-          seerbit_reference: payments?.paymentReference || reference,
+          seerbit_reference: gatewayRef,
+          metadata: {
+            ...(intent.metadata || {}),
+            receipt: receiptData,
+            receipt_sent: true,
+            receipt_sent_at: new Date().toISOString(),
+          },
           updated_at: new Date().toISOString(),
         })
         .eq('id', intent.id);
+
+      // Instant Institutional Email Receipt Dispatch
+      sendPaymentReceiptEmail(receiptData).catch((emailErr) => {
+        console.error('[SchoolWalletVerify API] sendPaymentReceiptEmail failed:', emailErr);
+      });
 
       // 7. Dispatch in-app notification
       const amountNgn = (amountKobo / 100).toLocaleString('en-NG', { minimumFractionDigits: 2 });
@@ -134,6 +192,7 @@ export async function POST(request: NextRequest) {
         credited: true,
         available_balance_kobo: creditResult?.balance_after_kobo,
         available_balance_ngn: (creditResult?.balance_after_kobo || 0) / 100,
+        receipt: receiptData,
       });
     }
 

@@ -2,6 +2,8 @@ import { NextRequest, NextResponse } from 'next/server';
 import { getSessionFromRequest } from '@/lib/auth/auth-server';
 import { getAdminClient } from '@/lib/supabase/admin';
 import { SeerBitClient } from '@/lib/payments/seerbit';
+import { generateReceipt } from '@/lib/payments/receipt-engine';
+import { sendPaymentReceiptEmail } from '@/lib/notifications/email-templates/payment-receipt';
 
 export const dynamic = 'force-dynamic';
 
@@ -48,6 +50,7 @@ export async function POST(request: NextRequest) {
         amount_kobo: intent.amount_kobo || 0,
         available_balance_kobo: currentWallet?.available_balance_kobo || 0,
         available_balance_ngn: (currentWallet?.available_balance_kobo || 0) / 100,
+        receipt: intent.metadata?.receipt || null,
       });
     }
 
@@ -62,6 +65,37 @@ export async function POST(request: NextRequest) {
     if (isSuccessful) {
       const amountKobo = intent.amount_kobo || Math.round(Number(payments?.amount || 0) * 100);
 
+      // Determine customer details for receipt
+      const parentName =
+        intent.metadata?.parent_name ||
+        session.full_name ||
+        'Valued Parent';
+      const parentEmail =
+        intent.metadata?.parent_email ||
+        session.email ||
+        'billing@myeduride.com';
+      const parentPhone =
+        intent.metadata?.parent_phone ||
+        session.phone ||
+        undefined;
+
+      const gatewayRef = payments?.paymentReference || (payments as any)?.gatewayReference || reference;
+      const paymentChannel = payments?.paymentType || payments?.channelType || 'SEERBIT_CHECKOUT';
+
+      // 4. Generate Standardized Cryptographic Receipt
+      const receiptData = generateReceipt({
+        transactionReference: reference,
+        gatewayReference: gatewayRef,
+        entityType: 'PARENT',
+        entityName: parentName,
+        userEmail: parentEmail,
+        userPhone: parentPhone,
+        amountKobo,
+        paymentChannel,
+        timestamp: new Date(),
+        description: 'Wallet Deposit Credit (Safe Shuttle & Gate Pass)',
+      });
+
       // Execute atomic credit
       const { data: creditResult, error: creditErr } = await supabase.rpc(
         'execute_atomic_wallet_credit',
@@ -72,8 +106,9 @@ export async function POST(request: NextRequest) {
           p_reference: reference,
           p_description: `Wallet deposit verified (${payments?.paymentType || 'Online Checkout'})`,
           p_metadata: {
-            seerbit_reference: payments?.paymentReference || reference,
+            seerbit_reference: gatewayRef,
             verified_via: 'CLIENT_REDIRECT_VERIFY',
+            receipt: receiptData,
           },
           p_payment_intent_id: intent.id,
         }
@@ -84,14 +119,31 @@ export async function POST(request: NextRequest) {
         throw creditErr;
       }
 
+      // Attach final balance to receipt
+      if (creditResult?.balance_after_kobo) {
+        receiptData.balanceAfterNgn = creditResult.balance_after_kobo / 100;
+      }
+
+      // Update payment intent with receipt and status
       await supabase
         .from('payment_intents')
         .update({
           status: 'SUCCESS',
-          seerbit_reference: payments?.paymentReference || reference,
+          seerbit_reference: gatewayRef,
+          metadata: {
+            ...(intent.metadata || {}),
+            receipt: receiptData,
+            receipt_sent: true,
+            receipt_sent_at: new Date().toISOString(),
+          },
           updated_at: new Date().toISOString(),
         })
         .eq('id', intent.id);
+
+      // Instant Email Receipt Dispatch (Asynchronous, does not block response)
+      sendPaymentReceiptEmail(receiptData).catch((emailErr) => {
+        console.error('[Wallet Verify API] sendPaymentReceiptEmail failed:', emailErr);
+      });
 
       const amountNgn = (amountKobo / 100).toLocaleString('en-NG', { minimumFractionDigits: 2 });
       await supabase.from('notifications').insert({
@@ -108,6 +160,7 @@ export async function POST(request: NextRequest) {
         credited: true,
         available_balance_kobo: creditResult?.balance_after_kobo,
         available_balance_ngn: (creditResult?.balance_after_kobo || 0) / 100,
+        receipt: receiptData,
       });
     }
 

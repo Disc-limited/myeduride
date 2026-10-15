@@ -94,7 +94,23 @@ export default function ParentDashboard() {
   const [children, setChildren] = useState([]);
   const [notifications, setNotifications] = useState([]);
   const [loading, setLoading] = useState(true);
-  const [activeTab, setActiveTab] = useState<ParentTabType>('dashboard');
+  const [activeTab, setActiveTab] = useState<ParentTabType>(() => {
+    if (typeof window !== 'undefined') {
+      const params = new URLSearchParams(window.location.search);
+      const tabParam = params.get('tab');
+      const hasRef =
+        params.get('reference') ||
+        params.get('ref') ||
+        params.get('paymentReference') ||
+        params.get('trxref') ||
+        params.get('linkingreference');
+      if (tabParam === 'wallet' || hasRef) {
+        return 'wallet';
+      }
+      if (tabParam) return tabParam as ParentTabType;
+    }
+    return 'dashboard';
+  });
   const [safetyPillar, setSafetyPillar] = useState<'school_escort' | 'myeduride_escort' | 'edrive'>('school_escort');
   const [searchQuery, setSearchQuery] = useState('');
 
@@ -587,6 +603,42 @@ export default function ParentDashboard() {
     }
   }, []);
 
+  // Synchronize activeTab with URL parameters (?tab=wallet or SeerBit redirect references)
+  useEffect(() => {
+    if (typeof window !== 'undefined') {
+      const params = new URLSearchParams(window.location.search);
+      const tabParam = params.get('tab');
+      const hasRef =
+        params.get('reference') ||
+        params.get('ref') ||
+        params.get('paymentReference') ||
+        params.get('trxref') ||
+        params.get('linkingreference');
+
+      if (tabParam === 'wallet' || hasRef) {
+        setActiveTab('wallet');
+      } else if (tabParam) {
+        setActiveTab(tabParam as ParentTabType);
+      }
+    }
+  }, []);
+
+  const handleTabChange = (tab: ParentTabType, openFund: boolean = false) => {
+    setActiveTab(tab);
+    if (tab === 'wallet') {
+      setShowWalletModal(openFund);
+    }
+    if (typeof window !== 'undefined') {
+      const url = new URL(window.location.href);
+      if (tab === 'dashboard') {
+        url.searchParams.delete('tab');
+      } else {
+        url.searchParams.set('tab', tab);
+      }
+      window.history.replaceState({}, '', url.toString());
+    }
+  };
+
   // Send EduChat message
   const handleSendMessage = async () => {
     const studentId = messageForm.student_id || (children?.[0]?.id || '');
@@ -868,10 +920,9 @@ export default function ParentDashboard() {
         <ParentSidebar
           activeTab={activeTab}
           setActiveTab={(tab) => {
-            setActiveTab(tab);
+            handleTabChange(tab);
             if (tab === 'children') setSelectedChild(safeChildren[0]?.id || '');
             if (tab === 'educhat') setShowEduChatModal(true);
-            if (tab === 'wallet') setShowWalletModal(true);
             if (tab === 'edrive') {
               setSafetyPillar('edrive');
               setActiveTab('safety');
@@ -881,7 +932,7 @@ export default function ParentDashboard() {
           activeSafetyPillar={safetyPillar}
           onSelectSafetyPillar={(pillar) => {
             setSafetyPillar(pillar);
-            setActiveTab('safety');
+            handleTabChange('safety');
           }}
           unreadChatCount={unreadEduChartCount}
           onOpenIdPass={() => setShowIdPassModal(true)}
@@ -895,10 +946,9 @@ export default function ParentDashboard() {
         <ParentSidebar
           activeTab={activeTab}
           setActiveTab={(tab) => {
-            setActiveTab(tab);
+            handleTabChange(tab);
             if (tab === 'children') setSelectedChild(safeChildren[0]?.id || '');
             if (tab === 'educhat') setShowEduChatModal(true);
-            if (tab === 'wallet') setShowWalletModal(true);
             if (tab === 'edrive') {
               setSafetyPillar('edrive');
               setActiveTab('safety');
@@ -908,7 +958,7 @@ export default function ParentDashboard() {
           activeSafetyPillar={safetyPillar}
           onSelectSafetyPillar={(pillar) => {
             setSafetyPillar(pillar);
-            setActiveTab('safety');
+            handleTabChange('safety');
           }}
           unreadChatCount={unreadEduChartCount}
           onOpenIdPass={() => setShowIdPassModal(true)}
@@ -1601,7 +1651,7 @@ export default function ParentDashboard() {
       {/* Mobile Ergonomic Bottom Navigation Bar */}
       <ParentMobileBottomNav
         activeTab={activeTab}
-        setActiveTab={setActiveTab}
+        setActiveTab={handleTabChange}
         onOpenMobileMenu={() => setIsMobileSidebarOpen(true)}
         unreadChatCount={unreadEduChartCount}
       />

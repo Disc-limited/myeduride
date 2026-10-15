@@ -53,6 +53,39 @@ export async function POST(request: NextRequest) {
         }
         
         let targetSchoolId = params?.school_id || null;
+
+        // Verify explicit school_id permissions if provided
+        if (targetSchoolId) {
+          const isSuperAdmin = session.roles.some((r: any) => r.role === 'super_admin');
+          if (!isSuperAdmin) {
+            const hasSchoolRole = session.roles.some((r: any) => 
+              r.school_id === targetSchoolId && (isGateRole ? GATE_ROLES.includes(r.role) : (r.role === requestedRole || GATE_ROLES.includes(r.role)))
+            );
+            if (!hasSchoolRole) {
+              const { data: dbRole } = await supabase
+                .from('user_school_roles')
+                .select('id')
+                .eq('user_id', session.user_id)
+                .eq('school_id', targetSchoolId)
+                .eq('is_active', true)
+                .limit(1)
+                .maybeSingle();
+              if (!dbRole) {
+                return NextResponse.json(
+                  { error: 'Access denied for requested school', school: null, school_id: null },
+                  { status: 403 }
+                );
+              }
+            }
+          }
+        }
+
+        // If no school_id provided in params, prioritize session's active primary school
+        if (!targetSchoolId) {
+          targetSchoolId = (session as any)?.primary_school?.id || (session as any)?.primary_school_id || null;
+        }
+
+        // If still not resolved, query user's active school roles
         if (!targetSchoolId) {
           let query = supabase.from('user_school_roles').select('school_id').eq('user_id', session.user_id).eq('is_active', true);
           if (isGateRole) {
@@ -66,7 +99,7 @@ export async function POST(request: NextRequest) {
             8000
           ).catch(() => ({ data: null }));
           
-          targetSchoolId = roleRes?.data?.school_id || (session as any)?.primary_school_id || (session as any)?.primary_school?.id || null;
+          targetSchoolId = roleRes?.data?.school_id || null;
         }
 
         if (!targetSchoolId && session.roles.some((r: any) => r.role === 'super_admin')) {

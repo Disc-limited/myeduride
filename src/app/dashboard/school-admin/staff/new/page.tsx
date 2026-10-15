@@ -4,7 +4,7 @@
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { navigateBack } from '@/lib/navigation/smart-back';
-import { fetchData } from '@/lib/api';
+import { fetchData, getSession } from '@/lib/api';
 import { ArrowLeft } from 'lucide-react';
 import AddStaffForm from '@/components/school-admin/AddStaffForm';
 
@@ -17,7 +17,12 @@ export default function AddStaffPage() {
   useEffect(() => {
     (async () => {
       try {
-        const schoolData = await fetchData('get_school_admin_data', { role: 'school_admin' });
+        const session = getSession();
+        const targetSchoolId = session?.primary_school?.id || session?.primary_school_id;
+        const schoolData = await fetchData('get_school_admin_data', {
+          role: 'school_admin',
+          school_id: targetSchoolId || undefined,
+        });
         if (!schoolData.school_id) {
           setLoading(false);
           return;

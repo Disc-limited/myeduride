@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getAdminClient } from '@/lib/supabase/admin';
 import { verifySeerbitWebhookSignature, isTimestampSkewValid, computePayloadHash } from '@/lib/security/webhook-security';
+import { generateReceipt } from '@/lib/payments/receipt-engine';
+import { sendPaymentReceiptEmail } from '@/lib/notifications/email-templates/payment-receipt';
 
 export const dynamic = 'force-dynamic';
 
@@ -133,6 +135,65 @@ export async function POST(request: NextRequest) {
     if (isSuccessful) {
       const amountKobo = intent.amount_kobo || Math.round(rawAmount * 100);
 
+      // Resolve entity identity and customer details
+      let entityName =
+        intent.metadata?.parent_name ||
+        intent.metadata?.school_name ||
+        intent.metadata?.admin_name ||
+        payments.customer?.name;
+      let userEmail =
+        intent.metadata?.parent_email ||
+        intent.metadata?.admin_email ||
+        payments.customer?.email;
+      let userPhone =
+        intent.metadata?.parent_phone ||
+        payments.customer?.phone;
+
+      const entityType =
+        intent.metadata?.entity_type === 'school' || paymentRef.startsWith('MYEDU-SCH-')
+          ? 'SCHOOL'
+          : intent.metadata?.entity_type === 'escort' || paymentRef.startsWith('MYEDU-ESC-')
+          ? 'ESCORT'
+          : 'PARENT';
+
+      // Fallback: look up user_profiles if needed
+      if (!userEmail && intent.user_id) {
+        const { data: profile } = await supabase
+          .from('user_profiles')
+          .select('full_name, email, phone')
+          .eq('id', intent.user_id)
+          .maybeSingle();
+
+        if (profile) {
+          entityName = entityName || profile.full_name;
+          userEmail = userEmail || profile.email;
+          userPhone = userPhone || profile.phone;
+        }
+      }
+
+      entityName = entityName || (entityType === 'SCHOOL' ? 'School Administration' : 'Valued Parent');
+      userEmail = userEmail || 'billing@myeduride.com';
+
+      const gatewayRef = payments.gatewayReference || payments.paymentReference || paymentRef;
+      const paymentChannel = payments.paymentType || payments.channelType || 'SEERBIT_CHECKOUT';
+
+      // Generate Standardized Cryptographic Receipt
+      const receiptData = generateReceipt({
+        transactionReference: paymentRef,
+        gatewayReference: gatewayRef,
+        entityType,
+        entityName,
+        userEmail,
+        userPhone,
+        amountKobo,
+        paymentChannel,
+        timestamp: new Date(),
+        description:
+          entityType === 'SCHOOL'
+            ? 'Institutional Wallet Deposit (Safe Passage & Gate Security)'
+            : 'Wallet Deposit Credit (Safe Shuttle & Gate Pass)',
+      });
+
       // 5. Execute Atomic Wallet Credit via Stored Procedure (FOR UPDATE row-lock)
       const { data: creditResult, error: creditErr } = await supabase.rpc(
         'execute_atomic_wallet_credit',
@@ -143,10 +204,11 @@ export async function POST(request: NextRequest) {
           p_reference: paymentRef,
           p_description: `Wallet deposit via SeerBit (${payments.paymentType || 'Online Checkout'})`,
           p_metadata: {
-            seerbit_reference: payments.gatewayReference || paymentRef,
+            seerbit_reference: gatewayRef,
             channel_type: payments.channelType || 'CARD',
             customer: payments.customer || {},
             verified_via: 'WEBHOOK',
+            receipt: receiptData,
           },
           p_payment_intent_id: intent.id,
         }
@@ -157,12 +219,23 @@ export async function POST(request: NextRequest) {
         throw creditErr;
       }
 
-      // Update intent status
+      // Attach final balance to receipt
+      if (creditResult?.balance_after_kobo) {
+        receiptData.balanceAfterNgn = creditResult.balance_after_kobo / 100;
+      }
+
+      // Update intent status and store receipt
       await supabase
         .from('payment_intents')
         .update({
           status: 'SUCCESS',
-          seerbit_reference: payments.gatewayReference || paymentRef,
+          seerbit_reference: gatewayRef,
+          metadata: {
+            ...(intent.metadata || {}),
+            receipt: receiptData,
+            receipt_sent: true,
+            receipt_sent_at: new Date().toISOString(),
+          },
           updated_at: new Date().toISOString(),
         })
         .eq('id', intent.id);
@@ -176,7 +249,12 @@ export async function POST(request: NextRequest) {
         status: 'SUCCESS',
       });
 
-      // Dispatch parent notification
+      // Instant Email Receipt Dispatch
+      sendPaymentReceiptEmail(receiptData).catch((emailErr) => {
+        console.error('[SeerBit Webhook] sendPaymentReceiptEmail failed:', emailErr);
+      });
+
+      // Dispatch notification
       const amountNgn = (amountKobo / 100).toLocaleString('en-NG', { minimumFractionDigits: 2 });
       await supabase.from('notifications').insert({
         user_id: intent.user_id,
@@ -187,7 +265,7 @@ export async function POST(request: NextRequest) {
       });
 
       console.log(`[SeerBit Webhook] Successfully credited wallet ${intent.wallet_id} with ₦${amountNgn} (ref: ${paymentRef})`);
-      return NextResponse.json({ status: 'success', credit: creditResult }, { status: 200 });
+      return NextResponse.json({ status: 'success', credit: creditResult, receipt: receiptData }, { status: 200 });
     } else {
       // Payment failed or cancelled
       await supabase
