@@ -39,6 +39,7 @@ import { tripCancellationCutoffSuite } from './unit/trip-cancellation-cutoff.tes
 import { schoolWalletInvariantsSuite } from './unit/school-wallet-invariants.test';
 import { receiptEngineSuite } from './unit/receipt-engine.test';
 import { dailyGateDeductionAndRollCallSuite } from './unit/daily-gate-deduction-and-roll-call.test';
+import { myedurideVsSchoolEscortIsolationSuite } from './unit/myeduride-vs-school-escort-isolation.test';
 import { pickupControlApiSuite } from './integration/pickup-control-api.test';
 import { escortApisSuite } from './integration/escort-apis.test';
 import { routesVehiclesApiSuite } from './integration/routes-vehicles-api.test';
@@ -108,6 +109,7 @@ async function runAllTests() {
     schoolWalletInvariantsSuite,
     receiptEngineSuite,
     dailyGateDeductionAndRollCallSuite,
+    myedurideVsSchoolEscortIsolationSuite,
     pickupControlApiSuite,
     escortApisSuite,
     routesVehiclesApiSuite,

@@ -1,5 +1,48 @@
 [
   {
+    "emailOrUsername": "victor.adeyemi.myeduride@gmail.com",
+    "email": "victor.adeyemi.myeduride@gmail.com",
+    "fullName": "Victor Adeyemi",
+    "name": "Victor Adeyemi",
+    "phone": "08031234567",
+    "dob": "1992-04-15",
+    "gender": "Male",
+    "address": "12, Allen Avenue, Ikeja, Lagos",
+    "city": "Ikeja",
+    "state": "Lagos",
+    "operatingArea": "Ikeja, Lagos",
+    "regNumber": "KJA-734-XY",
+    "vehicleType": "18 Seater",
+    "make": "Toyota",
+    "model": "HiAce",
+    "color": "White",
+    "year": "2021",
+    "seatCapacity": "18",
+    "escortType": "myeduride_escort",
+    "escortCategory": "myeduride_escort",
+    "status": "CITY_MANAGER_APPROVED",
+    "password": "EduRide2026!",
+    "services": {
+      "morningTrip": true,
+      "afternoonTrip": true,
+      "schoolAssignment": true,
+      "parentBooking": true,
+      "marketplaceBooking": true
+    },
+    "id": "APP-ESC-126",
+    "nin": "NIN-64188264682",
+    "createdAt": "2026-10-17",
+    "notes": "Verified and approved by City Manager as active platform MyEduRide Escort.",
+    "allocatedSchoolIds": [
+      "0af823c7-4587-4e97-9ff5-b92fc979a167",
+      "c1ac8ead-c011-4f03-a216-28d6b354e12a"
+    ],
+    "allocated_school_ids": [
+      "0af823c7-4587-4e97-9ff5-b92fc979a167",
+      "c1ac8ead-c011-4f03-a216-28d6b354e12a"
+    ]
+  },
+  {
     "id": "1164bd6d-e74c-4dde-9145-1e3b8ff9490a",
     "appId": "1164bd6d-e74c-4dde-9145-1e3b8ff9490a",
     "escortIdCode": "ESC-3476",

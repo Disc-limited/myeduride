@@ -81,7 +81,12 @@ function GateOfficerDashboardInner() {
   const [currentTime, setCurrentTime] = useState<Date | null>(null);
   const [schoolId, setSchoolId] = useState(querySchoolId);
   const [schoolInfo, setSchoolInfo] = useState({ name: 'School Campus', address: 'Campus Location', logo_url: '', primary_color: '#1B4D3E' });
+  const [logoFailed, setLogoFailed] = useState(false);
   const [officerInfo, setOfficerInfo] = useState({ name: 'Gate Officer', role: 'Gate Officer', gate: 'Main Security Gate' });
+
+  useEffect(() => {
+    setLogoFailed(false);
+  }, [schoolInfo.logo_url]);
 
   // Data States
   const [allStudents, setAllStudents] = useState<any[]>([]);
@@ -353,38 +358,47 @@ function GateOfficerDashboardInner() {
   }, [pickupQueue, selectedClass]);
 
   return (
-    <div className="min-h-screen bg-slate-100 flex flex-col font-sans antialiased text-slate-900">
+    <div className="h-screen bg-slate-100 flex flex-col font-sans antialiased text-slate-900 overflow-hidden">
       {/* TOP HEADER NAV BAR */}
-      <header className="bg-white border-b border-slate-200 sticky top-0 z-30 px-4 sm:px-6 py-2.5 flex items-center justify-between shadow-xs">
-        {/* Left Brand Logo & Mobile Toggle */}
-        <div className="flex items-center gap-2 sm:gap-4">
+      <header className="bg-white border-b border-slate-200 sticky top-0 z-30 px-4 sm:px-6 py-2.5 flex items-center justify-between shadow-xs shrink-0">
+        {/* Left: Mobile Toggle & School Identification */}
+        <div className="flex items-center gap-2 sm:gap-3 min-w-0">
           <button
             type="button"
             onClick={() => setMobileOpen(!mobileOpen)}
-            className="md:hidden p-2 rounded-xl text-slate-700 hover:bg-slate-100 transition-colors"
+            className="md:hidden p-2 -ml-1 rounded-xl text-slate-700 hover:bg-slate-100 transition-colors shrink-0"
             title="Toggle Navigation Menu"
+            aria-label="Toggle Navigation Menu"
           >
             <Menu size={20} />
           </button>
 
-          <Link href="/dashboard/gate" className="flex items-center gap-2">
-            <img src="/images/eduride_logo.png" alt="MyEduRide" className="h-9 w-auto object-contain" />
-          </Link>
-
-          {/* Divider */}
-          <div className="h-7 w-px bg-slate-200 hidden md:block" />
-
-          {/* School Selector Dropdown */}
-          <div className="hidden md:flex items-center gap-2.5 bg-slate-50 border border-slate-200 px-3 py-1.5 rounded-xl cursor-pointer hover:bg-slate-100 transition-colors">
-            <div className="w-7 h-7 rounded-lg bg-emerald-700 flex items-center justify-center text-white font-bold text-xs">
-              <ShieldCheck size={16} />
+          {/* School Identification (Prominently visible on Mobile & Desktop) */}
+          <div className="flex items-center gap-2 sm:gap-2.5 min-w-0 bg-slate-50/80 border border-slate-200/90 px-2.5 sm:px-3 py-1.5 rounded-xl">
+            <div className="w-7 h-7 sm:w-8 sm:h-8 rounded-lg bg-emerald-700 flex items-center justify-center text-white font-bold text-xs shrink-0 overflow-hidden shadow-xs">
+              {schoolInfo.logo_url && !logoFailed ? (
+                <img
+                  src={photoSrc(schoolInfo.logo_url) || ''}
+                  alt={schoolInfo.name}
+                  onError={() => setLogoFailed(true)}
+                  className="w-full h-full object-cover"
+                />
+              ) : (
+                <ShieldCheck size={18} className="text-white" />
+              )}
             </div>
-            <div>
-              <div className="flex items-center gap-1">
-                <span className="font-extrabold text-xs text-slate-900 leading-none">{schoolInfo.name}</span>
-                <ChevronDown size={14} className="text-slate-400" />
+            <div className="min-w-0">
+              <div className="flex items-center gap-1.5 flex-nowrap">
+                <span className="font-extrabold text-xs sm:text-sm text-slate-900 leading-tight truncate max-w-[150px] xs:max-w-[190px] sm:max-w-[260px] md:max-w-[340px]">
+                  {schoolInfo.name}
+                </span>
+                <span className="inline-flex items-center px-1.5 py-0.5 rounded-md bg-emerald-100 text-emerald-800 text-[9px] sm:text-[10px] font-bold shrink-0 leading-none">
+                  Gate
+                </span>
               </div>
-              <span className="text-[10px] text-slate-500 font-medium leading-tight block">{schoolInfo.address}</span>
+              <span className="text-[10px] text-slate-500 font-medium leading-tight truncate block max-w-[150px] xs:max-w-[200px] sm:max-w-[280px]">
+                {schoolInfo.address || 'Campus Gate Terminal'}
+              </span>
             </div>
           </div>
         </div>
@@ -464,13 +478,37 @@ function GateOfficerDashboardInner() {
       )}
 
       {/* BODY CONTENT CONTAINER */}
-      <div className="flex-1 flex overflow-hidden relative">
+      <div className="flex-1 flex overflow-hidden relative min-h-0">
         {/* LEFT SIDEBAR NAVIGATION */}
         <aside
-          className={`w-60 bg-[#0b1928] text-white flex flex-col justify-between shrink-0 shadow-xl transition-transform duration-300 md:translate-x-0 ${mobileOpen ? 'fixed left-0 top-[57px] bottom-0 z-50 translate-x-0' : 'hidden md:flex'
-            }`}
+          className={`w-64 bg-[#0b1928] text-white flex flex-col shrink-0 shadow-xl transition-transform duration-300 md:translate-x-0 h-full border-r border-slate-800/80 ${
+            mobileOpen ? 'fixed inset-y-0 left-0 z-50 translate-x-0' : 'hidden md:flex'
+          }`}
         >
-          <div className="p-3 space-y-3 overflow-y-auto">
+          {/* Top MyEduRide Brand in Left Nav */}
+          <div className="p-3.5 border-b border-slate-800/80 bg-[#071324] flex items-center justify-between shrink-0">
+            <Link href="/dashboard/gate" className="flex flex-col gap-0.5 group" onClick={() => setMobileOpen(false)}>
+              <img
+                src="/images/eduride_logo.png"
+                alt="MyEduRide"
+                className="h-8 sm:h-9 w-auto object-contain max-w-[150px]"
+              />
+              <span className="text-[8px] font-bold tracking-wider text-slate-400 uppercase">
+                THE STUDENT SAFETY PLATFORM
+              </span>
+            </Link>
+            <button
+              type="button"
+              onClick={() => setMobileOpen(false)}
+              className="md:hidden p-1.5 rounded-lg text-slate-400 hover:text-white hover:bg-white/10 transition-colors"
+              title="Close menu"
+              aria-label="Close menu"
+            >
+              <X size={18} />
+            </button>
+          </div>
+
+          <div className="p-3 space-y-3 overflow-y-auto flex-1 min-h-0 custom-scrollbar">
             {/* Gate Officer Badge */}
             <div className="bg-[#1b804d] rounded-2xl p-3.5 flex items-center gap-3 shadow-md">
               <div className="w-8 h-8 rounded-xl bg-white/20 flex items-center justify-center text-white shrink-0">
@@ -537,10 +575,13 @@ function GateOfficerDashboardInner() {
                 );
               })}
             </nav>
-          </div>
 
-          {/* Bottom Help Box & Logout */}
-          <div className="p-3 border-t border-slate-800/80 bg-[#08121d] space-y-2">
+            {/* Divider */}
+            <div className="pt-2 pb-1">
+              <div className="border-t border-slate-800/80" />
+            </div>
+
+            {/* Need Help Box */}
             <div className="bg-[#0f243a] border border-slate-800 rounded-xl p-3 flex items-center gap-3">
               <div className="w-8 h-8 rounded-full bg-emerald-600 flex items-center justify-center text-white shrink-0">
                 <Phone size={16} />
@@ -552,6 +593,7 @@ function GateOfficerDashboardInner() {
               </div>
             </div>
 
+            {/* Logout Button */}
             <button
               type="button"
               onClick={() => logout()}
@@ -565,7 +607,7 @@ function GateOfficerDashboardInner() {
         </aside>
 
         {/* MAIN DASHBOARD CONTENT AREA */}
-        <main className="flex-1 overflow-y-auto p-4 sm:p-6 space-y-5 max-w-[1700px]">
+        <main className="flex-1 overflow-y-auto p-4 sm:p-6 space-y-5 max-w-[1700px] h-full min-h-0 custom-scrollbar">
           {activeNav === 'student-scan' || activeNav === 'student-signout' ? (
             <div className="bg-white rounded-3xl p-6 border border-slate-200 shadow-xs space-y-4">
               <div className="flex items-center justify-between border-b border-slate-100 pb-3">
