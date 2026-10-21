@@ -157,6 +157,7 @@ export function AdminSidebar({
         { label: 'Vehicles', href: '/dashboard/school-admin/vehicles', icon: <Car size={18} /> },
         { label: 'Routes', href: '/dashboard/school-admin/routes', icon: <MapPin size={18} /> },
         { label: 'Gate Manager', href: activeSchoolId ? `/dashboard/gate?school_id=${activeSchoolId}` : '/dashboard/gate', icon: <DoorOpen size={18} /> },
+        { label: 'Campus Visitors', href: '/dashboard/school-admin/visitors', icon: <Users size={18} />, badge: 'Live', badgeColor: 'bg-indigo-500 text-white' },
         {
           label: 'Escort Verification Reports',
           href: '/dashboard/school-admin/reports/escort-verification',

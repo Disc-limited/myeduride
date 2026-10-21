@@ -5,6 +5,7 @@ import { getAdminClient } from '@/lib/supabase/admin';
 import { nowUtcIso } from '@/lib/utils/time';
 import { writeGateActivityLog } from '@/lib/gate/activity-log';
 import { writeAuditLog } from '@/lib/audit/log';
+import { dispatchVisitorArrivalNotice } from '@/lib/notifications/visitor-notify';
 
 export const dynamic = 'force-dynamic';
 
@@ -150,23 +151,8 @@ export async function POST(request: NextRequest) {
 
       if (insertError) throw insertError;
 
-      // Notify host staff in-app
-      if (visitor_data.host_user_id) {
-        try {
-          await supabase.from('notifications').insert({
-            school_id: primarySchoolId,
-            user_id: visitor_data.host_user_id,
-            title: `Visitor at Gate: ${newVisitor.full_name}`,
-            message: `${newVisitor.full_name} (${newVisitor.phone}) is at the school gate requesting to see you regarding: "${newVisitor.purpose_of_visit}". Please Accept or Decline entry.`,
-            type: 'visitor_access_request',
-            priority: 'high',
-            is_read: false,
-            created_at: nowUtcIso(),
-          });
-        } catch (notifErr) {
-          console.warn('[visitors POST] Failed to create host notification:', notifErr);
-        }
-      }
+      // Notify host staff in-app and broadcast to live channels
+      await dispatchVisitorArrivalNotice(supabase, primarySchoolId, newVisitor, 'created');
 
       await writeGateActivityLog(supabase, {
         school_id: primarySchoolId,
@@ -331,10 +317,13 @@ export async function POST(request: NextRequest) {
 
       // Check if still awaiting host approval
       if (visitor.host_response === 'pending' || visitor.security_flag === 'restricted') {
+        // Trigger live alert so the host staff knows their visitor has arrived and is waiting at the gate
+        await dispatchVisitorArrivalNotice(supabase, primarySchoolId, visitor, 'scanned');
+
         return NextResponse.json({
           success: true,
           action_performed: 'pending_clearance',
-          message: `Visitor ${visitor.full_name} pass verified, but is STILL AWAITING HOST CLEARANCE from ${visitor.person_to_see}.`,
+          message: `Visitor ${visitor.full_name} pass verified, but is STILL AWAITING HOST CLEARANCE from ${visitor.person_to_see}. An urgent notification has been sent to their device.`,
           visitor,
         });
       }

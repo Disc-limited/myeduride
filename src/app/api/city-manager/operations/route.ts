@@ -11,7 +11,7 @@ import { getPlatformSchoolId } from '@/lib/auth/super-admin';
 import { resolveEscortCategory } from '@/lib/escort/escort-category';
 import { escortAllowsOverlappingPickup } from '@/lib/escort/escort-scheduler';
 import { extractHandoverPin, ensureDailyHandoverPin } from '@/lib/escort/handover-pin';
-import { calculateEscortFare } from '@/lib/escort/escort-pricing';
+import { calculateEscortFare, parseEscortNotes, normalizeEscortTripType } from '@/lib/escort/escort-pricing';
 import { getActiveCityPricing, normalizeCityKey, toEscortFareOverrides } from '@/lib/escort/city-pricing';
 import { readOpsCache, writeOpsCache, invalidateOpsCache } from '@/lib/city-manager/ops-cache';
 
@@ -198,14 +198,7 @@ export async function GET(request: NextRequest) {
       const stu = Array.isArray(b.student) ? b.student[0] : b.student;
       const sch = Array.isArray(b.school) ? b.school[0] : b.school;
 
-      let meta: any = {};
-      try {
-        if (b.notes && b.notes.startsWith('{')) {
-          meta = JSON.parse(b.notes);
-        }
-      } catch {
-        meta = {};
-      }
+      const meta: any = parseEscortNotes(b.notes);
 
       if (DEAD_BOOKING_STATUSES.includes(String(b.status || '').toLowerCase())) {
         return null;
@@ -220,6 +213,7 @@ export async function GET(request: NextRequest) {
         matchedAssignmentIds.add(matchedAssignment.id);
       }
 
+      const assignMeta: any = parseEscortNotes(matchedAssignment?.notes);
       const rawEscort = matchedAssignment?.escort;
       const escort = Array.isArray(rawEscort) ? rawEscort[0] : rawEscort;
 
@@ -228,46 +222,60 @@ export async function GET(request: NextRequest) {
         const pinMatch = b.notes.match(/PIN:\s*(\d{4})/i);
         if (pinMatch) securityPin = pinMatch[1];
       }
-      if (!securityPin && meta.security_pin) {
-        securityPin = meta.security_pin;
+      if (!securityPin && (meta.security_pin || assignMeta.security_pin)) {
+        securityPin = meta.security_pin || assignMeta.security_pin;
       }
       if (!securityPin) {
-        securityPin = extractHandoverPin(b.notes);
+        securityPin = extractHandoverPin(b.notes) || extractHandoverPin(matchedAssignment?.notes);
       }
 
-      const distanceKm = meta.distance_km || 4.2;
-      const tripType = meta.trip_type === 'afternoon' || meta.trip_type === 'afternoon_only'
-        ? 'afternoon_only'
-        : meta.trip_type === 'morning' || meta.trip_type === 'morning_only'
-          ? 'morning_only'
-          : 'both';
+      const distanceKm = meta.distance_km || assignMeta.distance_km || 4.2;
+      const tripType = normalizeEscortTripType(
+        meta.trip_type ||
+        meta.fareResult?.tripType ||
+        assignMeta.trip_type ||
+        assignMeta.fareResult?.tripType ||
+        'both'
+      );
       const fareResult = calculateEscortFare(distanceKm, tripType, fareRates);
-      const storedDiscount = meta?.discount || null;
+      const storedDiscount =
+        meta?.discount ||
+        meta?.fare_correction ||
+        assignMeta?.discount ||
+        assignMeta?.fare_correction ||
+        null;
       const storedDaily = Number(
         storedDiscount?.discountedFare ||
         meta?.fareResult?.dailyFare ||
         meta?.daily_fare ||
+        assignMeta?.fareResult?.dailyFare ||
+        assignMeta?.daily_fare ||
         b.fare_amount ||
         0
       );
-      const standardDaily = Number(meta?.fareResult?.originalDailyFare || fareResult.dailyFare);
+      const standardDaily = Number(
+        meta?.fareResult?.originalDailyFare ||
+        assignMeta?.fareResult?.originalDailyFare ||
+        storedDiscount?.originalFare ||
+        fareResult.dailyFare
+      );
       const dailyFare = storedDaily > 0 ? storedDaily : fareResult.dailyFare;
-      const morningFare =
-        storedDaily > 0
-          ? Number(
-              meta?.fareResult?.morningFare ||
-                meta?.morning_fare ||
-                (tripType === 'afternoon_only' ? 0 : tripType === 'morning_only' ? dailyFare : Math.round(dailyFare / 2))
-            )
-          : fareResult.morningFare;
-      const afternoonFare =
-        storedDaily > 0
-          ? Number(
-              meta?.fareResult?.afternoonFare ||
-                meta?.afternoon_fare ||
-                (tripType === 'morning_only' ? 0 : dailyFare - morningFare)
-            )
-          : fareResult.afternoonFare;
+
+      let morningFare = 0;
+      let afternoonFare = 0;
+      if (tripType === 'afternoon_only') {
+        morningFare = 0;
+        afternoonFare = dailyFare;
+      } else if (tripType === 'morning_only') {
+        morningFare = dailyFare;
+        afternoonFare = 0;
+      } else {
+        const rawM = meta?.fareResult?.morningFare ?? meta?.morning_fare ?? assignMeta?.fareResult?.morningFare ?? assignMeta?.morning_fare;
+        morningFare = rawM != null && !isNaN(Number(rawM)) && Number(rawM) > 0
+          ? Number(rawM)
+          : Math.round(dailyFare / 2);
+        afternoonFare = dailyFare - morningFare;
+      }
 
       let discountDetails: any = storedDiscount;
       let actualCollected = dailyFare;
@@ -347,26 +355,37 @@ export async function GET(request: NextRequest) {
       const isConfirmed = a.status === 'active' || a.status === 'completed';
       const isPinned = Boolean(stu?.house_lat && stu?.house_lng);
 
-      const fallbackFare = calculateEscortFare(4.2, 'both', fareRates);
-      let assignMeta: any = {};
-      try {
-        if (typeof a.notes === 'string' && a.notes.trim().startsWith('{')) assignMeta = JSON.parse(a.notes);
-      } catch {
-        assignMeta = {};
+      const assignMeta = parseEscortNotes(a.notes);
+      const assignTripType = normalizeEscortTripType(
+        assignMeta?.trip_type ||
+        assignMeta?.fareResult?.tripType ||
+        'both'
+      );
+      const assignEngine = calculateEscortFare(4.2, assignTripType, fareRates);
+      const storedAssignDaily = Number(
+        assignMeta?.discount?.discountedFare ||
+        assignMeta?.fare_correction?.discountedFare ||
+        assignMeta?.fareResult?.dailyFare ||
+        assignMeta?.daily_fare ||
+        0
+      );
+      const assignDaily = storedAssignDaily > 0 ? storedAssignDaily : assignEngine.dailyFare;
+
+      let assignMorning = 0;
+      let assignAfternoon = 0;
+      if (assignTripType === 'afternoon_only') {
+        assignMorning = 0;
+        assignAfternoon = assignDaily;
+      } else if (assignTripType === 'morning_only') {
+        assignMorning = assignDaily;
+        assignAfternoon = 0;
+      } else {
+        const rawM = assignMeta?.fareResult?.morningFare ?? assignMeta?.morning_fare;
+        assignMorning = rawM != null && !isNaN(Number(rawM)) && Number(rawM) > 0
+          ? Number(rawM)
+          : Math.round(assignDaily / 2);
+        assignAfternoon = assignDaily - assignMorning;
       }
-      const assignTripType = assignMeta?.trip_type === 'afternoon' || assignMeta?.trip_type === 'afternoon_only'
-        ? 'afternoon_only'
-        : assignMeta?.trip_type === 'morning' || assignMeta?.trip_type === 'morning_only'
-          ? 'morning_only'
-          : 'both';
-      const storedAssignDaily = Number(assignMeta?.discount?.discountedFare || assignMeta?.fareResult?.dailyFare || assignMeta?.daily_fare || 0);
-      const assignDaily = storedAssignDaily > 0 ? storedAssignDaily : fallbackFare.dailyFare;
-      const assignMorning = assignTripType === 'afternoon_only'
-        ? 0
-        : (storedAssignDaily > 0 ? Number(assignMeta?.fareResult?.morningFare || assignMeta?.morning_fare || Math.round(assignDaily / 2)) : fallbackFare.morningFare);
-      const assignAfternoon = assignTripType === 'morning_only'
-        ? 0
-        : (storedAssignDaily > 0 ? Number(assignMeta?.fareResult?.afternoonFare || assignMeta?.afternoon_fare || (assignDaily - assignMorning)) : fallbackFare.afternoonFare);
       parentRequests.push({
         booking_id: a.booking_id || null,
         assignment_id: a.id,
@@ -382,10 +401,10 @@ export async function GET(request: NextRequest) {
         morning_fare: assignMorning,
         afternoon_fare: assignAfternoon,
         daily_fare: assignDaily,
-        standard_daily_fare: fallbackFare.dailyFare,
+        standard_daily_fare: assignEngine.dailyFare,
         actual_amount_collected: assignDaily,
         discount_details: assignMeta?.discount || null,
-        is_discounted: Boolean(assignMeta?.discount) || assignDaily < fallbackFare.dailyFare,
+        is_discounted: Boolean(assignMeta?.discount) || assignDaily < assignEngine.dailyFare,
         accountant_approval_ref: assignMeta?.discount?.accountantApprovalRef || null,
         accountant_name: assignMeta?.discount?.accountantName || null,
         trip_type: assignTripType,
@@ -901,29 +920,50 @@ export async function GET(request: NextRequest) {
         requestByAssignment.get(assignment.id) ||
         (assignment.booking_id ? requestByBooking.get(assignment.booking_id) : null) ||
         (assignment.student_id ? requestByStudent.get(assignment.student_id) : null);
-      let assignMeta: any = {};
-      try {
-        if (typeof assignment.notes === 'string' && assignment.notes.trim().startsWith('{')) {
-          assignMeta = JSON.parse(assignment.notes);
-        }
-      } catch {}
-      const storedDaily = Number(assignMeta?.discount?.discountedFare || assignMeta?.fareResult?.dailyFare || 0);
-      const fallback = calculateEscortFare(4.2, 'both', fareRates);
-      const dailyFare = Number(match?.daily_fare || storedDaily || fallback.dailyFare);
-      const morningFare = Number(match?.morning_fare || assignMeta?.fareResult?.morningFare || Math.round(dailyFare / 2));
+      const assignMeta = parseEscortNotes(assignment.notes);
+
+      const resolvedTripType = normalizeEscortTripType(
+        match?.trip_type ||
+        assignMeta?.trip_type ||
+        assignMeta?.fareResult?.tripType ||
+        'both'
+      );
+
+      const storedDaily = Number(
+        assignMeta?.discount?.discountedFare ||
+        assignMeta?.fare_correction?.discountedFare ||
+        assignMeta?.fareResult?.dailyFare ||
+        assignMeta?.daily_fare ||
+        0
+      );
+      const fallback = calculateEscortFare(4.2, resolvedTripType, fareRates);
+      const dailyFare = Number(match?.daily_fare || (storedDaily > 0 ? storedDaily : fallback.dailyFare));
+
+      let morningFare = 0;
+      let afternoonFare = 0;
+      if (resolvedTripType === 'afternoon_only') {
+        morningFare = 0;
+        afternoonFare = dailyFare;
+      } else if (resolvedTripType === 'morning_only') {
+        morningFare = dailyFare;
+        afternoonFare = 0;
+      } else {
+        const rawMorning = match?.morning_fare ?? assignMeta?.fareResult?.morningFare ?? assignMeta?.morning_fare;
+        morningFare = rawMorning != null && !isNaN(Number(rawMorning)) && Number(rawMorning) > 0
+          ? Number(rawMorning)
+          : Math.round(dailyFare / 2);
+        afternoonFare = dailyFare - morningFare;
+      }
+
+      assignment.trip_type = resolvedTripType;
       assignment.daily_fare = dailyFare;
       assignment.standard_daily_fare = Number(match?.standard_daily_fare || assignMeta?.fareResult?.originalDailyFare || fallback.dailyFare);
       assignment.actual_amount_collected = Number(match?.actual_amount_collected || dailyFare);
       assignment.morning_fare = morningFare;
-      assignment.afternoon_fare = Number(match?.afternoon_fare || assignMeta?.fareResult?.afternoonFare || dailyFare - morningFare);
-      assignment.is_discounted = Boolean(match?.is_discounted || assignMeta?.discount) || (assignment.standard_daily_fare > dailyFare);
-      assignment.accountant_approval_ref = match?.accountant_approval_ref || assignMeta?.discount?.accountantApprovalRef || null;
-      assignment.accountant_name = match?.accountant_name || assignMeta?.discount?.accountantName || null;
-      assignment.trip_type =
-        match?.trip_type ||
-        (assignMeta?.trip_type === 'morning_only' || assignMeta?.trip_type === 'afternoon_only'
-          ? assignMeta.trip_type
-          : assignMeta?.fareResult?.tripType || 'both');
+      assignment.afternoon_fare = afternoonFare;
+      assignment.is_discounted = Boolean(match?.is_discounted || assignMeta?.discount || assignMeta?.fare_correction) || (assignment.standard_daily_fare > dailyFare);
+      assignment.accountant_approval_ref = match?.accountant_approval_ref || assignMeta?.discount?.accountantApprovalRef || assignMeta?.fare_correction?.accountantApprovalRef || null;
+      assignment.accountant_name = match?.accountant_name || assignMeta?.discount?.accountantName || assignMeta?.fare_correction?.accountantName || null;
     }
 
     const payload = {
@@ -1326,9 +1366,9 @@ export async function POST(request: NextRequest) {
 
       const variance = rawOriginal > 0 ? rawOriginal - rawCorrected : 0;
       const isDiscount = variance > 0;
-      const resolvedTripType = tripType === 'morning_only' || tripType === 'afternoon_only' ? tripType : 'both';
+      const resolvedTripType = normalizeEscortTripType(tripType);
       const morningFare = resolvedTripType === 'afternoon_only' ? 0 : resolvedTripType === 'morning_only' ? rawCorrected : Math.round(rawCorrected / 2);
-      const afternoonFare = resolvedTripType === 'morning_only' ? 0 : rawCorrected - morningFare;
+      const afternoonFare = resolvedTripType === 'morning_only' ? 0 : resolvedTripType === 'afternoon_only' ? rawCorrected : rawCorrected - morningFare;
       const discountPayload = {
         originalFare: rawOriginal || rawCorrected,
         discountedFare: rawCorrected,
@@ -1545,6 +1585,7 @@ export async function POST(request: NextRequest) {
               parentUserId = parentLink?.parent_user_id || null;
             }
             const notesPayload = {
+              trip_type: resolvedTripType,
               discount: isDiscount ? discountPayload : null,
               fare_correction: discountPayload,
               daily_fare: rawCorrected,
@@ -1557,6 +1598,7 @@ export async function POST(request: NextRequest) {
                 afternoonFare,
                 originalDailyFare: rawOriginal || rawCorrected,
                 discountVariance: variance,
+                tripType: resolvedTripType,
               },
               source: 'city_manager_fare_correction',
             };

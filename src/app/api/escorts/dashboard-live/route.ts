@@ -839,22 +839,22 @@ export async function GET(request: NextRequest) {
       const dailyFare = isSchoolEscort ? null : effectiveDailyFare;
       const morningFare = isSchoolEscort
         ? null
-        : isDiscounted
-          ? normalizedTripType === 'afternoon_only'
-            ? 0
-            : normalizedTripType === 'morning_only'
-              ? effectiveDailyFare
-              : Math.round(effectiveDailyFare / 2)
-          : fareEngine.morningFare;
+        : normalizedTripType === 'afternoon_only'
+          ? 0
+          : normalizedTripType === 'morning_only'
+            ? effectiveDailyFare
+            : isDiscounted
+              ? Math.round(effectiveDailyFare / 2)
+              : fareEngine.morningFare;
       const afternoonFare = isSchoolEscort
         ? null
-        : isDiscounted
-          ? normalizedTripType === 'morning_only'
-            ? 0
-            : normalizedTripType === 'afternoon_only'
-              ? effectiveDailyFare
-              : effectiveDailyFare - (morningFare || 0)
-          : fareEngine.afternoonFare;
+        : normalizedTripType === 'morning_only'
+          ? 0
+          : normalizedTripType === 'afternoon_only'
+            ? effectiveDailyFare
+            : isDiscounted
+              ? effectiveDailyFare - (morningFare || 0)
+              : fareEngine.afternoonFare;
 
       const cls = Array.isArray(st.class)
         ? st.class[0]?.name

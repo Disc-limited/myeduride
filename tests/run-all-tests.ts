@@ -40,6 +40,9 @@ import { schoolWalletInvariantsSuite } from './unit/school-wallet-invariants.tes
 import { receiptEngineSuite } from './unit/receipt-engine.test';
 import { dailyGateDeductionAndRollCallSuite } from './unit/daily-gate-deduction-and-roll-call.test';
 import { myedurideVsSchoolEscortIsolationSuite } from './unit/myeduride-vs-school-escort-isolation.test';
+import { eveningEscrowSettlementSuite } from './unit/evening-escrow-settlement.test';
+import { preFlightBalanceAuditSuite } from './unit/pre-flight-balance-audit.test';
+import { vaultSecurityInvariantsSuite } from './unit/vault-security-invariants.test';
 import { pickupControlApiSuite } from './integration/pickup-control-api.test';
 import { escortApisSuite } from './integration/escort-apis.test';
 import { routesVehiclesApiSuite } from './integration/routes-vehicles-api.test';
@@ -59,6 +62,7 @@ import { safetyConnectE2ESuite } from './e2e/safety-connect-e2e.test';
 import { parentBookingWorkflowE2ESuite } from './e2e/parent-booking-workflow-e2e.test';
 import { pickupAuthorizationE2ESuite } from './e2e/pickup-authorization-e2e.test';
 import { emergencyDeputisingE2ESuite } from './e2e/emergency-deputising-e2e.test';
+import { walletLifecycleSimulationE2ESuite } from './e2e/wallet-lifecycle-simulation-e2e.test';
 import { performanceSuite } from './performance/api-benchmarks.test';
 import { routesPerfSuite } from './performance/routes-perf.test';
 import { gateVisitorsPerfSuite } from './performance/gate-visitors-perf.test';
@@ -110,6 +114,9 @@ async function runAllTests() {
     receiptEngineSuite,
     dailyGateDeductionAndRollCallSuite,
     myedurideVsSchoolEscortIsolationSuite,
+    eveningEscrowSettlementSuite,
+    preFlightBalanceAuditSuite,
+    vaultSecurityInvariantsSuite,
     pickupControlApiSuite,
     escortApisSuite,
     routesVehiclesApiSuite,
@@ -129,6 +136,7 @@ async function runAllTests() {
     parentBookingWorkflowE2ESuite,
     pickupAuthorizationE2ESuite,
     emergencyDeputisingE2ESuite,
+    walletLifecycleSimulationE2ESuite,
     performanceSuite,
     routesPerfSuite,
     gateVisitorsPerfSuite,

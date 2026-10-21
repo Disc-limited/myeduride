@@ -22,6 +22,76 @@ function formatDuration(mins: number | null | undefined): string {
   return m > 0 ? `${h}h ${m}m` : `${h}h`;
 }
 
+function computeTimeLeft(v: any, nowMs: number) {
+  const isDeclined = v.host_response === 'declined' || v.security_flag === 'flagged';
+  const isDeparted = v.status === 'departed';
+  const isPending = v.host_response === 'pending' || !v.host_response;
+  const expectedLimit = Number(v.expected_duration_minutes) || 60;
+
+  if (isDeclined) {
+    return {
+      time_left_minutes: 0,
+      time_left_formatted: 'Declined',
+      is_overdue: false,
+      status_label: 'Entry Declined',
+      status_color: 'rose',
+    };
+  }
+
+  if (isDeparted) {
+    const dur = v.duration_minutes || (v.exit_time && v.entry_time
+      ? Math.max(1, Math.round((new Date(v.exit_time).getTime() - new Date(v.entry_time).getTime()) / 60000))
+      : 30);
+    return {
+      time_left_minutes: 0,
+      time_left_formatted: `Completed (${formatDuration(dur)})`,
+      is_overdue: false,
+      status_label: 'Visit Departed',
+      status_color: 'slate',
+    };
+  }
+
+  if (isPending) {
+    return {
+      time_left_minutes: expectedLimit,
+      time_left_formatted: 'Awaiting Decision',
+      is_overdue: false,
+      status_label: 'Pending Acceptance',
+      status_color: 'amber',
+    };
+  }
+
+  // Active on campus & accepted
+  const entryMs = v.entry_time ? new Date(v.entry_time).getTime() : nowMs;
+  const elapsedMinutes = Math.max(0, Math.floor((nowMs - entryMs) / 60000));
+  const remainingMinutes = expectedLimit - elapsedMinutes;
+
+  if (remainingMinutes > 0) {
+    const h = Math.floor(remainingMinutes / 60);
+    const m = remainingMinutes % 60;
+    const formatted = h > 0 ? `${h}h ${m}m left` : `${m}m left`;
+    return {
+      time_left_minutes: remainingMinutes,
+      time_left_formatted: formatted,
+      is_overdue: false,
+      status_label: `${formatted} on campus`,
+      status_color: remainingMinutes <= 15 ? 'amber' : 'emerald',
+    };
+  } else {
+    const overdueMins = Math.abs(remainingMinutes);
+    const h = Math.floor(overdueMins / 60);
+    const m = overdueMins % 60;
+    const formatted = h > 0 ? `Overstayed by ${h}h ${m}m` : `Overstayed by ${overdueMins}m`;
+    return {
+      time_left_minutes: remainingMinutes,
+      time_left_formatted: formatted,
+      is_overdue: true,
+      status_label: formatted,
+      status_color: 'rose',
+    };
+  }
+}
+
 /**
  * GET /api/school-admin/reports/visitors
  * 
@@ -133,11 +203,18 @@ export async function GET(request: NextRequest) {
         actionTaken = 'Awaiting Admin / Host Clearance';
       }
 
+      const timeLeftInfo = computeTimeLeft(v, nowTime);
+
       return {
         ...v,
         computed_duration_minutes: durationMins,
         duration_formatted: formatDuration(durationMins),
         action_taken: actionTaken,
+        expected_duration_minutes: Number(v.expected_duration_minutes) || 60,
+        time_left_minutes: timeLeftInfo.time_left_minutes,
+        time_left_formatted: timeLeftInfo.time_left_formatted,
+        is_overdue: timeLeftInfo.is_overdue,
+        status_color: timeLeftInfo.status_color,
       };
     });
 
@@ -299,11 +376,13 @@ export async function POST(request: NextRequest) {
     const nowIso = nowUtcIso();
 
     // 2. Update gate_visitors
+    const expectedDuration = Number(body.expected_duration_minutes) || currentVisitor.expected_duration_minutes || 60;
     const updateData = {
       host_response: hostDecision,
       host_response_at: nowIso,
       host_response_notes: finalReason,
       security_flag: securityFlag,
+      expected_duration_minutes: expectedDuration,
     };
 
     const { data: updatedVisitor, error: updateError } = await supabase

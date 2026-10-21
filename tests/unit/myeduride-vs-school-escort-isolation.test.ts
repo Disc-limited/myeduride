@@ -160,7 +160,7 @@ myedurideVsSchoolEscortIsolationSuite.test(
     const databaseEscortTable = [originalSchoolEscort, newEscortRecord];
 
     // Find the original school escort in the table
-    const schoolEscortAfter = databaseEscortTable.find((e) => e.id === 'ESC-SCH-001');
+    const schoolEscortAfter = databaseEscortTable.find((e) => e.id === 'ESC-SCH-001') as typeof originalSchoolEscort | undefined;
 
     // Assert: The school escort record is completely unchanged
     expect(JSON.stringify(schoolEscortAfter)).toBe(snapshotBefore);

@@ -50,6 +50,11 @@ interface VisitorRecord {
   host_response_at?: string | null;
   host_response_notes?: string | null;
   action_taken: string;
+  expected_duration_minutes?: number;
+  time_left_minutes?: number;
+  time_left_formatted?: string;
+  is_overdue?: boolean;
+  status_color?: 'emerald' | 'amber' | 'rose' | 'slate';
 }
 
 interface VisitorsReportViewProps {
@@ -77,6 +82,13 @@ export default function VisitorsReportView({
   const [declineModalVisitor, setDeclineModalVisitor] = useState<VisitorRecord | null>(null);
   const [declineReasonPreset, setDeclineReasonPreset] = useState('Busy in a meeting / Cannot attend right now');
   const [customDeclineNote, setCustomDeclineNote] = useState('');
+
+  // Accept modal state
+  const [acceptModalVisitor, setAcceptModalVisitor] = useState<VisitorRecord | null>(null);
+  const [acceptReasonPreset, setAcceptReasonPreset] = useState('Approved by School Admin. Proceed to Reception.');
+  const [customAcceptNote, setCustomAcceptNote] = useState('');
+  const [acceptDurationMinutes, setAcceptDurationMinutes] = useState(60);
+
   const [submittingDecision, setSubmittingDecision] = useState(false);
 
   // Fetch visitors
@@ -150,8 +162,51 @@ export default function VisitorsReportView({
     return () => clearInterval(interval);
   }, [autoRefresh, loadVisitors]);
 
-  // Handle Accept Action
-  const handleAcceptVisitor = async (visitor: VisitorRecord) => {
+  // Open Accept Dialog
+  const openAcceptDialog = (visitor: VisitorRecord) => {
+    setAcceptModalVisitor(visitor);
+    setAcceptReasonPreset('Approved by School Admin. Proceed to Reception.');
+    setCustomAcceptNote('');
+    setAcceptDurationMinutes(visitor.expected_duration_minutes || 60);
+  };
+
+  // Submit Accept Decision
+  const handleConfirmAccept = async () => {
+    if (!acceptModalVisitor) return;
+    const finalReason = customAcceptNote.trim() || acceptReasonPreset;
+
+    try {
+      setSubmittingDecision(true);
+      const res = await fetch('/api/school-admin/reports/visitors', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify({
+          school_id: schoolId,
+          visitor_id: acceptModalVisitor.id,
+          action: 'accept',
+          reason: finalReason,
+          expected_duration_minutes: acceptDurationMinutes,
+        }),
+      });
+
+      const data = await res.json();
+      if (res.ok) {
+        toast.success(`Visitor ${acceptModalVisitor.full_name} APPROVED. Gate officer informed to clear entry.`);
+        setAcceptModalVisitor(null);
+        loadVisitors();
+      } else {
+        toast.error(data.error || 'Failed to approve visitor');
+      }
+    } catch (err) {
+      toast.error('Network error approving visitor');
+    } finally {
+      setSubmittingDecision(false);
+    }
+  };
+
+  // Quick Accept
+  const handleQuickAccept = async (visitor: VisitorRecord) => {
     try {
       setSubmittingDecision(true);
       const res = await fetch('/api/school-admin/reports/visitors', {
@@ -163,6 +218,7 @@ export default function VisitorsReportView({
           visitor_id: visitor.id,
           action: 'accept',
           reason: 'Approved by School Admin. Proceed to Reception.',
+          expected_duration_minutes: visitor.expected_duration_minutes || 60,
         }),
       });
 
@@ -533,6 +589,7 @@ export default function VisitorsReportView({
                   <th className="py-3 px-4">Visitor Identity</th>
                   <th className="py-3 px-4">Time of Visit & Exit</th>
                   <th className="py-3 px-4">Purpose & Host</th>
+                  <th className="py-3 px-4">Time Left</th>
                   <th className="py-3 px-4">Vehicle Plate</th>
                   <th className="py-3 px-4">Action Taken</th>
                   <th className="py-3 px-4 text-right">Admin Action</th>
@@ -611,6 +668,40 @@ export default function VisitorsReportView({
                         </div>
                       </td>
 
+                      {/* Time Left */}
+                      <td className="py-3.5 px-4 whitespace-nowrap">
+                        {v.status === 'departed' ? (
+                          <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[11px] font-bold bg-slate-100 text-slate-600">
+                            <CheckCircle2 size={12} className="text-slate-400" />
+                            Completed
+                          </span>
+                        ) : isDeclined ? (
+                          <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[11px] font-bold bg-rose-50 text-rose-700 border border-rose-200">
+                            <XCircle size={12} />
+                            Declined
+                          </span>
+                        ) : isPending ? (
+                          <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[11px] font-bold bg-amber-50 text-amber-700 border border-amber-200 animate-pulse">
+                            <Clock size={12} />
+                            Awaiting Action
+                          </span>
+                        ) : v.is_overdue ? (
+                          <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[11px] font-black bg-rose-100 text-rose-800 border border-rose-300 animate-pulse">
+                            <AlertTriangle size={12} className="text-rose-600" />
+                            {v.time_left_formatted || 'Overstayed'}
+                          </span>
+                        ) : (
+                          <span className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[11px] font-bold ${
+                            (v.time_left_minutes ?? 60) <= 15
+                              ? 'bg-amber-100 text-amber-800 border border-amber-300'
+                              : 'bg-emerald-100 text-emerald-800 border border-emerald-300'
+                          }`}>
+                            <Clock size={12} />
+                            {v.time_left_formatted || `${v.expected_duration_minutes || 60}m left`}
+                          </span>
+                        )}
+                      </td>
+
                       {/* Vehicle Plate */}
                       <td className="py-3.5 px-4 whitespace-nowrap">
                         {v.vehicle_plate && v.vehicle_plate !== 'N/A' ? (
@@ -653,10 +744,10 @@ export default function VisitorsReportView({
                           <div className="flex items-center justify-end gap-1.5">
                             <button
                               type="button"
-                              onClick={() => handleAcceptVisitor(v)}
+                              onClick={() => openAcceptDialog(v)}
                               disabled={submittingDecision}
                               className="px-2.5 py-1 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-black text-[11px] flex items-center gap-1 shadow-2xs transition-all cursor-pointer disabled:opacity-50"
-                              title="Approve entry for this visitor"
+                              title="Approve entry and set duration for this visitor"
                             >
                               <CheckCircle2 size={12} />
                               <span>Accept</span>
@@ -693,7 +784,7 @@ export default function VisitorsReportView({
                             </span>
                             <button
                               type="button"
-                              onClick={() => handleAcceptVisitor(v)}
+                              onClick={() => openAcceptDialog(v)}
                               className="text-[10px] text-slate-400 hover:text-emerald-600 underline cursor-pointer"
                             >
                               Re-clear
@@ -712,7 +803,134 @@ export default function VisitorsReportView({
 
       </div>
 
-      {/* 4. Decline Decision Modal */}
+      {/* 4. Accept Decision Modal */}
+      {acceptModalVisitor && (
+        <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4">
+          <div className="bg-white rounded-3xl max-w-md w-full p-6 shadow-2xl border border-slate-200 space-y-4">
+            <div className="flex items-center justify-between pb-3 border-b border-slate-100">
+              <div className="flex items-center gap-2">
+                <div className="w-8 h-8 rounded-xl bg-emerald-100 text-emerald-700 flex items-center justify-center font-bold">
+                  <CheckCircle2 size={18} />
+                </div>
+                <div>
+                  <h3 className="font-extrabold text-slate-900 text-base">Accept Visitor Entry</h3>
+                  <p className="text-xs text-slate-500">Authorize access and specify expected visit duration</p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setAcceptModalVisitor(null)}
+                className="p-1 rounded-lg text-slate-400 hover:text-slate-600 cursor-pointer"
+              >
+                ✕
+              </button>
+            </div>
+
+            {/* Visitor Details Recap */}
+            <div className="p-3 bg-emerald-50/60 rounded-2xl border border-emerald-100 space-y-1 text-xs">
+              <p className="font-extrabold text-slate-900">
+                {acceptModalVisitor.full_name} ({acceptModalVisitor.phone})
+              </p>
+              <p className="text-slate-600">
+                <b>Purpose:</b> {acceptModalVisitor.purpose_of_visit}
+              </p>
+              <p className="text-slate-600">
+                <b>Seeking:</b> {acceptModalVisitor.person_to_see} ({acceptModalVisitor.department})
+              </p>
+            </div>
+
+            {/* Expected Duration */}
+            <div className="space-y-1.5">
+              <label className="text-xs font-bold text-slate-700 block">
+                Approved Visit Duration (Time Limit):
+              </label>
+              <div className="grid grid-cols-4 gap-2">
+                {[30, 45, 60, 90].map((mins) => (
+                  <button
+                    key={mins}
+                    type="button"
+                    onClick={() => setAcceptDurationMinutes(mins)}
+                    className={`py-2 rounded-xl text-xs font-bold border transition-all cursor-pointer ${
+                      acceptDurationMinutes === mins
+                        ? 'bg-emerald-600 text-white border-emerald-600 shadow-xs'
+                        : 'bg-white border-slate-200 text-slate-700 hover:bg-slate-50'
+                    }`}
+                  >
+                    {mins} mins
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            {/* Reason Presets */}
+            <div className="space-y-2">
+              <label className="text-xs font-bold text-slate-700 block">
+                Select Reason / Clearance Note:
+              </label>
+              {[
+                'Approved by School Admin. Proceed to Reception.',
+                'Official meeting scheduled in Admin Office.',
+                'Approved for brief parent enquiry.',
+              ].map((reason) => (
+                <label
+                  key={reason}
+                  onClick={() => setAcceptReasonPreset(reason)}
+                  className={`p-2.5 rounded-xl border flex items-center gap-2 text-xs font-semibold cursor-pointer transition-all ${
+                    acceptReasonPreset === reason
+                      ? 'bg-emerald-50 border-emerald-300 text-emerald-900 ring-1 ring-emerald-300'
+                      : 'bg-white border-slate-200 text-slate-700 hover:bg-slate-50'
+                  }`}
+                >
+                  <input
+                    type="radio"
+                    name="acceptReason"
+                    checked={acceptReasonPreset === reason}
+                    onChange={() => setAcceptReasonPreset(reason)}
+                    className="accent-emerald-600"
+                  />
+                  <span>{reason}</span>
+                </label>
+              ))}
+            </div>
+
+            {/* Custom Note */}
+            <div className="space-y-1">
+              <label className="text-xs font-bold text-slate-700 block">
+                Custom Instructions for Gate Officer (Optional):
+              </label>
+              <textarea
+                value={customAcceptNote}
+                onChange={(e) => setCustomAcceptNote(e.target.value)}
+                placeholder="e.g., Direct visitor to Main Block 2nd floor, wear Visitor Badge #04..."
+                className="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs text-slate-800 focus:outline-hidden focus:ring-2 focus:ring-emerald-500/20"
+                rows={2}
+              />
+            </div>
+
+            {/* Action Buttons */}
+            <div className="flex items-center justify-end gap-2 pt-2 border-t border-slate-100">
+              <button
+                type="button"
+                onClick={() => setAcceptModalVisitor(null)}
+                className="px-4 py-2 rounded-xl text-xs font-bold text-slate-600 hover:bg-slate-100 cursor-pointer"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={handleConfirmAccept}
+                disabled={submittingDecision}
+                className="px-4 py-2 rounded-xl text-xs font-bold text-white bg-emerald-600 hover:bg-emerald-700 shadow-md cursor-pointer disabled:opacity-50 flex items-center gap-1.5"
+              >
+                <CheckCircle2 size={14} />
+                <span>Confirm & Clear Entry</span>
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* 5. Decline Decision Modal */}
       {declineModalVisitor && (
         <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4">
           <div className="bg-white rounded-3xl max-w-md w-full p-6 shadow-2xl border border-slate-200 space-y-4">

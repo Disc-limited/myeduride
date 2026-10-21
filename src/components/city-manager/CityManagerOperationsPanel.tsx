@@ -101,14 +101,19 @@ export function CityManagerOperationsPanel() {
       || (typeof req.school === 'object' ? req.school?.name : req.school)
       || 'School Campus';
     const standard = Number(req.standard_daily_fare || req.daily_fare || req.actual_amount_collected || 0);
-    const current = Number(req.actual_amount_collected || req.daily_fare || standard);
-    const savings = standard > current ? standard - current : 0;
     const initialTripType: 'both' | 'morning_only' | 'afternoon_only' =
       req.trip_type === 'morning_only' || req.trip_type === 'afternoon_only'
         ? req.trip_type
         : req.tripType === 'morning_only' || req.tripType === 'afternoon_only'
           ? req.tripType
           : 'both';
+    const current = Number(
+      req.actual_amount_collected ||
+      req.daily_fare ||
+      (initialTripType === 'morning_only' ? req.morning_fare : initialTripType === 'afternoon_only' ? req.afternoon_fare : 0) ||
+      standard
+    );
+    const savings = standard > current ? standard - current : 0;
 
     setDiscountModal({
       open: true,
@@ -159,6 +164,41 @@ export function CityManagerOperationsPanel() {
       });
       const json = await res.json();
       if (!res.ok) throw new Error(json.error || 'Failed to save fare');
+
+      const mFare = discountModal.tripType === 'afternoon_only' ? 0 : discountModal.tripType === 'morning_only' ? dFare : Math.round(dFare / 2);
+      const aFare = discountModal.tripType === 'morning_only' ? 0 : discountModal.tripType === 'afternoon_only' ? dFare : dFare - mFare;
+
+      setData((prev: any) => {
+        if (!prev) return prev;
+        const updateItem = (item: any) => {
+          const isMatch =
+            (discountModal.booking?.booking_id && item.booking_id === discountModal.booking.booking_id) ||
+            (discountModal.booking?.assignment_id && (item.assignment_id === discountModal.booking.assignment_id || item.id === discountModal.booking.assignment_id)) ||
+            (discountModal.booking?.child_id && (item.child_id === discountModal.booking.child_id || item.student_id === discountModal.booking.child_id));
+          if (!isMatch) return item;
+          return {
+            ...item,
+            trip_type: discountModal.tripType,
+            daily_fare: dFare,
+            actual_amount_collected: dFare,
+            morning_fare: mFare,
+            afternoon_fare: aFare,
+            is_discounted: Boolean(dFare < discountModal.originalFare),
+            discount_details: {
+              ...(item.discount_details || {}),
+              discountedFare: dFare,
+              accountantApprovalRef: discountModal.accountantApprovalRef.trim(),
+              accountantName: discountModal.accountantName.trim(),
+              discountReason: discountModal.discountReason.trim(),
+            },
+          };
+        };
+        return {
+          ...prev,
+          parent_requests: (prev.parent_requests || []).map(updateItem),
+          assignments: (prev.assignments || []).map(updateItem),
+        };
+      });
 
       toast.success(json.message || `Fare updated to ₦${dFare.toLocaleString()}/day`);
       setDiscountModal((prev) => ({ ...prev, open: false, submitting: false }));
@@ -959,13 +999,21 @@ export function CityManagerOperationsPanel() {
                   </span>
                 </div>
                 <div className="grid grid-cols-2 gap-1.5 text-[10px]">
-                  <div className="bg-slate-900 p-1.5 rounded-lg text-center">
+                  <div className={`p-1.5 rounded-lg text-center ${req.trip_type === 'afternoon_only' ? 'bg-slate-900/50 opacity-60 border border-slate-800/50' : 'bg-slate-900'}`}>
                     <span className="text-slate-500 block">Morning Trip</span>
-                    <span className="font-bold text-slate-200">₦{Number(req.morning_fare || 0).toLocaleString()}</span>
+                    <span className={`font-bold ${req.trip_type === 'afternoon_only' ? 'text-slate-500 line-through' : 'text-slate-200'}`}>
+                      {req.trip_type === 'afternoon_only'
+                        ? '₦0 (Excluded)'
+                        : `₦${Number(req.morning_fare || (req.trip_type === 'morning_only' ? req.daily_fare : Math.round(Number(req.daily_fare || 0) / 2)) || 0).toLocaleString()}`}
+                    </span>
                   </div>
-                  <div className="bg-slate-900 p-1.5 rounded-lg text-center">
+                  <div className={`p-1.5 rounded-lg text-center ${req.trip_type === 'morning_only' ? 'bg-slate-900/50 opacity-60 border border-slate-800/50' : 'bg-slate-900'}`}>
                     <span className="text-slate-500 block">Afternoon Trip</span>
-                    <span className="font-bold text-slate-200">₦{Number(req.afternoon_fare || 0).toLocaleString()}</span>
+                    <span className={`font-bold ${req.trip_type === 'morning_only' ? 'text-slate-500 line-through' : 'text-slate-200'}`}>
+                      {req.trip_type === 'morning_only'
+                        ? '₦0 (Excluded)'
+                        : `₦${Number(req.afternoon_fare || (req.trip_type === 'afternoon_only' ? req.daily_fare : Number(req.daily_fare || 0) - Math.round(Number(req.daily_fare || 0) / 2)) || 0).toLocaleString()}`}
+                    </span>
                   </div>
                 </div>
                 {typeof req.service_charge === 'number' ? (

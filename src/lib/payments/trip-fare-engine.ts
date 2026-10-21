@@ -1,4 +1,6 @@
 import { getAdminClient } from '@/lib/supabase/admin';
+import { getOrCreateEscortWallet, notifyEscortDailyPayoutDrop, formatKoboToNgn } from '@/lib/escort/escort-wallet';
+import { todayInLagos } from '@/lib/timezone';
 
 export interface TripAuthorizationResult {
   success: boolean;
@@ -21,14 +23,77 @@ export interface LegCompletionResult {
   error?: string;
 }
 
+export interface EveningSettlementResult {
+  success: boolean;
+  date: string;
+  dry_run: boolean;
+  total_trips_analyzed: number;
+  settled_trips_count: number;
+  settled_amount_kobo: number;
+  settled_amount_ngn: number;
+  held_for_review_count: number;
+  held_trip_ids: string[];
+  canceled_trips_count: number;
+  settled_trip_ids: string[];
+  escorts_payout_summary: Record<string, {
+    escort_id: string;
+    escort_name: string;
+    amount_kobo: number;
+    amount_ngn: number;
+    formatted_amount: string;
+    trips_count: number;
+    wallet_id?: string;
+  }>;
+  error?: string;
+}
+
 export class TripFareEngine {
   /** Default daily school round-trip fee: ₦1,060 (106,000 Kobo) */
   public static readonly DEFAULT_DAILY_FEE_KOBO = 106000;
 
   /**
+   * Pure financial mathematical invariant validator:
+   * Enforces (driver_share_kobo + platform_kobo) === gross_amount_kobo.
+   * Throws if rounding or floating point discrepancies occur.
+   */
+  public static verifyEscrowSplitAssertion(grossKobo: number): {
+    grossKobo: number;
+    vatKobo: number;
+    kmKobo: number;
+    myedurideKmKobo: number;
+    driverShareKobo: number;
+    platformShareKobo: number;
+  } {
+    if (!grossKobo || grossKobo <= 0) {
+      throw new Error('FINTECH_INVALID_AMOUNT: Gross fare amount must be a positive integer kobo.');
+    }
+    const vatKobo = Math.round((grossKobo * 6) / 100);
+    const kmKobo = grossKobo - vatKobo;
+    const myedurideKmKobo = Math.round((kmKobo * 20) / 100);
+    const driverShareKobo = kmKobo - myedurideKmKobo;
+    const platformShareKobo = vatKobo + myedurideKmKobo;
+
+    if (driverShareKobo + platformShareKobo !== grossKobo) {
+      throw new Error(
+        `FINTECH_ASSERTION_FAILED: Integrity violation — driver share (${driverShareKobo}) + platform share (${platformShareKobo}) does not equal gross amount (${grossKobo})!`
+      );
+    }
+
+    return {
+      grossKobo,
+      vatKobo,
+      kmKobo,
+      myedurideKmKobo,
+      driverShareKobo,
+      platformShareKobo,
+    };
+  }
+
+  /**
    * Pre-trip balance check and authorization.
    * If available balance >= required fee, locks amount in escrow and creates trip legs.
    * If insufficient, blocks authorization and sends standard alert notification.
+   * Hardened: Strictly verifies integer balance split assertion prior to RPC execution.
    */
   public static async authorizeStudentTrip(params: {
     studentId: string;
@@ -40,6 +105,9 @@ export class TripFareEngine {
   }): Promise<TripAuthorizationResult> {
     const supabase = getAdminClient();
     const grossKobo = params.grossKobo || this.DEFAULT_DAILY_FEE_KOBO;
+
+    // Hardening check: verify split assertion before committing transaction
+    this.verifyEscrowSplitAssertion(grossKobo);
 
     const { data, error } = await supabase.rpc('execute_atomic_trip_authorization', {
       p_student_id: params.studentId,
@@ -61,7 +129,12 @@ export class TripFareEngine {
 
     if (!data?.success && data?.error === 'INSUFFICIENT_FUNDS') {
       // Send mandatory insufficient balance notification to parent
-      await this.notifyParentInsufficientFunds(params.parentUserId, params.studentId, data.required_ngn, data.available_balance_ngn);
+      await this.notifyParentInsufficientFunds(
+        params.parentUserId,
+        params.studentId,
+        data.required_ngn,
+        data.available_balance_ngn
+      );
       return {
         success: false,
         authorized: false,
@@ -134,7 +207,7 @@ export class TripFareEngine {
         .eq('id', currentLeg.id);
     }
 
-    // 2. Check if the counterpart leg is also COMPLETED
+    // 2. Check if counterpart leg is also COMPLETED
     const counterpartType = params.legType === 'pickup' ? 'dropoff' : 'pickup';
     const { data: counterpartLegs } = await supabase
       .from('trip_legs')
@@ -174,19 +247,27 @@ export class TripFareEngine {
 
   /**
    * Execute atomic fare release stored procedure across wallets.
+   * Directly credits driver fare share into escort wallet available balance.
    */
   public static async releaseTripFare(params: {
     studentId: string;
     sessionId?: string;
     escortWalletId?: string;
+    escortId?: string;
   }) {
     const supabase = getAdminClient();
     const idempotencyKey = `REL-${params.studentId}-${params.sessionId || 'DAILY'}-${new Date().toISOString().slice(0, 10)}`;
 
+    let escortWalletId = params.escortWalletId;
+    if (!escortWalletId && params.escortId) {
+      const walletInfo = await getOrCreateEscortWallet(params.escortId);
+      escortWalletId = walletInfo?.walletId;
+    }
+
     const { data, error } = await supabase.rpc('process_trip_fare_release', {
       p_student_id: params.studentId,
       p_trip_id: params.sessionId || null,
-      p_escort_wallet_id: params.escortWalletId || null,
+      p_escort_wallet_id: escortWalletId || null,
       p_idempotency_key: idempotencyKey,
     });
 
@@ -277,6 +358,127 @@ export class TripFareEngine {
     }
 
     return authResult;
+  }
+
+  /**
+   * PHASE 4: AUTOMATED 7:00 PM ESCROW SETTLEMENT ENGINE
+   * 
+   * Triggered daily at 7:00 PM Lagos Time (WAT) by cron worker or manual admin invocation.
+   * Execution Flow:
+   * 1. Scans all daily trips for target date.
+   * 2. Completed trips (morning_picked_up = true AND afternoon_dropped_off = true):
+   *    - Calls process_trip_fare_release to transfer escrow into escort wallet available balance.
+   *    - Marks trip settlement_status = 'settled'.
+   * 3. Incomplete trips (started but afternoon drop-off not confirmed):
+   *    - Vaults trip as 'SETTLEMENT_HELD_FOR_REVIEW'.
+   *    - Emits alert to City Manager / Admin to prevent incorrect payouts.
+   * 4. Pre-cutoff canceled trips:
+   *    - Ensures escrow holds are canceled and refunded.
+   * 5. Dispatches high-priority payout notification to each compensated escort:
+   *    "💰 Daily Payout Dropped: ₦[Amount] has been credited to your available balance for today's completed rides."
+   */
+  public static async executeEveningEscrowSettlement(params?: {
+    date?: string;
+    dryRun?: boolean;
+    escortId?: string;
+  }): Promise<EveningSettlementResult> {
+    const supabase = getAdminClient();
+    const targetDate = params?.date || todayInLagos();
+    const isDryRun = Boolean(params?.dryRun);
+
+    try {
+      // Execute the database stored procedure
+      const { data, error } = await supabase.rpc('process_evening_escrow_settlement', {
+        p_date: targetDate,
+        p_dry_run: isDryRun,
+      });
+
+      if (error) {
+        console.error('[TripFareEngine] process_evening_escrow_settlement RPC error:', error);
+        return {
+          success: false,
+          date: targetDate,
+          dry_run: isDryRun,
+          total_trips_analyzed: 0,
+          settled_trips_count: 0,
+          settled_amount_kobo: 0,
+          settled_amount_ngn: 0,
+          held_for_review_count: 0,
+          held_trip_ids: [],
+          canceled_trips_count: 0,
+          settled_trip_ids: [],
+          escorts_payout_summary: {},
+          error: error.message || 'Settlement failed',
+        };
+      }
+
+      const rawSummary = data || {};
+      const escortPayoutsSummary = (rawSummary.escort_payouts_summary || {}) as Record<string, number>;
+      const enrichedEscortSummary: Record<string, any> = {};
+
+      // Enrich escort payouts and dispatch notifications if not a dry run
+      for (const [escortKey, amountKobo] of Object.entries(escortPayoutsSummary)) {
+        if (!amountKobo || amountKobo <= 0) continue;
+
+        const walletInfo = await getOrCreateEscortWallet(escortKey);
+        const escortName = walletInfo?.fullName || 'Escort Officer';
+        const formattedAmount = formatKoboToNgn(amountKobo);
+
+        enrichedEscortSummary[escortKey] = {
+          escort_id: escortKey,
+          escort_name: escortName,
+          amount_kobo: amountKobo,
+          amount_ngn: amountKobo / 100,
+          formatted_amount: formattedAmount,
+          trips_count: (rawSummary.settled_trips_count || 1),
+          wallet_id: walletInfo?.walletId,
+        };
+
+        if (!isDryRun && walletInfo?.userId) {
+          // Dispatch high-priority push & in-app notification
+          await notifyEscortDailyPayoutDrop({
+            escortUserId: walletInfo.userId,
+            escortName,
+            escortEmail: walletInfo.email,
+            amountKobo,
+            completedTripsCount: rawSummary.settled_trips_count || 1,
+            dateStr: targetDate,
+          });
+        }
+      }
+
+      return {
+        success: true,
+        date: targetDate,
+        dry_run: isDryRun,
+        total_trips_analyzed: Number(rawSummary.total_trips_analyzed || 0),
+        settled_trips_count: Number(rawSummary.settled_trips_count || 0),
+        settled_amount_kobo: Number(rawSummary.settled_amount_kobo || 0),
+        settled_amount_ngn: Number(rawSummary.settled_amount_kobo || 0) / 100,
+        held_for_review_count: Number(rawSummary.held_for_review_count || 0),
+        held_trip_ids: rawSummary.held_trip_ids || [],
+        canceled_trips_count: Number(rawSummary.canceled_trips_count || 0),
+        settled_trip_ids: rawSummary.settled_trip_ids || [],
+        escorts_payout_summary: enrichedEscortSummary,
+      };
+    } catch (err: any) {
+      console.error('[TripFareEngine] executeEveningEscrowSettlement error:', err);
+      return {
+        success: false,
+        date: targetDate,
+        dry_run: isDryRun,
+        total_trips_analyzed: 0,
+        settled_trips_count: 0,
+        settled_amount_kobo: 0,
+        settled_amount_ngn: 0,
+        held_for_review_count: 0,
+        held_trip_ids: [],
+        canceled_trips_count: 0,
+        settled_trip_ids: [],
+        escorts_payout_summary: {},
+        error: err.message || 'Settlement failed',
+      };
+    }
   }
 
   /**

@@ -161,7 +161,11 @@ export default function EscortIdCardModal({
                 vehicleName={vehicleName}
                 operatingArea={operatingArea}
                 schoolName={escortData?.school_name || 'Lagos Metropolitan Safety Zone'}
-                validThru="09/27"
+                gradeSection={vehiclePlate ? `FLEET · ${vehiclePlate}` : 'OFFICIAL ESCORT'}
+                routeCode={vehiclePlate ? vehiclePlate : 'ESC-METRO'}
+                homeStop={operatingArea || 'Metro Transit Hub'}
+                validThru="07/27"
+                transportStatus="VERIFIED ESCORT"
               />
 
               {/* Verified Badge Summary */}

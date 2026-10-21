@@ -27,10 +27,13 @@ export async function loadPhotoDataUrl(
     const bucketsToTry = ['photos', 'avatars', 'uploads'];
     const candidates = [
       cleanPath,
+      `logos/${cleanPath}`,
       `avatars/${cleanPath}`,
       `uploads/${cleanPath}`,
       `staff/${cleanPath}`,
       `students/${cleanPath}`,
+      `school-logos/${cleanPath}`,
+      `schools/${cleanPath}`,
     ];
 
     for (const bucket of bucketsToTry) {
@@ -51,7 +54,25 @@ export async function loadPhotoDataUrl(
     }
   }
 
-  // 3. If external HTTP/HTTPS URL
+  // 3. If local static asset path (e.g. /images/landing/school_badge_1.png)
+  if (trimmed.startsWith('/')) {
+    try {
+      const fs = await import('fs');
+      const path = await import('path');
+      const fullPath = path.join(process.cwd(), 'public', trimmed);
+      if (fs.existsSync(fullPath)) {
+        const buffer = fs.readFileSync(fullPath);
+        const base64 = buffer.toString('base64');
+        const lower = trimmed.toLowerCase();
+        const mime = lower.endsWith('.png') ? 'image/png' : lower.endsWith('.webp') ? 'image/webp' : 'image/jpeg';
+        return `data:${mime};base64,${base64}`;
+      }
+    } catch {
+      // ignore
+    }
+  }
+
+  // 4. If external HTTP/HTTPS URL
   if (trimmed.startsWith('http://') || trimmed.startsWith('https://')) {
     try {
       const res = await fetch(trimmed);

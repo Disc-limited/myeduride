@@ -264,13 +264,23 @@ export function resolveStoredEscortFare(input: {
   const standardDaily = engine.dailyFare;
   const isDiscounted = Boolean(hasDiscount && standardDaily > dailyFare);
 
-  const morningFare = isDiscounted
-    ? (tripType === 'afternoon_only' ? 0 : tripType === 'morning_only' ? dailyFare : Math.round(dailyFare / 2))
-    : engine.morningFare;
+  const morningFare =
+    tripType === 'afternoon_only'
+      ? 0
+      : tripType === 'morning_only'
+        ? dailyFare
+        : hasDiscount
+          ? Math.round(dailyFare / 2)
+          : engine.morningFare;
 
-  const afternoonFare = isDiscounted
-    ? (tripType === 'morning_only' ? 0 : tripType === 'afternoon_only' ? dailyFare : dailyFare - morningFare)
-    : engine.afternoonFare;
+  const afternoonFare =
+    tripType === 'morning_only'
+      ? 0
+      : tripType === 'afternoon_only'
+        ? dailyFare
+        : hasDiscount
+          ? dailyFare - morningFare
+          : engine.afternoonFare;
 
   return {
     ...engine,

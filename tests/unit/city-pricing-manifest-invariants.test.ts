@@ -179,6 +179,64 @@ cityPricingSuite.test('Gate Officer Escort Batch Invariant: Gate officer receive
   expect(gateAfternoonReleaseList.some((s) => s.id === 'STU-4' || s.id === 'STU-5')).toBeFalsy();
 });
 
+cityPricingSuite.test('City Manager Fare Edit Invariant: Afternoon-only (drop-off) input sets morning fare strictly to 0 and afternoon fare to corrected amount', () => {
+  const activeRates = { rate_per_km: 600, service_charge_percent: 6 };
+
+  // City Manager edits payment for drop-off only to ₦2,000
+  const afternoonOnlyNotes = {
+    fare_correction: {
+      discountedFare: 2000,
+      originalFare: 3500,
+      discountReason: 'One-way afternoon trip',
+    },
+    trip_type: 'afternoon_only',
+    distance_km: 5.0,
+  };
+
+  const resolved = resolveStoredEscortFare({
+    notes: afternoonOnlyNotes,
+    distanceKm: 5.0,
+    tripType: 'afternoon_only',
+    rates: activeRates,
+  });
+
+  expect(resolved.tripType).toBe('afternoon_only');
+  expect(resolved.dailyFare).toBe(2000);
+  expect(resolved.morningFare).toBe(0); // STRICT INVARIANT: Morning MUST be 0
+  expect(resolved.afternoonFare).toBe(2000); // STRICT INVARIANT: Afternoon gets full inputted payment
+  expect(resolved.formattedMorningFare).toBe('₦0');
+  expect(resolved.formattedAfternoonFare).toBe('₦2,000');
+});
+
+cityPricingSuite.test('City Manager Fare Edit Invariant: Morning-only (pickup) input sets afternoon fare strictly to 0 and morning fare to corrected amount', () => {
+  const activeRates = { rate_per_km: 600, service_charge_percent: 6 };
+
+  // City Manager edits payment for morning pickup only to ₦2,500
+  const morningOnlyNotes = {
+    fare_correction: {
+      discountedFare: 2500,
+      originalFare: 3500,
+      discountReason: 'One-way morning trip',
+    },
+    trip_type: 'morning_only',
+    distance_km: 5.0,
+  };
+
+  const resolved = resolveStoredEscortFare({
+    notes: morningOnlyNotes,
+    distanceKm: 5.0,
+    tripType: 'morning_only',
+    rates: activeRates,
+  });
+
+  expect(resolved.tripType).toBe('morning_only');
+  expect(resolved.dailyFare).toBe(2500);
+  expect(resolved.morningFare).toBe(2500); // Morning gets full inputted payment
+  expect(resolved.afternoonFare).toBe(0); // STRICT INVARIANT: Afternoon MUST be 0
+  expect(resolved.formattedMorningFare).toBe('₦2,500');
+  expect(resolved.formattedAfternoonFare).toBe('₦0');
+});
+
 async function run() {
   await cityPricingSuite.run();
 }

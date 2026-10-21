@@ -44,7 +44,8 @@ import {
   Radio,
   Sliders,
   LifeBuoy,
-  Camera
+  Camera,
+  Users
 } from 'lucide-react';
 import { toast } from 'sonner';
 import SchoolNoticeBanner from '@/components/shared/SchoolNoticeBanner';
@@ -60,7 +61,7 @@ export default function StaffDashboardPage() {
 
   // Active navigation tab state
   const [activeTab, setActiveTab] = useState<
-    'dashboard' | 'attendance' | 'history' | 'ride' | 'chat' | 'announcements' | 'profile' | 'settings' | 'help'
+    'dashboard' | 'attendance' | 'history' | 'ride' | 'chat' | 'announcements' | 'profile' | 'settings' | 'help' | 'visitors'
   >('dashboard');
 
   // Mobile sidebar open state
@@ -135,6 +136,23 @@ export default function StaffDashboardPage() {
   const [confirmPassword, setConfirmPassword] = useState('');
   const [updatingPassword, setUpdatingPassword] = useState(false);
   const [uploadingSelfPhoto, setUploadingSelfPhoto] = useState(false);
+
+  // Staff Visitor Acceptance & Clearance States
+  const [staffVisitors, setStaffVisitors] = useState<any[]>([]);
+  const [loadingVisitors, setLoadingVisitors] = useState(false);
+  const [visitorFilter, setVisitorFilter] = useState<'all' | 'pending' | 'on_campus' | 'departed' | 'declined'>('all');
+  const [visitorSearch, setVisitorSearch] = useState('');
+  
+  // Modals for Staff Accept / Decline
+  const [visitorAcceptModal, setVisitorAcceptModal] = useState<any | null>(null);
+  const [visitorAcceptDuration, setVisitorAcceptDuration] = useState(60);
+  const [visitorAcceptReason, setVisitorAcceptReason] = useState('Approved by host staff. Welcome to campus.');
+  const [visitorCustomAccept, setVisitorCustomAccept] = useState('');
+
+  const [visitorDeclineModal, setVisitorDeclineModal] = useState<any | null>(null);
+  const [visitorDeclineReason, setVisitorDeclineReason] = useState('Busy in a class / Cannot attend right now');
+  const [visitorCustomDecline, setVisitorCustomDecline] = useState('');
+  const [submittingVisitorDecision, setSubmittingVisitorDecision] = useState(false);
 
   // MIGO AI Assistant states
   const [migoMessages, setMigoMessages] = useState<Array<{ sender: 'bot' | 'user'; text: string }>>([
@@ -409,6 +427,149 @@ export default function StaffDashboardPage() {
     };
   }, [schoolId, selectedStudent]);
 
+  // Load staff visitors
+  const loadStaffVisitors = async (showToast = false) => {
+    try {
+      setLoadingVisitors(true);
+      const url = schoolId ? `/api/staff/visitors?school_id=${schoolId}` : '/api/staff/visitors';
+      const res = await fetch(url, { cache: 'no-store' });
+      const data = await res.json();
+      if (res.ok && data?.visitors) {
+        setStaffVisitors(data.visitors);
+        if (showToast) toast.success('Visitor records updated');
+      }
+    } catch (err) {
+      console.warn('Error loading staff visitors:', err);
+    } finally {
+      setLoadingVisitors(false);
+    }
+  };
+
+  useEffect(() => {
+    loadStaffVisitors();
+    const interval = setInterval(() => loadStaffVisitors(), 10000);
+    return () => clearInterval(interval);
+  }, [schoolId]);
+
+  // Realtime broadcast listener for visitor arrivals / scans at the school gate
+  useEffect(() => {
+    if (!schoolId) return;
+    const supabase = createClient();
+    const visitorChannel = supabase
+      .channel(`school:${schoolId}:visitors`)
+      .on('broadcast', { event: 'visitor_created_or_scanned' }, (payload) => {
+        const item = payload.payload;
+        toast.info(`🔔 Visitor at gate: ${item.full_name} (${item.purpose_of_visit})`, {
+          duration: 6000,
+        });
+        loadStaffVisitors();
+      })
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(visitorChannel);
+    };
+  }, [schoolId]);
+
+  const pendingStaffVisitors = useMemo(() => {
+    return staffVisitors.filter((v) => v.host_response === 'pending' || !v.host_response);
+  }, [staffVisitors]);
+
+  const activeOnCampusVisitors = useMemo(() => {
+    return staffVisitors.filter((v) => v.status === 'on_campus');
+  }, [staffVisitors]);
+
+  const filteredStaffVisitors = useMemo(() => {
+    let list = [...staffVisitors];
+    if (visitorFilter === 'pending') {
+      list = list.filter((v) => v.host_response === 'pending' || !v.host_response);
+    } else if (visitorFilter === 'on_campus') {
+      list = list.filter((v) => v.status === 'on_campus');
+    } else if (visitorFilter === 'departed') {
+      list = list.filter((v) => v.status === 'departed');
+    } else if (visitorFilter === 'declined') {
+      list = list.filter((v) => v.host_response === 'declined');
+    }
+
+    if (visitorSearch.trim()) {
+      const q = visitorSearch.toLowerCase();
+      list = list.filter(
+        (v) =>
+          v.full_name?.toLowerCase().includes(q) ||
+          v.phone?.includes(q) ||
+          v.purpose_of_visit?.toLowerCase().includes(q) ||
+          v.vehicle_plate?.toLowerCase().includes(q) ||
+          v.digital_pass_token?.toLowerCase().includes(q)
+      );
+    }
+    return list;
+  }, [staffVisitors, visitorFilter, visitorSearch]);
+
+  const handleStaffAccept = async () => {
+    if (!visitorAcceptModal) return;
+    const finalReason = visitorCustomAccept.trim() || visitorAcceptReason;
+    try {
+      setSubmittingVisitorDecision(true);
+      const res = await fetch('/api/staff/visitors', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify({
+          school_id: schoolId,
+          visitor_id: visitorAcceptModal.id,
+          action: 'accept',
+          reason: finalReason,
+          duration_minutes: visitorAcceptDuration,
+        }),
+      });
+      const data = await res.json();
+      if (res.ok) {
+        toast.success(`Visitor ${visitorAcceptModal.full_name} entry APPROVED! Gate officer has been notified.`);
+        setVisitorAcceptModal(null);
+        setVisitorCustomAccept('');
+        loadStaffVisitors();
+      } else {
+        toast.error(data.error || 'Failed to approve visitor');
+      }
+    } catch (err) {
+      toast.error('Network error approving visitor');
+    } finally {
+      setSubmittingVisitorDecision(false);
+    }
+  };
+
+  const handleStaffDecline = async () => {
+    if (!visitorDeclineModal) return;
+    const finalReason = visitorCustomDecline.trim() || visitorDeclineReason;
+    try {
+      setSubmittingVisitorDecision(true);
+      const res = await fetch('/api/staff/visitors', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify({
+          school_id: schoolId,
+          visitor_id: visitorDeclineModal.id,
+          action: 'decline',
+          reason: finalReason,
+        }),
+      });
+      const data = await res.json();
+      if (res.ok) {
+        toast.info(`Visitor ${visitorDeclineModal.full_name} DECLINED (${finalReason}). Gate officer notified.`);
+        setVisitorDeclineModal(null);
+        setVisitorCustomDecline('');
+        loadStaffVisitors();
+      } else {
+        toast.error(data.error || 'Failed to decline visitor');
+      }
+    } catch (err) {
+      toast.error('Network error declining visitor');
+    } finally {
+      setSubmittingVisitorDecision(false);
+    }
+  };
+
   const handleLogout = () => {
     logout();
   };
@@ -557,6 +718,13 @@ export default function StaffDashboardPage() {
   // Sidebar Items Definition
   const sidebarItems = [
     { id: 'dashboard', label: 'Dashboard', icon: Home, available: true },
+    {
+      id: 'visitors',
+      label: 'My Visitors',
+      icon: Users,
+      available: true,
+      badge: pendingStaffVisitors.length > 0 ? pendingStaffVisitors.length : undefined,
+    },
     { id: 'attendance', label: 'Attendance', icon: Calendar, available: true },
     { id: 'history', label: 'Attendance History', icon: Clock, available: true },
     { id: 'ride', label: 'My Ride', icon: Car, available: false },
@@ -871,6 +1039,62 @@ export default function StaffDashboardPage() {
             {/* TAB 1: MAIN DASHBOARD */}
             {activeTab === 'dashboard' && (
               <div className="space-y-6">
+                {/* URGENT VISITOR AWAITING ACTION BANNER */}
+                {pendingStaffVisitors.length > 0 && (
+                  <div className="bg-gradient-to-r from-amber-500/15 via-amber-50 to-orange-50 border-2 border-amber-400 rounded-2xl p-4 md:p-5 flex flex-col md:flex-row items-center justify-between gap-4 shadow-md animate-pulse">
+                    <div className="flex items-start gap-3.5">
+                      <div className="w-10 h-10 rounded-xl bg-amber-500 text-white flex items-center justify-center shrink-0 shadow-md">
+                        <Users size={22} />
+                      </div>
+                      <div>
+                        <div className="flex items-center gap-2">
+                          <span className="px-2 py-0.5 rounded-full bg-amber-500 text-white text-[10px] font-black uppercase tracking-wider">
+                            Action Required
+                          </span>
+                          <h4 className="font-extrabold text-sm md:text-base text-amber-950">
+                            Visitor Awaiting Your Clearance at School Gate
+                          </h4>
+                        </div>
+                        <p className="text-xs md:text-sm text-amber-900 mt-1 leading-snug">
+                          <b>{pendingStaffVisitors[0].full_name}</b> ({pendingStaffVisitors[0].phone}) is at the gate.
+                          <span className="mx-1">•</span>
+                          Purpose: <i>&ldquo;{pendingStaffVisitors[0].purpose_of_visit}&rdquo;</i>
+                        </p>
+                      </div>
+                    </div>
+
+                    <div className="flex items-center gap-2 shrink-0 w-full md:w-auto">
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setVisitorAcceptModal(pendingStaffVisitors[0]);
+                          setVisitorAcceptDuration(pendingStaffVisitors[0].expected_duration_minutes || 60);
+                        }}
+                        className="flex-1 md:flex-none px-4 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-extrabold text-xs shadow-md transition-all flex items-center justify-center gap-1.5 cursor-pointer"
+                      >
+                        <CheckCircle2 size={14} />
+                        <span>Accept Entry</span>
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setVisitorDeclineModal(pendingStaffVisitors[0]);
+                        }}
+                        className="flex-1 md:flex-none px-4 py-2 rounded-xl bg-rose-50 hover:bg-rose-100 text-rose-700 border border-rose-300 font-extrabold text-xs transition-all flex items-center justify-center gap-1.5 cursor-pointer"
+                      >
+                        <XCircle size={14} />
+                        <span>Decline</span>
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setActiveTab('visitors')}
+                        className="px-3 py-2 rounded-xl bg-white hover:bg-slate-50 text-slate-700 border border-slate-300 font-bold text-xs cursor-pointer"
+                      >
+                        View All ({pendingStaffVisitors.length})
+                      </button>
+                    </div>
+                  </div>
+                )}
                 {/* INFO BANNER: Gate Clock-In Notice */}
                 <div className="bg-gradient-to-r from-blue-500/10 via-blue-50 to-indigo-50 border border-blue-200/90 rounded-2xl p-4 md:p-5 flex flex-col md:flex-row items-center justify-between gap-4 shadow-sm">
                   <div className="flex items-start gap-3.5">
@@ -1991,6 +2215,370 @@ export default function StaffDashboardPage() {
                 </form>
               </div>
             )}
+
+            {/* TAB 8: VISITORS MODULE (My Visitors) */}
+            {activeTab === 'visitors' && (
+              <div className="space-y-6">
+                {/* Header */}
+                <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 border-b border-slate-200 pb-4">
+                  <div>
+                    <div className="flex items-center gap-2 mb-1">
+                      <span className="px-2.5 py-0.5 rounded-full bg-emerald-100 text-emerald-800 text-[10px] font-black uppercase tracking-wider flex items-center gap-1">
+                        <Users size={12} /> Campus Access Control
+                      </span>
+                      <span className="text-slate-300">/</span>
+                      <span className="text-xs font-semibold text-slate-500">Host Clearance Desk</span>
+                    </div>
+                    <h2 className="text-2xl font-black text-slate-900 tracking-tight">
+                      My Visitors & Clearance Ledger
+                    </h2>
+                    <p className="text-xs md:text-sm text-slate-500 font-medium">
+                      Manage arriving visitors requesting to meet you, accept or decline entries with reasons, and track live on-campus visit time left.
+                    </p>
+                  </div>
+
+                  <div className="flex items-center gap-2">
+                    <button
+                      type="button"
+                      onClick={() => loadStaffVisitors(true)}
+                      disabled={loadingVisitors}
+                      className="px-3 py-2 rounded-xl border border-slate-200 hover:bg-slate-50 text-slate-700 text-xs font-bold flex items-center gap-1.5 shadow-2xs transition-colors cursor-pointer"
+                    >
+                      <RefreshCw size={14} className={loadingVisitors ? 'animate-spin text-emerald-600' : ''} />
+                      <span>Refresh</span>
+                    </button>
+                  </div>
+                </div>
+
+                {/* Stat Cards */}
+                <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+                  <div className="bg-white rounded-2xl border border-slate-200/90 p-4 shadow-2xs">
+                    <div className="flex items-center justify-between">
+                      <span className="text-xs font-bold text-slate-500 uppercase">Total Visitors</span>
+                      <div className="w-8 h-8 rounded-xl bg-blue-50 text-blue-600 flex items-center justify-center">
+                        <Users size={16} />
+                      </div>
+                    </div>
+                    <div className="mt-2 flex items-baseline gap-2">
+                      <span className="text-2xl font-black text-slate-900">{staffVisitors.length}</span>
+                      <span className="text-[11px] text-slate-400 font-medium">recorded</span>
+                    </div>
+                  </div>
+
+                  <div className={`bg-white rounded-2xl border p-4 shadow-2xs ${
+                    pendingStaffVisitors.length > 0 ? 'border-amber-400 bg-amber-50/30 ring-2 ring-amber-400/20' : 'border-slate-200/90'
+                  }`}>
+                    <div className="flex items-center justify-between">
+                      <span className="text-xs font-bold text-amber-700 uppercase">Awaiting My Decision</span>
+                      <div className="w-8 h-8 rounded-xl bg-amber-100 text-amber-700 flex items-center justify-center">
+                        <Clock size={16} />
+                      </div>
+                    </div>
+                    <div className="mt-2 flex items-baseline gap-2">
+                      <span className="text-2xl font-black text-amber-900">{pendingStaffVisitors.length}</span>
+                      {pendingStaffVisitors.length > 0 && (
+                        <span className="text-[11px] text-amber-600 font-black animate-pulse">Action Required</span>
+                      )}
+                    </div>
+                  </div>
+
+                  <div className="bg-white rounded-2xl border border-slate-200/90 p-4 shadow-2xs">
+                    <div className="flex items-center justify-between">
+                      <span className="text-xs font-bold text-emerald-700 uppercase">On Campus</span>
+                      <div className="w-8 h-8 rounded-xl bg-emerald-50 text-emerald-600 flex items-center justify-center">
+                        <CheckCircle2 size={16} />
+                      </div>
+                    </div>
+                    <div className="mt-2 flex items-baseline gap-2">
+                      <span className="text-2xl font-black text-emerald-900">{activeOnCampusVisitors.length}</span>
+                      <span className="text-[11px] text-emerald-600 font-medium">active</span>
+                    </div>
+                  </div>
+
+                  <div className="bg-white rounded-2xl border border-slate-200/90 p-4 shadow-2xs">
+                    <div className="flex items-center justify-between">
+                      <span className="text-xs font-bold text-slate-500 uppercase">Departed</span>
+                      <div className="w-8 h-8 rounded-xl bg-slate-100 text-slate-600 flex items-center justify-center">
+                        <CheckCircle size={16} />
+                      </div>
+                    </div>
+                    <div className="mt-2 flex items-baseline gap-2">
+                      <span className="text-2xl font-black text-slate-900">
+                        {staffVisitors.filter((v) => v.status === 'departed').length}
+                      </span>
+                      <span className="text-[11px] text-slate-400 font-medium">checked out</span>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Filter and Search Bar */}
+                <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3 bg-white p-3 rounded-2xl border border-slate-200">
+                  {/* Status Pills */}
+                  <div className="flex flex-wrap items-center gap-1.5">
+                    {[
+                      { key: 'all', label: 'All' },
+                      { key: 'pending', label: `Pending (${pendingStaffVisitors.length})` },
+                      { key: 'on_campus', label: `On Campus (${activeOnCampusVisitors.length})` },
+                      { key: 'departed', label: 'Departed' },
+                      { key: 'declined', label: 'Declined' },
+                    ].map((tab) => (
+                      <button
+                        key={tab.key}
+                        type="button"
+                        onClick={() => setVisitorFilter(tab.key as any)}
+                        className={`px-3 py-1.5 rounded-xl text-xs font-extrabold transition-all cursor-pointer ${
+                          visitorFilter === tab.key
+                            ? 'bg-[#0A1128] text-white shadow-2xs'
+                            : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
+                        }`}
+                      >
+                        {tab.label}
+                      </button>
+                    ))}
+                  </div>
+
+                  {/* Search */}
+                  <div className="relative min-w-[200px]">
+                    <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
+                    <input
+                      type="text"
+                      placeholder="Search visitor, phone, plate..."
+                      value={visitorSearch}
+                      onChange={(e) => setVisitorSearch(e.target.value)}
+                      className="w-full pl-8 pr-3 py-1.5 bg-slate-50 border border-slate-200 rounded-xl text-xs text-slate-800 focus:outline-hidden focus:ring-2 focus:ring-emerald-500/20"
+                    />
+                  </div>
+                </div>
+
+                {/* Visitors Table / Empty State */}
+                <div className="bg-white rounded-2xl border border-slate-200/90 shadow-2xs overflow-hidden">
+                  {filteredStaffVisitors.length === 0 ? (
+                    <div className="p-12 text-center space-y-3">
+                      <div className="w-12 h-12 rounded-full bg-slate-100 text-slate-400 mx-auto flex items-center justify-center">
+                        <Users size={22} />
+                      </div>
+                      <p className="text-sm font-bold text-slate-700">No visitors found</p>
+                      <p className="text-xs text-slate-400 max-w-sm mx-auto">
+                        When a visitor registers at the school gate to see you, they will appear here with instant Accept / Decline options.
+                      </p>
+                    </div>
+                  ) : (
+                    <div className="overflow-x-auto">
+                      <table className="w-full text-left text-xs border-collapse">
+                        <thead>
+                          <tr className="bg-slate-50/80 border-b border-slate-200 text-slate-500 font-extrabold uppercase tracking-wider text-[10px]">
+                            <th className="py-3 px-4">Visitor Identity</th>
+                            <th className="py-3 px-4">Time of Visit</th>
+                            <th className="py-3 px-4">Purpose of Visit</th>
+                            <th className="py-3 px-4">Time Left</th>
+                            <th className="py-3 px-4">Vehicle Plate</th>
+                            <th className="py-3 px-4">Decision / Status</th>
+                            <th className="py-3 px-4 text-right">Clearance Action</th>
+                          </tr>
+                        </thead>
+                        <tbody className="divide-y divide-slate-100">
+                          {filteredStaffVisitors.map((v) => {
+                            const isPending = v.host_response === 'pending' || !v.host_response;
+                            const isAccepted = v.host_response === 'accepted';
+                            const isDeclined = v.host_response === 'declined';
+                            const entryDate = v.entry_time ? new Date(v.entry_time) : null;
+                            const exitDate = v.exit_time ? new Date(v.exit_time) : null;
+
+                            return (
+                              <tr key={v.id} className="hover:bg-slate-50/50 transition-colors">
+                                {/* Visitor Identity */}
+                                <td className="py-3.5 px-4">
+                                  <div>
+                                    <div className="flex items-center gap-1.5">
+                                      <span className="font-extrabold text-slate-900 text-sm">
+                                        {v.full_name}
+                                      </span>
+                                      <span className="text-[9px] font-black uppercase px-1.5 py-0.2 rounded-md bg-slate-100 text-slate-600">
+                                        {v.visitor_type || 'Visitor'}
+                                      </span>
+                                    </div>
+                                    <div className="flex items-center gap-2 mt-0.5 text-slate-500 text-[11px]">
+                                      <span>📞 {v.phone}</span>
+                                      <span className="text-slate-300">•</span>
+                                      <span className="font-mono text-slate-400 text-[10px]">
+                                        {v.digital_pass_token || 'PASS'}
+                                      </span>
+                                    </div>
+                                  </div>
+                                </td>
+
+                                {/* Time of Visit */}
+                                <td className="py-3.5 px-4 whitespace-nowrap">
+                                  <div className="space-y-0.5">
+                                    <div className="flex items-center gap-1.5 font-bold text-slate-800">
+                                      <Clock size={12} className="text-emerald-600" />
+                                      <span>In: {entryDate ? entryDate.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : '—'}</span>
+                                      <span className="text-slate-400 text-[10px] font-normal">
+                                        ({entryDate ? entryDate.toLocaleDateString() : ''})
+                                      </span>
+                                    </div>
+                                    {exitDate ? (
+                                      <div className="text-[11px] text-slate-500">
+                                        Out: {exitDate.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                                      </div>
+                                    ) : (
+                                      <div className="text-[10px] text-emerald-700 font-extrabold bg-emerald-50 px-1.5 py-0.2 rounded w-fit">
+                                        ● On Campus
+                                      </div>
+                                    )}
+                                  </div>
+                                </td>
+
+                                {/* Purpose of Visit */}
+                                <td className="py-3.5 px-4 max-w-[220px]">
+                                  <div>
+                                    <p className="font-bold text-slate-800 truncate" title={v.purpose_of_visit}>
+                                      {v.purpose_of_visit}
+                                    </p>
+                                    <p className="text-[11px] text-slate-500 truncate" title={`Seeking: ${v.person_to_see}`}>
+                                      To see: <span className="font-semibold text-slate-700">{v.person_to_see}</span>
+                                    </p>
+                                  </div>
+                                </td>
+
+                                {/* Time Left */}
+                                <td className="py-3.5 px-4 whitespace-nowrap">
+                                  {v.status === 'departed' ? (
+                                    <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[11px] font-bold bg-slate-100 text-slate-600">
+                                      <CheckCircle2 size={12} className="text-slate-400" />
+                                      Completed
+                                    </span>
+                                  ) : isDeclined ? (
+                                    <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[11px] font-bold bg-rose-50 text-rose-700 border border-rose-200">
+                                      <XCircle size={12} />
+                                      Declined
+                                    </span>
+                                  ) : isPending ? (
+                                    <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[11px] font-bold bg-amber-50 text-amber-700 border border-amber-200 animate-pulse">
+                                      <Clock size={12} />
+                                      Awaiting Action
+                                    </span>
+                                  ) : v.is_overdue ? (
+                                    <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[11px] font-black bg-rose-100 text-rose-800 border border-rose-300 animate-pulse">
+                                      <AlertTriangle size={12} className="text-rose-600" />
+                                      {v.time_left_formatted || 'Overstayed'}
+                                    </span>
+                                  ) : (
+                                    <span className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[11px] font-bold ${
+                                      (v.time_left_minutes ?? 60) <= 15
+                                        ? 'bg-amber-100 text-amber-800 border border-amber-300'
+                                        : 'bg-emerald-100 text-emerald-800 border border-emerald-300'
+                                    }`}>
+                                      <Clock size={12} />
+                                      {v.time_left_formatted || `${v.expected_duration_minutes || 60}m left`}
+                                    </span>
+                                  )}
+                                </td>
+
+                                {/* Vehicle Plate */}
+                                <td className="py-3.5 px-4 whitespace-nowrap">
+                                  {v.vehicle_plate && v.vehicle_plate !== 'N/A' ? (
+                                    <span className="font-mono font-bold text-slate-800 bg-slate-100 px-2 py-0.5 rounded border border-slate-200">
+                                      {v.vehicle_plate}
+                                    </span>
+                                  ) : (
+                                    <span className="text-slate-400 italic">No Vehicle</span>
+                                  )}
+                                </td>
+
+                                {/* Decision / Status */}
+                                <td className="py-3.5 px-4 max-w-[180px]">
+                                  <div className="space-y-1">
+                                    {isAccepted && (
+                                      <span className="px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-800 font-bold text-[10px] uppercase flex items-center gap-1 w-fit">
+                                        <CheckCircle2 size={11} /> Accepted
+                                      </span>
+                                    )}
+                                    {isDeclined && (
+                                      <span className="px-2 py-0.5 rounded-full bg-rose-100 text-rose-800 font-bold text-[10px] uppercase flex items-center gap-1 w-fit">
+                                        <XCircle size={11} /> Declined
+                                      </span>
+                                    )}
+                                    {isPending && (
+                                      <span className="px-2 py-0.5 rounded-full bg-amber-100 text-amber-800 font-bold text-[10px] uppercase flex items-center gap-1 w-fit">
+                                        <Clock size={11} /> Pending
+                                      </span>
+                                    )}
+                                    <p className="text-[10px] text-slate-500 truncate" title={v.host_response_notes || v.action_taken}>
+                                      {v.host_response_notes || v.action_taken}
+                                    </p>
+                                  </div>
+                                </td>
+
+                                {/* Clearance Actions */}
+                                <td className="py-3.5 px-4 text-right whitespace-nowrap">
+                                  {isPending ? (
+                                    <div className="flex items-center justify-end gap-1.5">
+                                      <button
+                                        type="button"
+                                        onClick={() => {
+                                          setVisitorAcceptModal(v);
+                                          setVisitorAcceptDuration(v.expected_duration_minutes || 60);
+                                        }}
+                                        className="px-2.5 py-1 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-[11px] flex items-center gap-1 shadow-2xs transition-all cursor-pointer"
+                                        title="Accept this visitor"
+                                      >
+                                        <CheckCircle2 size={12} />
+                                        <span>Accept</span>
+                                      </button>
+                                      <button
+                                        type="button"
+                                        onClick={() => {
+                                          setVisitorDeclineModal(v);
+                                        }}
+                                        className="px-2.5 py-1 rounded-xl bg-rose-50 hover:bg-rose-100 text-rose-700 border border-rose-200 font-bold text-[11px] flex items-center gap-1 transition-all cursor-pointer"
+                                        title="Decline this visitor"
+                                      >
+                                        <XCircle size={12} />
+                                        <span>Decline</span>
+                                      </button>
+                                    </div>
+                                  ) : isAccepted ? (
+                                    <div className="flex items-center justify-end gap-1.5">
+                                      <span className="text-[10px] text-emerald-700 font-bold bg-emerald-50 px-2 py-0.5 rounded-md border border-emerald-200">
+                                        Approved
+                                      </span>
+                                      <button
+                                        type="button"
+                                        onClick={() => setVisitorDeclineModal(v)}
+                                        className="text-[10px] text-slate-400 hover:text-rose-600 underline cursor-pointer"
+                                      >
+                                        Revoke
+                                      </button>
+                                    </div>
+                                  ) : (
+                                    <div className="flex items-center justify-end gap-1.5">
+                                      <span className="text-[10px] text-rose-700 font-bold bg-rose-50 px-2 py-0.5 rounded-md border border-rose-200">
+                                        Declined
+                                      </span>
+                                      <button
+                                        type="button"
+                                        onClick={() => {
+                                          setVisitorAcceptModal(v);
+                                          setVisitorAcceptDuration(v.expected_duration_minutes || 60);
+                                        }}
+                                        className="text-[10px] text-slate-400 hover:text-emerald-600 underline cursor-pointer"
+                                      >
+                                        Re-clear
+                                      </button>
+                                    </div>
+                                  )}
+                                </td>
+                              </tr>
+                            );
+                          })}
+                        </tbody>
+                      </table>
+                    </div>
+                  )}
+                </div>
+              </div>
+            )}
           </div>
 
           {/* ANNOUNCEMENT DETAIL MODAL */}
@@ -2018,9 +2606,235 @@ export default function StaffDashboardPage() {
                 <div className="flex justify-end pt-2">
                   <button
                     onClick={() => setSelectedAnnouncement(null)}
-                    className="bg-[#0A1128] text-white font-bold text-xs py-2 px-4 rounded-xl"
+                    className="bg-[#0A1128] text-white font-bold text-xs py-2 px-4 rounded-xl cursor-pointer"
                   >
                     Close Notice
+                  </button>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* STAFF VISITOR ACCEPT MODAL */}
+          {visitorAcceptModal && (
+            <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4">
+              <div className="bg-white rounded-3xl max-w-md w-full p-6 shadow-2xl border border-slate-200 space-y-4">
+                <div className="flex items-center justify-between pb-3 border-b border-slate-100">
+                  <div className="flex items-center gap-2">
+                    <div className="w-8 h-8 rounded-xl bg-emerald-100 text-emerald-700 flex items-center justify-center font-bold">
+                      <CheckCircle2 size={18} />
+                    </div>
+                    <div>
+                      <h3 className="font-extrabold text-slate-900 text-base">Accept Visitor Entry</h3>
+                      <p className="text-xs text-slate-500">Authorize access and set visit duration</p>
+                    </div>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => setVisitorAcceptModal(null)}
+                    className="p-1 rounded-lg text-slate-400 hover:text-slate-600 cursor-pointer"
+                  >
+                    ✕
+                  </button>
+                </div>
+
+                {/* Visitor Recap */}
+                <div className="p-3 bg-emerald-50/60 rounded-2xl border border-emerald-100 space-y-1 text-xs">
+                  <p className="font-extrabold text-slate-900">
+                    {visitorAcceptModal.full_name} ({visitorAcceptModal.phone})
+                  </p>
+                  <p className="text-slate-600">
+                    <b>Purpose:</b> {visitorAcceptModal.purpose_of_visit}
+                  </p>
+                </div>
+
+                {/* Duration Limit */}
+                <div className="space-y-1.5">
+                  <label className="text-xs font-bold text-slate-700 block">
+                    Expected Visit Duration (Time Limit):
+                  </label>
+                  <div className="grid grid-cols-4 gap-2">
+                    {[30, 45, 60, 90].map((mins) => (
+                      <button
+                        key={mins}
+                        type="button"
+                        onClick={() => setVisitorAcceptDuration(mins)}
+                        className={`py-2 rounded-xl text-xs font-bold border transition-all cursor-pointer ${
+                          visitorAcceptDuration === mins
+                            ? 'bg-emerald-600 text-white border-emerald-600 shadow-xs'
+                            : 'bg-white border-slate-200 text-slate-700 hover:bg-slate-50'
+                        }`}
+                      >
+                        {mins} mins
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                {/* Reason Presets */}
+                <div className="space-y-2">
+                  <label className="text-xs font-bold text-slate-700 block">
+                    Select Acceptance Note:
+                  </label>
+                  {[
+                    'Approved by host staff. Welcome to campus.',
+                    'Official appointment confirmed. Please proceed to classroom/office.',
+                    'Parent enquiry authorized for consultation.',
+                  ].map((r) => (
+                    <label
+                      key={r}
+                      onClick={() => setVisitorAcceptReason(r)}
+                      className={`p-2.5 rounded-xl border flex items-center gap-2 text-xs font-semibold cursor-pointer transition-all ${
+                        visitorAcceptReason === r
+                          ? 'bg-emerald-50 border-emerald-300 text-emerald-900 ring-1 ring-emerald-300'
+                          : 'bg-white border-slate-200 text-slate-700 hover:bg-slate-50'
+                      }`}
+                    >
+                      <input
+                        type="radio"
+                        name="staffAcceptReason"
+                        checked={visitorAcceptReason === r}
+                        onChange={() => setVisitorAcceptReason(r)}
+                        className="accent-emerald-600"
+                      />
+                      <span>{r}</span>
+                    </label>
+                  ))}
+                </div>
+
+                {/* Optional Custom Note */}
+                <div className="space-y-1">
+                  <label className="text-xs font-bold text-slate-700 block">
+                    Custom Message for Gate Officer (Optional):
+                  </label>
+                  <textarea
+                    value={visitorCustomAccept}
+                    onChange={(e) => setVisitorCustomAccept(e.target.value)}
+                    placeholder="e.g., Ask visitor to wait at reception, I will be down in 5 mins..."
+                    className="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs text-slate-800 focus:outline-hidden focus:ring-2 focus:ring-emerald-500/20"
+                    rows={2}
+                  />
+                </div>
+
+                {/* Actions */}
+                <div className="flex items-center justify-end gap-2 pt-2 border-t border-slate-100">
+                  <button
+                    type="button"
+                    onClick={() => setVisitorAcceptModal(null)}
+                    className="px-4 py-2 rounded-xl text-xs font-bold text-slate-600 hover:bg-slate-100 cursor-pointer"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    type="button"
+                    onClick={handleStaffAccept}
+                    disabled={submittingVisitorDecision}
+                    className="px-4 py-2 rounded-xl text-xs font-bold text-white bg-emerald-600 hover:bg-emerald-700 shadow-md cursor-pointer disabled:opacity-50 flex items-center gap-1.5"
+                  >
+                    <CheckCircle2 size={14} />
+                    <span>Authorize Entry</span>
+                  </button>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* STAFF VISITOR DECLINE MODAL */}
+          {visitorDeclineModal && (
+            <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4">
+              <div className="bg-white rounded-3xl max-w-md w-full p-6 shadow-2xl border border-slate-200 space-y-4">
+                <div className="flex items-center justify-between pb-3 border-b border-slate-100">
+                  <div className="flex items-center gap-2">
+                    <div className="w-8 h-8 rounded-xl bg-rose-100 text-rose-700 flex items-center justify-center font-bold">
+                      <XCircle size={18} />
+                    </div>
+                    <div>
+                      <h3 className="font-extrabold text-slate-900 text-base">Decline Visitor Entry</h3>
+                      <p className="text-xs text-slate-500">State reason for gate officer to inform visitor</p>
+                    </div>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => setVisitorDeclineModal(null)}
+                    className="p-1 rounded-lg text-slate-400 hover:text-slate-600 cursor-pointer"
+                  >
+                    ✕
+                  </button>
+                </div>
+
+                {/* Visitor Recap */}
+                <div className="p-3 bg-slate-50 rounded-2xl border border-slate-100 space-y-1 text-xs">
+                  <p className="font-extrabold text-slate-900">
+                    {visitorDeclineModal.full_name} ({visitorDeclineModal.phone})
+                  </p>
+                  <p className="text-slate-600">
+                    <b>Purpose:</b> {visitorDeclineModal.purpose_of_visit}
+                  </p>
+                </div>
+
+                {/* Reason Presets */}
+                <div className="space-y-2">
+                  <label className="text-xs font-bold text-slate-700 block">
+                    Select Reason:
+                  </label>
+                  {[
+                    'Busy in a class / Cannot attend right now',
+                    'Not on campus today / Off duty',
+                    'Please reschedule / Visiting by appointment only',
+                    'School visiting hours have ended',
+                  ].map((r) => (
+                    <label
+                      key={r}
+                      onClick={() => setVisitorDeclineReason(r)}
+                      className={`p-2.5 rounded-xl border flex items-center gap-2 text-xs font-semibold cursor-pointer transition-all ${
+                        visitorDeclineReason === r
+                          ? 'bg-rose-50 border-rose-300 text-rose-900 ring-1 ring-rose-300'
+                          : 'bg-white border-slate-200 text-slate-700 hover:bg-slate-50'
+                      }`}
+                    >
+                      <input
+                        type="radio"
+                        name="staffDeclineReason"
+                        checked={visitorDeclineReason === r}
+                        onChange={() => setVisitorDeclineReason(r)}
+                        className="accent-rose-600"
+                      />
+                      <span>{r}</span>
+                    </label>
+                  ))}
+                </div>
+
+                {/* Custom Note */}
+                <div className="space-y-1">
+                  <label className="text-xs font-bold text-slate-700 block">
+                    Additional Instructions for Visitor (Optional):
+                  </label>
+                  <textarea
+                    value={visitorCustomDecline}
+                    onChange={(e) => setVisitorCustomDecline(e.target.value)}
+                    placeholder="e.g., Kindly return tomorrow during break time (11:30 AM)..."
+                    className="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs text-slate-800 focus:outline-hidden focus:ring-2 focus:ring-rose-500/20"
+                    rows={2}
+                  />
+                </div>
+
+                {/* Actions */}
+                <div className="flex items-center justify-end gap-2 pt-2 border-t border-slate-100">
+                  <button
+                    type="button"
+                    onClick={() => setVisitorDeclineModal(null)}
+                    className="px-4 py-2 rounded-xl text-xs font-bold text-slate-600 hover:bg-slate-100 cursor-pointer"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    type="button"
+                    onClick={handleStaffDecline}
+                    disabled={submittingVisitorDecision}
+                    className="px-4 py-2 rounded-xl text-xs font-bold text-white bg-rose-600 hover:bg-rose-700 shadow-md cursor-pointer disabled:opacity-50 flex items-center gap-1.5"
+                  >
+                    <XCircle size={14} />
+                    <span>Confirm & Inform Gate</span>
                   </button>
                 </div>
               </div>

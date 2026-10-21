@@ -1,8 +1,28 @@
 import crypto from 'crypto';
 
 /**
+ * Known SeerBit production webhook egress IP addresses and CIDR subnets.
+ * Can be augmented or overridden via SEERBIT_WEBHOOK_IP_ALLOWLIST env var.
+ */
+export const SEERBIT_PRODUCTION_IPS = [
+  '102.164.214.0/24',
+  '52.208.200.0/24',
+  '54.216.0.0/16',
+  '102.164.214.15',
+  '52.208.200.222',
+  '54.216.14.88',
+];
+
+export const PRIVATE_DEV_IPS = [
+  '127.0.0.1',
+  '::1',
+  '::ffff:127.0.0.1',
+  'localhost',
+];
+
+/**
  * Validates incoming SeerBit webhook signature using constant-time comparison
- * to eliminate timing-attack side-channel vulnerabilities.
+ * to eliminate timing-attack side-channel vulnerabilities (Phase 6.2).
  */
 export function verifySeerbitWebhookSignature(
   rawBody: string,
@@ -56,7 +76,7 @@ export function verifySeerbitWebhookSignature(
 
 /**
  * Checks if incoming webhook timestamp is within allowable skew (default 5 minutes)
- * to prevent replay attacks.
+ * to prevent replay attacks (Phase 6.2).
  */
 export function isTimestampSkewValid(
   timestamp: string | number | undefined,
@@ -74,6 +94,54 @@ export function isTimestampSkewValid(
   } catch {
     return true;
   }
+}
+
+/**
+ * Validates if the requesting client IP matches SeerBit production or trusted dev endpoints.
+ */
+export function isSeerbitIpAllowed(clientIp?: string | null): boolean {
+  if (!clientIp) return false;
+  const cleanIp = clientIp.trim().toLowerCase().replace(/^::ffff:/, '');
+
+  // Local development / private subnet bypass
+  if (process.env.NODE_ENV !== 'production') {
+    if (
+      cleanIp === '127.0.0.1' ||
+      cleanIp === '::1' ||
+      cleanIp === 'localhost' ||
+      cleanIp.startsWith('192.168.') ||
+      cleanIp.startsWith('10.') ||
+      cleanIp.startsWith('172.')
+    ) {
+      return true;
+    }
+  }
+
+  // Check custom environment allowlist if configured
+  const envAllowlist = process.env.SEERBIT_WEBHOOK_IP_ALLOWLIST;
+  if (envAllowlist) {
+    const allowedList = envAllowlist.split(',').map((ip) => ip.trim().toLowerCase());
+    if (allowedList.includes(cleanIp)) return true;
+  }
+
+  // Check production IP list
+  for (const entry of SEERBIT_PRODUCTION_IPS) {
+    if (entry.includes('/')) {
+      // Subnet check (simple prefix match for /24 or /16)
+      const [subnetPrefix, mask] = entry.split('/');
+      if (mask === '24') {
+        const prefix = subnetPrefix.split('.').slice(0, 3).join('.');
+        if (cleanIp.startsWith(`${prefix}.`)) return true;
+      } else if (mask === '16') {
+        const prefix = subnetPrefix.split('.').slice(0, 2).join('.');
+        if (cleanIp.startsWith(`${prefix}.`)) return true;
+      }
+    } else {
+      if (cleanIp === entry.toLowerCase()) return true;
+    }
+  }
+
+  return false;
 }
 
 /**

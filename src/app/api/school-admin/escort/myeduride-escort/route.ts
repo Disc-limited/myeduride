@@ -150,7 +150,7 @@ export async function GET(request: NextRequest) {
       const formattedDaily = dailyFareNum > 0 ? `₦${dailyFareNum.toLocaleString()}` : (meta.formatted_daily_fare || '₦3,000');
       const formattedMorning = tripType === 'afternoon_only'
         ? '₦0'
-        : (dailyFareNum > 0 ? `₦${Math.round(dailyFareNum / 2).toLocaleString()}` : (meta.formatted_morning_fare || '₦1,500'));
+        : (dailyFareNum > 0 ? (tripType === 'morning_only' ? `₦${dailyFareNum.toLocaleString()}` : `₦${Math.round(dailyFareNum / 2).toLocaleString()}`) : (meta.formatted_morning_fare || '₦1,500'));
       const formattedAfternoon = tripType === 'morning_only'
         ? '₦0'
         : (dailyFareNum > 0 ? (tripType === 'afternoon_only' ? `₦${dailyFareNum.toLocaleString()}` : `₦${(dailyFareNum - Math.round(dailyFareNum / 2)).toLocaleString()}`) : (meta.formatted_afternoon_fare || '₦1,500'));

@@ -7,6 +7,7 @@ export async function downloadIdCardsPdf(params: {
   primary_color?: string;
   accent_color?: string;
   photo_bg_color?: string;
+  card_format?: 'atm' | 'classic';
 }): Promise<{ ok: boolean; error?: string }> {
   const res = await fetch('/api/id-cards/download', {
     method: 'POST',
@@ -19,6 +20,7 @@ export async function downloadIdCardsPdf(params: {
       primary_color: params.primary_color,
       accent_color: params.accent_color,
       photo_bg_color: params.photo_bg_color,
+      card_format: params.card_format || 'atm',
     }),
   });
 

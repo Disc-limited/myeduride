@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getAdminClient } from '@/lib/supabase/admin';
-import { verifySeerbitWebhookSignature, isTimestampSkewValid, computePayloadHash } from '@/lib/security/webhook-security';
+import { verifySeerbitWebhookSignature, isTimestampSkewValid, computePayloadHash, isSeerbitIpAllowed } from '@/lib/security/webhook-security';
 import { generateReceipt } from '@/lib/payments/receipt-engine';
 import { sendPaymentReceiptEmail } from '@/lib/notifications/email-templates/payment-receipt';
 
@@ -38,6 +38,13 @@ export async function POST(request: NextRequest) {
     if (timestampHeader && !isTimestampSkewValid(timestampHeader, 5)) {
       console.warn('[SeerBit Webhook] Rejected suspect replay attack: timestamp skew > 5 minutes');
       return NextResponse.json({ error: 'Timestamp skew threshold exceeded' }, { status: 400 });
+    }
+
+    // 3. Egress IP Allowlist Validation
+    const clientIp = request.headers.get('x-forwarded-for')?.split(',')[0]?.trim() || request.headers.get('x-real-ip');
+    if (process.env.NODE_ENV === 'production' && !isSeerbitIpAllowed(clientIp)) {
+      console.warn(`[SeerBit Webhook] Rejected unauthorized egress IP: ${clientIp}`);
+      return NextResponse.json({ error: 'Origin IP not allowed' }, { status: 403 });
     }
 
     let payload: any;
