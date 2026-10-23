@@ -7,6 +7,8 @@ import { loadPhotoDataUrl } from '@/lib/id-card/load-photo';
 import { ensureStaffProfile } from '@/lib/staff/ensure-profile';
 import { resolveStaffRoleLabel } from '@/lib/attendance/resolve-staff';
 
+import { resolveStudentIdCardDetails } from '@/lib/id-card/resolve-student-details';
+
 export async function POST(request: NextRequest) {
   try {
     const session = getSessionFromRequest(request);
@@ -39,10 +41,8 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'School not found' }, { status: 404 });
     }
 
-    let logoDataUrl = await loadPhotoDataUrl(supabase, school.logo_url);
-    if (!logoDataUrl) {
-      logoDataUrl = await loadPhotoDataUrl(supabase, '/images/landing/school_badge_1.png');
-    }
+    // Only load actual school logo; do not default to generic badge so placeholder indicates "Add School Logo"
+    const logoDataUrl = await loadPhotoDataUrl(supabase, school.logo_url);
     const signatureDataUrl = await loadPhotoDataUrl(supabase, school.principal_signature_url);
 
     const branding: SchoolBranding = {
@@ -50,8 +50,8 @@ export async function POST(request: NextRequest) {
       address: school.address,
       locationAddress: school.location_address,
       locationLandmark: school.location_landmark,
-      logoUrl: logoDataUrl || school.logo_url,
-      signatureUrl: signatureDataUrl || school.principal_signature_url,
+      logoUrl: logoDataUrl || null,
+      signatureUrl: signatureDataUrl || school.principal_signature_url || null,
       primaryColor: primary_color || school.primary_color || '#0D4A71',
       accentColor: accent_color || '#28A745',
       photoBgColor: photo_bg_color || '#FFFFFF',
@@ -59,36 +59,42 @@ export async function POST(request: NextRequest) {
 
     const persons: IdCardPerson[] = [];
 
-    // 1. Compile Student Cards Layout Metadata
+    // 1. Compile Student Cards Layout Metadata from actual database tables
     if (student_ids?.length) {
-      const { data: students } = await supabase
-        .from('students')
-        .select('*, class:school_classes(name)')
-        .eq('school_id', school_id)
-        .in('id', student_ids);
+      const [studentsRes, parentsRes, routeAssignmentsRes] = await Promise.all([
+        supabase
+          .from('students')
+          .select('*, class:school_classes(name)')
+          .eq('school_id', school_id)
+          .in('id', student_ids),
+        supabase
+          .from('student_parents')
+          .select('student_id, relationship, is_primary, parent:user_profiles(id, full_name, phone)')
+          .in('student_id', student_ids),
+        supabase
+          .from('student_route_assignments')
+          .select('student_id, morning_stop:transport_route_stops!morning_stop_id(id, name, landmark), afternoon_stop:transport_route_stops!afternoon_stop_id(id, name, landmark), morning_route:transport_routes!morning_route_id(id, name, code), afternoon_route:transport_routes!afternoon_route_id(id, name, code)')
+          .in('student_id', student_ids),
+      ]);
 
-      for (const s of students || []) {
+      const parentsByStudent = new Map<string, any[]>();
+      for (const link of (parentsRes.data || []) as any[]) {
+        if (!parentsByStudent.has(link.student_id)) parentsByStudent.set(link.student_id, []);
+        parentsByStudent.get(link.student_id)!.push(link);
+      }
+
+      const routeAssignmentsByStudent = new Map<string, any>();
+      for (const r of (routeAssignmentsRes.data || []) as any[]) {
+        routeAssignmentsByStudent.set(r.student_id, r);
+      }
+
+      for (const s of (studentsRes.data || []) as any[]) {
         const qrData = s.qr_code_data || `MYEDURIDE:${s.student_id_number}`;
         const photoDataUrl = await loadPhotoDataUrl(supabase, s.photo_url);
 
-        let guardianName = s.custom_fields?.guardian_name || s.custom_fields?.parent_name;
-        let guardianPhone = s.custom_fields?.emergency_phone || s.custom_fields?.parent_phone;
-
-        if (!guardianName) {
-          const { data: parentLink } = await supabase
-            .from('student_parents')
-            .select('parent:user_profiles(full_name, phone)')
-            .eq('student_id', s.id)
-            .limit(1)
-            .maybeSingle();
-
-          const pProf = parentLink?.parent as { full_name?: string; phone?: string } | null;
-          if (pProf?.full_name) guardianName = pProf.full_name;
-          if (pProf?.phone) guardianPhone = pProf.phone;
-        }
-
-        const homeStop = s.house_landmark || s.house_address || s.custom_fields?.home_stop || 'Ring Road Junction';
-        const routeCode = s.custom_fields?.route || 'R-14';
+        const parentLinks = parentsByStudent.get(s.id) || [];
+        const routeAssignment = routeAssignmentsByStudent.get(s.id) || null;
+        const resolved = resolveStudentIdCardDetails(s, parentLinks, routeAssignment);
 
         persons.push({
           kind: 'student',
@@ -97,13 +103,13 @@ export async function POST(request: NextRequest) {
           qrData,
           photoDataUrl,
           birth: s.custom_fields?.date_of_birth || '—',
-          address: s.custom_fields?.address || school.address || '—',
+          address: s.house_address || s.custom_fields?.address || school.address || '—',
           className: s.class?.name,
-          gradeSection: s.class?.name || '10 · C',
-          routeCode,
-          guardianName: guardianName || 'Mrs. Ngozi Okafor',
-          guardianPhone: guardianPhone || '+234 800 000 0000',
-          homeStop,
+          gradeSection: s.class?.name || 'Class Assigned',
+          routeCode: resolved.routeCode,
+          guardianName: resolved.guardianName,
+          guardianPhone: resolved.guardianPhone,
+          homeStop: resolved.homeStop,
           validThru: '07/27',
           transportStatus: 'TRANSPORT ACTIVE',
         });

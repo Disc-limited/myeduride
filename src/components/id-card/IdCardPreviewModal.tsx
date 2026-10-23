@@ -200,6 +200,7 @@ export function IdCardPreviewModal({ isOpen, onClose, data }: IdCardPreviewModal
                 logoUrl={data.logoUrl}
                 classNameOrRole={data.className || data.roleLabel}
                 gradeSection={data.gradeSection || data.className || data.roleLabel}
+                routeCode={data.routeCode}
                 signatureUrl={data.signatureUrl}
                 primaryColor={data.primaryColor || '#0C2340'}
                 accentColor="#28A745"

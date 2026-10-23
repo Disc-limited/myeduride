@@ -535,10 +535,29 @@ export default function SuperAdminIdCardsPage() {
                     <p className="text-xs font-bold text-white truncate">
                       {student.first_name} {student.last_name}
                     </p>
-                    <p className="text-[11px] text-slate-400 truncate">{student.school?.name}</p>
-                    <span className="text-[10px] font-mono font-bold text-emerald-400 bg-emerald-950/60 border border-emerald-500/30 px-2 py-0.5 rounded">
-                      {student.student_id_number}
-                    </span>
+                    <p className="text-[11px] text-slate-400 truncate flex items-center gap-1.5">
+                      <span>{student.school?.name}</span>
+                      {!student.school?.logo_url && (
+                        <span className="text-[9px] text-amber-300 bg-amber-950/70 border border-amber-500/40 px-1.5 py-0.2 rounded font-medium">
+                          Add School Logo
+                        </span>
+                      )}
+                    </p>
+                    <div className="flex items-center gap-2 mt-1 flex-wrap">
+                      <span className="text-[10px] font-mono font-bold text-emerald-400 bg-emerald-950/60 border border-emerald-500/30 px-2 py-0.5 rounded">
+                        {student.student_id_number}
+                      </span>
+                      {student.guardian_name && student.guardian_name !== 'Not Assigned' && (
+                        <span className="text-[9.5px] text-slate-300 bg-slate-900 border border-slate-800 px-1.5 py-0.5 rounded truncate max-w-[150px]" title={`Guardian: ${student.guardian_name} (${student.guardian_phone || 'No phone'})`}>
+                          👤 {student.guardian_name}
+                        </span>
+                      )}
+                      {student.home_stop && student.home_stop !== 'Campus Gate' && (
+                        <span className="text-[9.5px] text-teal-300 bg-teal-950/60 border border-teal-500/30 px-1.5 py-0.5 rounded truncate max-w-[150px]" title={`Home Stop: ${student.home_stop}`}>
+                          🚏 {student.home_stop}
+                        </span>
+                      )}
+                    </div>
                   </div>
                 </div>
 
@@ -554,19 +573,19 @@ export default function SuperAdminIdCardsPage() {
                       schoolId: student.school?.id || student.school_id || schoolObj?.id,
                       fullName: `${student.first_name} ${student.last_name}`,
                       idNumber: student.student_id_number,
-                      schoolName: schoolObj?.name || student.school?.name || 'IGBINADION EDUCATION CENTER',
+                      schoolName: schoolObj?.name || student.school?.name || 'MYEDURIDE PARTNER SCHOOL',
                       schoolAddress: schoolObj?.location_address || schoolObj?.address || student.school?.location_address || student.school?.address || 'Main Campus Gate',
                       schoolLandmark: schoolObj?.location_landmark || student.school?.location_landmark,
                       schoolPhone: schoolObj?.phone || student.school?.phone,
                       logoUrl: schoolObj?.logo_url || student.school?.logo_url,
-                      signatureUrl: student.school?.principal_signature_url,
+                      signatureUrl: schoolObj?.principal_signature_url || schoolObj?.signature_url || student.school?.principal_signature_url || student.school?.signature_url,
                       photoUrl: student.photo_url,
                       className: student.class?.name || 'Class Assigned',
-                      gradeSection: student.class?.name || '10 · C',
-                      routeCode: student.custom_fields?.route || student.route || 'R-14',
-                      guardianName: student.custom_fields?.guardian_name || student.parent_name || 'Mrs. Ngozi Okafor',
-                      guardianPhone: student.custom_fields?.emergency_phone || student.parent_phone || '+234 800 000 0000',
-                      homeStop: student.house_landmark || student.house_address || student.custom_fields?.home_stop || 'Ring Road Junction',
+                      gradeSection: student.class?.name || 'Class Assigned',
+                      routeCode: student.route_code || student.custom_fields?.route || student.route || 'R-CAMPUS',
+                      guardianName: student.guardian_name || student.custom_fields?.guardian_name || student.parent_name || 'Not Assigned',
+                      guardianPhone: student.guardian_phone || student.custom_fields?.emergency_phone || student.parent_phone || 'Not Available',
+                      homeStop: student.home_stop || student.house_landmark || student.house_address || student.custom_fields?.home_stop || 'Campus Gate',
                       qrData: student.qr_code_data || `MYEDURIDE:${student.student_id_number}`,
                     });
                   }}
@@ -637,12 +656,12 @@ export default function SuperAdminIdCardsPage() {
                       fullName,
                       idNumber: member.staff?.staff_id_number || 'STAFF-1001',
                       roleLabel: member.job_title || member.role.replace('_', ' ').toUpperCase(),
-                      schoolName: schoolObj?.name || member.school?.name || 'IGBINADION EDUCATION CENTER',
+                      schoolName: schoolObj?.name || member.school?.name || 'MYEDURIDE PARTNER SCHOOL',
                       schoolAddress: schoolObj?.location_address || schoolObj?.address || member.school?.location_address || member.school?.address || 'Main Campus Gate',
                       schoolLandmark: schoolObj?.location_landmark || member.school?.location_landmark,
                       schoolPhone: schoolObj?.phone || member.school?.phone,
                       logoUrl: schoolObj?.logo_url || member.school?.logo_url,
-                      signatureUrl: member.school?.principal_signature_url,
+                      signatureUrl: schoolObj?.principal_signature_url || schoolObj?.signature_url || member.school?.principal_signature_url || member.school?.signature_url,
                       photoUrl: member.staff?.photo_url,
                       qrData: member.staff?.qr_code_data || `MYEDURIDE:STAFF:${member.staff?.staff_id_number || '1001'}`,
                     });
@@ -679,9 +698,29 @@ export default function SuperAdminIdCardsPage() {
                 </div>
                 <div>
                   <h3 className="text-lg font-bold text-white">Digital Brand ID Card Studio</h3>
-                  <p className="text-[11px] text-slate-400">
-                    {previewPerson.kind === 'staff' ? 'Official Staff Pass' : 'Verified Student Pass'} · ATM Smart Card &amp; Classic Print Layout
-                  </p>
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <p className="text-[11px] text-slate-400">
+                      {previewPerson.kind === 'staff' ? 'Official Staff Pass' : 'Verified Student Pass'} · ATM Smart Card &amp; Classic Print Layout
+                    </p>
+                    {!previewPerson.logoUrl ? (
+                      <span className="text-[9px] font-bold text-amber-300 bg-amber-950/80 border border-amber-500/50 px-2 py-0.5 rounded-full">
+                        ⚠️ Add School Logo
+                      </span>
+                    ) : (
+                      <span className="text-[9px] font-bold text-emerald-300 bg-emerald-950/80 border border-emerald-500/50 px-2 py-0.5 rounded-full">
+                        ✓ School Logo Verified
+                      </span>
+                    )}
+                    {!previewPerson.signatureUrl ? (
+                      <span className="text-[9px] font-bold text-sky-300 bg-sky-950/80 border border-sky-500/50 px-2 py-0.5 rounded-full">
+                        Principal Signature Pending
+                      </span>
+                    ) : (
+                      <span className="text-[9px] font-bold text-emerald-300 bg-emerald-950/80 border border-emerald-500/50 px-2 py-0.5 rounded-full">
+                        ✓ Principal Signature Present
+                      </span>
+                    )}
+                  </div>
                 </div>
               </div>
               <button
@@ -784,7 +823,7 @@ export default function SuperAdminIdCardsPage() {
                     photoUrl={previewPerson.photoUrl}
                     qrUrl={previewQrDataUrl}
                     qrPayload={previewPerson.qrData || `MYEDURIDE:${previewPerson.idNumber}`}
-                    schoolName={previewPerson.schoolName || 'IGBINADION EDUCATION CENTER'}
+                    schoolName={previewPerson.schoolName || 'MYEDURIDE PARTNER SCHOOL'}
                     schoolAddress={previewPerson.schoolAddress}
                     schoolPhone={previewPerson.schoolPhone}
                     logoUrl={previewPerson.logoUrl}
@@ -808,7 +847,7 @@ export default function SuperAdminIdCardsPage() {
                     photoUrl={previewPerson.photoUrl}
                     qrUrl={previewQrDataUrl}
                     qrPayload={previewPerson.qrData || `MYEDURIDE:${previewPerson.idNumber}`}
-                    schoolName={previewPerson.schoolName || 'IGBINADION EDUCATION CENTER'}
+                    schoolName={previewPerson.schoolName || 'MYEDURIDE PARTNER SCHOOL'}
                     schoolAddress={previewPerson.schoolAddress}
                     schoolLandmark={previewPerson.schoolLandmark}
                     schoolPhone={previewPerson.schoolPhone}

@@ -12,6 +12,7 @@ import { getSessionFromRequest } from '@/lib/session';
 import { countSchoolParentsOnFile } from '@/lib/school/school-parents-list';
 import { buildStaffDailyReport } from '@/lib/attendance/staff-report';
 import { computeCutoffFromTimeString } from '@/lib/escort/pickup-cutoff';
+import { resolveStudentIdCardDetails } from '@/lib/id-card/resolve-student-details';
 
 export const dynamic = 'force-dynamic';
 export const revalidate = 0;
@@ -374,13 +375,54 @@ export async function POST(request: NextRequest) {
         if (!canListSchoolStudents(session, schoolId)) {
           return NextResponse.json({ error: 'Access denied', students: [] }, { status: 403 });
         }
-        const { data } = await supabase
+        const { data: rawStudents } = await supabase
           .from('students')
           .select('*, class:school_classes(name, grade)')
           .eq('school_id', schoolId)
           .eq('is_active', true)
           .order('last_name');
-        return NextResponse.json({ students: data || [] });
+
+        const studentsList = rawStudents || [];
+        const studentIds = studentsList.map((s: any) => s.id);
+
+        let parentsMap = new Map<string, any[]>();
+        let routesMap = new Map<string, any>();
+
+        if (studentIds.length > 0) {
+          const [parentsRes, routesRes] = await Promise.all([
+            supabase
+              .from('student_parents')
+              .select('student_id, relationship, is_primary, parent:user_profiles(id, full_name, phone)')
+              .in('student_id', studentIds),
+            supabase
+              .from('student_route_assignments')
+              .select('student_id, morning_stop:transport_route_stops!morning_stop_id(id, name, landmark), afternoon_stop:transport_route_stops!afternoon_stop_id(id, name, landmark), morning_route:transport_routes!morning_route_id(id, name, code), afternoon_route:transport_routes!afternoon_route_id(id, name, code)')
+              .in('student_id', studentIds),
+          ]);
+
+          for (const l of (parentsRes.data || []) as any[]) {
+            if (!parentsMap.has(l.student_id)) parentsMap.set(l.student_id, []);
+            parentsMap.get(l.student_id)!.push(l);
+          }
+          for (const r of (routesRes.data || []) as any[]) {
+            routesMap.set(r.student_id, r);
+          }
+        }
+
+        const enrichedStudents = studentsList.map((s: any) => {
+          const parentLinks = parentsMap.get(s.id) || [];
+          const routeAssignment = routesMap.get(s.id) || null;
+          const resolved = resolveStudentIdCardDetails(s, parentLinks, routeAssignment);
+          return {
+            ...s,
+            guardian_name: resolved.guardianName,
+            guardian_phone: resolved.guardianPhone,
+            home_stop: resolved.homeStop,
+            route_code: resolved.routeCode,
+          };
+        });
+
+        return NextResponse.json({ students: enrichedStudents });
       }
 
       case 'get_admin_chat_students': {

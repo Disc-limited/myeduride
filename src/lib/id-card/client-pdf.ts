@@ -67,10 +67,13 @@ export async function exportCardPdfFromDom({
       )
     );
 
-    const isPortrait = format === 'classic';
+    // Both ATM and Classic formats are standard CR80 Landscape cards (85.6mm x 54.0mm)
+    // Dynamically check actual aspect ratio so any future card is accurately sized
+    const rect = targetFront.getBoundingClientRect?.() || { width: 440, height: 277.4 };
+    const isPortrait = rect.width > 0 && rect.height > rect.width;
     const cardW = isPortrait ? 54.0 : 85.6;
     const cardH = isPortrait ? 85.6 : 54.0;
-    const orientation = isPortrait ? 'portrait' : 'landscape';
+    const orientation: 'portrait' | 'landscape' = isPortrait ? 'portrait' : 'landscape';
 
     // Capture using html-to-image for native browser SVG foreignObject rasterization:
     // Guarantees zero text clipping, zero horizontal slicing, crisp fonts, and exact SVG positioning

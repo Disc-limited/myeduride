@@ -2,6 +2,8 @@ import { NextRequest, NextResponse } from 'next/server';
 import { getAdminClient } from '@/lib/supabase/admin';
 import { getSessionFromRequest, sessionHasRole } from '@/lib/session';
 
+import { resolveStudentIdCardDetails } from '@/lib/id-card/resolve-student-details';
+
 export const dynamic = 'force-dynamic';
 
 const STAFF_ACCESS_ROLES = ['staff', 'teacher', 'gate_officer', 'school_admin'] as const;
@@ -25,11 +27,11 @@ export async function GET(request: NextRequest) {
         .select('id, name, address, location_address, location_landmark, primary_color, secondary_color, principal_signature_url, logo_url')
         .order('name'),
 
-      // Active students query
+      // Active students query (including house address, landmark, and custom fields)
       (() => {
         let q = supabase
           .from('students')
-          .select('id, first_name, last_name, student_id_number, photo_url, qr_code_data, school_id, class:school_classes(id, name, grade)')
+          .select('id, first_name, last_name, student_id_number, photo_url, qr_code_data, school_id, house_address, house_landmark, custom_fields, class:school_classes(id, name, grade)')
           .eq('is_active', true)
           .order('first_name');
         if (selectedSchoolId && selectedSchoolId !== 'all') {
@@ -86,15 +88,62 @@ export async function GET(request: NextRequest) {
       ...s,
       accent_color: s.secondary_color || '#28A745',
       signature_url: s.principal_signature_url,
+      has_logo: Boolean(s.logo_url),
+      has_signature: Boolean(s.principal_signature_url),
     }));
     const schoolMap = new Map(schoolsList.map((s) => [s.id, s]));
 
-    // Map students with embedded school object
-    const allStudents = (studentsRes.data || []).map((s: any) => ({
-      ...s,
-      school: schoolMap.get(s.school_id) || null,
-      school_id: s.school_id,
-    }));
+    // Batch query linked parents and transport route assignments for all active students
+    const studentListRaw = studentsRes.data || [];
+    const studentIds = studentListRaw.map((s: any) => s.id);
+
+    const [parentsRes, routeAssignmentsRes] = await Promise.all([
+      studentIds.length > 0
+        ? supabase
+            .from('student_parents')
+            .select('student_id, relationship, is_primary, parent:user_profiles(id, full_name, phone)')
+            .in('student_id', studentIds)
+        : { data: [] },
+      studentIds.length > 0
+        ? supabase
+            .from('student_route_assignments')
+            .select('student_id, morning_stop:transport_route_stops!morning_stop_id(id, name, landmark), afternoon_stop:transport_route_stops!afternoon_stop_id(id, name, landmark), morning_route:transport_routes!morning_route_id(id, name, code), afternoon_route:transport_routes!afternoon_route_id(id, name, code)')
+            .in('student_id', studentIds)
+        : { data: [] },
+    ]);
+
+    const parentsByStudent = new Map<string, any[]>();
+    for (const link of (parentsRes.data || []) as any[]) {
+      if (!parentsByStudent.has(link.student_id)) {
+        parentsByStudent.set(link.student_id, []);
+      }
+      parentsByStudent.get(link.student_id)!.push(link);
+    }
+
+    const routeAssignmentsByStudent = new Map<string, any>();
+    for (const r of (routeAssignmentsRes.data || []) as any[]) {
+      routeAssignmentsByStudent.set(r.student_id, r);
+    }
+
+    // Map students with embedded school object & actual database-resolved contact & stop details
+    const allStudents = studentListRaw.map((s: any) => {
+      const parentLinks = parentsByStudent.get(s.id) || [];
+      const routeAssignment = routeAssignmentsByStudent.get(s.id) || null;
+      const resolved = resolveStudentIdCardDetails(s, parentLinks, routeAssignment);
+      const schoolObj = schoolMap.get(s.school_id) || null;
+
+      return {
+        ...s,
+        school: schoolObj,
+        school_id: s.school_id,
+        guardian_name: resolved.guardianName,
+        guardian_phone: resolved.guardianPhone,
+        home_stop: resolved.homeStop,
+        route_code: resolved.routeCode,
+        parent_links: parentLinks,
+        route_assignment: routeAssignment,
+      };
+    });
 
     // Custom role mapping & teacher profile lookup map
     const customRoleMap = new Map(

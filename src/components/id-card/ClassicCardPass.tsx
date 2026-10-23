@@ -20,6 +20,7 @@ export interface ClassicCardPassProps {
   logoUrl?: string | null;
   classNameOrRole?: string;
   gradeSection?: string;
+  routeCode?: string;
   signatureUrl?: string | null;
   primaryColor?: string;
   accentColor?: string;
@@ -41,6 +42,7 @@ export default function ClassicCardPass({
   logoUrl,
   classNameOrRole,
   gradeSection,
+  routeCode,
   signatureUrl,
   primaryColor = '#0C2340',
   accentColor = '#28A745',
@@ -49,15 +51,20 @@ export default function ClassicCardPass({
 }: ClassicCardPassProps) {
   const [isFlipped, setIsFlipped] = useState(false);
   const [sigError, setSigError] = useState(false);
+  const [logoError, setLogoError] = useState(false);
 
   useEffect(() => {
     setSigError(false);
   }, [signatureUrl]);
 
+  useEffect(() => {
+    setLogoError(false);
+  }, [logoUrl]);
+
   const resolvedSignature = signatureUrl ? photoSrc(signatureUrl) : null;
   const hasSignature = !!resolvedSignature && !sigError;
 
-  const displayRoleOrClass = gradeSection || classNameOrRole || (cardType === 'staff' ? 'STAFF MEMBER' : 'GRADE 10');
+  const displayRoleOrClass = gradeSection || classNameOrRole || (cardType === 'staff' ? 'STAFF MEMBER' : 'Class Assigned');
   const roleBadge = cardType === 'staff' ? (classNameOrRole || 'STAFF ID').toUpperCase() : 'STUDENT ID';
   const resolvedAddress = schoolAddress || 'Student Safety Platform Campus';
 
@@ -65,8 +72,10 @@ export default function ClassicCardPass({
   const cleanId = (idNumber || '260482130010').replace(/\s+/g, '');
   const formattedId = cleanId.match(/.{1,4}/g)?.join(' ') || idNumber;
 
-  // Resolved School Logo with guaranteed crest fallback
-  const resolvedLogo = (logoUrl ? photoSrc(logoUrl) : null) || '/images/landing/school_badge_1.png';
+  // Resolved School Logo (null if not available, so placeholder can indicate "Add School Logo")
+  const rawLogo = logoUrl ? photoSrc(logoUrl) : null;
+  const resolvedLogo = rawLogo;
+  const hasLogo = Boolean(rawLogo && !logoError);
 
   /* ========================================================================= */
   /* FRONT CARD JSX (CLASSIC CR80 PRINT LAYOUT)                                */
@@ -82,17 +91,26 @@ export default function ClassicCardPass({
       {/* Top Header */}
       <div className="flex items-center justify-between border-b border-white/20 pb-2.5 gap-2">
         <div className="flex items-center gap-2.5 max-w-[74%] min-w-0">
-          <div className="w-10 h-10 sm:w-11 sm:h-11 rounded-xl bg-white p-1 shadow-md border border-white/40 shrink-0 flex items-center justify-center overflow-hidden">
-            {/* eslint-disable-next-line @next/next/no-img-element */}
-            <img
-              src={resolvedLogo}
-              alt={schoolName}
-              className="w-full h-full object-contain"
-              onError={(e) => {
-                (e.target as HTMLImageElement).src = '/images/landing/school_badge_1.png';
-              }}
-            />
-          </div>
+          {hasLogo ? (
+            <div className="w-10 h-10 sm:w-11 sm:h-11 rounded-xl bg-white p-1 shadow-md border border-white/40 shrink-0 flex items-center justify-center overflow-hidden">
+              {/* eslint-disable-next-line @next/next/no-img-element */}
+              <img
+                src={rawLogo!}
+                alt={schoolName}
+                className="w-full h-full object-contain"
+                onError={() => setLogoError(true)}
+              />
+            </div>
+          ) : (
+            <div
+              className="px-2 py-1 rounded-xl bg-white/15 border border-dashed border-amber-300/80 text-amber-200 shrink-0 flex items-center gap-1.5 shadow-xs"
+              title="No school logo available - Add school logo in School Settings"
+            >
+              <span className="text-[7.5px] font-bold uppercase tracking-wider text-amber-200 whitespace-nowrap">
+                Add School Logo
+              </span>
+            </div>
+          )}
           <div className="min-w-0">
             <h4 className="text-xs sm:text-sm font-black tracking-wide uppercase truncate text-white leading-tight">
               {schoolName}
@@ -137,7 +155,7 @@ export default function ClassicCardPass({
             <span className="text-[7.5px] sm:text-[8px] font-bold text-sky-200 uppercase tracking-wider block">
               FULL NAME
             </span>
-            <p className="text-xs sm:text-sm font-black text-white uppercase tracking-tight truncate leading-tight">
+            <p className="text-xs sm:text-sm font-black text-white uppercase tracking-tight truncate leading-normal py-0.5">
               {cardholderName}
             </p>
           </div>
@@ -146,18 +164,30 @@ export default function ClassicCardPass({
             <span className="text-[7.5px] sm:text-[8px] font-bold text-sky-200 uppercase tracking-wider block">
               ID NUMBER
             </span>
-            <p className="text-xs sm:text-sm font-mono font-black text-emerald-300 tracking-wider">
+            <p className="text-xs sm:text-sm font-mono font-black text-emerald-300 tracking-wider leading-normal py-0.5">
               {formattedId}
             </p>
           </div>
 
-          <div>
-            <span className="text-[7.5px] sm:text-[8px] font-bold text-sky-200 uppercase tracking-wider block">
-              {cardType === 'staff' ? 'ROLE / POSITION' : 'CLASS'}
-            </span>
-            <p className="text-[10px] sm:text-xs font-bold text-slate-100 uppercase truncate">
-              {displayRoleOrClass}
-            </p>
+          <div className="flex items-center gap-3">
+            <div className="flex-1 min-w-0">
+              <span className="text-[7.5px] sm:text-[8px] font-bold text-sky-200 uppercase tracking-wider block">
+                {cardType === 'staff' ? 'ROLE / POSITION' : 'CLASS'}
+              </span>
+              <p className="text-[10px] sm:text-xs font-bold text-slate-100 uppercase truncate leading-normal py-0.5">
+                {displayRoleOrClass}
+              </p>
+            </div>
+            {cardType === 'student' && (
+              <div className="shrink-0">
+                <span className="text-[7.5px] sm:text-[8px] font-bold text-sky-200 uppercase tracking-wider block">
+                  ROUTE
+                </span>
+                <p className="text-[10px] sm:text-xs font-mono font-bold text-amber-300 uppercase leading-normal py-0.5">
+                  {routeCode || 'R-CAMPUS'}
+                </p>
+              </div>
+            )}
           </div>
         </div>
 
@@ -203,17 +233,21 @@ export default function ClassicCardPass({
         style={{ backgroundColor: primaryColor }}
       >
         <div className="flex items-center gap-2 max-w-[75%] min-w-0">
-          <div className="w-5 h-5 rounded-md bg-white p-0.5 shrink-0 flex items-center justify-center overflow-hidden shadow-2xs">
-            {/* eslint-disable-next-line @next/next/no-img-element */}
-            <img
-              src={resolvedLogo}
-              alt="School Logo"
-              className="w-full h-full object-contain"
-              onError={(e) => {
-                (e.target as HTMLImageElement).src = '/images/landing/school_badge_1.png';
-              }}
-            />
-          </div>
+          {hasLogo ? (
+            <div className="w-5 h-5 rounded-md bg-white p-0.5 shrink-0 flex items-center justify-center overflow-hidden shadow-2xs">
+              {/* eslint-disable-next-line @next/next/no-img-element */}
+              <img
+                src={rawLogo!}
+                alt="School Logo"
+                className="w-full h-full object-contain"
+                onError={() => setLogoError(true)}
+              />
+            </div>
+          ) : (
+            <span className="text-[7px] font-bold text-amber-200 bg-black/25 px-1.5 py-0.5 rounded border border-dashed border-amber-300/60 uppercase shrink-0">
+              Add School Logo
+            </span>
+          )}
           <span className="text-[10px] sm:text-xs font-black uppercase tracking-wider truncate">
             {schoolName}
           </span>
@@ -228,11 +262,11 @@ export default function ClassicCardPass({
         <span className="text-[8px] font-bold uppercase tracking-wider text-slate-400 block">
           CAMPUS ADDRESS &amp; LOCATION
         </span>
-        <p className="text-[10px] sm:text-[11px] font-bold text-slate-800 leading-tight">
+        <p className="text-[10px] sm:text-[11px] font-bold text-slate-800 leading-normal py-0.5">
           {resolvedAddress}
         </p>
         {schoolLandmark && (
-          <p className="text-[9px] text-emerald-700 font-semibold truncate">
+          <p className="text-[9px] text-emerald-700 font-semibold truncate leading-normal py-0.5">
             📍 Landmark: {schoolLandmark}
           </p>
         )}
@@ -250,14 +284,19 @@ export default function ClassicCardPass({
               /* eslint-disable-next-line @next/next/no-img-element */
               <img
                 src={resolvedSignature!}
-                alt="Signature"
+                alt="Principal Signature"
                 className="max-h-7 object-contain"
                 onError={() => setSigError(true)}
               />
             ) : (
-              <span className="font-serif italic text-xs text-slate-400 select-none">
-                Signature
-              </span>
+              <div className="w-full flex items-center justify-between px-1">
+                <span className="font-serif italic text-xs text-slate-500 select-none">
+                  Principal Signature
+                </span>
+                <span className="text-[6.5px] font-mono text-amber-700 bg-amber-50 px-1 py-0.5 rounded border border-amber-200">
+                  Required
+                </span>
+              </div>
             )}
           </div>
           <span className="text-[7px] text-slate-400 text-center block">Official Stamp</span>
@@ -281,7 +320,7 @@ export default function ClassicCardPass({
       <div className="border-t border-slate-100 pt-1 flex items-center justify-between gap-3">
         <div className="flex-1 max-w-[62%]">
           <Barcode value={cleanId} height={32} className="w-full h-7" />
-          <p className="text-[8px] font-mono font-bold text-slate-700 tracking-wider text-center mt-0.5">
+          <p className="text-[8px] font-mono font-bold text-slate-700 tracking-wider text-center mt-0.5 leading-normal py-0.5">
             {formattedId}
           </p>
         </div>

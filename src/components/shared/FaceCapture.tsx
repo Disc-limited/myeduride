@@ -1,7 +1,7 @@
 'use client';
 
 import { useRef, useState, useEffect, useCallback } from 'react';
-import { Camera, X, SwitchCamera, Upload, CheckCircle2, AlertCircle } from 'lucide-react';
+import { Camera, X, SwitchCamera, CheckCircle2, AlertCircle, Upload } from 'lucide-react';
 import { toast } from 'sonner';
 import { averageDescriptors, computeDescriptorFromDataUrl } from '@/lib/face/descriptor';
 

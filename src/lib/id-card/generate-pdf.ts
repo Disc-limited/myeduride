@@ -87,6 +87,35 @@ async function resolveLogoDataUrl(logoUrl: string | null | undefined): Promise<s
   return null;
 }
 
+async function resolveSignatureDataUrl(signatureUrl: string | null | undefined): Promise<string | null> {
+  if (!signatureUrl) return null;
+  if (signatureUrl.startsWith('data:')) return signatureUrl;
+  if (typeof window !== 'undefined') {
+    try {
+      const { imageUrlToDataUrl } = await import('@/lib/photo');
+      return await imageUrlToDataUrl(signatureUrl);
+    } catch {
+      return null;
+    }
+  }
+  return null;
+}
+
+function drawSchoolLogoPlaceholder(doc: any, x: number, y: number, w: number, h: number) {
+  doc.setFillColor(254, 243, 199);
+  doc.roundedRect(x, y, w, h, 0.8, 0.8, 'F');
+  doc.setDrawColor(217, 119, 6);
+  doc.setLineWidth(0.18);
+  doc.roundedRect(x, y, w, h, 0.8, 0.8, 'S');
+
+  doc.setTextColor(180, 83, 9);
+  doc.setFont('helvetica', 'bold');
+  doc.setFontSize(1.9);
+  doc.text('ADD', x + w / 2, y + 2.0, { align: 'center' });
+  doc.text('SCHOOL', x + w / 2, y + 3.4, { align: 'center' });
+  doc.text('LOGO', x + w / 2, y + 4.8, { align: 'center' });
+}
+
 function formatCardNumber(raw: string): string {
   const clean = (raw || '2604 8213 0010').toUpperCase().trim();
   if (clean.includes('-')) {
@@ -210,20 +239,10 @@ async function drawAtmFront(
       const fmt = logoData.includes('image/png') ? 'PNG' : 'JPEG';
       doc.addImage(logoData, fmt, crestX + 0.4, crestY + 0.4, crestW - 0.8, crestH - 0.8);
     } catch {
-      doc.setFillColor(12, 59, 94);
-      doc.circle(crestX + crestW / 2, crestY + crestH / 2, 2.0, 'F');
-      doc.setFillColor(255, 255, 255);
-      doc.setFont('helvetica', 'bold');
-      doc.setFontSize(3.2);
-      doc.text((school.name || 'S').charAt(0).toUpperCase(), crestX + crestW / 2, crestY + 4.2, { align: 'center' });
+      drawSchoolLogoPlaceholder(doc, crestX, crestY, crestW, crestH);
     }
   } else {
-    doc.setFillColor(12, 59, 94);
-    doc.circle(crestX + crestW / 2, crestY + crestH / 2, 2.0, 'F');
-    doc.setFillColor(255, 255, 255);
-    doc.setFont('helvetica', 'bold');
-    doc.setFontSize(3.2);
-    doc.text((school.name || 'S').charAt(0).toUpperCase(), crestX + crestW / 2, crestY + 4.2, { align: 'center' });
+    drawSchoolLogoPlaceholder(doc, crestX, crestY, crestW, crestH);
   }
 
   // School Name (bold, clear) and Address (clean, distinct)
@@ -360,7 +379,7 @@ async function drawAtmFront(
   doc.setFont('helvetica', 'bold');
   doc.setFontSize(4.4);
   doc.setTextColor(52, 211, 153);
-  doc.text((person.routeCode || 'R-14').toUpperCase(), 36.5, 42.5);
+  doc.text((person.routeCode || 'R-CAMPUS').toUpperCase(), 36.5, 42.5);
 
   // Status Pill Badge: TRANSPORT ACTIVE
   const statusPillW = 26.5;
@@ -426,21 +445,22 @@ async function drawAtmBack(
   doc.setLineWidth(0.12);
   doc.roundedRect(sigX + 1.0, sigY + 3.2, sigW - 2.0, sigH - 4.2, 0.6, 0.6, 'S');
 
-  if (school.signatureUrl && String(school.signatureUrl).startsWith('data:')) {
+  const signatureData = await resolveSignatureDataUrl(school.signatureUrl);
+  if (signatureData) {
     try {
-      const fmt = school.signatureUrl.includes('image/png') ? 'PNG' : 'JPEG';
-      doc.addImage(school.signatureUrl, fmt, sigX + 2.0, sigY + 3.4, 20.0, sigH - 4.6);
+      const fmt = signatureData.includes('image/png') ? 'PNG' : 'JPEG';
+      doc.addImage(signatureData, fmt, sigX + 2.0, sigY + 3.4, 20.0, sigH - 4.6);
     } catch {
       doc.setFont('helvetica', 'italic');
-      doc.setFontSize(3.6);
-      doc.setTextColor(148, 163, 184);
-      doc.text('Signature', sigX + 2.5, sigY + 6.3);
+      doc.setFontSize(3.2);
+      doc.setTextColor(100, 116, 139);
+      doc.text('Principal Signature', sigX + 2.5, sigY + 6.3);
     }
   } else {
     doc.setFont('helvetica', 'italic');
-    doc.setFontSize(3.6);
-    doc.setTextColor(148, 163, 184);
-    doc.text('Signature', sigX + 2.5, sigY + 6.3);
+    doc.setFontSize(3.2);
+    doc.setTextColor(100, 116, 139);
+    doc.text('Principal Signature', sigX + 2.5, sigY + 6.3);
   }
 
   // Middle: Route Box
@@ -463,7 +483,7 @@ async function drawAtmBack(
   doc.setFont('helvetica', 'bold');
   doc.setFontSize(5.5);
   doc.setTextColor(22, 163, 74);
-  doc.text((person.routeCode || 'R-14').toUpperCase(), routeX + routeW / 2, routeY + 6.8, { align: 'center' });
+  doc.text((person.routeCode || 'R-CAMPUS').toUpperCase(), routeX + routeW / 2, routeY + 6.8, { align: 'center' });
 
   // Right: QR Code Box
   const qrBoxW = 19.0;
@@ -639,20 +659,10 @@ async function drawClassicFront(
       const fmt = classicLogoData.includes('image/png') ? 'PNG' : 'JPEG';
       doc.addImage(classicLogoData, fmt, logoBoxX + 0.4, logoBoxY + 0.4, logoBoxSize - 0.8, logoBoxSize - 0.8);
     } catch {
-      doc.setFillColor(12, 59, 94);
-      doc.circle(logoBoxX + logoBoxSize / 2, logoBoxY + logoBoxSize / 2, 2.5, 'F');
-      doc.setFillColor(255, 255, 255);
-      doc.setFont('helvetica', 'bold');
-      doc.setFontSize(3.8);
-      doc.text((school.name || 'S').charAt(0).toUpperCase(), logoBoxX + logoBoxSize / 2, logoBoxY + logoBoxSize / 2 + 1.2, { align: 'center' });
+      drawSchoolLogoPlaceholder(doc, logoBoxX, logoBoxY, logoBoxSize, logoBoxSize);
     }
   } else {
-    doc.setFillColor(12, 59, 94);
-    doc.circle(logoBoxX + logoBoxSize / 2, logoBoxY + logoBoxSize / 2, 2.5, 'F');
-    doc.setFillColor(255, 255, 255);
-    doc.setFont('helvetica', 'bold');
-    doc.setFontSize(3.8);
-    doc.text((school.name || 'S').charAt(0).toUpperCase(), logoBoxX + logoBoxSize / 2, logoBoxY + logoBoxSize / 2 + 1.2, { align: 'center' });
+    drawSchoolLogoPlaceholder(doc, logoBoxX, logoBoxY, logoBoxSize, logoBoxSize);
   }
   const textStartX = 13.5;
 
@@ -807,6 +817,14 @@ async function drawClassicBack(
     } catch {
       backBannerX = 4.5;
     }
+  } else {
+    doc.setFillColor(254, 243, 199);
+    doc.roundedRect(4.5, 1.8, 14.0, 5.0, 0.8, 0.8, 'F');
+    doc.setTextColor(180, 83, 9);
+    doc.setFont('helvetica', 'bold');
+    doc.setFontSize(2.2);
+    doc.text('ADD SCHOOL LOGO', 11.5, 5.0, { align: 'center' });
+    backBannerX = 20.5;
   }
 
   doc.setFont('helvetica', 'bold');
@@ -845,21 +863,22 @@ async function drawClassicBack(
   doc.setTextColor(100, 116, 139);
   doc.text('AUTHORISED SIGNATURE', 6.0, boxY + 3.0);
 
-  if (school.signatureUrl && String(school.signatureUrl).startsWith('data:')) {
+  const classicSigData = await resolveSignatureDataUrl(school.signatureUrl);
+  if (classicSigData) {
     try {
-      const fmt = school.signatureUrl.includes('image/png') ? 'PNG' : 'JPEG';
-      doc.addImage(school.signatureUrl, fmt, 6.0, boxY + 4.5, 22.0, 8.0);
+      const fmt = classicSigData.includes('image/png') ? 'PNG' : 'JPEG';
+      doc.addImage(classicSigData, fmt, 6.0, boxY + 4.5, 22.0, 8.0);
     } catch {
       doc.setFont('helvetica', 'italic');
       doc.setFontSize(3.6);
-      doc.setTextColor(148, 163, 184);
-      doc.text('Signature', 7.0, boxY + 9.5);
+      doc.setTextColor(100, 116, 139);
+      doc.text('Principal Signature', 7.0, boxY + 9.5);
     }
   } else {
     doc.setFont('helvetica', 'italic');
     doc.setFontSize(3.6);
-    doc.setTextColor(148, 163, 184);
-    doc.text('Signature', 7.0, boxY + 9.5);
+    doc.setTextColor(100, 116, 139);
+    doc.text('Principal Signature', 7.0, boxY + 9.5);
   }
 
   // If Found Box

@@ -73,10 +73,15 @@ export default function AtmCardPass({
 }: AtmCardPassProps) {
   const [isFlipped, setIsFlipped] = useState(forcedSide === 'back');
   const [sigError, setSigError] = useState(false);
+  const [logoError, setLogoError] = useState(false);
 
   useEffect(() => {
     setSigError(false);
   }, [signatureUrl]);
+
+  useEffect(() => {
+    setLogoError(false);
+  }, [logoUrl]);
 
   useEffect(() => {
     if (forcedSide) {
@@ -115,21 +120,23 @@ export default function AtmCardPass({
       qrPayload || `MYEDURIDE:${cardType.toUpperCase()}:${cleanId.replace(/\s+/g, '')}`
     )}`;
 
-  // Default Fallbacks matching reference card design
-  const activeSchool = schoolName || 'IGBINADION EDUCATION CENTER';
-  const activeGradeSection = gradeSection || classNameOrRole || (cardType === 'escort' ? 'FLEET DRIVER' : '10 · C');
-  const activeRoute = routeCode || (vehiclePlate ? `RT-${vehiclePlate.slice(0, 4)}` : 'R-14');
-  const activeGuardian = guardianName || (cardType === 'student' ? 'Mrs. Ngozi Okafor' : 'Official Emergency Contact');
-  const activePhone = guardianPhone || '+234 800 000 0000';
-  const activeHomeStop = homeStop || operatingArea || 'Ring Road Junction';
+  // Default Fallbacks matching verified database records
+  const activeSchool = schoolName || 'MYEDURIDE PARTNER SCHOOL';
+  const activeGradeSection = gradeSection || classNameOrRole || (cardType === 'escort' ? 'FLEET DRIVER' : 'Class Assigned');
+  const activeRoute = routeCode || (vehiclePlate ? `RT-${vehiclePlate.slice(0, 4)}` : 'R-CAMPUS');
+  const activeGuardian = guardianName || (cardType === 'student' ? 'Not Assigned' : 'Official Emergency Contact');
+  const activePhone = guardianPhone || 'Not Available';
+  const activeHomeStop = homeStop || operatingArea || 'Campus Gate';
   const returnPhone = schoolPhone || '+234 800 000 0001';
 
   // MyEduRide Rich Brand Colors
   const activePrimary = primaryColor || '#0C3B5E';
   const activeAccent = accentColor || '#10B981';
 
-  // Resolved School Logo with guaranteed crest fallback
-  const resolvedLogo = (logoUrl ? photoSrc(logoUrl) : null) || '/images/landing/school_badge_1.png';
+  // Resolved School Logo (null if not available, so placeholder can indicate "Add School Logo")
+  const rawLogo = logoUrl ? photoSrc(logoUrl) : null;
+  const resolvedLogo = rawLogo;
+  const hasLogo = Boolean(rawLogo && !logoError);
 
   // Resolved Authorized Signature
   const resolvedSignature = signatureUrl ? photoSrc(signatureUrl) : null;
@@ -178,19 +185,35 @@ export default function AtmCardPass({
           </div>
         </div>
 
-        {/* Opposite (Right): School Emblem, Name, Campus Address & Contactless Wave */}
+        {/* Opposite (Right): School Emblem or "Add School Logo" Placeholder, Name, Address & Wave */}
         <div className="flex items-center gap-2 min-w-0 justify-end flex-1">
-          <div className="w-8 h-8 sm:w-9 sm:h-9 rounded-xl bg-white p-1 shadow-md border border-white/50 shrink-0 flex items-center justify-center overflow-hidden">
-            {/* eslint-disable-next-line @next/next/no-img-element */}
-            <img
-              src={resolvedLogo}
-              alt={activeSchool}
-              className="w-full h-full object-contain"
-              onError={(e) => {
-                (e.target as HTMLImageElement).src = '/images/landing/school_badge_1.png';
-              }}
-            />
-          </div>
+          {hasLogo ? (
+            <div className="w-8 h-8 sm:w-9 sm:h-9 rounded-xl bg-white p-1 shadow-md border border-white/50 shrink-0 flex items-center justify-center overflow-hidden">
+              {/* eslint-disable-next-line @next/next/no-img-element */}
+              <img
+                src={rawLogo!}
+                alt={activeSchool}
+                className="w-full h-full object-contain"
+                onError={() => setLogoError(true)}
+              />
+            </div>
+          ) : (
+            <div
+              className="px-2 py-1 rounded-xl bg-white/10 hover:bg-white/15 border border-dashed border-amber-300/80 text-amber-200 shrink-0 flex items-center gap-1.5 shadow-sm backdrop-blur-xs transition-colors"
+              title="No school logo available - Add school logo in School Settings"
+            >
+              <div className="w-4 h-4 rounded-md bg-amber-400/25 flex items-center justify-center shrink-0">
+                <svg className="w-2.5 h-2.5 text-amber-300" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                  <rect width="18" height="18" x="3" y="3" rx="2" ry="2"/>
+                  <circle cx="9" cy="9" r="2"/>
+                  <path d="m21 15-3.086-3.086a2 2 0 0 0-2.828 0L6 21"/>
+                </svg>
+              </div>
+              <span className="text-[7px] sm:text-[7.5px] font-black uppercase tracking-wider text-amber-200 leading-tight whitespace-nowrap">
+                Add School Logo
+              </span>
+            </div>
+          )}
           <div className="min-w-0 text-left sm:text-right">
             <div className="text-[9px] sm:text-[10px] font-black text-slate-100 tracking-[0.14em] uppercase py-0.5 leading-normal max-w-[200px] sm:max-w-[240px] truncate">
               {activeSchool}
@@ -368,14 +391,19 @@ export default function AtmCardPass({
               /* eslint-disable-next-line @next/next/no-img-element */
               <img
                 src={resolvedSignature!}
-                alt="Signature"
+                alt="Principal Signature"
                 className="max-h-5 sm:max-h-5.5 object-contain"
                 onError={() => setSigError(true)}
               />
             ) : (
-              <span className="italic font-serif text-[10px] sm:text-[11px] text-slate-400 select-none tracking-wide">
-                Signature
-              </span>
+              <div className="w-full flex items-center justify-between px-1">
+                <span className="italic font-serif text-[10px] sm:text-[11px] text-slate-500 select-none tracking-wide">
+                  Principal Signature
+                </span>
+                <span className="text-[6px] font-mono uppercase text-amber-700 bg-amber-50 px-1 py-0.5 rounded border border-amber-200/80">
+                  Required
+                </span>
+              </div>
             )}
           </div>
         </div>
@@ -478,19 +506,23 @@ export default function AtmCardPass({
             </div>
           </div>
 
-          {/* School Crest + Brand Logo */}
+          {/* School Crest or Add Logo Indicator + Brand Logo */}
           <div className="flex items-center gap-2 shrink-0 pb-1">
-            <div className="w-6 h-6 sm:w-7 sm:h-7 rounded-lg bg-white p-0.5 border border-slate-200 flex items-center justify-center shrink-0 shadow-2xs overflow-hidden">
-              {/* eslint-disable-next-line @next/next/no-img-element */}
-              <img
-                src={resolvedLogo}
-                alt="School Logo"
-                className="w-full h-full object-contain"
-                onError={(e) => {
-                  (e.target as HTMLImageElement).src = '/images/landing/school_badge_1.png';
-                }}
-              />
-            </div>
+            {hasLogo ? (
+              <div className="w-6 h-6 sm:w-7 sm:h-7 rounded-lg bg-white p-0.5 border border-slate-200 flex items-center justify-center shrink-0 shadow-2xs overflow-hidden">
+                {/* eslint-disable-next-line @next/next/no-img-element */}
+                <img
+                  src={rawLogo!}
+                  alt="School Logo"
+                  className="w-full h-full object-contain"
+                  onError={() => setLogoError(true)}
+                />
+              </div>
+            ) : (
+              <div className="px-1.5 py-0.5 rounded-md bg-amber-50 border border-dashed border-amber-300 text-[6.5px] font-bold text-amber-700 tracking-wider uppercase">
+                Add Logo
+              </div>
+            )}
             <div className="flex items-center gap-1.5 shrink-0">
               {/* eslint-disable-next-line @next/next/no-img-element */}
               <img

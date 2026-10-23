@@ -23,18 +23,30 @@ export async function loadPhotoDataUrl(
   const storagePath = universalExtractStoragePath(trimmed);
 
   if (storagePath) {
-    const cleanPath = storagePath.replace(/^photos\//i, '').split('?')[0];
+    const cleanPath = storagePath.replace(/^photos\//i, '').split('?')[0].replace(/^[/\\]+/, '');
     const bucketsToTry = ['photos', 'avatars', 'uploads'];
-    const candidates = [
-      cleanPath,
-      `logos/${cleanPath}`,
-      `avatars/${cleanPath}`,
-      `uploads/${cleanPath}`,
-      `staff/${cleanPath}`,
-      `students/${cleanPath}`,
-      `school-logos/${cleanPath}`,
-      `schools/${cleanPath}`,
-    ];
+    const candidates = new Set<string>();
+    candidates.add(cleanPath);
+
+    // If cleanPath doesn't already have folder prefix, add standard folder candidates
+    const folders = ['signatures', 'logos', 'avatars', 'uploads', 'staff', 'students', 'school-logos', 'schools'];
+    for (const folder of folders) {
+      if (!cleanPath.toLowerCase().startsWith(folder + '/')) {
+        candidates.add(`${folder}/${cleanPath}`);
+      }
+    }
+
+    // Add extension fallbacks (.png <-> .jpg <-> .webp) in case of mismatch
+    const baseCandidates = [...candidates];
+    for (const c of baseCandidates) {
+      if (c.endsWith('.jpg') || c.endsWith('.jpeg')) {
+        candidates.add(c.replace(/\.jpe?g$/i, '.png'));
+        candidates.add(c.replace(/\.jpe?g$/i, '.webp'));
+      } else if (c.endsWith('.png')) {
+        candidates.add(c.replace(/\.png$/i, '.jpg'));
+        candidates.add(c.replace(/\.png$/i, '.webp'));
+      }
+    }
 
     for (const bucket of bucketsToTry) {
       for (const candidate of candidates) {
