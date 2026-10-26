@@ -466,7 +466,7 @@ export async function GET(request: NextRequest) {
         .from('students')
         .select(
           `
-          id, first_name, last_name, student_id_number, photo_url, is_active, school_id, parent_id,
+          id, first_name, last_name, student_id_number, photo_url, is_active, school_id,
           house_address, house_lat, house_lng, house_landmark, house_notes, house_pinned_at, custom_fields,
           class:school_classes(name),
           school:schools(id, name, address, gps_lat, gps_lng, location_address)
@@ -475,6 +475,31 @@ export async function GET(request: NextRequest) {
         .in('id', allTargetStudentIds);
 
       assignedStudents = stList || [];
+
+      try {
+        const { data: spList } = await supabase
+          .from('student_parents')
+          .select(
+            'student_id, parent_user_id, is_primary, parent:user_profiles!parent_user_id(id, full_name, phone)'
+          )
+          .in('student_id', allTargetStudentIds);
+
+        if (spList && spList.length > 0) {
+          for (const sp of spList) {
+            const st = assignedStudents.find((s) => s.id === sp.student_id);
+            if (st) {
+              const p = Array.isArray(sp.parent) ? sp.parent[0] : sp.parent;
+              if (p) {
+                st.parent_id = st.parent_id || p.id || sp.parent_user_id;
+                st.parent_name = st.parent_name || p.full_name;
+                st.parent_phone = st.parent_phone || p.phone;
+              }
+            }
+          }
+        }
+      } catch (pErr) {
+        console.warn('[dashboard-live] student_parents lookup notice:', pErr);
+      }
     }
 
     // Merge student objects directly attached in liveBookings into assignedStudents
