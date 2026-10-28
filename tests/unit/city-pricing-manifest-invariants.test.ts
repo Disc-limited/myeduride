@@ -237,6 +237,94 @@ cityPricingSuite.test('City Manager Fare Edit Invariant: Morning-only (pickup) i
   expect(resolved.formattedAfternoonFare).toBe('₦0');
 });
 
+cityPricingSuite.test('City Manager vs Escort Fare Differentiation: Escort receives Approved Km Fare while CM separates Km Fare from Service Charge', () => {
+  const rates = { rate_per_km: 500, service_charge_percent: 6 };
+
+  // 4.2 km corridor -> 5 billable km
+  const fare = calculateEscortFare(4.2, 'both', rates);
+
+  // Billable km verification
+  expect(fare.billableKm).toBe(5);
+
+  // 1. Approved Km Fare (Strictly Escort View)
+  expect(fare.dailyKmFare).toBe(5000); // 5km * ₦500 * 2 trips
+  expect(fare.morningKmFare).toBe(2500);
+  expect(fare.afternoonKmFare).toBe(2500);
+  expect(fare.formattedDailyKmFare).toBe('₦5,000');
+
+  // 2. Service Charge (Platform Fee, CM Differentiated)
+  expect(fare.dailyServiceCharge).toBe(300); // 6% of 5000
+  expect(fare.morningServiceCharge).toBe(150);
+  expect(fare.afternoonServiceCharge).toBe(150);
+
+  // 3. Parent Gross Total Fare
+  expect(fare.dailyFare).toBe(5300); // 5000 km fare + 300 service charge
+  expect(fare.morningFare).toBe(2650);
+  expect(fare.afternoonFare).toBe(2650);
+});
+
+cityPricingSuite.test('Driver Net Compensation Invariant: 80% to driver, 20% platform levy from Approved Km Fare', () => {
+  const rates = { rate_per_km: 500, service_charge_percent: 6 };
+
+  // Complete round trip for 5 billable km
+  const fare = calculateEscortFare(5, 'both', rates);
+
+  // Approved Km Fare = 5 * 500 * 2 = 5000
+  expect(fare.dailyKmFare).toBe(5000);
+
+  // 80% Driver Net Share = ₦4,000
+  expect(fare.driverDailyEarnings).toBe(4000);
+  expect(fare.driverMorningEarnings).toBe(2000);
+  expect(fare.driverAfternoonEarnings).toBe(2000);
+  expect(fare.formattedDriverDailyEarnings).toBe('₦4,000');
+
+  // 20% Platform Levy = ₦1,000
+  expect(fare.platformDailyLevy).toBe(1000);
+  expect(fare.formattedPlatformDailyLevy).toBe('₦1,000');
+
+  // Platform Total = 20% Km Levy (1000) + Service Charge (300) = ₦1,300
+  expect(fare.platformDailyTotal).toBe(1300);
+  expect(fare.formattedPlatformDailyTotal).toBe('₦1,300');
+
+  // Financial Invariant Conservation: Driver Share (4000) + Platform Total (1300) === Gross Parent Fare (5300)
+  expect(fare.driverDailyEarnings + fare.platformDailyTotal).toBe(fare.dailyFare);
+});
+
+cityPricingSuite.test('One-way trip 80/20 driver net allocation matches trip direction strictly', () => {
+  const rates = { rate_per_km: 600, service_charge_percent: 6 };
+
+  // Afternoon only for 4 km -> Km Fare = 4 * 600 = 2400
+  const fare = calculateEscortFare(4, 'afternoon_only', rates);
+
+  expect(fare.dailyKmFare).toBe(2400);
+  expect(fare.morningKmFare).toBe(0);
+  expect(fare.afternoonKmFare).toBe(2400);
+
+  // 80% Driver share = 2400 * 0.8 = 1920
+  expect(fare.driverDailyEarnings).toBe(1920);
+  expect(fare.driverMorningEarnings).toBe(0);
+  expect(fare.driverAfternoonEarnings).toBe(1920);
+
+  // 20% Platform levy = 2400 * 0.2 = 480
+  expect(fare.platformDailyLevy).toBe(480);
+});
+
+cityPricingSuite.test('resolveStoredEscortFare computes 80/20 split on dynamic and discounted rates', () => {
+  const rates = { rate_per_km: 500, service_charge_percent: 6 };
+
+  const resolved = resolveStoredEscortFare({
+    distanceKm: 3.0,
+    tripType: 'both',
+    rates,
+  });
+
+  // 3 km -> Km fare: 3 * 500 * 2 = 3000
+  expect(resolved.dailyKmFare).toBe(3000);
+  expect(resolved.driverDailyEarnings).toBe(2400); // 80% of 3000
+  expect(resolved.platformDailyLevy).toBe(600); // 20% of 3000
+  expect(resolved.dailyServiceCharge).toBe(180); // 6% of 3000
+});
+
 async function run() {
   await cityPricingSuite.run();
 }

@@ -178,22 +178,12 @@ export default function ClassicCardPass({
                 {displayRoleOrClass}
               </p>
             </div>
-            {cardType === 'student' && (
-              <div className="shrink-0">
-                <span className="text-[7.5px] sm:text-[8px] font-bold text-sky-200 uppercase tracking-wider block">
-                  ROUTE
-                </span>
-                <p className="text-[10px] sm:text-xs font-mono font-bold text-amber-300 uppercase leading-normal py-0.5">
-                  {routeCode || 'R-CAMPUS'}
-                </p>
-              </div>
-            )}
           </div>
         </div>
 
-        {/* QR Code - Correctly constrained and scannable */}
+        {/* QR Code - Enlarged Gate Scannable QR */}
         <div className="flex flex-col items-center shrink-0">
-          <div className="w-[74px] h-[74px] sm:w-[84px] sm:h-[84px] bg-white rounded-2xl p-1.5 shadow-lg flex items-center justify-center border border-white/40 overflow-hidden shrink-0">
+          <div className="w-[84px] h-[84px] sm:w-[98px] sm:h-[98px] bg-white rounded-2xl p-1.5 shadow-lg flex items-center justify-center border border-white/40 overflow-hidden shrink-0">
             {qrUrl ? (
               /* eslint-disable-next-line @next/next/no-img-element */
               <img src={qrUrl} alt="Gate QR" className="w-full h-full object-contain" />

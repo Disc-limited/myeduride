@@ -24,6 +24,9 @@ import {
   ExternalLink,
   Edit2,
   Check,
+  AlertTriangle,
+  Lock,
+  Unlock,
 } from 'lucide-react';
 import { toast } from 'sonner';
 
@@ -53,6 +56,39 @@ export default function EscortWalletView({
   const balance = Number(wallet.balance ?? wallet.available_balance ?? 0);
   const transactions = wallet.transactions || [];
   const payoutBank = wallet.payout_bank || {};
+  const earningsSummary = wallet.earnings_summary || liveDashboardData?.earningsSummary || {};
+
+  const isWorkClosed = Boolean(wallet.work_closed_for_day);
+  const tripStatus = wallet.today_trip_status || liveDashboardData?.todayTripStatus || 'scheduled';
+  const isInProgress = !isWorkClosed && tripStatus === 'in_progress';
+
+  const approvedKmFare = earningsSummary.total_daily_approved_km_fare ?? (earningsSummary.total_daily_earnings ? Number(earningsSummary.total_daily_earnings) / 0.8 : 0);
+  const driverNetEarnings = earningsSummary.total_daily_earnings ?? (approvedKmFare * 0.8);
+  const platformLevy = earningsSummary.total_daily_platform_levy ?? (approvedKmFare * 0.2);
+
+  // Close of Work: Marks shift complete and settles today's 80% driver net earnings
+  const handleCloseWork = async () => {
+    setIsSubmitting(true);
+    const toastId = toast.loading('Closing shift and settling today\'s 80% net earnings...');
+    try {
+      const res = await fetch('/api/escorts/dashboard-live', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'close_of_work' }),
+      });
+      const data = await res.json();
+      if (res.ok && data.success) {
+        toast.success(data.message || 'Work for today marked closed! Earnings settled to wallet.', { id: toastId });
+        onRefreshData();
+      } else {
+        throw new Error(data.error || 'Failed to close work for today');
+      }
+    } catch (err: any) {
+      toast.error(err.message || 'Error closing work for today', { id: toastId });
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
 
   // Compute Statistics
   const totalStipends = transactions
@@ -74,6 +110,11 @@ export default function EscortWalletView({
   const handleWithdrawWallet = async (e: React.FormEvent) => {
     e.preventDefault();
     const numAmount = Number(withdrawAmount);
+
+    if (isInProgress) {
+      toast.error('Withdrawals are locked during an active shift. Please close work for today to unlock bank payout.');
+      return;
+    }
 
     if (isNaN(numAmount) || numAmount < 500) {
       toast.error('Minimum withdrawal amount is ₦500');
@@ -153,6 +194,114 @@ export default function EscortWalletView({
 
   return (
     <div className="space-y-6">
+      {/* 0. APPROVED KM FARE & 80/20 COMPENSATION BREAKDOWN */}
+      <div className="rounded-3xl border border-blue-200/90 bg-gradient-to-br from-blue-50/70 via-indigo-50/40 to-emerald-50/40 p-5 md:p-6 shadow-xs">
+        <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 border-b border-blue-100 pb-4">
+          <div>
+            <div className="flex items-center gap-2">
+              <span className="flex h-7 w-7 items-center justify-center rounded-xl bg-blue-600 text-white font-black text-xs shadow-xs">
+                ₦
+              </span>
+              <h3 className="text-sm md:text-base font-black text-blue-950">
+                Approved Km Fare &amp; 80/20 Driver Compensation
+              </h3>
+              <span className="rounded-full bg-blue-100 border border-blue-200 px-2.5 py-0.5 text-[10px] font-black uppercase text-blue-800">
+                CM Regulated
+              </span>
+            </div>
+            <p className="mt-1.5 text-xs text-slate-600 leading-relaxed max-w-2xl">
+              Escort earnings are strictly calculated from the <strong>Approved Km Fare</strong> set by your City Manager. Platform service charges are separate and excluded from your view. A <strong>20% platform levy</strong> is deducted, with the remaining <strong>80% net</strong> credited to you and unlockable for withdrawal upon close of work.
+            </p>
+          </div>
+
+          {/* Shift Status Badge & Action */}
+          <div className="flex flex-col sm:flex-row items-start sm:items-center gap-2.5 shrink-0">
+            {isWorkClosed ? (
+              <div className="inline-flex items-center gap-1.5 rounded-2xl bg-emerald-100 border border-emerald-300 px-3.5 py-2 text-xs font-black text-emerald-800 shadow-xs">
+                <CheckCircle2 size={16} className="text-emerald-600" />
+                <span>Shift Closed • Earnings Withdrawable</span>
+              </div>
+            ) : isInProgress ? (
+              <div className="flex flex-col sm:flex-row items-start sm:items-center gap-2">
+                <div className="inline-flex items-center gap-1.5 rounded-2xl bg-amber-100 border border-amber-300 px-3 py-2 text-xs font-black text-amber-900 shadow-xs">
+                  <Clock size={15} className="text-amber-700 animate-spin" />
+                  <span>Shift In Progress (Locked)</span>
+                </div>
+                <button
+                  type="button"
+                  onClick={handleCloseWork}
+                  disabled={isSubmitting}
+                  className="inline-flex cursor-pointer items-center gap-1.5 rounded-2xl bg-slate-900 hover:bg-slate-800 text-white px-3.5 py-2 text-xs font-black shadow-sm transition-all disabled:opacity-50"
+                >
+                  <Lock size={14} className="text-emerald-400" />
+                  <span>{isSubmitting ? 'Closing Shift...' : 'Close Work for Day'}</span>
+                </button>
+              </div>
+            ) : (
+              <div className="flex flex-col sm:flex-row items-start sm:items-center gap-2">
+                <div className="inline-flex items-center gap-1.5 rounded-2xl bg-slate-100 border border-slate-300 px-3 py-2 text-xs font-bold text-slate-700 shadow-xs">
+                  <Clock size={15} className="text-slate-500" />
+                  <span>Shift Scheduled</span>
+                </div>
+                <button
+                  type="button"
+                  onClick={handleCloseWork}
+                  disabled={isSubmitting}
+                  className="inline-flex cursor-pointer items-center gap-1.5 rounded-2xl bg-slate-900 hover:bg-slate-800 text-white px-3.5 py-2 text-xs font-black shadow-sm transition-all disabled:opacity-50"
+                >
+                  <Check size={14} className="text-emerald-400" />
+                  <span>{isSubmitting ? 'Closing Shift...' : 'Mark Close of Work'}</span>
+                </button>
+              </div>
+            )}
+          </div>
+        </div>
+
+        {/* 3 Metric Cards */}
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-3.5 pt-4">
+          <div className="rounded-2xl border border-blue-200/60 bg-white/90 p-3.5">
+            <span className="text-[10px] font-extrabold uppercase text-slate-500 block">
+              1. Approved Km Fare (100%)
+            </span>
+            <p className="text-lg md:text-xl font-mono font-black text-blue-950 mt-0.5">
+              ₦{Number(approvedKmFare).toLocaleString('en-NG', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+            </p>
+            <p className="text-[11px] text-slate-500 mt-1">
+              Strictly per approved distance (Rate: ₦{earningsSummary.agreed_rate_per_km || 500}/km).
+            </p>
+          </div>
+
+          <div className="rounded-2xl border border-emerald-300/80 bg-emerald-50/80 p-3.5">
+            <div className="flex items-center justify-between">
+              <span className="text-[10px] font-extrabold uppercase text-emerald-800 block">
+                2. Driver Net Share (80%)
+              </span>
+              <span className="rounded-md bg-emerald-200 px-1.5 py-0.5 text-[9px] font-black text-emerald-900">
+                Your Payout
+              </span>
+            </div>
+            <p className="text-lg md:text-xl font-mono font-black text-emerald-950 mt-0.5">
+              ₦{Number(driverNetEarnings).toLocaleString('en-NG', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+            </p>
+            <p className="text-[11px] text-emerald-800 mt-1">
+              Your 80% entitlement, withdrawable to bank after close of work.
+            </p>
+          </div>
+
+          <div className="rounded-2xl border border-slate-200 bg-white/80 p-3.5">
+            <span className="text-[10px] font-extrabold uppercase text-slate-500 block">
+              3. Platform Levy (20%)
+            </span>
+            <p className="text-lg md:text-xl font-mono font-black text-slate-700 mt-0.5">
+              ₦{Number(platformLevy).toLocaleString('en-NG', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+            </p>
+            <p className="text-[11px] text-slate-500 mt-1">
+              Platform administration, fleet insurance &amp; technology upkeep.
+            </p>
+          </div>
+        </div>
+      </div>
+
       {/* 1. WALLET HERO BALANCE & OVERVIEW */}
       <div className="grid grid-cols-1 gap-5 md:grid-cols-3">
         {/* Main Wallet Balance Card */}
@@ -507,6 +656,29 @@ export default function EscortWalletView({
                 ))}
               </div>
 
+              {/* Active Shift Lockout Notice */}
+              {isInProgress && (
+                <div className="rounded-2xl border border-amber-300 bg-amber-50 p-3.5 text-xs text-amber-900 space-y-2">
+                  <div className="flex items-center gap-2 font-black">
+                    <AlertTriangle size={16} className="text-amber-700 shrink-0" />
+                    <span>Withdrawal Locked: Shift Currently In Progress</span>
+                  </div>
+                  <p className="text-[11px] text-amber-800 leading-relaxed">
+                    Per platform compensation rules, daily earnings unlock for withdrawal after the close of work. You can mark today&apos;s shift closed once all student trips are completed.
+                  </p>
+                  <button
+                    type="button"
+                    onClick={async () => {
+                      await handleCloseWork();
+                    }}
+                    disabled={isSubmitting}
+                    className="w-full cursor-pointer rounded-xl bg-amber-800 hover:bg-amber-900 text-white font-black py-2.5 text-xs transition-all shadow-xs"
+                  >
+                    {isSubmitting ? 'Closing Work...' : 'Close Work for Today Now'}
+                  </button>
+                </div>
+              )}
+
               {/* Settlement Account Preview */}
               <div className="space-y-1 rounded-2xl border border-slate-200/80 bg-slate-50 p-3.5 text-[11px]">
                 <span className="block text-[10px] font-extrabold uppercase tracking-wider text-slate-500">
@@ -531,10 +703,10 @@ export default function EscortWalletView({
                 </button>
                 <button
                   type="submit"
-                  disabled={isSubmitting || balance < 500}
+                  disabled={isSubmitting || balance < 500 || isInProgress}
                   className="flex-1 cursor-pointer rounded-2xl bg-[#00A859] py-3 font-black text-white shadow-md shadow-emerald-600/25 hover:bg-emerald-600 disabled:opacity-50"
                 >
-                  {isSubmitting ? 'Processing Payout...' : 'Authorize Payout'}
+                  {isSubmitting ? 'Processing Payout...' : isInProgress ? 'Shift In Progress' : 'Authorize Payout'}
                 </button>
               </div>
             </form>

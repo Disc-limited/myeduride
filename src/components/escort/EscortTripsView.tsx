@@ -513,12 +513,14 @@ export default function EscortTripsView({
                   {/* Pricing Badge for MyEduRide Escorts vs Direction Badge for School Escorts */}
                   {!isSchoolEscort && st.show_price !== false ? (
                     <div className="text-right shrink-0">
-                      <span className="text-[9px] uppercase font-extrabold text-slate-400 block">CM Fare</span>
+                      <span className="text-[9px] uppercase font-extrabold text-slate-400 block">Approved Km Fare</span>
                       <span className="font-black text-emerald-700 text-xs">
-                        {isMorning ? st.formatted_morning_fare || '₦1,750' : st.formatted_afternoon_fare || '₦1,750'}
+                        {isMorning
+                          ? st.formatted_approved_km_fare_morning || st.formatted_morning_fare || '₦1,500'
+                          : st.formatted_approved_km_fare_afternoon || st.formatted_afternoon_fare || '₦1,500'}
                       </span>
-                      <span className="text-[8px] text-slate-400 block">
-                        ({st.formatted_daily_fare || '₦3,500'}/day)
+                      <span className="text-[8px] text-slate-500 block">
+                        ({st.formatted_approved_km_fare || st.formatted_daily_fare || '₦3,000'}/day)
                       </span>
                     </div>
                   ) : (

@@ -44,7 +44,7 @@ export function IdCardPreviewModal({ isOpen, onClose, data }: IdCardPreviewModal
     if (data?.qrData || data?.idNumber) {
       const payload = data.qrData || `MYEDURIDE:${data.idNumber}`;
       QRCode.toDataURL(payload, {
-        width: 320,
+        width: 400,
         margin: 1,
         errorCorrectionLevel: 'M',
         color: { dark: '#000000', light: '#ffffff' },
@@ -141,7 +141,7 @@ export function IdCardPreviewModal({ isOpen, onClose, data }: IdCardPreviewModal
                 viewMode === 'back' ? 'bg-emerald-600 text-white' : 'text-slate-600 hover:text-slate-900'
               }`}
             >
-              Back (Barcode)
+              {cardFormat === 'classic' ? 'Back (Barcode)' : 'Back (QR Code)'}
             </button>
             <button
               type="button"

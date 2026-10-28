@@ -538,12 +538,12 @@ export function CityManagerPricingView({
             </div>
           </div>
 
-          {/* DUAL PREVIEW CARDS */}
+          {/* DUAL PREVIEW CARDS WITH EXPLICIT KM FARE VS SERVICE CHARGE DIFFERENTIATION */}
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             {/* CARD 1: ONE-WAY SINGLE TRIP */}
             <div className="rounded-2xl border-2 border-amber-500/50 bg-gradient-to-b from-amber-500/10 via-slate-900/95 to-slate-950 p-4 sm:p-5 relative overflow-hidden flex flex-col justify-between shadow-xl">
               <div className="absolute top-0 right-0 px-3 py-1 bg-amber-500 text-slate-950 font-black text-[10px] rounded-bl-xl uppercase tracking-wider">
-                50% Base Fare
+                50% Single Leg
               </div>
               <div className="space-y-3">
                 <div className="flex items-center gap-2.5">
@@ -566,17 +566,28 @@ export function CityManagerPricingView({
                   <span className="text-xs text-slate-400 font-medium">/ day ({previewDistance} km corridor)</span>
                 </div>
 
-                <div className="p-3.5 rounded-xl bg-slate-950/90 border border-amber-500/20 space-y-1.5 text-xs">
-                  <div className="flex justify-between text-slate-300 text-[11px]">
-                    <span>Base Distance ({previewDistance} km @ {formatNgn(cmRate)}/km):</span>
-                    <span className="font-mono font-bold text-white">{formatNgn(cmBase)}</span>
+                {/* Differentiated Breakdown */}
+                <div className="p-3.5 rounded-xl bg-slate-950/90 border border-amber-500/20 space-y-2 text-xs">
+                  <div className="flex justify-between text-slate-200 text-[11px] pb-1 border-b border-slate-800/80">
+                    <span className="font-bold text-emerald-400 flex items-center gap-1">
+                      <ShieldCheck size={12} /> Approved Km Fare (Escort Sees):
+                    </span>
+                    <span className="font-mono font-black text-emerald-300">{formatNgn(cmBase)}</span>
                   </div>
                   <div className="flex justify-between text-slate-300 text-[11px]">
-                    <span>Platform Service Charge ({cmSvc}%):</span>
-                    <span className="font-mono font-bold text-white">{formatNgn(cmSvcAmount)}</span>
+                    <span className="text-slate-400">Service Charge ({cmSvc}% Platform Fee):</span>
+                    <span className="font-mono font-bold text-cyan-300">{formatNgn(cmSvcAmount)}</span>
                   </div>
-                  <div className="pt-1.5 border-t border-slate-800 flex justify-between text-[11px] font-bold text-amber-300">
-                    <span>Parent Single Trip Total:</span>
+                  <div className="flex justify-between text-slate-400 text-[10px] pl-2 border-l border-amber-500/40">
+                    <span>Driver Share (80% of Km Fare):</span>
+                    <span className="font-mono font-bold text-amber-300">{formatNgn(Math.round(cmBase * 0.8))}</span>
+                  </div>
+                  <div className="flex justify-between text-slate-400 text-[10px] pl-2 border-l border-amber-500/40">
+                    <span>Platform Levy (20% of Km Fare):</span>
+                    <span className="font-mono text-slate-300">{formatNgn(cmBase - Math.round(cmBase * 0.8))}</span>
+                  </div>
+                  <div className="pt-2 border-t border-slate-800 flex justify-between text-[11px] font-bold text-amber-300">
+                    <span>Total Parent Single Trip:</span>
                     <span className="font-mono font-extrabold text-sm">{formatNgn(cmOneWay)}</span>
                   </div>
                 </div>
@@ -584,11 +595,11 @@ export function CityManagerPricingView({
                 <div className="space-y-1.5 text-xs text-slate-300">
                   <p className="flex items-start gap-1.5">
                     <CheckCircle2 size={14} className="text-amber-400 shrink-0 mt-0.5" />
-                    <span><strong>Policy Coverage:</strong> Billed when parent selects morning pickup only or afternoon drop-off only.</span>
+                    <span><strong>Escort Visibility:</strong> Escort is allowed to see strictly <strong>{formatNgn(cmBase)}</strong> (Km Fare).</span>
                   </p>
                   <p className="flex items-start gap-1.5">
                     <CheckCircle2 size={14} className="text-amber-400 shrink-0 mt-0.5" />
-                    <span><strong>Shared Ride Single:</strong> {formatNgn(form.shared_ride_base_fare_single)} base fare.</span>
+                    <span><strong>Driver Entitlement:</strong> 80% balance ({formatNgn(Math.round(cmBase * 0.8))}) credited to driver wallet.</span>
                   </p>
                 </div>
               </div>
@@ -629,17 +640,28 @@ export function CityManagerPricingView({
                   <span className="text-xs text-slate-400 font-medium">/ day ({previewDistance} km corridor)</span>
                 </div>
 
-                <div className="p-3.5 rounded-xl bg-slate-950/90 border border-emerald-500/20 space-y-1.5 text-xs">
-                  <div className="flex justify-between text-slate-300 text-[11px]">
-                    <span>Morning Leg (Home to School):</span>
-                    <span className="font-mono font-bold text-white">{formatNgn(cmOneWay)}</span>
+                {/* Differentiated Breakdown */}
+                <div className="p-3.5 rounded-xl bg-slate-950/90 border border-emerald-500/20 space-y-2 text-xs">
+                  <div className="flex justify-between text-slate-200 text-[11px] pb-1 border-b border-slate-800/80">
+                    <span className="font-bold text-emerald-400 flex items-center gap-1">
+                      <ShieldCheck size={12} /> Approved Km Fare (Escort Sees):
+                    </span>
+                    <span className="font-mono font-black text-emerald-300">{formatNgn(cmBase * 2)}</span>
                   </div>
                   <div className="flex justify-between text-slate-300 text-[11px]">
-                    <span>Afternoon Leg (School to Home):</span>
-                    <span className="font-mono font-bold text-white">{formatNgn(cmOneWay)}</span>
+                    <span className="text-slate-400">Service Charge ({cmSvc}% Platform Fee):</span>
+                    <span className="font-mono font-bold text-cyan-300">{formatNgn(cmSvcAmount * 2)}</span>
                   </div>
-                  <div className="pt-1.5 border-t border-slate-800 flex justify-between text-[11px] font-bold text-emerald-300">
-                    <span>Parent Complete Round Trip Total:</span>
+                  <div className="flex justify-between text-slate-400 text-[10px] pl-2 border-l border-emerald-500/40">
+                    <span>Driver Share (80% of Km Fare):</span>
+                    <span className="font-mono font-bold text-amber-300">{formatNgn(Math.round(cmBase * 2 * 0.8))}</span>
+                  </div>
+                  <div className="flex justify-between text-slate-400 text-[10px] pl-2 border-l border-emerald-500/40">
+                    <span>Platform Levy (20% of Km Fare):</span>
+                    <span className="font-mono text-slate-300">{formatNgn((cmBase * 2) - Math.round(cmBase * 2 * 0.8))}</span>
+                  </div>
+                  <div className="pt-2 border-t border-slate-800 flex justify-between text-[11px] font-bold text-emerald-300">
+                    <span>Total Parent Complete Round Trip:</span>
                     <span className="font-mono font-extrabold text-sm">{formatNgn(cmComplete)}</span>
                   </div>
                 </div>
@@ -647,11 +669,11 @@ export function CityManagerPricingView({
                 <div className="space-y-1.5 text-xs text-slate-300">
                   <p className="flex items-start gap-1.5">
                     <CheckCircle2 size={14} className="text-emerald-400 shrink-0 mt-0.5" />
-                    <span><strong>Policy Coverage:</strong> Standard full-day transport with morning pickup and afternoon return.</span>
+                    <span><strong>Escort Visibility:</strong> Escort views strictly <strong>{formatNgn(cmBase * 2)}</strong> (approved Km fare).</span>
                   </p>
                   <p className="flex items-start gap-1.5">
                     <CheckCircle2 size={14} className="text-emerald-400 shrink-0 mt-0.5" />
-                    <span><strong>Shared Ride Round:</strong> {formatNgn(form.shared_ride_base_fare_round)} base fare.</span>
+                    <span><strong>Withdrawal Timing:</strong> Escort withdraws 80% net ({formatNgn(Math.round(cmBase * 2 * 0.8))}) <strong>after close of work</strong>.</span>
                   </p>
                 </div>
               </div>
@@ -664,6 +686,53 @@ export function CityManagerPricingView({
                   Full Escort Care
                 </span>
               </div>
+            </div>
+          </div>
+
+          {/* CITY MANAGER DIFFERENTIATION MATRIX TABLE */}
+          <div className="rounded-2xl border border-slate-700/80 bg-slate-950/70 p-4 space-y-2">
+            <div className="flex items-center justify-between pb-2 border-b border-slate-800">
+              <span className="text-xs font-black uppercase tracking-wider text-slate-300 flex items-center gap-1.5">
+                <Calculator size={14} className="text-emerald-400" /> City Manager Fare Differentiation Breakdown Across Distance Corridors
+              </span>
+              <span className="text-[10px] text-slate-400 font-medium">
+                Formula: Km Fare + Service Charge ({cmSvc}%) = Parent Price · Driver = 80% Km Fare
+              </span>
+            </div>
+            <div className="overflow-x-auto">
+              <table className="w-full text-left text-xs">
+                <thead>
+                  <tr className="border-b border-slate-800 text-slate-400 uppercase text-[10px] font-extrabold">
+                    <th className="py-2 px-3">Distance</th>
+                    <th className="py-2 px-3 text-emerald-400">Approved Km Fare (Escort Sees)</th>
+                    <th className="py-2 px-3 text-cyan-400">Service Charge ({cmSvc}%)</th>
+                    <th className="py-2 px-3 text-white">Parent Daily Total</th>
+                    <th className="py-2 px-3 text-amber-400">Driver 80% Net (Withdrawal)</th>
+                    <th className="py-2 px-3 text-slate-400">Platform Take (20% + Svc)</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-slate-800/50 font-mono">
+                  {[1, 3, 5, 10, 15].map((dist) => {
+                    const rowKmDaily = cmRate * dist * 2;
+                    const rowSvcDaily = Math.round(rowKmDaily * (cmSvc / 100));
+                    const rowGrossDaily = rowKmDaily + rowSvcDaily;
+                    const rowDriverNet = Math.round(rowKmDaily * 0.8);
+                    const rowPlatformLevy = rowKmDaily - rowDriverNet;
+                    const rowPlatformTotal = rowSvcDaily + rowPlatformLevy;
+
+                    return (
+                      <tr key={dist} className={`hover:bg-slate-900/60 transition-colors ${previewDistance === dist ? 'bg-emerald-500/10' : ''}`}>
+                        <td className="py-2.5 px-3 font-sans font-bold text-slate-200">{dist} km</td>
+                        <td className="py-2.5 px-3 font-bold text-emerald-300">{formatNgn(rowKmDaily)}</td>
+                        <td className="py-2.5 px-3 text-cyan-300">{formatNgn(rowSvcDaily)}</td>
+                        <td className="py-2.5 px-3 font-black text-white">{formatNgn(rowGrossDaily)}</td>
+                        <td className="py-2.5 px-3 font-bold text-amber-300">{formatNgn(rowDriverNet)}</td>
+                        <td className="py-2.5 px-3 text-slate-400">{formatNgn(rowPlatformTotal)}</td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
             </div>
           </div>
         </div>

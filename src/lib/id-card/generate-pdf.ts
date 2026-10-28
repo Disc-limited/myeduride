@@ -370,16 +370,7 @@ async function drawAtmFront(
   doc.setFont('helvetica', 'bold');
   doc.setFontSize(4.4);
   doc.setTextColor(255, 255, 255);
-  doc.text(gradeVal.toUpperCase(), 18.0, 42.5, { maxWidth: 17 });
-
-  doc.setFont('helvetica', 'bold');
-  doc.setFontSize(2.4);
-  doc.setTextColor(203, 213, 225);
-  doc.text('ROUTE', 36.5, 38.5);
-  doc.setFont('helvetica', 'bold');
-  doc.setFontSize(4.4);
-  doc.setTextColor(52, 211, 153);
-  doc.text((person.routeCode || 'R-CAMPUS').toUpperCase(), 36.5, 42.5);
+  doc.text(gradeVal.toUpperCase(), 18.0, 42.5, { maxWidth: 28 });
 
   // Status Pill Badge: TRANSPORT ACTIVE
   const statusPillW = 26.5;
@@ -422,11 +413,11 @@ async function drawAtmBack(
   doc.setFillColor(15, 23, 42);
   doc.rect(0, 2.5, CARD_W, 7.5, 'F');
 
-  // 3. Mid-Top Section: Signature Strip, Route Box, QR Code Box
+  // 3. Mid-Top Section: Signature Strip & Enlarged QR Code Box
   const sigX = 4.2;
   const sigY = 11.5;
-  const sigW = 36.5;
-  const sigH = 9.0;
+  const sigW = 48.0;
+  const sigH = 10.0;
 
   doc.setFillColor(255, 255, 255);
   doc.roundedRect(sigX, sigY, sigW, sigH, 1.0, 1.0, 'F');
@@ -449,7 +440,7 @@ async function drawAtmBack(
   if (signatureData) {
     try {
       const fmt = signatureData.includes('image/png') ? 'PNG' : 'JPEG';
-      doc.addImage(signatureData, fmt, sigX + 2.0, sigY + 3.4, 20.0, sigH - 4.6);
+      doc.addImage(signatureData, fmt, sigX + 2.0, sigY + 3.4, 25.0, sigH - 4.6);
     } catch {
       doc.setFont('helvetica', 'italic');
       doc.setFontSize(3.2);
@@ -463,32 +454,10 @@ async function drawAtmBack(
     doc.text('Principal Signature', sigX + 2.5, sigY + 6.3);
   }
 
-  // Middle: Route Box
-  const routeX = 42.5;
-  const routeY = 11.5;
-  const routeW = 15.0;
-  const routeH = 9.0;
-
-  doc.setFillColor(255, 255, 255);
-  doc.roundedRect(routeX, routeY, routeW, routeH, 1.0, 1.0, 'F');
-  doc.setDrawColor(203, 213, 225);
-  doc.setLineWidth(0.18);
-  doc.roundedRect(routeX, routeY, routeW, routeH, 1.0, 1.0, 'S');
-
-  doc.setFont('helvetica', 'bold');
-  doc.setFontSize(2.3);
-  doc.setTextColor(148, 163, 184);
-  doc.text('ROUTE', routeX + routeW / 2, routeY + 2.4, { align: 'center' });
-
-  doc.setFont('helvetica', 'bold');
-  doc.setFontSize(5.5);
-  doc.setTextColor(22, 163, 74);
-  doc.text((person.routeCode || 'R-CAMPUS').toUpperCase(), routeX + routeW / 2, routeY + 6.8, { align: 'center' });
-
-  // Right: QR Code Box
-  const qrBoxW = 19.0;
-  const qrBoxH = 19.0;
-  const qrBoxX = CARD_W - qrBoxW - 4.5;
+  // Right: Prominently Enlarged QR Code Box for Fast Gate Scanning
+  const qrBoxW = 28.0;
+  const qrBoxH = 34.0;
+  const qrBoxX = CARD_W - qrBoxW - 4.2;
   const qrBoxY = 11.5;
 
   doc.setFillColor(255, 255, 255);
@@ -497,134 +466,135 @@ async function drawAtmBack(
   doc.setLineWidth(0.18);
   doc.roundedRect(qrBoxX, qrBoxY, qrBoxW, qrBoxH, 1.2, 1.2, 'S');
 
+  doc.setFont('helvetica', 'bold');
+  doc.setFontSize(2.2);
+  doc.setTextColor(100, 116, 139);
+  doc.text('GATE SCAN QR', qrBoxX + qrBoxW / 2, qrBoxY + 3.0, { align: 'center' });
+
   try {
     const qrPayload = person.qrData || `MYEDURIDE:${person.kind === 'staff' ? 'STAFF:' : ''}${person.idNumber}`;
     const qrDataUrl = await QRCode.toDataURL(qrPayload, {
-      width: 320,
+      width: 400,
       margin: 1,
       errorCorrectionLevel: 'M',
       color: { dark: '#000000', light: '#ffffff' },
     });
-    doc.addImage(qrDataUrl, 'PNG', qrBoxX + 1.2, qrBoxY + 1.0, qrBoxW - 2.4, qrBoxH - 3.4);
+    doc.addImage(qrDataUrl, 'PNG', qrBoxX + 2.0, qrBoxY + 4.2, qrBoxW - 4.0, qrBoxW - 4.0);
   } catch (err) {
     console.error('[pdf] Back QR code generation error:', err);
   }
 
+  doc.setFillColor(209, 250, 229);
+  doc.roundedRect(qrBoxX + 3.0, qrBoxY + qrBoxH - 4.5, qrBoxW - 6.0, 3.2, 0.6, 0.6, 'F');
   doc.setFont('helvetica', 'bold');
-  doc.setFontSize(2.2);
-  doc.setTextColor(148, 163, 184);
-  doc.text('QR', qrBoxX + qrBoxW - 1.5, qrBoxY + qrBoxH - 0.7, { align: 'right' });
+  doc.setFontSize(2.0);
+  doc.setTextColor(4, 120, 87);
+  doc.text('SCAN TO VERIFY', qrBoxX + qrBoxW / 2, qrBoxY + qrBoxH - 2.2, { align: 'center' });
 
-  // 4. Middle Section: IN CASE OF EMERGENCY + VERIFIED Seal on the right
+  // 4. Middle Section: IN CASE OF EMERGENCY + VERIFIED Seal
   doc.setFont('helvetica', 'bold');
   doc.setFontSize(2.6);
   doc.setTextColor(148, 163, 184);
-  doc.text('IN CASE OF EMERGENCY', 4.2, 23.5);
+  doc.text('IN CASE OF EMERGENCY', 4.2, 24.0);
 
   doc.setFont('helvetica', 'bold');
   doc.setFontSize(2.3);
   doc.setTextColor(148, 163, 184);
-  doc.text('GUARDIAN', 4.2, 26.2);
+  doc.text('GUARDIAN', 4.2, 26.6);
   doc.setFont('helvetica', 'bold');
   doc.setFontSize(3.8);
   doc.setTextColor(15, 23, 42);
-  doc.text(person.guardianName || 'Mrs. Ngozi Okafor', 4.2, 29.5, { maxWidth: 18 });
+  doc.text(person.guardianName || 'Mrs. Ngozi Okafor', 4.2, 29.8, { maxWidth: 16 });
 
   doc.setFont('helvetica', 'bold');
   doc.setFontSize(2.3);
   doc.setTextColor(148, 163, 184);
-  doc.text('PHONE', 24.0, 26.2);
+  doc.text('PHONE', 21.0, 26.6);
   doc.setFont('courier', 'bold');
   doc.setFontSize(3.8);
   doc.setTextColor(15, 23, 42);
-  doc.text(person.guardianPhone || '+234 800 000 0000', 24.0, 29.5);
+  doc.text(person.guardianPhone || '+234 800 000 0000', 21.0, 29.8);
 
   doc.setFont('helvetica', 'bold');
   doc.setFontSize(2.3);
   doc.setTextColor(148, 163, 184);
-  doc.text('HOME STOP', 44.5, 26.2);
+  doc.text('HOME STOP', 38.0, 26.6);
   doc.setFont('helvetica', 'bold');
   doc.setFontSize(3.8);
   doc.setTextColor(15, 23, 42);
-  doc.text(person.homeStop || 'Ring Road Junction', 44.5, 29.5, { maxWidth: 18 });
+  doc.text(person.homeStop || 'Ring Road Junction', 38.0, 29.8, { maxWidth: 11 });
 
-  // Circular VERIFIED Seal positioned on the right in this row (beneath QR code)
-  const sealX = qrBoxX + qrBoxW / 2;
-  const sealY = 27.0;
+  // Circular VERIFIED Seal positioned alongside emergency details
+  const sealX = 50.5;
+  const sealY = 27.5;
   doc.setFillColor(209, 250, 229);
   doc.setDrawColor(52, 211, 153);
   doc.setLineWidth(0.25);
-  doc.circle(sealX, sealY, 4.0, 'FD');
+  doc.circle(sealX, sealY, 3.0, 'FD');
 
   doc.setFont('helvetica', 'bold');
-  doc.setFontSize(2.2);
+  doc.setFontSize(1.8);
   doc.setTextColor(4, 120, 87);
-  doc.text('VERIFIED', sealX, sealY + 0.8, { align: 'center' });
+  doc.text('VERIFIED', sealX, sealY + 0.6, { align: 'center' });
 
-  // 5. Bottom Section: Legal Disclaimer + BOLD BARCODE + Brand Emblem
+  // 5. Bottom Section: Legal Disclaimer + Card ID + Brand Emblem
   doc.setFont('helvetica', 'normal');
-  doc.setFontSize(2.2);
+  doc.setFontSize(2.1);
   doc.setTextColor(100, 116, 139);
   const retPhone = school.phone || '+234 800 000 0001';
   const campusAddr = (school.locationAddress || school.address || '').trim();
   const retText = campusAddr
     ? `If found, please return to ${school.name || 'the school'}, ${campusAddr} or call ${retPhone}.`
     : `If found, please return to ${school.name || 'the school'} or call ${retPhone}.`;
-  doc.text(retText, 4.2, 33.2, { maxWidth: CARD_W - 8.4 });
+  doc.text(retText, 4.2, 35.0, { maxWidth: qrBoxX - 6.0 });
   doc.text(
     `This card is non-transferable and remains the property of ${school.name || 'the school'}.`,
     4.2,
-    35.6
+    37.8,
+    { maxWidth: qrBoxX - 6.0 }
   );
 
-  // BOLD BARCODE FOR QUICK CAPTURING BY GATE OFFICER AND ESCORT
-  const barcodeW = 46.0;
-  const barcodeH = 8.5;
-  const barcodeX = 4.2;
-  const barcodeY = 37.8;
-
-  doc.setFillColor(255, 255, 255);
-  doc.roundedRect(barcodeX, barcodeY, barcodeW, barcodeH, 0.6, 0.6, 'F');
-  doc.setDrawColor(226, 232, 240);
-  doc.setLineWidth(0.12);
-  doc.roundedRect(barcodeX, barcodeY, barcodeW, barcodeH, 0.6, 0.6, 'S');
-
-  drawBarcodeToPdf(doc, person.idNumber, barcodeX + 1.0, barcodeY + 0.6, barcodeW - 2.0, barcodeH - 1.2);
+  // Card ID Number
+  doc.setFont('helvetica', 'bold');
+  doc.setFontSize(2.2);
+  doc.setTextColor(148, 163, 184);
+  doc.text('CARD ID NUMBER', 4.2, 43.5);
 
   doc.setFont('courier', 'bold');
-  doc.setFontSize(3.3);
-  doc.setTextColor(30, 41, 59);
-  doc.text(formatCardNumber(person.idNumber), barcodeX + barcodeW / 2, 49.0, { align: 'center' });
+  doc.setFontSize(3.6);
+  doc.setTextColor(15, 23, 42);
+  doc.text(formatCardNumber(person.idNumber), 4.2, 47.5);
 
-  // School Crest (if available) + Brand Emblem
+  // School Crest (if available) + Brand Emblem (positioned to left of QR box)
   if (logoData) {
     try {
       const fmt = logoData.includes('image/png') ? 'PNG' : 'JPEG';
       doc.setFillColor(255, 255, 255);
-      doc.roundedRect(CARD_W - 33.0, 40.0, 6.0, 6.0, 1.0, 1.0, 'F');
+      doc.roundedRect(30.0, 42.5, 5.0, 5.0, 0.8, 0.8, 'F');
       doc.setDrawColor(226, 232, 240);
       doc.setLineWidth(0.1);
-      doc.roundedRect(CARD_W - 33.0, 40.0, 6.0, 6.0, 1.0, 1.0, 'S');
-      doc.addImage(logoData, fmt, CARD_W - 32.5, 40.5, 5.0, 5.0);
+      doc.roundedRect(30.0, 42.5, 5.0, 5.0, 0.8, 0.8, 'S');
+      doc.addImage(logoData, fmt, 30.5, 43.0, 4.0, 4.0);
     } catch {
       /* ignore */
     }
   }
 
   try {
-    doc.addImage(EDURIDE_EMBLEM_DATA_URL, 'PNG', CARD_W - 25.5, 40.0, 5.5, 5.5);
+    const embX = logoData ? 36.5 : 30.0;
+    doc.addImage(EDURIDE_EMBLEM_DATA_URL, 'PNG', embX, 42.5, 5.0, 5.0);
+
+    doc.setFont('helvetica', 'bold');
+    doc.setFontSize(2.8);
+    doc.setTextColor(12, 59, 94);
+    doc.text('MyEduRide', embX + 5.5, 44.8);
+
+    doc.setFontSize(1.4);
+    doc.setTextColor(100, 116, 139);
+    doc.text('STUDENT SAFETY', embX + 5.5, 46.8);
   } catch {
     /* ignore */
   }
-
-  doc.setFont('helvetica', 'bold');
-  doc.setFontSize(4.4);
-  doc.setTextColor(12, 59, 94);
-  doc.text('MyEduRide', CARD_W - 19.0, 43.0);
-
-  doc.setFontSize(1.9);
-  doc.setTextColor(100, 116, 139);
-  doc.text('THE STUDENT SAFETY PLATFORM', CARD_W - 19.0, 45.4);
 }
 
 /* ========================================================================= */
@@ -745,10 +715,10 @@ async function drawClassicFront(
   doc.text(subValue.toUpperCase(), detailX, 38.5, { maxWidth: 26.5 });
 
   // QR Code Box (Classic Right Side - Prominently Enlarged)
-  const qrBoxW = 21.0;
-  const qrBoxH = 21.0;
+  const qrBoxW = 23.5;
+  const qrBoxH = 23.5;
   const qrBoxX = CARD_W - qrBoxW - 4.5;
-  const qrBoxY = 16.5;
+  const qrBoxY = 15.0;
 
   doc.setFillColor(255, 255, 255);
   doc.roundedRect(qrBoxX, qrBoxY, qrBoxW, qrBoxH, 1.5, 1.5, 'F');
@@ -759,7 +729,7 @@ async function drawClassicFront(
   try {
     const qrPayload = person.qrData || `MYEDURIDE:${person.idNumber}`;
     const qrDataUrl = await QRCode.toDataURL(qrPayload, {
-      width: 320,
+      width: 400,
       margin: 1,
       errorCorrectionLevel: 'M',
       color: { dark: '#000000', light: '#ffffff' },

@@ -17,6 +17,35 @@ export interface EscortFareBreakdown {
   formattedMorningFare: string;
   formattedAfternoonFare: string;
   formattedDailyFare: string;
+  /** Approved Km Fare (Base distance fare approved by City Manager) */
+  dailyKmFare: number;
+  morningKmFare: number;
+  afternoonKmFare: number;
+  formattedDailyKmFare: string;
+  formattedMorningKmFare: string;
+  formattedAfternoonKmFare: string;
+  /** Service charge breakdown */
+  dailyServiceCharge: number;
+  morningServiceCharge: number;
+  afternoonServiceCharge: number;
+  formattedDailyServiceCharge: string;
+  formattedMorningServiceCharge: string;
+  formattedAfternoonServiceCharge: string;
+  /** Driver Entitlement (80% of Km Fare) */
+  driverSharePercent: number;
+  driverDailyEarnings: number;
+  driverMorningEarnings: number;
+  driverAfternoonEarnings: number;
+  formattedDriverDailyEarnings: string;
+  formattedDriverMorningEarnings: string;
+  formattedDriverAfternoonEarnings: string;
+  /** Platform Levy (20% of Km Fare) */
+  platformLevyPercent: number;
+  platformDailyLevy: number;
+  formattedPlatformDailyLevy: string;
+  /** Total Platform Revenue (Service Charge + Platform Levy) */
+  platformDailyTotal: number;
+  formattedPlatformDailyTotal: string;
   /** ₦ per whole km band (0–1 km, 1–2 km, …) */
   ratePerKm: number;
   /** One-way base before service charge (= billableKm × ratePerKm) */
@@ -184,6 +213,24 @@ export function calculateEscortFare(
   const afternoonFare = tripType === 'morning_only' ? 0 : oneWayFare;
   const dailyFare = morningFare + afternoonFare;
 
+  const morningKmFare = tripType === 'afternoon_only' ? 0 : distanceCharge;
+  const afternoonKmFare = tripType === 'morning_only' ? 0 : distanceCharge;
+  const dailyKmFare = morningKmFare + afternoonKmFare;
+
+  const morningServiceCharge = tripType === 'afternoon_only' ? 0 : serviceCharge;
+  const afternoonServiceCharge = tripType === 'morning_only' ? 0 : serviceCharge;
+  const dailyServiceCharge = morningServiceCharge + afternoonServiceCharge;
+
+  const driverSharePercent = 80;
+  const platformLevyPercent = 20;
+
+  const driverMorningEarnings = Math.round(morningKmFare * 0.8);
+  const driverAfternoonEarnings = Math.round(afternoonKmFare * 0.8);
+  const driverDailyEarnings = driverMorningEarnings + driverAfternoonEarnings;
+
+  const platformDailyLevy = dailyKmFare - driverDailyEarnings;
+  const platformDailyTotal = dailyServiceCharge + platformDailyLevy;
+
   return {
     tripType,
     morningFare,
@@ -193,6 +240,30 @@ export function calculateEscortFare(
     formattedMorningFare: formatNgn(morningFare),
     formattedAfternoonFare: formatNgn(afternoonFare),
     formattedDailyFare: formatNgn(dailyFare),
+    dailyKmFare,
+    morningKmFare,
+    afternoonKmFare,
+    formattedDailyKmFare: formatNgn(dailyKmFare),
+    formattedMorningKmFare: formatNgn(morningKmFare),
+    formattedAfternoonKmFare: formatNgn(afternoonKmFare),
+    dailyServiceCharge,
+    morningServiceCharge,
+    afternoonServiceCharge,
+    formattedDailyServiceCharge: formatNgn(dailyServiceCharge),
+    formattedMorningServiceCharge: formatNgn(morningServiceCharge),
+    formattedAfternoonServiceCharge: formatNgn(afternoonServiceCharge),
+    driverSharePercent,
+    driverDailyEarnings,
+    driverMorningEarnings,
+    driverAfternoonEarnings,
+    formattedDriverDailyEarnings: formatNgn(driverDailyEarnings),
+    formattedDriverMorningEarnings: formatNgn(driverMorningEarnings),
+    formattedDriverAfternoonEarnings: formatNgn(driverAfternoonEarnings),
+    platformLevyPercent,
+    platformDailyLevy,
+    formattedPlatformDailyLevy: formatNgn(platformDailyLevy),
+    platformDailyTotal,
+    formattedPlatformDailyTotal: formatNgn(platformDailyTotal),
     ratePerKm,
     baseFarePerTrip: distanceCharge,
     billableKm,
@@ -282,6 +353,23 @@ export function resolveStoredEscortFare(input: {
           ? dailyFare - morningFare
           : engine.afternoonFare;
 
+  // Discount scaling factor for Km fare and driver earnings
+  const discountRatio = isDiscounted && standardDaily > 0 ? dailyFare / standardDaily : 1;
+  const dailyKmFare = Math.round(engine.dailyKmFare * discountRatio);
+  const morningKmFare = tripType === 'afternoon_only' ? 0 : tripType === 'morning_only' ? dailyKmFare : Math.round(dailyKmFare / 2);
+  const afternoonKmFare = tripType === 'morning_only' ? 0 : tripType === 'afternoon_only' ? dailyKmFare : dailyKmFare - morningKmFare;
+
+  const dailyServiceCharge = dailyFare - dailyKmFare;
+  const morningServiceCharge = morningFare - morningKmFare;
+  const afternoonServiceCharge = afternoonFare - afternoonKmFare;
+
+  const driverDailyEarnings = Math.round(dailyKmFare * 0.8);
+  const driverMorningEarnings = Math.round(morningKmFare * 0.8);
+  const driverAfternoonEarnings = driverDailyEarnings - driverMorningEarnings;
+
+  const platformDailyLevy = dailyKmFare - driverDailyEarnings;
+  const platformDailyTotal = dailyServiceCharge + platformDailyLevy;
+
   return {
     ...engine,
     tripType,
@@ -291,6 +379,28 @@ export function resolveStoredEscortFare(input: {
     dailyFare,
     standardDailyFare: standardDaily,
     actualAmountCollected: dailyFare,
+    dailyKmFare,
+    morningKmFare,
+    afternoonKmFare,
+    formattedDailyKmFare: formatNgn(dailyKmFare),
+    formattedMorningKmFare: formatNgn(morningKmFare),
+    formattedAfternoonKmFare: formatNgn(afternoonKmFare),
+    dailyServiceCharge,
+    morningServiceCharge,
+    afternoonServiceCharge,
+    formattedDailyServiceCharge: formatNgn(dailyServiceCharge),
+    formattedMorningServiceCharge: formatNgn(morningServiceCharge),
+    formattedAfternoonServiceCharge: formatNgn(afternoonServiceCharge),
+    driverDailyEarnings,
+    driverMorningEarnings,
+    driverAfternoonEarnings,
+    formattedDriverDailyEarnings: formatNgn(driverDailyEarnings),
+    formattedDriverMorningEarnings: formatNgn(driverMorningEarnings),
+    formattedDriverAfternoonEarnings: formatNgn(driverAfternoonEarnings),
+    platformDailyLevy,
+    formattedPlatformDailyLevy: formatNgn(platformDailyLevy),
+    platformDailyTotal,
+    formattedPlatformDailyTotal: formatNgn(platformDailyTotal),
     isDiscounted,
     discountDetails: storedDiscount,
     usedStoredFare: isDiscounted,

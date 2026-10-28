@@ -221,12 +221,12 @@ export default function EscortStudentsView({
                   </div>
                 </div>
 
-                {/* For MyEduRide Escort: Approved Pricing Pill */}
+                {/* For MyEduRide Escort: Approved Km Fare Pill */}
                 {isMyEduRideEscort && (
                   <div className="text-right shrink-0 bg-emerald-50/80 px-2.5 py-1.5 rounded-xl border border-emerald-100">
-                    <span className="text-[9px] font-extrabold uppercase text-emerald-800 block">Approved Fare</span>
-                    <span className="font-black text-emerald-700 text-xs block">{st.formatted_daily_fare || '₦3,500'}</span>
-                    <span className="text-[8px] text-slate-400">({st.formatted_morning_fare || '₦1,750'}/trip)</span>
+                    <span className="text-[9px] font-extrabold uppercase text-emerald-800 block">Approved Km Fare</span>
+                    <span className="font-black text-emerald-700 text-xs block">{st.formatted_approved_km_fare || st.formatted_daily_fare || '₦3,000'}</span>
+                    <span className="text-[8px] text-slate-500 font-bold">({st.formatted_approved_km_fare_morning || st.formatted_morning_fare || '₦1,500'}/trip)</span>
                   </div>
                 )}
 
@@ -466,12 +466,17 @@ export default function EscortStudentsView({
               {isMyEduRideEscort && (
                 <div className="p-3 bg-emerald-50/80 rounded-2xl border border-emerald-200 flex items-center justify-between">
                   <div>
-                    <span className="text-[10px] font-bold uppercase text-emerald-800 block">Approved Transport Fare</span>
-                    <p className="font-black text-emerald-700 text-sm">{directionsModalStudent.formatted_daily_fare || '₦3,500'} / day</p>
+                    <span className="text-[10px] font-bold uppercase text-emerald-800 block">Approved Km Fare</span>
+                    <p className="font-black text-emerald-700 text-sm">
+                      {directionsModalStudent.formatted_approved_km_fare || directionsModalStudent.formatted_daily_fare || '₦3,000'} / day
+                    </p>
                   </div>
-                  <span className="text-[10px] font-semibold text-slate-500 bg-white px-2 py-1 rounded-lg border border-emerald-100">
-                    {directionsModalStudent.formatted_morning_fare || '₦1,750'} / trip
-                  </span>
+                  <div className="text-right">
+                    <span className="text-[10px] font-semibold text-slate-600 bg-white px-2 py-1 rounded-lg border border-emerald-100 block">
+                      {directionsModalStudent.formatted_approved_km_fare_morning || directionsModalStudent.formatted_morning_fare || '₦1,500'} / trip
+                    </span>
+                    <span className="text-[9px] text-amber-700 font-bold block mt-0.5">80% driver net payout</span>
+                  </div>
                 </div>
               )}
 

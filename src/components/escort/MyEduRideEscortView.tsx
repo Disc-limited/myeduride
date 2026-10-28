@@ -156,13 +156,25 @@ export default function MyEduRideEscortView({
 
   const manifestStudents = liveDashboardData?.students?.manifest || [];
   const displayRoster = manifestStudents.length > 0 ? manifestStudents : discAssignments;
+  const fallbackKmTotal = displayRoster.reduce((sum, s) => sum + Number(s.approved_km_fare || s.daily_fare || 0), 0);
+  const fallbackDriverNet = Math.round(fallbackKmTotal * 0.8);
+  const fallbackPlatformLevy = fallbackKmTotal - fallbackDriverNet;
+  const fallbackMorningNet = Math.round(fallbackDriverNet / 2);
+  const fallbackAfternoonNet = fallbackDriverNet - fallbackMorningNet;
+
   const earningsSummary = liveDashboardData?.earnings_summary || {
-    total_daily_earnings: displayRoster.reduce((sum, s) => sum + Number(s.daily_fare || 0), 0),
-    formatted_total_daily_earnings: `₦${displayRoster.reduce((sum, s) => sum + Number(s.daily_fare || 0), 0).toLocaleString()}`,
-    morning_projected: Math.round(displayRoster.reduce((sum, s) => sum + Number(s.daily_fare || 0), 0) / 2),
-    formatted_morning_projected: `₦${Math.round(displayRoster.reduce((sum, s) => sum + Number(s.daily_fare || 0), 0) / 2).toLocaleString()}`,
-    afternoon_projected: Math.round(displayRoster.reduce((sum, s) => sum + Number(s.daily_fare || 0), 0) / 2),
-    formatted_afternoon_projected: `₦${Math.round(displayRoster.reduce((sum, s) => sum + Number(s.daily_fare || 0), 0) / 2).toLocaleString()}`,
+    total_daily_approved_km_fare: fallbackKmTotal,
+    formatted_total_daily_approved_km_fare: `₦${fallbackKmTotal.toLocaleString()}`,
+    total_daily_earnings: fallbackDriverNet,
+    formatted_total_daily_earnings: `₦${fallbackDriverNet.toLocaleString()}`,
+    morning_projected: fallbackMorningNet,
+    formatted_morning_projected: `₦${fallbackMorningNet.toLocaleString()}`,
+    afternoon_projected: fallbackAfternoonNet,
+    formatted_afternoon_projected: `₦${fallbackAfternoonNet.toLocaleString()}`,
+    total_daily_platform_levy: fallbackPlatformLevy,
+    formatted_total_daily_platform_levy: `₦${fallbackPlatformLevy.toLocaleString()}`,
+    driver_share_percent: 80,
+    platform_levy_percent: 20,
     approved_students_count: displayRoster.filter((s) => s.city_manager_approved !== false).length,
   };
 
@@ -444,27 +456,36 @@ export default function MyEduRideEscortView({
 
         <div className="grid grid-cols-2 md:grid-cols-4 gap-2.5 sm:gap-3">
           <div className="p-3.5 sm:p-4 rounded-2xl bg-emerald-50/80 border border-emerald-200 text-center">
-            <span className="text-[9px] sm:text-[10px] font-black uppercase text-emerald-800 tracking-wider">Total Approved Today</span>
+            <span className="text-[9px] sm:text-[10px] font-black uppercase text-emerald-800 tracking-wider">Driver Net (80%)</span>
             <p className="text-xl sm:text-2xl font-black text-emerald-950 mt-1">{earningsSummary.formatted_total_daily_earnings}</p>
-            <span className="text-[10px] text-emerald-700 mt-0.5 block font-medium">Daily Roster Rate</span>
+            <span className="text-[10px] text-emerald-700 mt-0.5 block font-medium">Unlocked at Close of Work</span>
           </div>
 
           <div className="p-3.5 sm:p-4 rounded-2xl bg-blue-50/80 border border-blue-200 text-center">
-            <span className="text-[9px] sm:text-[10px] font-black uppercase text-blue-800 tracking-wider">Morning Run (50%)</span>
-            <p className="text-xl sm:text-2xl font-black text-blue-950 mt-1">{earningsSummary.formatted_morning_projected}</p>
-            <span className="text-[10px] text-blue-700 mt-0.5 block font-medium">Home ➔ School</span>
+            <span className="text-[9px] sm:text-[10px] font-black uppercase text-blue-800 tracking-wider">Approved Km Fare</span>
+            <p className="text-xl sm:text-2xl font-black text-blue-950 mt-1">{earningsSummary.formatted_total_daily_approved_km_fare || earningsSummary.formatted_total_daily_earnings}</p>
+            <span className="text-[10px] text-blue-700 mt-0.5 block font-medium">100% City Manager Base</span>
           </div>
 
-          <div className="p-3.5 sm:p-4 rounded-2xl bg-purple-50/80 border border-purple-200 text-center">
-            <span className="text-[9px] sm:text-[10px] font-black uppercase text-purple-800 tracking-wider">Afternoon Run (50%)</span>
-            <p className="text-xl sm:text-2xl font-black text-purple-950 mt-1">{earningsSummary.formatted_afternoon_projected}</p>
-            <span className="text-[10px] text-purple-700 mt-0.5 block font-medium">School ➔ Home</span>
+          <div className="p-3.5 sm:p-4 rounded-2xl bg-amber-50/80 border border-amber-200 text-center">
+            <span className="text-[9px] sm:text-[10px] font-black uppercase text-amber-800 tracking-wider">Platform Levy (20%)</span>
+            <p className="text-xl sm:text-2xl font-black text-amber-950 mt-1">-₦{Number(earningsSummary.total_daily_platform_levy || 0).toLocaleString()}</p>
+            <span className="text-[10px] text-amber-700 mt-0.5 block font-medium">Operational &amp; Safety Levy</span>
           </div>
 
           <div className="p-3.5 sm:p-4 rounded-2xl bg-slate-50 border border-slate-200 text-center">
             <span className="text-[9px] sm:text-[10px] font-black uppercase text-slate-600 tracking-wider">Wallet Balance</span>
             <p className="text-xl sm:text-2xl font-black text-slate-900 mt-1">₦{Number(liveDashboardData?.wallet?.balance ?? escort.wallet_balance ?? 0).toLocaleString()}</p>
             <span className="text-[10px] text-slate-500 mt-0.5 block font-medium">Available Payout</span>
+          </div>
+        </div>
+
+        <div className="p-3 rounded-2xl bg-emerald-500/10 border border-emerald-500/20 flex items-center justify-between gap-2 text-xs text-emerald-900">
+          <div className="flex items-center gap-2">
+            <ShieldCheck size={16} className="text-emerald-600 shrink-0" />
+            <span className="font-semibold text-[11px]">
+              Escort Compensation Rule: 20% platform levy is deducted from the Approved Km Fare. The 80% balance belongs to you and unlocks for bank withdrawal after the close of work.
+            </span>
           </div>
         </div>
       </div>
@@ -800,9 +821,9 @@ export default function MyEduRideEscortView({
             <table className="w-full text-left text-xs">
               <thead>
                 <tr className="border-b border-slate-200 text-slate-400 font-bold uppercase text-[10px]">
-                  <th className="py-3 px-3">Student & School</th>
+                  <th className="py-3 px-3">Student &amp; School</th>
                   <th className="py-3 px-3">CM Approval Status</th>
-                  <th className="py-3 px-3">Approved Fare</th>
+                  <th className="py-3 px-3">Approved Km Fare</th>
                   <th className="py-3 px-3">Pinned House Location</th>
                   <th className="py-3 px-3">Custody State</th>
                   <th className="py-3 px-3 text-center">Actions</th>
@@ -851,8 +872,10 @@ export default function MyEduRideEscortView({
                         </td>
 
                         <td className="py-3.5 px-3 font-mono font-bold text-emerald-900">
-                          {st.formatted_daily_fare || (st.daily_fare != null ? `₦${Number(st.daily_fare).toLocaleString()}` : '—')}
-                          <span className="block text-[10px] text-slate-400 font-sans font-normal">/ day</span>
+                          {st.formatted_approved_km_fare || st.formatted_daily_fare || (st.daily_fare != null ? `₦${Number(st.daily_fare).toLocaleString()}` : '—')}
+                          <span className="block text-[10px] text-slate-500 font-sans font-medium">
+                            80% net: ₦{Number(st.driver_net_earnings_daily || Math.round(Number(st.daily_fare || 0) * 0.8)).toLocaleString()}
+                          </span>
                         </td>
 
                         <td className="py-3.5 px-3">
@@ -1057,9 +1080,12 @@ export default function MyEduRideEscortView({
                         </div>
 
                         <div className="text-right shrink-0">
-                          <span className="text-[10px] text-slate-400 block uppercase font-bold">Fare</span>
+                          <span className="text-[10px] text-slate-500 block uppercase font-bold">Approved Km Fare</span>
                           <span className="font-mono font-black text-emerald-900 text-xs">
-                            {st.formatted_daily_fare || (st.daily_fare != null ? `₦${Number(st.daily_fare).toLocaleString()}` : '—')}
+                            {st.formatted_approved_km_fare || st.formatted_daily_fare || (st.daily_fare != null ? `₦${Number(st.daily_fare).toLocaleString()}` : '—')}
+                          </span>
+                          <span className="text-[9px] text-emerald-600 block font-semibold">
+                            80% net: {st.formatted_driver_net_daily || (st.driver_net_earnings_daily != null ? `₦${Number(st.driver_net_earnings_daily).toLocaleString()}` : (st.daily_fare ? `₦${Math.round(Number(st.daily_fare) * 0.8).toLocaleString()}` : '—'))}
                           </span>
                         </div>
                       </div>
@@ -1323,11 +1349,15 @@ export default function MyEduRideEscortView({
                     </span>
                   </div>
                   <div className="text-right shrink-0">
+                    <span className="text-[10px] text-slate-500 uppercase font-bold block">Approved Km Fare</span>
                     <span className="font-mono font-black text-emerald-800 text-sm block">
-                      {s.formatted_daily_fare || (s.daily_fare != null ? `₦${Number(s.daily_fare).toLocaleString()}` : '—')}
+                      {s.formatted_approved_km_fare || s.formatted_daily_fare || (s.daily_fare != null ? `₦${Number(s.daily_fare).toLocaleString()}` : '—')}
                     </span>
-                    <span className="text-[10px] text-slate-400 block">
-                      {s.morning_fare != null ? `₦${Number(s.morning_fare).toLocaleString()} morning` : '—'} + {s.afternoon_fare != null ? `₦${Number(s.afternoon_fare).toLocaleString()} afternoon` : '—'}
+                    <span className="text-[10px] text-emerald-600 font-semibold block">
+                      80% Net: {s.formatted_driver_net_daily || (s.driver_net_earnings_daily != null ? `₦${Number(s.driver_net_earnings_daily).toLocaleString()}` : (s.daily_fare ? `₦${Math.round(Number(s.daily_fare) * 0.8).toLocaleString()}` : '—'))}
+                    </span>
+                    <span className="text-[9px] text-slate-400 block">
+                      {s.morning_km_fare != null ? `₦${Number(s.morning_km_fare).toLocaleString()} AM` : (s.morning_fare != null ? `₦${Number(s.morning_fare).toLocaleString()} AM` : '—')} + {s.afternoon_km_fare != null ? `₦${Number(s.afternoon_km_fare).toLocaleString()} PM` : (s.afternoon_fare != null ? `₦${Number(s.afternoon_fare).toLocaleString()} PM` : '—')}
                     </span>
                   </div>
                 </div>

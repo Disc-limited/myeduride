@@ -116,7 +116,7 @@ export default function AtmCardPass({
 
   const defaultQrUrl =
     qrUrl ||
-    `https://api.qrserver.com/v1/create-qr-code/?size=260x260&margin=4&data=${encodeURIComponent(
+    `https://api.qrserver.com/v1/create-qr-code/?size=360x360&margin=4&data=${encodeURIComponent(
       qrPayload || `MYEDURIDE:${cardType.toUpperCase()}:${cleanId.replace(/\s+/g, '')}`
     )}`;
 
@@ -312,9 +312,9 @@ export default function AtmCardPass({
         <div className="w-10 sm:w-12 h-0.5 bg-amber-400 rounded-full mt-1" />
       </div>
 
-      {/* BOTTOM METADATA ROW: VALID THRU, GRADE/SECTION, ROUTE & STATUS PILL */}
+      {/* BOTTOM METADATA ROW: VALID THRU, GRADE/SECTION & STATUS PILL */}
       <div className="relative z-10 flex items-end justify-between gap-1 pt-1 -top-2 sm:-top-2.5 text-white">
-        <div className="flex items-center gap-3 sm:gap-4 text-[9px] sm:text-[10px]">
+        <div className="flex items-center gap-4 sm:gap-6 text-[9px] sm:text-[10px]">
           {/* Valid Thru */}
           <div>
             <span className="block text-[6.5px] sm:text-[7px] font-bold uppercase tracking-widest text-slate-300">
@@ -330,18 +330,8 @@ export default function AtmCardPass({
             <span className="block text-[6.5px] sm:text-[7px] font-bold uppercase tracking-widest text-slate-300">
               GRADE · SECTION
             </span>
-            <span className="font-black text-[11px] sm:text-xs text-white max-w-[90px] block py-0.5 leading-normal">
+            <span className="font-black text-[11px] sm:text-xs text-white max-w-[130px] sm:max-w-[160px] block py-0.5 leading-normal truncate">
               {activeGradeSection}
-            </span>
-          </div>
-
-          {/* Route */}
-          <div>
-            <span className="block text-[6.5px] sm:text-[7px] font-bold uppercase tracking-widest text-slate-300">
-              ROUTE
-            </span>
-            <span className="font-black text-[11px] sm:text-xs text-emerald-300">
-              {activeRoute}
             </span>
           </div>
         </div>
@@ -369,176 +359,159 @@ export default function AtmCardPass({
       }}
     >
       {/* Top: Full-Width Magnetic Stripe */}
-      <div className="w-full h-7 sm:h-8 bg-slate-950 border-b border-slate-900 shadow-inner relative shrink-0">
+      <div className="w-full h-5.5 sm:h-6.5 bg-slate-950 border-b border-slate-900 shadow-inner relative shrink-0">
         <div className="w-full h-full opacity-30 bg-[repeating-linear-gradient(90deg,transparent,transparent_4px,rgba(255,255,255,0.06)_4px,rgba(255,255,255,0.06)_8px)]" />
       </div>
 
-      {/* Mid-Top Row: Signature Strip, Route Box, QR Code Box */}
-      <div className="px-3 sm:px-4 pt-1 flex items-stretch justify-between gap-2">
-        {/* Left: Authorised Signature Box with Security Strip */}
-        <div className="flex-1 bg-white rounded-xl p-1.5 border border-slate-200 shadow-2xs flex flex-col justify-between relative overflow-hidden">
-          <span className="text-[6.5px] sm:text-[7px] font-bold text-slate-400 uppercase tracking-wider block">
-            AUTHORISED SIGNATURE
-          </span>
-          <div
-            className="h-6 sm:h-7 rounded-md px-2 flex items-center border border-slate-200 shadow-inner my-0.5 overflow-hidden"
-            style={{
-              background:
-                'repeating-linear-gradient(45deg, #F8FAFC, #F8FAFC 4px, #EDF2F7 4px, #EDF2F7 8px)',
-            }}
-          >
-            {hasSignature ? (
-              /* eslint-disable-next-line @next/next/no-img-element */
-              <img
-                src={resolvedSignature!}
-                alt="Principal Signature"
-                className="max-h-5 sm:max-h-5.5 object-contain"
-                onError={() => setSigError(true)}
-              />
-            ) : (
-              <div className="w-full flex items-center justify-between px-1">
-                <span className="italic font-serif text-[10px] sm:text-[11px] text-slate-500 select-none tracking-wide">
-                  Principal Signature
+      {/* Main Content Area: Left Information Panels + Right ENLARGED QR Scan Zone */}
+      <div className="flex-1 px-3 sm:px-4 py-2 flex items-stretch gap-2.5 sm:gap-3 min-h-0 overflow-hidden">
+        {/* Left Side: Signature, Emergency Contacts, Disclaimer, Card Number & Logos */}
+        <div className="flex-1 flex flex-col justify-between min-w-0">
+          {/* Authorised Signature Box */}
+          <div className="bg-white rounded-xl p-1.5 border border-slate-200/90 shadow-2xs">
+            <span className="text-[6px] sm:text-[6.5px] font-bold text-slate-400 uppercase tracking-wider block">
+              AUTHORISED SIGNATURE
+            </span>
+            <div
+              className="h-6 sm:h-7 rounded-md px-1.5 flex items-center border border-slate-200 shadow-inner my-0.5 overflow-hidden"
+              style={{
+                background:
+                  'repeating-linear-gradient(45deg, #F8FAFC, #F8FAFC 4px, #EDF2F7 4px, #EDF2F7 8px)',
+              }}
+            >
+              {hasSignature ? (
+                /* eslint-disable-next-line @next/next/no-img-element */
+                <img
+                  src={resolvedSignature!}
+                  alt="Principal Signature"
+                  className="max-h-5 sm:max-h-6 object-contain"
+                  onError={() => setSigError(true)}
+                />
+              ) : (
+                <div className="w-full flex items-center justify-between px-0.5">
+                  <span className="italic font-serif text-[9px] sm:text-[10px] text-slate-500 select-none tracking-wide">
+                    Principal Signature
+                  </span>
+                  <span className="text-[5.5px] font-mono uppercase text-amber-700 bg-amber-50 px-1 py-0.5 rounded border border-amber-200/80">
+                    Required
+                  </span>
+                </div>
+              )}
+            </div>
+            <span className="text-[5.5px] sm:text-[6px] text-slate-400 font-medium leading-none">Valid with official school stamp</span>
+          </div>
+
+          {/* Emergency Contacts */}
+          <div className="py-0.5">
+            <span className="text-[6.5px] sm:text-[7px] font-extrabold text-slate-400 uppercase tracking-[0.16em] block mb-0.5">
+              IN CASE OF EMERGENCY
+            </span>
+            <div className="grid grid-cols-3 gap-1.5">
+              <div className="min-w-0">
+                <span className="text-[5.5px] sm:text-[6px] font-bold text-slate-400 uppercase tracking-wider block">
+                  GUARDIAN
                 </span>
-                <span className="text-[6px] font-mono uppercase text-amber-700 bg-amber-50 px-1 py-0.5 rounded border border-amber-200/80">
-                  Required
+                <span className="text-[9px] sm:text-[10px] font-black text-slate-900 block truncate leading-tight">
+                  {activeGuardian}
                 </span>
               </div>
-            )}
-          </div>
-        </div>
-
-        {/* Middle: Route Box */}
-        <div className="w-16 sm:w-18 bg-white rounded-xl p-1.5 border border-slate-200 shadow-2xs flex flex-col justify-center items-center shrink-0">
-          <span className="text-[6.5px] sm:text-[7px] font-bold text-slate-400 uppercase tracking-wider block">
-            ROUTE
-          </span>
-          <span className="text-sm sm:text-base font-black text-emerald-600 leading-tight">
-            {activeRoute}
-          </span>
-        </div>
-
-        {/* Right: QR Code Box - Prominently Enlarged for Quick Gate/Escort Scanning */}
-        <div className="w-18 sm:w-22 bg-white rounded-xl p-1.5 border border-slate-200 shadow-2xs flex flex-col items-center justify-center shrink-0 relative">
-          {/* eslint-disable-next-line @next/next/no-img-element */}
-          <img
-            src={defaultQrUrl}
-            alt="QR"
-            className="w-14 h-14 sm:w-16 sm:h-16 object-contain"
-          />
-          <span className="text-[6px] sm:text-[6.5px] font-mono font-bold text-slate-400 uppercase tracking-widest leading-none mt-0.5">
-            QR
-          </span>
-        </div>
-      </div>
-
-      {/* Middle Section: In Case of Emergency + Verified Hologram Badge */}
-      <div className="px-3 sm:px-4 py-0.5">
-        <span className="text-[7px] sm:text-[7.5px] font-extrabold text-slate-400 uppercase tracking-[0.2em] block mb-1">
-          IN CASE OF EMERGENCY
-        </span>
-
-        <div className="flex items-center justify-between gap-2">
-          {/* 3 Columns: Guardian, Phone, Home Stop */}
-          <div className="grid grid-cols-3 gap-2 flex-1 min-w-0">
-            <div className="min-w-0">
-              <span className="text-[6.5px] sm:text-[7px] font-bold text-slate-400 uppercase tracking-wider block">
-                GUARDIAN
-              </span>
-              <span className="text-[10px] sm:text-[11px] font-black text-slate-900 block truncate py-0.5 leading-normal">
-                {activeGuardian}
-              </span>
-            </div>
-
-            <div className="min-w-0">
-              <span className="text-[6.5px] sm:text-[7px] font-bold text-slate-400 uppercase tracking-wider block">
-                PHONE
-              </span>
-              <span className="text-[10px] sm:text-[11px] font-mono font-black text-slate-900 block truncate py-0.5 leading-normal">
-                {activePhone}
-              </span>
-            </div>
-
-            <div className="min-w-0">
-              <span className="text-[6.5px] sm:text-[7px] font-bold text-slate-400 uppercase tracking-wider block">
-                HOME STOP
-              </span>
-              <span className="text-[10px] sm:text-[11px] font-bold text-slate-900 block truncate py-0.5 leading-normal">
-                {activeHomeStop}
-              </span>
+              <div className="min-w-0">
+                <span className="text-[5.5px] sm:text-[6px] font-bold text-slate-400 uppercase tracking-wider block">
+                  PHONE
+                </span>
+                <span className="text-[9px] sm:text-[10px] font-mono font-black text-slate-900 block truncate leading-tight">
+                  {activePhone}
+                </span>
+              </div>
+              <div className="min-w-0">
+                <span className="text-[5.5px] sm:text-[6px] font-bold text-slate-400 uppercase tracking-wider block">
+                  HOME STOP
+                </span>
+                <span className="text-[9px] sm:text-[10px] font-bold text-slate-900 block truncate leading-tight">
+                  {activeHomeStop}
+                </span>
+              </div>
             </div>
           </div>
 
-          {/* Circular Holographic "VERIFIED" Badge */}
-          <div className="shrink-0 flex flex-col items-center justify-center pl-1">
-            <div className="w-10 h-10 sm:w-11 sm:h-11 rounded-full bg-gradient-to-br from-emerald-100 via-teal-100 to-amber-100 border-2 border-emerald-300 flex flex-col items-center justify-center shadow-xs">
-              <ShieldCheck size={14} className="text-emerald-700 stroke-[2.5]" />
-              <span className="text-[5.5px] sm:text-[6px] font-black text-emerald-800 tracking-wider uppercase leading-none mt-0.5">
-                VERIFIED
+          {/* Legal Disclaimer */}
+          <div className="text-[5.5px] sm:text-[6px] text-slate-500 leading-tight">
+            <p className="truncate">If found, please return to {activeSchool}, {schoolAddress || 'the campus gate'} or call {returnPhone}.</p>
+            <p className="truncate">This card is non-transferable and remains the property of {activeSchool}.</p>
+          </div>
+
+          {/* Bottom Row: Card ID Number + School & MyEduRide Logos */}
+          <div className="flex items-center justify-between gap-2 pt-0.5 border-t border-slate-100">
+            <div>
+              <span className="text-[5px] sm:text-[5.5px] font-bold text-slate-400 uppercase tracking-wider block">
+                CARD ID NUMBER
+              </span>
+              <span className="font-mono text-[8.5px] sm:text-[9.5px] font-black text-slate-800 tracking-[0.14em] block leading-none mt-0.5">
+                {displayNumber}
               </span>
             </div>
-          </div>
-        </div>
-      </div>
 
-      {/* Bottom Section: Legal Disclaimer + BOLD BARCODE + Brand Emblem */}
-      <div className="px-3 sm:px-4 pb-2.5 pt-0.5 space-y-1">
-        {/* Disclaimer Notice */}
-        <div className="text-[6.5px] sm:text-[7px] text-slate-500 leading-tight">
-          <p>If found, please return to {activeSchool}, {schoolAddress || 'the campus gate'} or call {returnPhone}.</p>
-          <p>This card is non-transferable and remains the property of {activeSchool}.</p>
-        </div>
-
-        {/* Bottom Bar: BOLD BARCODE + Brand Emblem */}
-        <div className="flex items-end justify-between gap-3 pt-0.5">
-          {/* BOLD BARCODE FOR QUICK CAPTURE BY GATE OFFICER & ESCORT */}
-          <div className="flex-1 max-w-[240px] sm:max-w-[270px]">
-            <div className="bg-white p-1 rounded-md border border-slate-200/80 shadow-2xs">
-              <Barcode
-                value={barcodeRaw}
-                className="w-full h-7 sm:h-8"
-                height={44}
-                barColor="#000000"
-              />
-            </div>
-            <div className="text-center font-mono text-[8px] sm:text-[9px] font-bold text-slate-800 tracking-[0.25em] mt-0.5">
-              {displayNumber}
-            </div>
-          </div>
-
-          {/* School Crest or Add Logo Indicator + Brand Logo */}
-          <div className="flex items-center gap-2 shrink-0 pb-1">
-            {hasLogo ? (
-              <div className="w-6 h-6 sm:w-7 sm:h-7 rounded-lg bg-white p-0.5 border border-slate-200 flex items-center justify-center shrink-0 shadow-2xs overflow-hidden">
+            <div className="flex items-center gap-1.5 shrink-0">
+              {hasLogo ? (
+                <div className="w-5 h-5 sm:w-6 sm:h-6 rounded-md bg-white p-0.5 border border-slate-200 flex items-center justify-center shrink-0 shadow-2xs overflow-hidden">
+                  {/* eslint-disable-next-line @next/next/no-img-element */}
+                  <img
+                    src={rawLogo!}
+                    alt="School Logo"
+                    className="w-full h-full object-contain"
+                    onError={() => setLogoError(true)}
+                  />
+                </div>
+              ) : (
+                <div className="px-1.5 py-0.5 rounded bg-amber-50 border border-dashed border-amber-300 text-[5.5px] sm:text-[6px] font-bold text-amber-700 tracking-wider uppercase">
+                  Add Logo
+                </div>
+              )}
+              <div className="flex items-center gap-1 shrink-0">
                 {/* eslint-disable-next-line @next/next/no-img-element */}
                 <img
-                  src={rawLogo!}
-                  alt="School Logo"
-                  className="w-full h-full object-contain"
-                  onError={() => setLogoError(true)}
+                  src="/images/eduride_emblem.png"
+                  alt="MyEduRide"
+                  className="w-4 h-4 sm:w-5 sm:h-5 object-contain"
                 />
-              </div>
-            ) : (
-              <div className="px-1.5 py-0.5 rounded-md bg-amber-50 border border-dashed border-amber-300 text-[6.5px] font-bold text-amber-700 tracking-wider uppercase">
-                Add Logo
-              </div>
-            )}
-            <div className="flex items-center gap-1.5 shrink-0">
-              {/* eslint-disable-next-line @next/next/no-img-element */}
-              <img
-                src="/images/eduride_emblem.png"
-                alt="MyEduRide"
-                className="w-5 h-5 sm:w-6 sm:h-6 object-contain"
-              />
-              <div>
-                <span className="block font-black text-[10px] sm:text-[11px] text-[#0C3B5E] leading-none">
-                  MyEduRide
-                </span>
-                <span className="block text-[5.5px] sm:text-[6px] font-bold text-slate-500 tracking-wider uppercase leading-none mt-0.5">
-                  THE STUDENT SAFETY PLATFORM
-                </span>
+                <div>
+                  <span className="block font-black text-[9px] sm:text-[10px] text-[#0C3B5E] leading-none">
+                    MyEduRide
+                  </span>
+                  <span className="block text-[4.5px] sm:text-[5px] font-bold text-slate-500 tracking-wider uppercase leading-none mt-0.5">
+                    STUDENT SAFETY
+                  </span>
+                </div>
               </div>
             </div>
+          </div>
+        </div>
+
+        {/* Right Side: Prominently Enlarged Gate Scan QR Code Box */}
+        <div className="w-32 sm:w-36 bg-white rounded-2xl p-1.5 sm:p-2 border border-slate-200/90 shadow-sm flex flex-col items-center justify-between shrink-0 relative overflow-hidden">
+          <div className="flex items-center justify-between w-full px-0.5">
+            <span className="text-[5.5px] sm:text-[6px] font-mono font-bold text-slate-500 uppercase tracking-wider leading-none">
+              GATE SCAN QR
+            </span>
+            <div className="w-4 h-4 rounded-full bg-emerald-100 flex items-center justify-center shrink-0">
+              <ShieldCheck size={10} className="text-emerald-700 stroke-[2.5]" />
+            </div>
+          </div>
+
+          {/* Huge QR Code Target */}
+          <div className="w-full aspect-square flex items-center justify-center p-0.5">
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img
+              src={defaultQrUrl}
+              alt="Gate Scan QR Code"
+              className="w-full h-full object-contain"
+            />
+          </div>
+
+          <div className="w-full text-center">
+            <span className="block text-[5.5px] sm:text-[6px] font-black text-emerald-800 tracking-widest uppercase bg-emerald-50 border border-emerald-200 rounded py-0.5 leading-none">
+              SCAN TO VERIFY
+            </span>
           </div>
         </div>
       </div>
@@ -584,7 +557,7 @@ export default function AtmCardPass({
 
           <div className="space-y-1.5">
             <div className="flex items-center justify-between px-1 text-xs font-bold text-slate-300">
-              <span>Card Back (Bold Barcode &amp; Contacts)</span>
+              <span>Card Back (Enlarged QR &amp; Contacts)</span>
               <span className="text-[10px] text-emerald-400 font-mono">Gate &amp; Escort Scannable</span>
             </div>
             <div className="w-full" id="atm-card-onscreen-back">{backCardJsx}</div>
@@ -608,14 +581,14 @@ export default function AtmCardPass({
     );
   }
 
-  // 3. BACK ONLY VIEW (SHOWING BOLD BARCODE)
+  // 3. BACK ONLY VIEW (SHOWING ENLARGED QR)
   if (viewMode === 'back') {
     return (
       <div className="w-full max-w-[440px] mx-auto space-y-2">
         {printSourceJsx}
         <div className="flex items-center justify-between px-1 text-xs font-bold text-slate-300">
-          <span>Card Back View (Bold Barcode &amp; Emergency Contacts)</span>
-          <span className="text-[10px] text-emerald-400 font-mono">High-Contrast Scan Base</span>
+          <span>Card Back View (Enlarged QR &amp; Emergency Contacts)</span>
+          <span className="text-[10px] text-emerald-400 font-mono">High-Speed Scan Target</span>
         </div>
         <div className="w-full">{backCardJsx}</div>
       </div>

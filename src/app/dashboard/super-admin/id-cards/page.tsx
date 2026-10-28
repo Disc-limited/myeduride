@@ -794,7 +794,7 @@ export default function SuperAdminIdCardsPage() {
                       : 'text-slate-400 hover:text-white'
                   }`}
                 >
-                  <span>Back (Barcode)</span>
+                  <span>{previewFormat === 'classic' ? 'Back (Barcode)' : 'Back (QR Code)'}</span>
                 </button>
                 <button
                   type="button"
@@ -867,7 +867,7 @@ export default function SuperAdminIdCardsPage() {
                   <p>
                     {previewFormat === 'atm' ? (
                       <>
-                        <strong className="text-emerald-400">ATM Smart Card (New Format):</strong> Features metallic EMV chip, contactless RFID symbol, embossed card numbering, emergency contacts, and <strong>bold Code 128 barcode</strong> on card back for laser &amp; mobile scanning.
+                        <strong className="text-emerald-400">ATM Smart Card (New Format):</strong> Features metallic EMV chip, contactless RFID symbol, embossed card numbering, emergency contacts, and <strong>enlarged Gate Scan QR code</strong> on card back for instant high-speed mobile &amp; scanner recognition.
                       </>
                     ) : (
                       <>

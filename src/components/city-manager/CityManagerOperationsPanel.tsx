@@ -1016,13 +1016,29 @@ export function CityManagerOperationsPanel() {
                     </span>
                   </div>
                 </div>
-                {typeof req.service_charge === 'number' ? (
-                  <p className="text-[9px] text-slate-500 leading-snug">
-                    ₦300 / 0.5 km · ₦30 / 0.1 km · 6% service ₦{Number(req.service_charge).toLocaleString()} per trip
-                  </p>
-                ) : null}
+                <div className="p-2 rounded-xl bg-slate-950/80 border border-slate-800 space-y-1 text-[10px]">
+                  <div className="flex justify-between items-center text-slate-300">
+                    <span className="text-slate-400 font-semibold">Approved Km Fare:</span>
+                    <span className="font-mono font-bold text-emerald-400">
+                      ₦{Number(req.km_fare || req.daily_km_fare || (Number(req.daily_fare || 0) * 100 / 106) || 0).toLocaleString()}
+                    </span>
+                  </div>
+                  <div className="flex justify-between items-center text-slate-300">
+                    <span className="text-slate-400 font-semibold">Service Charge (6%):</span>
+                    <span className="font-mono font-bold text-cyan-400">
+                      ₦{Number(req.service_charge_fare || (Number(req.daily_fare || 0) - Number(req.km_fare || req.daily_km_fare || 0)) || 0).toLocaleString()}
+                    </span>
+                  </div>
+                  <div className="pt-1 border-t border-slate-800/80 flex justify-between items-center text-slate-200">
+                    <span className="text-slate-400 font-semibold">Driver Share (80%):</span>
+                    <span className="font-mono font-bold text-amber-300">
+                      ₦{Number(req.driver_net_earnings || Math.round(Number(req.km_fare || req.daily_km_fare || 0) * 0.8)).toLocaleString()}
+                    </span>
+                  </div>
+                </div>
+
                 <div className="flex items-center justify-between text-[11px] pt-1 border-t border-slate-800 gap-2">
-                  <span className="text-emerald-300 font-bold">Daily Total:</span>
+                  <span className="text-emerald-300 font-bold">Total Parent Fare:</span>
                   <div className="text-right">
                     {req.is_discounted ? (
                       <div>

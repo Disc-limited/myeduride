@@ -848,7 +848,9 @@ export async function GET(request: NextRequest) {
       }
       const normalizedTripType = normalizeEscortTripType(tripType);
 
-      // Dynamically compute fare from active city manager rates so afternoon/morning/daily fares update immediately.
+      // Dynamically compute fare from active city manager rates.
+      // ESCORT PRIVACY RULE: The escort is strictly allowed to see ONLY the Km Fare approved by the City Manager.
+      // The customer service charge is stripped entirely from the escort payload.
       const discountInfo = extractDiscountInfo(st.id);
       const fareEngine = calculateEscortFare(
         distanceKm != null ? distanceKm : 4.5,
@@ -857,29 +859,35 @@ export async function GET(request: NextRequest) {
       );
       const isDiscounted =
         discountInfo?.discountedFare != null && Number(discountInfo.discountedFare) > 0;
-      const effectiveDailyFare = isDiscounted
-        ? Number(discountInfo.discountedFare)
-        : fareEngine.dailyFare;
+      
+      const discountRatio = isDiscounted && fareEngine.dailyFare > 0
+        ? Number(discountInfo.discountedFare) / fareEngine.dailyFare
+        : 1;
 
-      const dailyFare = isSchoolEscort ? null : effectiveDailyFare;
-      const morningFare = isSchoolEscort
-        ? null
-        : normalizedTripType === 'afternoon_only'
+      // Approved Km Fare (Base distance transit rate approved by City Manager)
+      const approvedKmDaily = Math.round(fareEngine.dailyKmFare * discountRatio);
+      const approvedKmMorning =
+        normalizedTripType === 'afternoon_only'
           ? 0
           : normalizedTripType === 'morning_only'
-            ? effectiveDailyFare
-            : isDiscounted
-              ? Math.round(effectiveDailyFare / 2)
-              : fareEngine.morningFare;
-      const afternoonFare = isSchoolEscort
-        ? null
-        : normalizedTripType === 'morning_only'
+            ? approvedKmDaily
+            : Math.round(approvedKmDaily / 2);
+      const approvedKmAfternoon =
+        normalizedTripType === 'morning_only'
           ? 0
           : normalizedTripType === 'afternoon_only'
-            ? effectiveDailyFare
-            : isDiscounted
-              ? effectiveDailyFare - (morningFare || 0)
-              : fareEngine.afternoonFare;
+            ? approvedKmDaily
+            : approvedKmDaily - approvedKmMorning;
+
+      // 80% Driver net earnings from Approved Km Fare (20% platform levy)
+      const driverDailyNet = Math.round(approvedKmDaily * 0.8);
+      const driverMorningNet = Math.round(approvedKmMorning * 0.8);
+      const driverAfternoonNet = driverDailyNet - driverMorningNet;
+
+      // The fare visible to the escort is strictly the Approved Km Fare
+      const dailyFare = isSchoolEscort ? null : approvedKmDaily;
+      const morningFare = isSchoolEscort ? null : approvedKmMorning;
+      const afternoonFare = isSchoolEscort ? null : approvedKmAfternoon;
 
       const cls = Array.isArray(st.class)
         ? st.class[0]?.name
@@ -918,6 +926,7 @@ export async function GET(request: NextRequest) {
         city_manager_status: cmStatusLabel,
         city_manager_approved: isCmApproved,
         show_price: !isSchoolEscort,
+        // Approved Km Fare (Visible to Escort)
         daily_fare: dailyFare,
         formatted_daily_fare: dailyFare != null ? `₦${dailyFare.toLocaleString()}` : null,
         morning_fare: morningFare,
@@ -925,6 +934,21 @@ export async function GET(request: NextRequest) {
         formatted_morning_fare: morningFare != null ? `₦${morningFare.toLocaleString()}` : null,
         formatted_afternoon_fare:
           afternoonFare != null ? `₦${afternoonFare.toLocaleString()}` : null,
+        approved_km_fare: approvedKmDaily,
+        formatted_approved_km_fare: `₦${approvedKmDaily.toLocaleString()}`,
+        approved_km_fare_morning: approvedKmMorning,
+        formatted_approved_km_fare_morning: `₦${approvedKmMorning.toLocaleString()}`,
+        approved_km_fare_afternoon: approvedKmAfternoon,
+        formatted_approved_km_fare_afternoon: `₦${approvedKmAfternoon.toLocaleString()}`,
+        // 80% Driver Net Entitlement
+        driver_net_earnings_daily: driverDailyNet,
+        formatted_driver_net_earnings_daily: `₦${driverDailyNet.toLocaleString()}`,
+        driver_net_earnings_morning: driverMorningNet,
+        formatted_driver_net_earnings_morning: `₦${driverMorningNet.toLocaleString()}`,
+        driver_net_earnings_afternoon: driverAfternoonNet,
+        formatted_driver_net_earnings_afternoon: `₦${driverAfternoonNet.toLocaleString()}`,
+        platform_levy_daily: approvedKmDaily - driverDailyNet,
+        formatted_platform_levy_daily: `₦${(approvedKmDaily - driverDailyNet).toLocaleString()}`,
         discount_applied: Boolean(discountInfo),
         discount_amount: discountInfo?.variance || null,
         accountant_ref: discountInfo?.accountantApprovalRef || null,
@@ -1005,11 +1029,17 @@ export async function GET(request: NextRequest) {
     // Compute Today's Total Earnings Summary for Escort (excluding students canceled before cutoff)
     const billableStudents = operationalManifest.filter((s) => !s.is_canceled_by_parent);
     const approvedStudentsCount = billableStudents.length;
-    const totalDailyEarnings = billableStudents.reduce(
-      (acc, s) => acc + (s.daily_fare ? Number(s.daily_fare) : 0),
+
+    // Total Approved Km Fare (Base rate approved by City Manager)
+    const totalApprovedKmFare = billableStudents.reduce(
+      (acc, s) => acc + (s.approved_km_fare ? Number(s.approved_km_fare) : (s.daily_fare ? Number(s.daily_fare) : 0)),
       0
     );
-    const morningProjected = billableStudents.reduce(
+    // 80% is for the driver, 20% is deducted as platform levy
+    const totalDriverDailyNet = Math.round(totalApprovedKmFare * 0.8);
+    const totalPlatformLevy = totalApprovedKmFare - totalDriverDailyNet;
+
+    const morningKmTotal = billableStudents.reduce(
       (acc, s) =>
         acc +
         ((s.trip_type as string) !== 'afternoon_only' &&
@@ -1019,7 +1049,9 @@ export async function GET(request: NextRequest) {
           : 0),
       0
     );
-    const afternoonProjected = billableStudents.reduce(
+    const morningDriverProjected = Math.round(morningKmTotal * 0.8);
+
+    const afternoonKmTotal = billableStudents.reduce(
       (acc, s) =>
         acc +
         ((s.trip_type as string) !== 'morning_only' &&
@@ -1029,6 +1061,7 @@ export async function GET(request: NextRequest) {
           : 0),
       0
     );
+    const afternoonDriverProjected = totalDriverDailyNet - morningDriverProjected;
 
     const earningsSummary = isSchoolEscort
       ? {
@@ -1045,12 +1078,20 @@ export async function GET(request: NextRequest) {
         }
       : {
           is_school_salaried: false,
-          total_daily_earnings: totalDailyEarnings,
-          formatted_total_daily_earnings: `₦${totalDailyEarnings.toLocaleString()}`,
-          morning_projected: morningProjected,
-          formatted_morning_projected: `₦${morningProjected.toLocaleString()}`,
-          afternoon_projected: afternoonProjected,
-          formatted_afternoon_projected: `₦${afternoonProjected.toLocaleString()}`,
+          // 80% Net Driver Entitlement
+          total_daily_earnings: totalDriverDailyNet,
+          formatted_total_daily_earnings: `₦${totalDriverDailyNet.toLocaleString()}`,
+          morning_projected: morningDriverProjected,
+          formatted_morning_projected: `₦${morningDriverProjected.toLocaleString()}`,
+          afternoon_projected: afternoonDriverProjected,
+          formatted_afternoon_projected: `₦${afternoonDriverProjected.toLocaleString()}`,
+          // Approved Km Fare & 20% deduction breakdown
+          total_daily_approved_km_fare: totalApprovedKmFare,
+          formatted_total_daily_approved_km_fare: `₦${totalApprovedKmFare.toLocaleString()}`,
+          total_daily_platform_levy: totalPlatformLevy,
+          formatted_total_daily_platform_levy: `₦${totalPlatformLevy.toLocaleString()}`,
+          driver_share_percent: 80,
+          platform_levy_percent: 20,
           total_students: billableStudents.length,
           approved_students_count: approvedStudentsCount,
           pending_students_count: 0,
@@ -1337,8 +1378,8 @@ export async function GET(request: NextRequest) {
       }
     }
 
-    // Also include any completed trip fares today
-    const tripTodayEarnings = studentManifest.reduce((acc, s) => {
+    // Also include any completed trip fares today (80% net driver share of approved Km fare)
+    const tripTodayKmFare = studentManifest.reduce((acc, s) => {
       if (!s.city_manager_approved) return acc;
       if (
         s.morning_status === 'PICKED_UP_FROM_HOME' ||
@@ -1351,8 +1392,9 @@ export async function GET(request: NextRequest) {
       }
       return acc;
     }, 0);
+    const tripTodayEarnings = Math.round(tripTodayKmFare * 0.8);
 
-    // Also include historical trip fares this month
+    // Also include historical trip fares this month (80% driver net share)
     let tripMonthEarnings = tripTodayEarnings;
     const monthStart = `${today.slice(0, 7)}-01`;
     try {
@@ -1370,13 +1412,14 @@ export async function GET(request: NextRequest) {
             { morning: Number(s.morning_fare || 0), afternoon: Number(s.afternoon_fare || 0) },
           ])
         );
-        tripMonthEarnings = (monthTrips || []).reduce((acc: number, trip: any) => {
+        const monthKmTotal = (monthTrips || []).reduce((acc: number, trip: any) => {
           const fares = fareByStudent.get(trip.student_id);
           if (!fares) return acc;
           if (trip.morning_picked_up) acc += fares.morning;
           if (trip.afternoon_dropped_off) acc += fares.afternoon;
           return acc;
         }, 0);
+        tripMonthEarnings = Math.round(monthKmTotal * 0.8);
       }
     } catch (err) {
       console.warn('[dashboard-live] month trips fetch notice:', err);
@@ -1384,6 +1427,21 @@ export async function GET(request: NextRequest) {
 
     const todayEarnings = walletTodayCreditsNgn + tripTodayEarnings;
     const monthEarnings = walletMonthCreditsNgn + tripMonthEarnings;
+
+    // Close of Work status check:
+    // Escort can withdraw after the close of work (when daily afternoon drop-offs are done or shift is closed)
+    const hasUnfinishedTrips = operationalManifest.some((s) => {
+      if (s.is_canceled_by_parent) return false;
+      const tType = String(s.trip_type || 'both');
+      const needsMorning = tType !== 'afternoon_only' && tType !== 'afternoon';
+      const needsAfternoon = tType !== 'morning_only' && tType !== 'morning';
+      const morningDone = !needsMorning || s.morning_status === 'DROPPED_OFF_AT_SCHOOL' || s.morning_status === 'SAFE_AT_SCHOOL';
+      const afternoonDone = !needsAfternoon || s.afternoon_status === 'SAFE_AT_HOME' || s.afternoon_status === 'DROPPED_OFF';
+      return !morningDone || !afternoonDone;
+    });
+
+    const isShiftMarkedCompleted = escortProfile?.today_trip_status === 'completed';
+    const isWorkClosedForDay = isShiftMarkedCompleted || (!hasUnfinishedTrips && operationalManifest.length > 0);
 
     const oneWayKm = studentManifest.reduce((acc, s) => acc + (Number(s.distance_km) || 0), 0);
     const plannedTrips =
@@ -1640,6 +1698,17 @@ export async function GET(request: NextRequest) {
         eduInsuRedActive,
         eduInsuRedPlan: escortProfile?.selectedInsuredPlan || null,
         transactions: walletTransactions,
+        work_closed_for_day: isWorkClosedForDay,
+        can_withdraw: isWorkClosedForDay,
+        close_of_work_status: isWorkClosedForDay ? 'CLOSED' : 'IN_PROGRESS',
+        withdrawal_lock_reason: isWorkClosedForDay
+          ? null
+          : 'Daily earnings unlock for withdrawal after close of work (when afternoon drop-offs are completed or shift is closed).',
+        total_daily_approved_km_fare: totalApprovedKmFare,
+        total_daily_driver_net_earnings: totalDriverDailyNet,
+        total_daily_platform_levy: totalPlatformLevy,
+        driver_share_percent: 80,
+        platform_levy_percent: 20,
         payout_bank: {
           bank_name: walletRow?.virtual_bank_name || null,
           account_number: walletRow?.payout_account_number || null,
@@ -2187,6 +2256,38 @@ export async function POST(request: NextRequest) {
       });
     }
 
+    // Action: Close of Work (End Day Shift & Unlock Withdrawal)
+    if (action === 'close_of_work' || action === 'close_day_work') {
+      if (session?.user_id) {
+        await supabase
+          .from('escort_applications')
+          .update({
+            today_trip_status: 'completed',
+            operational_status: 'Work Closed',
+            ready_for_pickup: false,
+          })
+          .eq('user_id', session.user_id);
+
+        if (primarySchoolId) {
+          await supabase
+            .from('vehicle_active_sessions')
+            .update({
+              status: 'completed',
+              completed_at: nowUtcIso(),
+            })
+            .eq('escort_user_id', session.user_id)
+            .eq('status', 'in_progress');
+        }
+      }
+
+      return NextResponse.json({
+        success: true,
+        work_closed: true,
+        completed_at: nowUtcIso(),
+        message: 'Close of work recorded successfully. Daily earnings unlocked for bank withdrawal.',
+      });
+    }
+
     // Action 6: Request Withdrawal / Payout
     if (action === 'withdraw_wallet') {
       if (!session?.user_id || !amount) {
@@ -2196,6 +2297,23 @@ export async function POST(request: NextRequest) {
       const numAmount = Number(amount);
       if (isNaN(numAmount) || numAmount < 500) {
         return NextResponse.json({ error: 'Minimum withdrawal amount is ₦500' }, { status: 400 });
+      }
+
+      // Close of Work check: Escort can withdraw after close of work
+      const { data: escortRecord } = await supabase
+        .from('escort_applications')
+        .select('today_trip_status')
+        .eq('user_id', session.user_id)
+        .maybeSingle();
+
+      if (escortRecord?.today_trip_status === 'in_progress') {
+        return NextResponse.json(
+          {
+            error:
+              'Active transit trip in progress. Earnings unlock for withdrawal after close of work (when afternoon drop-offs are concluded or shift is closed).',
+          },
+          { status: 400 }
+        );
       }
 
       const amountKobo = Math.round(numAmount * 100);
