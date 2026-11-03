@@ -64,7 +64,10 @@ export default function ClassicCardPass({
   const resolvedSignature = signatureUrl ? photoSrc(signatureUrl) : null;
   const hasSignature = !!resolvedSignature && !sigError;
 
-  const displayRoleOrClass = gradeSection || classNameOrRole || (cardType === 'staff' ? 'STAFF MEMBER' : 'Class Assigned');
+  const isStudent = cardType === 'student';
+  const displayRoleOrClass = isStudent
+    ? ''
+    : gradeSection || classNameOrRole || (cardType === 'staff' ? 'STAFF MEMBER' : '');
   const roleBadge = cardType === 'staff' ? (classNameOrRole || 'STAFF ID').toUpperCase() : 'STUDENT ID';
   const resolvedAddress = schoolAddress || 'Student Safety Platform Campus';
 
@@ -171,16 +174,18 @@ export default function ClassicCardPass({
             </p>
           </div>
 
-          <div className="flex items-center gap-3">
-            <div className="flex-1 min-w-0">
-              <span className="text-[7.5px] sm:text-[8px] font-bold text-sky-200 uppercase tracking-wider block">
-                {cardType === 'staff' ? 'ROLE / POSITION' : 'CLASS'}
-              </span>
-              <p className="text-[10px] sm:text-xs font-bold text-slate-100 uppercase truncate leading-normal py-0.5">
-                {displayRoleOrClass}
-              </p>
+          {!isStudent && displayRoleOrClass && (
+            <div className="flex items-center gap-3">
+              <div className="flex-1 min-w-0">
+                <span className="text-[7.5px] sm:text-[8px] font-bold text-sky-200 uppercase tracking-wider block">
+                  ROLE / POSITION
+                </span>
+                <p className="text-[10px] sm:text-xs font-bold text-slate-100 uppercase truncate leading-normal py-0.5">
+                  {displayRoleOrClass}
+                </p>
+              </div>
             </div>
-          </div>
+          )}
         </div>
 
         {/* QR Code - Enlarged Gate Scannable QR */}

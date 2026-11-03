@@ -353,16 +353,18 @@ async function drawAtmFront(
   doc.setTextColor(255, 255, 255);
   doc.text(person.validThru || '07/27', 4.2, 42.5);
 
-  const gradeLabel = person.kind === 'staff' ? 'ROLE · DEPT' : 'GRADE · SECTION';
-  const gradeVal = person.gradeSection || person.className || person.roleLabel || (person.kind === 'staff' ? 'STAFF' : 'STUDENT');
-  doc.setFont('helvetica', 'bold');
-  doc.setFontSize(2.4);
-  doc.setTextColor(203, 213, 225);
-  doc.text(gradeLabel, 18.0, 38.5);
-  doc.setFont('helvetica', 'bold');
-  doc.setFontSize(4.4);
-  doc.setTextColor(255, 255, 255);
-  doc.text(gradeVal.toUpperCase(), 18.0, 42.5, { maxWidth: 28 });
+  if (person.kind !== 'student') {
+    const roleLabel = person.kind === 'staff' ? 'ROLE · DEPT' : 'DESIGNATION';
+    const roleVal = person.gradeSection || person.className || person.roleLabel || 'STAFF';
+    doc.setFont('helvetica', 'bold');
+    doc.setFontSize(2.4);
+    doc.setTextColor(203, 213, 225);
+    doc.text(roleLabel, 18.0, 38.5);
+    doc.setFont('helvetica', 'bold');
+    doc.setFontSize(4.4);
+    doc.setTextColor(255, 255, 255);
+    doc.text(roleVal.toUpperCase(), 18.0, 42.5, { maxWidth: 28 });
+  }
 
   // Status Pill Badge: TRANSPORT ACTIVE
   const statusPillW = 26.5;
@@ -695,16 +697,18 @@ async function drawClassicFront(
   doc.setTextColor(110, 231, 183);
   doc.text(person.idNumber.toUpperCase(), detailX, 29.5);
 
-  const subLabel = person.kind === 'staff' ? 'ROLE' : 'CLASS';
-  const subValue = person.kind === 'staff' ? person.roleLabel || 'Staff Member' : person.className || 'General';
-  doc.setFont('helvetica', 'bold');
-  doc.setFontSize(2.6);
-  doc.setTextColor(190, 210, 235);
-  doc.text(subLabel, detailX, 34.5);
-  doc.setFont('helvetica', 'bold');
-  doc.setFontSize(4.2);
-  doc.setTextColor(255, 255, 255);
-  doc.text(subValue.toUpperCase(), detailX, 38.5, { maxWidth: 26.5 });
+  if (person.kind !== 'student') {
+    const subLabel = 'ROLE / POSITION';
+    const subValue = person.roleLabel || person.className || 'Staff Member';
+    doc.setFont('helvetica', 'bold');
+    doc.setFontSize(2.6);
+    doc.setTextColor(190, 210, 235);
+    doc.text(subLabel, detailX, 34.5);
+    doc.setFont('helvetica', 'bold');
+    doc.setFontSize(4.2);
+    doc.setTextColor(255, 255, 255);
+    doc.text(subValue.toUpperCase(), detailX, 38.5, { maxWidth: 26.5 });
+  }
 
   // QR Code Box (Classic Right Side - Prominently Enlarged)
   const qrBoxW = 23.5;

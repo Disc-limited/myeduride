@@ -140,7 +140,10 @@ export default function AtmCardPass({
 
   // Default Fallbacks matching verified database records
   const activeSchool = schoolName || 'MYEDURIDE PARTNER SCHOOL';
-  const activeGradeSection = gradeSection || classNameOrRole || (cardType === 'escort' ? 'FLEET DRIVER' : 'Class Assigned');
+  const isStudent = cardType === 'student';
+  const activeGradeSection = isStudent
+    ? ''
+    : gradeSection || classNameOrRole || (cardType === 'escort' ? 'FLEET DRIVER' : 'STAFF MEMBER');
   const activeRoute = routeCode || (vehiclePlate ? `RT-${vehiclePlate.slice(0, 4)}` : 'R-CAMPUS');
   const activeGuardian = guardianName || (cardType === 'student' ? 'Not Assigned' : 'Official Emergency Contact');
   const activePhone = guardianPhone || 'Not Available';
@@ -338,15 +341,17 @@ export default function AtmCardPass({
             </span>
           </div>
 
-          {/* Grade / Section or Role */}
-          <div>
-            <span className="block text-[6.5px] sm:text-[7px] font-bold uppercase tracking-widest text-slate-300">
-              GRADE · SECTION
-            </span>
-            <span className="font-black text-[11px] sm:text-xs text-white max-w-[130px] sm:max-w-[160px] block py-0.5 leading-normal truncate">
-              {activeGradeSection}
-            </span>
-          </div>
+          {/* Role or Department (Only for Staff / Escort - Omitted for Students) */}
+          {!isStudent && activeGradeSection && (
+            <div>
+              <span className="block text-[6.5px] sm:text-[7px] font-bold uppercase tracking-widest text-slate-300">
+                ROLE / DEPT
+              </span>
+              <span className="font-black text-[11px] sm:text-xs text-white max-w-[130px] sm:max-w-[160px] block py-0.5 leading-normal truncate">
+                {activeGradeSection}
+              </span>
+            </div>
+          )}
         </div>
 
         {/* Status Pill Badge: TRANSPORT ACTIVE */}
