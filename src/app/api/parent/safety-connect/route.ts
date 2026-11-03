@@ -632,6 +632,36 @@ export async function GET(request: NextRequest) {
       };
     }
 
+    // Query today's latest escort pickup arrival for this child (Daisaf Spec Section 3.2)
+    let latestEscortArrival: any = null;
+    if (effectiveChildId) {
+      const todayDate = todayInLagos();
+      const { data: arrivalRow } = await supabase
+        .from('escort_pickup_arrivals')
+        .select('*')
+        .eq('student_id', effectiveChildId)
+        .gte('created_at', `${todayDate}T00:00:00Z`)
+        .order('created_at', { ascending: false })
+        .limit(1)
+        .maybeSingle();
+
+      if (arrivalRow) {
+        latestEscortArrival = {
+          arrival_id: arrivalRow.id,
+          arrived_at: arrivalRow.arrived_at,
+          grace_expires_at: arrivalRow.grace_expires_at,
+          penalty_starts_at: arrivalRow.penalty_starts_at,
+          boarded_at: arrivalRow.boarded_at,
+          delay_minutes: arrivalRow.delay_minutes,
+          penalty_kobo: arrivalRow.penalty_kobo,
+          penalty_ngn: (arrivalRow.penalty_kobo || 0) / 100,
+          penalty_status: arrivalRow.penalty_status,
+          distance_meters: arrivalRow.distance_meters,
+          geofence_passed: arrivalRow.geofence_passed,
+        };
+      }
+    }
+
     return NextResponse.json({
       success: true,
       timestamp: nowUtcIso(),
@@ -652,6 +682,7 @@ export async function GET(request: NextRequest) {
         active_bookings: activeChildBookings,
         edrive: edriveTelemetry,
         multi_child_summary: multiChildSummary,
+        latest_escort_arrival: latestEscortArrival,
       },
     });
   } catch (err: any) {

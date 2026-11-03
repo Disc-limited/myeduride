@@ -5,6 +5,7 @@ import { ShieldCheck, RotateCw } from 'lucide-react';
 import AtmChip from './AtmChip';
 import Barcode from './Barcode';
 import { photoSrc } from '@/lib/photo';
+import QRCode from 'qrcode';
 
 export interface AtmCardPassProps {
   cardType?: 'escort' | 'student' | 'staff' | 'parent';
@@ -74,6 +75,8 @@ export default function AtmCardPass({
   const [isFlipped, setIsFlipped] = useState(forcedSide === 'back');
   const [sigError, setSigError] = useState(false);
   const [logoError, setLogoError] = useState(false);
+  const [photoError, setPhotoError] = useState(false);
+  const [localQr, setLocalQr] = useState<string>('');
 
   useEffect(() => {
     setSigError(false);
@@ -84,19 +87,40 @@ export default function AtmCardPass({
   }, [logoUrl]);
 
   useEffect(() => {
+    setPhotoError(false);
+  }, [photoUrl]);
+
+  useEffect(() => {
     if (forcedSide) {
       setIsFlipped(forcedSide === 'back');
     }
   }, [forcedSide]);
+
+  const formattedName = (cardholderName || 'CARDHOLDER NAME').toUpperCase();
+  const cleanId = (idNumber || 'ID-0000').toUpperCase().trim();
+
+  // Generate local crisp QR data URL if not passed from parent
+  useEffect(() => {
+    if (!qrUrl) {
+      const payload = qrPayload || `MYEDURIDE:${cardType.toUpperCase()}:${cleanId.replace(/\s+/g, '')}`;
+      QRCode.toDataURL(payload, {
+        width: 400,
+        margin: 1,
+        errorCorrectionLevel: 'M',
+        color: { dark: '#000000', light: '#ffffff' },
+      })
+        .then(setLocalQr)
+        .catch(() => {});
+    }
+  }, [qrUrl, qrPayload, cardType, cleanId]);
+
+  const activeQrUrl = qrUrl || localQr || '';
 
   const handleToggleFlip = (e?: React.MouseEvent) => {
     if (e) e.stopPropagation();
     setIsFlipped((prev) => !prev);
     if (onCardClick) onCardClick();
   };
-
-  const formattedName = (cardholderName || 'AMARA OKAFOR').toUpperCase();
-  const cleanId = (idNumber || '2604 8213 0010').toUpperCase().trim();
 
   // Format ID into clean readable spaced clusters e.g. "2604 8213 0010"
   const formatCardNumber = (raw: string) => {
@@ -113,12 +137,6 @@ export default function AtmCardPass({
   const barcodeRaw = barcodeValue || cleanId.replace(/\s+/g, '');
 
   const photo = photoSrc(photoUrl);
-
-  const defaultQrUrl =
-    qrUrl ||
-    `https://api.qrserver.com/v1/create-qr-code/?size=360x360&margin=4&data=${encodeURIComponent(
-      qrPayload || `MYEDURIDE:${cardType.toUpperCase()}:${cleanId.replace(/\s+/g, '')}`
-    )}`;
 
   // Default Fallbacks matching verified database records
   const activeSchool = schoolName || 'MYEDURIDE PARTNER SCHOOL';
@@ -172,6 +190,7 @@ export default function AtmCardPass({
           {/* eslint-disable-next-line @next/next/no-img-element */}
           <img
             src="/images/eduride_emblem.png"
+            crossOrigin="anonymous"
             alt="MyEduRide"
             className="w-5 h-5 object-contain shrink-0"
           />
@@ -192,6 +211,7 @@ export default function AtmCardPass({
               {/* eslint-disable-next-line @next/next/no-img-element */}
               <img
                 src={rawLogo!}
+                crossOrigin="anonymous"
                 alt={activeSchool}
                 className="w-full h-full object-contain"
                 onError={() => setLogoError(true)}
@@ -269,17 +289,15 @@ export default function AtmCardPass({
           </svg>
 
           {/* Vertical Passport Photo Frame (35 x 45mm ratio) - Prominently Enlarged */}
-          <div className="w-[84px] h-[106px] sm:w-[96px] sm:h-[122px] rounded-2xl bg-slate-100 border-[2.5px] border-white shadow-xl overflow-hidden relative flex flex-col justify-between">
-            {photo ? (
+          <div className="w-[84px] h-[106px] sm:w-[96px] sm:h-[122px] rounded-2xl bg-slate-100 border-[2.5px] border-white shadow-xl overflow-hidden relative">
+            {photo && !photoError ? (
               /* eslint-disable-next-line @next/next/no-img-element */
               <img
                 src={photo}
+                crossOrigin="anonymous"
                 alt={formattedName}
                 className="w-full h-full object-cover"
-                onError={(e) => {
-                  (e.target as HTMLImageElement).src =
-                    'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=240&auto=format&fit=crop&q=80';
-                }}
+                onError={() => setPhotoError(true)}
               />
             ) : (
               <div className="w-full h-full bg-slate-100 flex flex-col items-center justify-center p-1">
@@ -287,11 +305,6 @@ export default function AtmCardPass({
                 <div className="w-14 h-7 sm:w-16 sm:h-8 rounded-t-full bg-slate-200/90 border border-slate-300" />
               </div>
             )}
-
-            {/* Passport Ratio Label */}
-            <div className="absolute bottom-0 inset-x-0 bg-white/95 backdrop-blur-xs py-0.5 text-center text-[6px] sm:text-[7px] font-bold text-slate-600 tracking-wider uppercase border-t border-slate-200">
-              PHOTO · 35 × 45 MM
-            </div>
           </div>
         </div>
       </div>
@@ -383,6 +396,7 @@ export default function AtmCardPass({
                 /* eslint-disable-next-line @next/next/no-img-element */
                 <img
                   src={resolvedSignature!}
+                  crossOrigin="anonymous"
                   alt="Principal Signature"
                   className="max-h-5 sm:max-h-6 object-contain"
                   onError={() => setSigError(true)}
@@ -457,6 +471,7 @@ export default function AtmCardPass({
                   {/* eslint-disable-next-line @next/next/no-img-element */}
                   <img
                     src={rawLogo!}
+                    crossOrigin="anonymous"
                     alt="School Logo"
                     className="w-full h-full object-contain"
                     onError={() => setLogoError(true)}
@@ -471,6 +486,7 @@ export default function AtmCardPass({
                 {/* eslint-disable-next-line @next/next/no-img-element */}
                 <img
                   src="/images/eduride_emblem.png"
+                  crossOrigin="anonymous"
                   alt="MyEduRide"
                   className="w-4 h-4 sm:w-5 sm:h-5 object-contain"
                 />
@@ -500,12 +516,19 @@ export default function AtmCardPass({
 
           {/* Huge QR Code Target */}
           <div className="w-full aspect-square flex items-center justify-center p-0.5">
-            {/* eslint-disable-next-line @next/next/no-img-element */}
-            <img
-              src={defaultQrUrl}
-              alt="Gate Scan QR Code"
-              className="w-full h-full object-contain"
-            />
+            {activeQrUrl ? (
+              /* eslint-disable-next-line @next/next/no-img-element */
+              <img
+                src={activeQrUrl}
+                crossOrigin="anonymous"
+                alt="Gate Scan QR Code"
+                className="w-full h-full object-contain"
+              />
+            ) : (
+              <div className="w-full h-full flex items-center justify-center">
+                <div className="w-6 h-6 border-2 border-emerald-500 border-t-transparent rounded-full animate-spin" />
+              </div>
+            )}
           </div>
 
           <div className="w-full text-center">
@@ -532,10 +555,10 @@ export default function AtmCardPass({
       }}
       aria-hidden="true"
     >
-      <div id="atm-card-print-front" style={{ width: '440px', height: '277.4px', marginBottom: '20px' }}>
+      <div id="atm-card-print-front" className="id-card-export-front" style={{ width: '440px', height: '277.4px', marginBottom: '20px' }}>
         {frontCardJsx}
       </div>
-      <div id="atm-card-print-back" style={{ width: '440px', height: '277.4px' }}>
+      <div id="atm-card-print-back" className="id-card-export-back" style={{ width: '440px', height: '277.4px' }}>
         {backCardJsx}
       </div>
     </div>
@@ -552,7 +575,7 @@ export default function AtmCardPass({
               <span>Card Front (Landscape ATM)</span>
               <span className="text-[10px] text-emerald-400 font-mono">Standard CR80</span>
             </div>
-            <div className="w-full" id="atm-card-onscreen-front">{frontCardJsx}</div>
+            <div className="w-full id-card-export-front" id="atm-card-onscreen-front">{frontCardJsx}</div>
           </div>
 
           <div className="space-y-1.5">
@@ -560,7 +583,7 @@ export default function AtmCardPass({
               <span>Card Back (Enlarged QR &amp; Contacts)</span>
               <span className="text-[10px] text-emerald-400 font-mono">Gate &amp; Escort Scannable</span>
             </div>
-            <div className="w-full" id="atm-card-onscreen-back">{backCardJsx}</div>
+            <div className="w-full id-card-export-back" id="atm-card-onscreen-back">{backCardJsx}</div>
           </div>
         </div>
       </div>

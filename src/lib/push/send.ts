@@ -24,13 +24,15 @@ function ensureVapidConfigured(): boolean {
   }
 }
 
-interface PushPayload {
+export interface PushPayload {
   title: string;
-  message: string;
-  type: 'arrival' | 'departure' | 'late' | 'dismissal' | 'system';
+  message?: string;
+  body?: string;
+  type?: 'arrival' | 'departure' | 'late' | 'dismissal' | 'system' | string;
   student_id?: string;
   url?: string;
   tag?: string;
+  data?: any;
 }
 
 interface PushSubscriptionData {
@@ -55,7 +57,11 @@ export async function sendPushNotification(
           auth: subscription.keys_auth,
         },
       },
-      JSON.stringify(payload)
+      JSON.stringify({
+        ...payload,
+        body: payload.body || payload.message || '',
+        message: payload.message || payload.body || '',
+      })
     );
     return true;
   } catch (error: any) {

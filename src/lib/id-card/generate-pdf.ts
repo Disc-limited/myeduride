@@ -117,7 +117,7 @@ function drawSchoolLogoPlaceholder(doc: any, x: number, y: number, w: number, h:
 }
 
 function formatCardNumber(raw: string): string {
-  const clean = (raw || '2604 8213 0010').toUpperCase().trim();
+  const clean = (raw || 'ID-0000').toUpperCase().trim();
   if (clean.includes('-')) {
     return clean.replace(/-/g, ' ');
   }
@@ -252,14 +252,14 @@ async function drawAtmFront(
   doc.setFont('helvetica', 'bold');
   doc.setFontSize(4.4);
   doc.setTextColor(245, 250, 255);
-  const schoolTitle = (school.name || 'DAMZY SCHOOL').toUpperCase();
+  const schoolTitle = (school.name || 'MYEDURIDE PARTNER SCHOOL').toUpperCase();
   doc.text(schoolTitle, headerTextX, 5.2, { maxWidth: headerMaxW });
 
   const schoolAddr = (school.locationAddress || school.address || '').trim();
   doc.setFont('helvetica', 'normal');
   doc.setFontSize(2.6);
   doc.setTextColor(203, 213, 225);
-  doc.text(schoolAddr || 'Campus Address', headerTextX, 7.8, { maxWidth: headerMaxW });
+  doc.text(schoolAddr || 'Main Campus Gate', headerTextX, 7.8, { maxWidth: headerMaxW });
 
   // 3. Middle Row: Metallic Gold EMV Chip
   const chipX = 4.2;
@@ -313,21 +313,13 @@ async function drawAtmFront(
   if (photoData) {
     try {
       const fmt = photoData.includes('image/png') ? 'PNG' : 'JPEG';
-      doc.addImage(photoData, fmt, photoX + 0.35, photoY + 0.35, photoW - 0.7, photoH - 3.2);
+      doc.addImage(photoData, fmt, photoX + 0.35, photoY + 0.35, photoW - 0.7, photoH - 0.7);
     } catch {
-      drawPhotoPlaceholder(doc, photoX, photoY, photoW, photoH - 2.8);
+      drawPhotoPlaceholder(doc, photoX, photoY, photoW, photoH);
     }
   } else {
-    drawPhotoPlaceholder(doc, photoX, photoY, photoW, photoH - 2.8);
+    drawPhotoPlaceholder(doc, photoX, photoY, photoW, photoH);
   }
-
-  // Caption at bottom of photo frame: PHOTO · 35 × 45 MM
-  doc.setFillColor(255, 255, 255);
-  doc.rect(photoX + 0.2, photoY + photoH - 2.8, photoW - 0.4, 2.6, 'F');
-  doc.setFont('helvetica', 'bold');
-  doc.setFontSize(2.3);
-  doc.setTextColor(100, 116, 139);
-  doc.text('PHOTO · 35 × 45 MM', photoX + photoW / 2, photoY + photoH - 0.9, { align: 'center' });
 
   // 5. Card Number, Cardholder Name & Accent Line
   const formattedCardNumber = formatCardNumber(person.idNumber);
@@ -362,7 +354,7 @@ async function drawAtmFront(
   doc.text(person.validThru || '07/27', 4.2, 42.5);
 
   const gradeLabel = person.kind === 'staff' ? 'ROLE · DEPT' : 'GRADE · SECTION';
-  const gradeVal = person.gradeSection || person.className || person.roleLabel || '10 · C';
+  const gradeVal = person.gradeSection || person.className || person.roleLabel || (person.kind === 'staff' ? 'STAFF' : 'STUDENT');
   doc.setFont('helvetica', 'bold');
   doc.setFontSize(2.4);
   doc.setTextColor(203, 213, 225);
@@ -504,7 +496,7 @@ async function drawAtmBack(
   doc.setFont('helvetica', 'bold');
   doc.setFontSize(3.8);
   doc.setTextColor(15, 23, 42);
-  doc.text(person.guardianName || 'Mrs. Ngozi Okafor', 4.2, 29.8, { maxWidth: 16 });
+  doc.text(person.guardianName || 'Not Assigned', 4.2, 29.8, { maxWidth: 16 });
 
   doc.setFont('helvetica', 'bold');
   doc.setFontSize(2.3);
@@ -513,7 +505,7 @@ async function drawAtmBack(
   doc.setFont('courier', 'bold');
   doc.setFontSize(3.8);
   doc.setTextColor(15, 23, 42);
-  doc.text(person.guardianPhone || '+234 800 000 0000', 21.0, 29.8);
+  doc.text(person.guardianPhone || 'Not Available', 21.0, 29.8);
 
   doc.setFont('helvetica', 'bold');
   doc.setFontSize(2.3);
@@ -522,7 +514,7 @@ async function drawAtmBack(
   doc.setFont('helvetica', 'bold');
   doc.setFontSize(3.8);
   doc.setTextColor(15, 23, 42);
-  doc.text(person.homeStop || 'Ring Road Junction', 38.0, 29.8, { maxWidth: 11 });
+  doc.text(person.homeStop || 'Campus Gate', 38.0, 29.8, { maxWidth: 11 });
 
   // Circular VERIFIED Seal positioned alongside emergency details
   const sealX = 50.5;
@@ -541,11 +533,11 @@ async function drawAtmBack(
   doc.setFont('helvetica', 'normal');
   doc.setFontSize(2.1);
   doc.setTextColor(100, 116, 139);
-  const retPhone = school.phone || '+234 800 000 0001';
   const campusAddr = (school.locationAddress || school.address || '').trim();
+  const phoneText = school.phone ? ` or call ${school.phone}` : '';
   const retText = campusAddr
-    ? `If found, please return to ${school.name || 'the school'}, ${campusAddr} or call ${retPhone}.`
-    : `If found, please return to ${school.name || 'the school'} or call ${retPhone}.`;
+    ? `If found, please return to ${school.name || 'the school'}, ${campusAddr}${phoneText}.`
+    : `If found, please return to ${school.name || 'the school'}${phoneText}.`;
   doc.text(retText, 4.2, 35.0, { maxWidth: qrBoxX - 6.0 });
   doc.text(
     `This card is non-transferable and remains the property of ${school.name || 'the school'}.`,

@@ -69,8 +69,13 @@ export function logout() {
   document.cookie = 'myeduride_session=; expires=Thu, 01 Jan 1970 00:00:00 GMT; max-age=0';
   try {
     if (typeof window !== 'undefined') {
+      // Preserve device-level consent preferences across logout
+      const cookieConsent = localStorage.getItem('myeduride_cookie_consent');
       localStorage.clear();
       sessionStorage.clear();
+      if (cookieConsent) {
+        localStorage.setItem('myeduride_cookie_consent', cookieConsent);
+      }
     }
   } catch {}
   window.location.href = '/auth/login';

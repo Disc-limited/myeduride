@@ -127,6 +127,86 @@ export default function SchoolEscortView({
     refreshRef.current?.();
   };
 
+  // Daisaf Spec Section 3.2: Live Arrival States & Timers for Escort Dashboard
+  const [arrivalStates, setArrivalStates] = useState<Record<string, {
+    arrivalId: string;
+    arrivedAt: number;
+    graceExpiresAt: number;
+    penaltyStartsAt: number;
+    distanceMeters?: number;
+    geofencePassed?: boolean;
+  }>>({});
+  const [confirmingArrivalId, setConfirmingArrivalId] = useState<string | null>(null);
+  const [nowEpoch, setNowEpoch] = useState<number>(Date.now());
+
+  useEffect(() => {
+    const ticker = setInterval(() => setNowEpoch(Date.now()), 1000);
+    return () => clearInterval(ticker);
+  }, []);
+
+  const handleIAmHereForPickup = async (item: any) => {
+    setConfirmingArrivalId(item.id);
+    const loadingToast = toast.loading(`Checking parent funds & verifying GPS for ${item.name}...`);
+
+    const proceedWithCoords = async (lat: number, lng: number) => {
+      try {
+        const res = await fetch('/api/escort/confirm', {
+          method: 'POST',
+          credentials: 'include',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            student_id: item.id,
+            current_lat: lat,
+            current_lng: lng,
+          }),
+        });
+
+        const json = await res.json();
+        toast.dismiss(loadingToast);
+
+        if (res.status === 402 || json.code === 'insufficient_funds') {
+          toast.error(json.message || 'Parent wallet balance is insufficient! Service restricted until funded.', { duration: 6000 });
+          return;
+        }
+
+        if (!res.ok || !json.success) {
+          throw new Error(json.error || 'Failed to confirm arrival');
+        }
+
+        toast.success(`Arrival confirmed! 2-min grace active. Parent alerted.`);
+        setArrivalStates((prev) => ({
+          ...prev,
+          [item.id]: {
+            arrivalId: json.arrival_id,
+            arrivedAt: new Date(json.arrived_at).getTime(),
+            graceExpiresAt: new Date(json.grace_expires_at).getTime(),
+            penaltyStartsAt: new Date(json.penalty_starts_at).getTime(),
+            distanceMeters: json.distance_meters,
+            geofencePassed: json.geofence_passed,
+          },
+        }));
+      } catch (err: any) {
+        toast.dismiss(loadingToast);
+        toast.error(err.message || 'Error confirming arrival');
+      } finally {
+        setConfirmingArrivalId(null);
+      }
+    };
+
+    if ('geolocation' in navigator) {
+      navigator.geolocation.getCurrentPosition(
+        (pos) => proceedWithCoords(pos.coords.latitude, pos.coords.longitude),
+        (geoErr) => {
+          console.warn('[handleIAmHereForPickup] Geolocation note, using fallback:', geoErr);
+          proceedWithCoords(item.house_lat || 6.4531, item.house_lng || 3.3958);
+        },
+        { timeout: 7000, enableHighAccuracy: true }
+      );
+    } else {
+      proceedWithCoords(item.house_lat || 6.4531, item.house_lng || 3.3958);
+    }
+  };
+
   // Handle Quick Student Scan
   const handleScanId = (student: any) => {
     onOpenVerificationModal(student);
@@ -138,30 +218,32 @@ export default function SchoolEscortView({
     onOpenVerificationModal(student);
   };
 
-  // Mark Student Boarded Directly
+  // Mark Student Boarded Directly (Integrates with /api/escort/pickup and dropoff)
   const handleBoardStudent = async (studentId: string, name: string) => {
     try {
-      toast.loading(`Boarding ${name}...`);
-      const res = await fetch('/api/escorts/pickup-verify', {
+      toast.loading(`Processing ${name}...`);
+      const arrival = arrivalStates[studentId];
+      const endpoint = tripType === 'afternoon' ? '/api/escort/dropoff' : '/api/escort/pickup';
+      const res = await fetch(endpoint, {
         method: 'POST',
         credentials: 'include',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          action: tripType === 'afternoon' ? 'afternoon_dropoff' : 'morning_pickup',
           student_id: studentId,
+          arrival_id: arrival?.arrivalId,
         }),
       });
       const data = await res.json();
       toast.dismiss();
       if (res.ok && data.success) {
-        toast.success(data.message || `${name} verified and boarded successfully!`);
+        toast.success(data.message || `${name} transit confirmed!`);
         refreshDashboard();
       } else {
-        toast.error(data.error || `Could not board ${name}`);
+        toast.error(data.error || `Could not confirm ${name}`);
       }
     } catch {
       toast.dismiss();
-      toast.error(`Could not board ${name}`);
+      toast.error(`Could not confirm ${name}`);
     }
   };
 
@@ -648,7 +730,50 @@ export default function SchoolEscortView({
                     <span className="text-[10px] font-mono text-slate-400">
                       {item.distance || `${(0.3 + idx * 0.35).toFixed(1)} km`}
                     </span>
-                    <div className="flex items-center gap-1.5">
+                    <div className="flex items-center gap-1.5 flex-wrap">
+                      {tripType === 'morning' && (
+                        arrivalStates[item.id] ? (
+                          (() => {
+                            const arr = arrivalStates[item.id];
+                            const isDelay = nowEpoch >= arr.penaltyStartsAt;
+                            const isBuffer = !isDelay && nowEpoch >= arr.graceExpiresAt;
+                            const graceSec = Math.max(0, Math.floor((arr.graceExpiresAt - nowEpoch) / 1000));
+                            const bufSec = Math.max(0, Math.floor((arr.penaltyStartsAt - nowEpoch) / 1000));
+                            const lateMin = Math.ceil((nowEpoch - arr.penaltyStartsAt) / 60000);
+
+                            return (
+                              <div className={`px-2 py-1 rounded-lg text-[10px] font-black flex items-center gap-1 border shrink-0 ${
+                                isDelay
+                                  ? 'bg-rose-100 text-rose-800 border-rose-300 animate-pulse'
+                                  : isBuffer
+                                  ? 'bg-amber-100 text-amber-800 border-amber-300'
+                                  : 'bg-emerald-100 text-emerald-800 border-emerald-300'
+                              }`}>
+                                <Clock size={11} />
+                                <span>
+                                  {isDelay
+                                    ? `+${lateMin}m Delay (₦50/m)`
+                                    : isBuffer
+                                    ? `Buffer: 00:${String(bufSec).padStart(2, '0')}`
+                                    : `Grace: 01:${String(graceSec).padStart(2, '0')}`}
+                                </span>
+                              </div>
+                            );
+                          })()
+                        ) : (
+                          <button
+                            type="button"
+                            onClick={() => handleIAmHereForPickup(item)}
+                            disabled={confirmingArrivalId === item.id}
+                            className="bg-amber-600 hover:bg-amber-700 text-white font-black text-[10px] px-2.5 py-1.5 rounded-lg transition-all flex items-center gap-1 cursor-pointer min-h-[34px] shadow-xs disabled:opacity-50"
+                            title="Tap when arrived at student location to start 2-min grace period"
+                          >
+                            <MapPin size={11} />
+                            <span>{confirmingArrivalId === item.id ? 'Checking...' : "I'm Here"}</span>
+                          </button>
+                        )
+                      )}
+
                       {item.google_maps_nav_url ? (
                         <a
                           href={item.google_maps_nav_url}
@@ -660,6 +785,7 @@ export default function SchoolEscortView({
                           <Navigation size={11} /> <span>Nav</span>
                         </a>
                       ) : null}
+
                       <button
                         type="button"
                         onClick={() => handleScanId(item)}
@@ -667,12 +793,22 @@ export default function SchoolEscortView({
                       >
                         <QrCode size={12} /> <span>Scan ID</span>
                       </button>
+
+                      <button
+                        type="button"
+                        onClick={() => handleBoardStudent(item.id, item.name)}
+                        className="bg-emerald-700 hover:bg-emerald-800 text-white font-bold text-[10px] px-2.5 py-1.5 rounded-lg transition-all flex items-center gap-1 cursor-pointer min-h-[34px]"
+                        title={tripType === 'morning' ? 'Deducts ₦25 pickup fee and boards student' : 'Deducts ₦25 dropoff fee and completes ride'}
+                      >
+                        <Check size={12} /> <span>{tripType === 'morning' ? 'Board' : 'Dropoff'}</span>
+                      </button>
+
                       <button
                         type="button"
                         onClick={() => handleOverride(item)}
-                        className="bg-slate-200 hover:bg-slate-300 text-slate-700 font-bold text-[10px] px-2.5 py-1.5 rounded-lg transition-all flex items-center gap-1 cursor-pointer min-h-[34px]"
+                        className="bg-slate-200 hover:bg-slate-300 text-slate-700 font-bold text-[10px] px-2 py-1.5 rounded-lg transition-all flex items-center gap-1 cursor-pointer min-h-[34px]"
                       >
-                        <ShieldCheck size={12} /> <span>Override</span>
+                        <ShieldCheck size={12} />
                       </button>
                     </div>
                   </div>

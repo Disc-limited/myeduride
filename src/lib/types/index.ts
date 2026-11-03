@@ -38,6 +38,14 @@ export interface School {
   setup_completed: boolean;
   setup_step: SetupStep;
   approval_status?: 'pending' | 'approved' | 'rejected';
+  wallet_mode?: 'school_funded' | 'parent_funded' | 'inactive';
+  is_wallet_active?: boolean;
+  gate_scan_fee_kobo?: number;
+  min_school_funding_kobo?: number;
+  school_escort_pickup_fee_kobo?: number;
+  school_escort_dropoff_fee_kobo?: number;
+  school_escort_daily_fee_kobo?: number;
+  service_charge_percent?: number;
   created_at: string;
   updated_at: string;
 }

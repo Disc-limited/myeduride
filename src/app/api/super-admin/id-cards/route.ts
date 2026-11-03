@@ -31,7 +31,7 @@ export async function GET(request: NextRequest) {
       (() => {
         let q = supabase
           .from('students')
-          .select('id, first_name, last_name, student_id_number, photo_url, qr_code_data, school_id, house_address, house_landmark, custom_fields, class:school_classes(id, name, grade)')
+          .select('id, first_name, last_name, student_id_number, photo_url, qr_code_data, school_id, house_address, house_landmark, custom_fields, class:school_classes!class_id(id, name, grade)')
           .eq('is_active', true)
           .order('first_name');
         if (selectedSchoolId && selectedSchoolId !== 'all') {
@@ -97,11 +97,11 @@ export async function GET(request: NextRequest) {
     const studentListRaw = studentsRes.data || [];
     const studentIds = studentListRaw.map((s: any) => s.id);
 
-    const [parentsRes, routeAssignmentsRes] = await Promise.all([
+    const [spLinksRes, routeAssignmentsRes] = await Promise.all([
       studentIds.length > 0
         ? supabase
             .from('student_parents')
-            .select('student_id, relationship, is_primary, parent:user_profiles(id, full_name, phone)')
+            .select('student_id, parent_user_id, relationship, is_primary')
             .in('student_id', studentIds)
         : { data: [] },
       studentIds.length > 0
@@ -112,12 +112,26 @@ export async function GET(request: NextRequest) {
         : { data: [] },
     ]);
 
+    const spLinks = (spLinksRes.data || []) as any[];
+    const parentUserIds = Array.from(new Set(spLinks.map((l) => l.parent_user_id).filter(Boolean)));
+    let profilesMap = new Map<string, any>();
+    if (parentUserIds.length > 0) {
+      const { data: profs } = await supabase
+        .from('user_profiles')
+        .select('id, full_name, phone')
+        .in('id', parentUserIds);
+      profilesMap = new Map((profs || []).map((p: any) => [p.id, p]));
+    }
+
     const parentsByStudent = new Map<string, any[]>();
-    for (const link of (parentsRes.data || []) as any[]) {
+    for (const link of spLinks) {
       if (!parentsByStudent.has(link.student_id)) {
         parentsByStudent.set(link.student_id, []);
       }
-      parentsByStudent.get(link.student_id)!.push(link);
+      parentsByStudent.get(link.student_id)!.push({
+        ...link,
+        parent: profilesMap.get(link.parent_user_id) || null,
+      });
     }
 
     const routeAssignmentsByStudent = new Map<string, any>();

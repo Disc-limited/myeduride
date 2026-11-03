@@ -4,6 +4,7 @@
   "private": true,
   "scripts": {
     "dev": "next dev -H 0.0.0.0 -p 3000",
+    "tunnel": "ngrok http 3000 --url=luckiness-outpost-obtain.ngrok-free.dev",
     "build": "next build",
     "start": "next start",
     "lint": "next lint",

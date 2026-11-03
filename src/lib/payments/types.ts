@@ -3,7 +3,7 @@
  * Strict Integer Kobo Arithmetic (₦1 = 100 kobo). Floating-point prohibited.
  */
 
-export type WalletEntityType = 'parent' | 'escort' | 'school' | 'platform_treasury';
+export type WalletEntityType = 'parent' | 'escort' | 'school' | 'platform_treasury' | 'daisaf' | 'escrow';
 
 export type WalletStatus = 'active' | 'frozen' | 'suspended';
 
@@ -25,6 +25,12 @@ export type TransactionChannel =
   | 'TRIP_FARE_DROPOFF'
   | 'ESCROW_RELEASE'
   | 'WAITING_CHARGE'
+  | 'DELAY_PENALTY'
+  | 'SERVICE_CHARGE'
+  | 'ESCORT_PICKUP_FEE'
+  | 'ESCORT_DROPOFF_FEE'
+  | 'GATE_SCAN_IN'
+  | 'GATE_SCAN_OUT'
   | 'CANCELLATION_FEE'
   | 'UNNECESSARY_VISIT'
   | 'WITHDRAWAL_PAYOUT'
@@ -168,3 +174,58 @@ export interface SeerbitWebhookPayload {
     };
   };
 }
+
+export interface GateScanLogRecord {
+  id: string;
+  school_id: string;
+  student_id?: string | null;
+  staff_profile_id?: string | null;
+  scan_direction: 'sign_in' | 'sign_out';
+  scan_fee_kobo: number;
+  billed_wallet_id?: string | null;
+  payer_type: 'school' | 'parent';
+  status: 'BILLED' | 'BLOCKED_INSUFFICIENT_FUNDS' | 'WAIVED';
+  failure_reason?: string | null;
+  transaction_ref?: string | null;
+  scanned_at: string;
+}
+
+export interface EscortPickupArrivalRecord {
+  id: string;
+  trip_id?: string | null;
+  student_id: string;
+  escort_id: string;
+  escort_user_id?: string | null;
+  parent_user_id: string;
+  escort_lat: number;
+  escort_lng: number;
+  target_lat: number;
+  target_lng: number;
+  distance_meters: number;
+  geofence_passed: boolean;
+  arrived_at: string;
+  grace_expires_at: string;
+  penalty_starts_at: string;
+  boarded_at?: string | null;
+  delay_minutes: number;
+  penalty_kobo: number;
+  penalty_status: 'NONE' | 'PENDING' | 'CHARGED' | 'WAIVED' | 'INSUFFICIENT_FUNDS';
+  penalty_ref?: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface TripDelayPenaltyRecord {
+  id: string;
+  arrival_event_id: string;
+  parent_user_id: string;
+  parent_wallet_id: string;
+  delay_minutes: number;
+  rate_per_min_kobo: number;
+  total_penalty_kobo: number;
+  status: 'ESCROWED' | 'RELEASED_TO_ESCORT' | 'REFUNDED' | 'FAILED';
+  transaction_ref: string;
+  notes?: string | null;
+  created_at: string;
+}
+

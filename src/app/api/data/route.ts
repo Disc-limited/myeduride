@@ -389,10 +389,10 @@ export async function POST(request: NextRequest) {
         let routesMap = new Map<string, any>();
 
         if (studentIds.length > 0) {
-          const [parentsRes, routesRes] = await Promise.all([
+          const [spLinksRes, routesRes] = await Promise.all([
             supabase
               .from('student_parents')
-              .select('student_id, relationship, is_primary, parent:user_profiles(id, full_name, phone)')
+              .select('student_id, parent_user_id, relationship, is_primary')
               .in('student_id', studentIds),
             supabase
               .from('student_route_assignments')
@@ -400,9 +400,23 @@ export async function POST(request: NextRequest) {
               .in('student_id', studentIds),
           ]);
 
-          for (const l of (parentsRes.data || []) as any[]) {
+          const spLinks = (spLinksRes.data || []) as any[];
+          const parentUserIds = Array.from(new Set(spLinks.map((l) => l.parent_user_id).filter(Boolean)));
+          let profilesMap = new Map<string, any>();
+          if (parentUserIds.length > 0) {
+            const { data: profs } = await supabase
+              .from('user_profiles')
+              .select('id, full_name, phone')
+              .in('id', parentUserIds);
+            profilesMap = new Map((profs || []).map((p: any) => [p.id, p]));
+          }
+
+          for (const l of spLinks) {
             if (!parentsMap.has(l.student_id)) parentsMap.set(l.student_id, []);
-            parentsMap.get(l.student_id)!.push(l);
+            parentsMap.get(l.student_id)!.push({
+              ...l,
+              parent: profilesMap.get(l.parent_user_id) || null,
+            });
           }
           for (const r of (routesRes.data || []) as any[]) {
             routesMap.set(r.student_id, r);

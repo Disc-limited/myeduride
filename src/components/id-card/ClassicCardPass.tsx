@@ -96,6 +96,7 @@ export default function ClassicCardPass({
               {/* eslint-disable-next-line @next/next/no-img-element */}
               <img
                 src={rawLogo!}
+                crossOrigin="anonymous"
                 alt={schoolName}
                 className="w-full h-full object-contain"
                 onError={() => setLogoError(true)}
@@ -134,6 +135,7 @@ export default function ClassicCardPass({
             /* eslint-disable-next-line @next/next/no-img-element */
             <img
               src={photoSrc(photoUrl) || ''}
+              crossOrigin="anonymous"
               alt={cardholderName}
               className="w-full h-full object-cover rounded-xl"
             />
@@ -186,7 +188,7 @@ export default function ClassicCardPass({
           <div className="w-[84px] h-[84px] sm:w-[98px] sm:h-[98px] bg-white rounded-2xl p-1.5 shadow-lg flex items-center justify-center border border-white/40 overflow-hidden shrink-0">
             {qrUrl ? (
               /* eslint-disable-next-line @next/next/no-img-element */
-              <img src={qrUrl} alt="Gate QR" className="w-full h-full object-contain" />
+              <img src={qrUrl} crossOrigin="anonymous" alt="Gate QR" className="w-full h-full object-contain" />
             ) : (
               <div className="w-full h-full bg-slate-900 rounded-xl flex items-center justify-center text-white text-[9px] font-mono">
                 QR CODE
@@ -228,6 +230,7 @@ export default function ClassicCardPass({
               {/* eslint-disable-next-line @next/next/no-img-element */}
               <img
                 src={rawLogo!}
+                crossOrigin="anonymous"
                 alt="School Logo"
                 className="w-full h-full object-contain"
                 onError={() => setLogoError(true)}
@@ -274,6 +277,7 @@ export default function ClassicCardPass({
               /* eslint-disable-next-line @next/next/no-img-element */
               <img
                 src={resolvedSignature!}
+                crossOrigin="anonymous"
                 alt="Principal Signature"
                 className="max-h-7 object-contain"
                 onError={() => setSigError(true)}
@@ -340,10 +344,10 @@ export default function ClassicCardPass({
       }}
       aria-hidden="true"
     >
-      <div id="classic-card-print-front" style={{ width: '440px', height: '277.4px', marginBottom: '20px' }}>
+      <div id="classic-card-print-front" className="id-card-export-front" style={{ width: '440px', height: '277.4px', marginBottom: '20px' }}>
         {frontCardJsx}
       </div>
-      <div id="classic-card-print-back" style={{ width: '440px', height: '277.4px' }}>
+      <div id="classic-card-print-back" className="id-card-export-back" style={{ width: '440px', height: '277.4px' }}>
         {backCardJsx}
       </div>
     </div>
@@ -368,7 +372,7 @@ export default function ClassicCardPass({
               </span>
               <span className="text-[10px] text-slate-400 font-mono">CR80 (85.6 × 54mm)</span>
             </div>
-            <div className="w-full" id="classic-card-onscreen-front">{frontCardJsx}</div>
+            <div className="w-full id-card-export-front" id="classic-card-onscreen-front">{frontCardJsx}</div>
           </div>
 
           {/* Back Card */}
@@ -380,7 +384,7 @@ export default function ClassicCardPass({
               </span>
               <span className="text-[10px] text-emerald-400 font-mono font-bold">Quick Scan</span>
             </div>
-            <div className="w-full" id="classic-card-onscreen-back">{backCardJsx}</div>
+            <div className="w-full id-card-export-back" id="classic-card-onscreen-back">{backCardJsx}</div>
           </div>
         </div>
       </div>

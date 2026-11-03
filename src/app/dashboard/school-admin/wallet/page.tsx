@@ -83,7 +83,7 @@ export default function SchoolWalletOverviewPage() {
 
   // Fund Wallet Modal State
   const [isDepositModalOpen, setIsDepositModalOpen] = useState(false);
-  const [depositAmount, setDepositAmount] = useState<number | ''>(50000);
+  const [depositAmount, setDepositAmount] = useState<number | ''>(10000);
   const [isDepositing, setIsDepositing] = useState(false);
 
   // Filter & Search
@@ -166,12 +166,12 @@ export default function SchoolWalletOverviewPage() {
     setTimeout(() => setCopiedNuban(false), 2500);
   };
 
-  // Initiate SeerBit Checkout Deposit
+  // Initiate SeerBit Checkout Deposit (Daisaf Spec Section 2.1: Min ₦10,000)
   const handleInitiateDeposit = async (e: React.FormEvent) => {
     e.preventDefault();
     const amountNum = Number(depositAmount);
-    if (!amountNum || amountNum < 1000) {
-      toast.error('Minimum deposit amount is ₦1,000');
+    if (!amountNum || amountNum < 10000) {
+      toast.error('Minimum school wallet funding amount is ₦10,000 (Daisaf Spec Section 2.1)');
       return;
     }
     if (amountNum > 5000000) {
@@ -182,10 +182,14 @@ export default function SchoolWalletOverviewPage() {
     setIsDepositing(true);
     const toastId = toast.loading('Initializing secure SeerBit institutional checkout...');
     try {
-      const res = await fetch('/api/schools/wallet/deposit', {
+      const res = await fetch('/api/wallet/deposit', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ amount_ngn: amountNum }),
+        body: JSON.stringify({
+          amount_ngn: amountNum,
+          entity_type: 'school',
+          school_id: data?.wallet?.school_id,
+        }),
       });
       const json = await res.json();
 
@@ -222,7 +226,7 @@ export default function SchoolWalletOverviewPage() {
     return true;
   });
 
-  const presetAmounts = [25000, 50000, 100000, 250000, 500000, 1000000];
+  const presetAmounts = [10000, 25000, 50000, 100000, 250000, 500000];
 
   return (
     <div className="mx-auto max-w-7xl space-y-6 p-4 font-sans text-slate-800 md:p-6">
@@ -468,6 +472,49 @@ export default function SchoolWalletOverviewPage() {
         </Link>
       </div>
 
+      {/* Daisaf Pay-As-You-Go Tariff & Operational Policy Banner (Spec Section 2) */}
+      <div className="rounded-3xl border border-slate-200 bg-gradient-to-r from-slate-900 via-slate-800 to-slate-900 p-5 text-white shadow-md">
+        <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
+          <div className="space-y-1">
+            <div className="flex items-center gap-2">
+              <span className="rounded-full bg-emerald-500/20 px-2.5 py-0.5 text-[10px] font-black uppercase tracking-wider text-emerald-300">
+                Daisaf Spec V1.0 Tariff
+              </span>
+              <span className="text-[11px] font-bold text-slate-400">Institutional Metered Billing</span>
+            </div>
+            <h3 className="text-base font-black text-white">
+              Pay-As-You-Go Gate & Escort Deductions
+            </h3>
+            <p className="max-w-xl text-xs text-slate-300">
+              Metered institutional charges are automatically deducted from this wallet. Gate transit halts automatically if balance is insufficient to prevent unauthorized deficit.
+            </p>
+          </div>
+
+          <div className="grid grid-cols-2 gap-2.5 sm:grid-cols-4">
+            <div className="rounded-2xl border border-white/10 bg-white/5 p-3 text-center">
+              <span className="block text-[10px] font-bold uppercase text-slate-400">Gate Scan In</span>
+              <span className="text-base font-black text-emerald-400">₦3.00</span>
+              <span className="block text-[9px] text-slate-400">per student/staff</span>
+            </div>
+            <div className="rounded-2xl border border-white/10 bg-white/5 p-3 text-center">
+              <span className="block text-[10px] font-bold uppercase text-slate-400">Gate Scan Out</span>
+              <span className="text-base font-black text-emerald-400">₦3.00</span>
+              <span className="block text-[9px] text-slate-400">per student/staff</span>
+            </div>
+            <div className="rounded-2xl border border-white/10 bg-white/5 p-3 text-center">
+              <span className="block text-[10px] font-bold uppercase text-slate-400">School Escort</span>
+              <span className="text-base font-black text-emerald-400">₦50.00</span>
+              <span className="block text-[9px] text-slate-400">₦25 pick / ₦25 drop</span>
+            </div>
+            <div className="rounded-2xl border border-white/10 bg-white/5 p-3 text-center">
+              <span className="block text-[10px] font-bold uppercase text-slate-400">Service Charge</span>
+              <span className="text-base font-black text-teal-300">2.0%</span>
+              <span className="block text-[9px] text-slate-400">monthly spend</span>
+            </div>
+          </div>
+        </div>
+      </div>
+
       {/* Recent Transactions Ledger */}
       <div className="shadow-xs space-y-4 rounded-3xl border border-slate-200 bg-white p-5">
         <div className="flex flex-col justify-between gap-3 border-b border-slate-100 pb-3 sm:flex-row sm:items-center">
@@ -653,20 +700,20 @@ export default function SchoolWalletOverviewPage() {
                   </span>
                   <input
                     type="number"
-                    min="1000"
+                    min="10000"
                     max="5000000"
-                    step="500"
+                    step="1000"
                     value={depositAmount}
                     onChange={(e) =>
                       setDepositAmount(e.target.value === '' ? '' : Number(e.target.value))
                     }
                     required
-                    placeholder="e.g. 150000"
+                    placeholder="e.g. 50000"
                     className="w-full rounded-xl border border-slate-200 bg-slate-50/50 py-2.5 pl-8 pr-4 text-base font-black text-slate-900 focus:outline-emerald-500"
                   />
                 </div>
                 <span className="mt-1 block text-[10px] text-slate-400">
-                  Min ₦1,000 · Max ₦5,000,000 per institutional checkout.
+                  Min ₦10,000 · Max ₦5,000,000 per institutional checkout (Daisaf Spec Section 2.1).
                 </span>
               </div>
 

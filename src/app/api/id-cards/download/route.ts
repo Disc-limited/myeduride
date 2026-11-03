@@ -61,15 +61,14 @@ export async function POST(request: NextRequest) {
 
     // 1. Compile Student Cards Layout Metadata from actual database tables
     if (student_ids?.length) {
-      const [studentsRes, parentsRes, routeAssignmentsRes] = await Promise.all([
+      const [studentsRes, spLinksRes, routeAssignmentsRes] = await Promise.all([
         supabase
           .from('students')
-          .select('*, class:school_classes(name)')
-          .eq('school_id', school_id)
+          .select('*, class:school_classes!class_id(name), school:schools!school_id(id, name, address, location_address, location_landmark, logo_url, principal_signature_url, primary_color)')
           .in('id', student_ids),
         supabase
           .from('student_parents')
-          .select('student_id, relationship, is_primary, parent:user_profiles(id, full_name, phone)')
+          .select('student_id, parent_user_id, relationship, is_primary')
           .in('student_id', student_ids),
         supabase
           .from('student_route_assignments')
@@ -77,10 +76,24 @@ export async function POST(request: NextRequest) {
           .in('student_id', student_ids),
       ]);
 
+      const spLinks = (spLinksRes.data || []) as any[];
+      const parentUserIds = Array.from(new Set(spLinks.map((l) => l.parent_user_id).filter(Boolean)));
+      let profilesMap = new Map<string, any>();
+      if (parentUserIds.length > 0) {
+        const { data: profs } = await supabase
+          .from('user_profiles')
+          .select('id, full_name, phone')
+          .in('id', parentUserIds);
+        profilesMap = new Map((profs || []).map((p: any) => [p.id, p]));
+      }
+
       const parentsByStudent = new Map<string, any[]>();
-      for (const link of (parentsRes.data || []) as any[]) {
+      for (const link of spLinks) {
         if (!parentsByStudent.has(link.student_id)) parentsByStudent.set(link.student_id, []);
-        parentsByStudent.get(link.student_id)!.push(link);
+        parentsByStudent.get(link.student_id)!.push({
+          ...link,
+          parent: profilesMap.get(link.parent_user_id) || null,
+        });
       }
 
       const routeAssignmentsByStudent = new Map<string, any>();
@@ -98,13 +111,13 @@ export async function POST(request: NextRequest) {
 
         persons.push({
           kind: 'student',
-          fullName: `${s.first_name} ${s.last_name}`,
-          idNumber: s.student_id_number,
+          fullName: `${s.first_name || ''} ${s.last_name || ''}`.trim() || 'STUDENT NAME',
+          idNumber: s.student_id_number || 'STU-0000',
           qrData,
           photoDataUrl,
           birth: s.custom_fields?.date_of_birth || '—',
           address: s.house_address || s.custom_fields?.address || school.address || '—',
-          className: s.class?.name,
+          className: s.class?.name || 'Class Assigned',
           gradeSection: s.class?.name || 'Class Assigned',
           routeCode: resolved.routeCode,
           guardianName: resolved.guardianName,

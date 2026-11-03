@@ -33,6 +33,7 @@ interface SchoolEscortViewProps {
   childrenList?: any[];
   escortData?: any;
   multiChildSummary?: any;
+  latestEscortArrival?: any;
   onOpenEduChat?: () => void;
   onSelectSafetyPillar?: (pillar: string) => void;
   className?: string;
@@ -42,12 +43,20 @@ export default function SchoolEscortView({
   childrenList = [],
   escortData,
   multiChildSummary,
+  latestEscortArrival,
   onOpenEduChat,
   onSelectSafetyPillar,
   className = '',
 }: SchoolEscortViewProps) {
   const safeChildren = Array.isArray(childrenList) ? childrenList : [];
   const primaryChild = safeChildren[0] || null;
+
+  // Live seconds ticker for grace period countdown
+  const [nowEpoch, setNowEpoch] = useState<number>(Date.now());
+  useEffect(() => {
+    const timer = setInterval(() => setNowEpoch(Date.now()), 1000);
+    return () => clearInterval(timer);
+  }, []);
 
   // Children & attendance state
   const [showLocationModal, setShowLocationModal] = useState(false);
@@ -222,6 +231,127 @@ export default function SchoolEscortView({
           <ChevronDown size={14} className="text-slate-400" />
         </div>
       </div>
+
+      {/* ------------------------------------------------------------------------- */}
+      {/* DAISAF SPEC SECTION 3.2: LIVE ESCORT ARRIVAL & GRACE COUNTDOWN BANNER     */}
+      {/* ------------------------------------------------------------------------- */}
+      {(() => {
+        const arrival = latestEscortArrival || escortData?.latest_arrival || null;
+        const isArrivalActive = Boolean(arrival && arrival.status === 'ARRIVED');
+        if (!isArrivalActive) return null;
+
+        const arrivalTime = arrival?.arrived_at ? new Date(arrival.arrived_at).getTime() : 0;
+        const elapsedSeconds = Math.floor(Math.max(0, nowEpoch - arrivalTime) / 1000);
+        const graceSecondsLeft = Math.max(0, 120 - elapsedSeconds);
+        const isScanBufferActive = elapsedSeconds >= 120 && elapsedSeconds < 180;
+        const scanSecondsLeft = Math.max(0, 180 - elapsedSeconds);
+        const isDelayPenaltyActive = elapsedSeconds >= 180;
+        const delayMinutesIncurred = isDelayPenaltyActive ? Math.ceil((elapsedSeconds - 180) / 60) : 0;
+
+        return (
+          <div
+            className={`p-5 rounded-3xl border shadow-lg transition-all animate-in fade-in zoom-in duration-300 ${
+              isDelayPenaltyActive
+                ? 'bg-gradient-to-r from-rose-950 via-rose-900 to-rose-950 border-rose-500/50 text-white'
+                : isScanBufferActive
+                ? 'bg-gradient-to-r from-amber-950 via-amber-900 to-amber-950 border-amber-500/50 text-white'
+                : 'bg-gradient-to-r from-emerald-950 via-emerald-900 to-teal-950 border-emerald-500/50 text-white'
+            }`}
+          >
+            <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
+              <div className="flex items-start gap-3.5">
+                <div
+                  className={`w-12 h-12 rounded-2xl flex items-center justify-center shrink-0 shadow-md ${
+                    isDelayPenaltyActive
+                      ? 'bg-rose-500 text-white animate-bounce'
+                      : isScanBufferActive
+                      ? 'bg-amber-500 text-white animate-pulse'
+                      : 'bg-emerald-500 text-white animate-pulse'
+                  }`}
+                >
+                  <Car size={24} />
+                </div>
+
+                <div className="space-y-1">
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <span
+                      className={`px-2.5 py-0.5 rounded-full text-[10px] font-black uppercase tracking-wider border ${
+                        isDelayPenaltyActive
+                          ? 'bg-rose-500/30 text-rose-200 border-rose-400/40'
+                          : isScanBufferActive
+                          ? 'bg-amber-500/30 text-amber-200 border-amber-400/40'
+                          : 'bg-emerald-500/30 text-emerald-200 border-emerald-400/40'
+                      }`}
+                    >
+                      {isDelayPenaltyActive
+                        ? '⚠️ Delay Penalty Active (₦50/min)'
+                        : isScanBufferActive
+                        ? '⏳ 1-Minute Scan Allowance'
+                        : '🚐 Escort Arrived at Your Residence'}
+                    </span>
+                    {arrival?.distance_meters != null && (
+                      <span className="text-[10px] text-slate-300 font-mono">
+                        Distance: {arrival.distance_meters}m {arrival.geofence_passed ? '✓ In Geofence' : ''}
+                      </span>
+                    )}
+                  </div>
+
+                  <h3 className="text-base sm:text-lg font-black tracking-tight text-white">
+                    {isDelayPenaltyActive
+                      ? `Delay penalty of ₦50/min is now active (${delayMinutesIncurred} min delay).`
+                      : isScanBufferActive
+                      ? 'Grace window ended. Please bring your child to board immediately.'
+                      : 'Your escort has arrived. You have 2 minutes to bring your child.'}
+                  </h3>
+
+                  <p className="text-xs text-slate-300 max-w-xl">
+                    {isDelayPenaltyActive
+                      ? `₦${(delayMinutesIncurred * 50).toLocaleString()} will be charged into transit escrow for this delay window.`
+                      : isScanBufferActive
+                      ? 'Scan allowance running. If boarding is not scanned within this minute, a ₦50/min penalty begins.'
+                      : 'Escort is waiting at your doorstep. Please hand over your child promptly to maintain school schedule.'}
+                  </p>
+                </div>
+              </div>
+
+              {/* Countdown Badge & PIN Reminder */}
+              <div className="flex items-center gap-3 shrink-0 self-end md:self-center">
+                <div
+                  className={`px-4 py-2.5 rounded-2xl border text-center ${
+                    isDelayPenaltyActive
+                      ? 'bg-rose-900/60 border-rose-400/50'
+                      : isScanBufferActive
+                      ? 'bg-amber-900/60 border-amber-400/50'
+                      : 'bg-emerald-900/60 border-emerald-400/50'
+                  }`}
+                >
+                  <span className="block text-[9px] uppercase font-bold tracking-wider text-slate-300">
+                    {isDelayPenaltyActive ? 'Elapsed Delay' : 'Grace Timer'}
+                  </span>
+                  <span className="font-mono text-xl font-black text-white tracking-widest">
+                    {isDelayPenaltyActive
+                      ? `+${delayMinutesIncurred}m`
+                      : isScanBufferActive
+                      ? `00:${String(scanSecondsLeft).padStart(2, '0')}`
+                      : `01:${String(graceSecondsLeft).padStart(2, '0')}`}
+                  </span>
+                </div>
+
+                {escortData?.security_pin && (
+                  <div className="bg-slate-900/80 px-4 py-2.5 rounded-2xl border border-slate-700 text-center">
+                    <span className="block text-[9px] uppercase font-bold tracking-wider text-slate-400">
+                      Handover PIN
+                    </span>
+                    <span className="font-mono text-xl font-black text-emerald-400 tracking-widest">
+                      {escortData.security_pin}
+                    </span>
+                  </div>
+                )}
+              </div>
+            </div>
+          </div>
+        );
+      })()}
 
       {/* ------------------------------------------------------------------------- */}
       {/* ROW 1: 4 SUMMARY KPI METRIC CARDS */}

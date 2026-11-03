@@ -4,6 +4,11 @@ import { useState, useEffect } from 'react';
 import Link from 'next/link';
 import { Cookie, ShieldCheck, Check, X, ChevronDown, ChevronUp, Lock } from 'lucide-react';
 import { toast } from 'sonner';
+import {
+  hasConsented,
+  saveConsent,
+  COOKIE_CONSENT_EVENT,
+} from '@/lib/consent/cookieConsent';
 
 export default function CookieConsentBanner() {
   const [isVisible, setIsVisible] = useState(false);
@@ -17,42 +22,46 @@ export default function CookieConsentBanner() {
   });
 
   useEffect(() => {
-    // Check if user has already given cookie consent
-    const consent = localStorage.getItem('myeduride_cookie_consent');
-    if (!consent) {
-      const timer = setTimeout(() => {
-        setIsVisible(true);
-      }, 800); // Smooth 800ms entrance delay
-      return () => clearTimeout(timer);
+    // Check if device has already granted cookie consent
+    if (hasConsented()) {
+      setIsVisible(false);
+      return;
     }
+
+    const timer = setTimeout(() => {
+      // Re-verify immediately before displaying
+      if (!hasConsented()) {
+        setIsVisible(true);
+      }
+    }, 800);
+
+    // Cross-tab and programmatic sync
+    const handleConsentUpdated = () => {
+      setIsVisible(false);
+    };
+
+    window.addEventListener(COOKIE_CONSENT_EVENT, handleConsentUpdated);
+
+    return () => {
+      clearTimeout(timer);
+      window.removeEventListener(COOKIE_CONSENT_EVENT, handleConsentUpdated);
+    };
   }, []);
 
   const handleAcceptAll = () => {
-    localStorage.setItem('myeduride_cookie_consent', JSON.stringify({
-      status: 'accepted_all',
-      timestamp: new Date().toISOString(),
-      preferences: { essential: true, analytics: true, safetyLocation: true }
-    }));
+    saveConsent('accepted_all', { essential: true, analytics: true, safetyLocation: true });
     setIsVisible(false);
     toast.success('Cookie preferences saved! Thank you for helping us keep student transit safe.');
   };
 
   const handleAcceptEssential = () => {
-    localStorage.setItem('myeduride_cookie_consent', JSON.stringify({
-      status: 'essential_only',
-      timestamp: new Date().toISOString(),
-      preferences: { essential: true, analytics: false, safetyLocation: true }
-    }));
+    saveConsent('essential_only', { essential: true, analytics: false, safetyLocation: true });
     setIsVisible(false);
     toast.info('Essential cookie preferences saved.');
   };
 
   const handleSaveCustom = () => {
-    localStorage.setItem('myeduride_cookie_consent', JSON.stringify({
-      status: 'custom',
-      timestamp: new Date().toISOString(),
-      preferences
-    }));
+    saveConsent('custom', preferences);
     setIsVisible(false);
     toast.success('Custom cookie settings saved.');
   };

@@ -80,6 +80,7 @@ export default function SuperAdminIdCardsPage() {
   const [previewViewMode, setPreviewViewMode] = useState<'both' | 'front' | 'back' | '3d'>('both');
   const [previewQrDataUrl, setPreviewQrDataUrl] = useState<string>('');
   const [printFormat, setPrintFormat] = useState<'atm' | 'classic'>('atm');
+  const [exportingCards, setExportingCards] = useState<any[] | null>(null);
 
   useEffect(() => {
     if (previewPerson?.qrData) {
@@ -172,6 +173,74 @@ export default function SuperAdminIdCardsPage() {
 
   const activePhotoBgHex = photoBgColor === 'PRIMARY_MATCH' ? primaryColor : photoBgColor;
 
+  const buildPersonCardData = async (item: any, kind: 'student' | 'staff', schoolObj: any) => {
+    let fullName = '';
+    let idNumber = '';
+    let className = 'Class Assigned';
+    let roleLabel = 'Staff Member';
+    let routeCode = 'R-CAMPUS';
+    let guardianName = 'Not Assigned';
+    let guardianPhone = 'Not Available';
+    let homeStop = 'Campus Gate';
+    let photoUrl = null;
+    let qrPayload = '';
+
+    if (kind === 'student') {
+      fullName = `${item.first_name} ${item.last_name}`;
+      idNumber = item.student_id_number || 'STU-1001';
+      className = item.class?.name || 'Class Assigned';
+      routeCode = item.route_code || item.custom_fields?.route || item.route || 'R-CAMPUS';
+      guardianName = item.guardian_name || item.custom_fields?.guardian_name || item.parent_name || 'Not Assigned';
+      guardianPhone = item.guardian_phone || item.custom_fields?.emergency_phone || item.parent_phone || 'Not Available';
+      homeStop = item.home_stop || item.house_landmark || item.house_address || item.custom_fields?.home_stop || 'Campus Gate';
+      photoUrl = item.photo_url;
+      qrPayload = item.qr_code_data || `MYEDURIDE:${item.student_id_number}`;
+    } else {
+      const u = item.user;
+      fullName = u?.full_name || [u?.first_name, u?.last_name].filter(Boolean).join(' ') || item.staff?.full_name || 'Staff Member';
+      idNumber = item.staff?.staff_id_number || 'STAFF-1001';
+      roleLabel = item.job_title || item.role?.replace('_', ' ').toUpperCase() || 'Staff';
+      photoUrl = item.staff?.photo_url;
+      qrPayload = item.staff?.qr_code_data || `MYEDURIDE:STAFF:${item.staff?.staff_id_number || '1001'}`;
+    }
+
+    let qrDataUrl = '';
+    try {
+      qrDataUrl = await QRCode.toDataURL(qrPayload || `MYEDURIDE:${idNumber}`, {
+        width: 400,
+        margin: 1,
+        errorCorrectionLevel: 'M',
+        color: { dark: '#000000', light: '#ffffff' },
+      });
+    } catch {
+      qrDataUrl = '';
+    }
+
+    return {
+      kind,
+      id: item.id,
+      fullName,
+      idNumber,
+      schoolId: item.school?.id || item.school_id || schoolObj?.id,
+      schoolName: schoolObj?.name || item.school?.name || 'MYEDURIDE PARTNER SCHOOL',
+      schoolAddress: schoolObj?.location_address || schoolObj?.address || item.school?.location_address || item.school?.address || 'Main Campus Gate',
+      schoolLandmark: schoolObj?.location_landmark || item.school?.location_landmark,
+      schoolPhone: schoolObj?.phone || item.school?.phone,
+      logoUrl: schoolObj?.logo_url || item.school?.logo_url,
+      signatureUrl: schoolObj?.principal_signature_url || schoolObj?.signature_url || item.school?.principal_signature_url || item.school?.signature_url,
+      photoUrl,
+      className,
+      roleLabel,
+      gradeSection: className,
+      routeCode,
+      guardianName,
+      guardianPhone,
+      homeStop,
+      qrData: qrPayload,
+      qrDataUrl,
+    };
+  };
+
   const handleDownload = async () => {
     if (selectedIds.size === 0) {
       toast.error('Select at least one person');
@@ -192,12 +261,49 @@ export default function SuperAdminIdCardsPage() {
       return;
     }
 
+    const schoolObj = schools.find((s) => s.id === schoolId) || selected[0]?.school;
     setGenerating(true);
+    const fileName = selected.length === 1
+      ? `${(selected[0].first_name ? `${selected[0].first_name}_${selected[0].last_name}` : selected[0].user?.full_name || 'person').replace(/\s+/g, '_')}_${printFormat}_card.pdf`
+      : `${entityTab}_id_cards_${printFormat}.pdf`;
+
+    toast.info(`Generating exact ${printFormat === 'classic' ? 'Classic' : 'ATM'} Card PDF (exact preview replica)...`);
+
+    try {
+      // 1. Build cards data for all selected people (generates crisp local QR data URLs)
+      const cardsData = await Promise.all(
+        selected.map((item) => buildPersonCardData(item, entityTab === 'students' ? 'student' : 'staff', schoolObj))
+      );
+
+      // Mount into high-fidelity DOM container
+      setExportingCards(cardsData);
+
+      // Give browser and React a tick to mount and render DOM elements
+      await new Promise((r) => setTimeout(r, 250));
+
+      // 2. Direct exact DOM-to-PDF export: captures the exact rendered preview pixel-for-pixel
+      const domSuccess = await exportCardPdfFromDom({
+        format: printFormat,
+        fileName,
+        containerId: 'id-card-print-render-container',
+      });
+
+      if (domSuccess) {
+        toast.success(`Card PDF downloaded successfully (exact preview replica)`);
+        setExportingCards(null);
+        setGenerating(false);
+        return;
+      }
+    } catch (domErr) {
+      console.warn('DOM card export encountered issue, falling back to server route:', domErr);
+    }
+
+    // 3. Fallback to server route if DOM capture is not available
     const result = await downloadIdCardsPdf({
       school_id: schoolId,
       student_ids: entityTab === 'students' ? [...selectedIds] : [],
       staff_role_ids: entityTab === 'staff' ? [...selectedIds] : [],
-      fileName: `${entityTab}_id_cards_${printFormat}.pdf`,
+      fileName,
       primary_color: primaryColor,
       accent_color: accentColor,
       photo_bg_color: activePhotoBgHex,
@@ -206,6 +312,8 @@ export default function SuperAdminIdCardsPage() {
 
     if (result.ok) toast.success(`PDF generated in ${printFormat === 'classic' ? 'Classic Print' : 'ATM Smart Card'} format — print at 100% scale`);
     else toast.error(result.error);
+
+    setExportingCards(null);
     setGenerating(false);
   };
 
@@ -564,30 +672,11 @@ export default function SuperAdminIdCardsPage() {
                 {/* Preview Button */}
                 <button
                   type="button"
-                  onClick={(e) => {
+                  onClick={async (e) => {
                     e.stopPropagation();
                     const schoolObj = student.school || schools.find((s) => s.id === student.school_id) || (selectedSchool !== 'all' ? schools.find((s) => s.id === selectedSchool) : schools[0]);
-                    setPreviewPerson({
-                      kind: 'student',
-                      id: student.id,
-                      schoolId: student.school?.id || student.school_id || schoolObj?.id,
-                      fullName: `${student.first_name} ${student.last_name}`,
-                      idNumber: student.student_id_number,
-                      schoolName: schoolObj?.name || student.school?.name || 'MYEDURIDE PARTNER SCHOOL',
-                      schoolAddress: schoolObj?.location_address || schoolObj?.address || student.school?.location_address || student.school?.address || 'Main Campus Gate',
-                      schoolLandmark: schoolObj?.location_landmark || student.school?.location_landmark,
-                      schoolPhone: schoolObj?.phone || student.school?.phone,
-                      logoUrl: schoolObj?.logo_url || student.school?.logo_url,
-                      signatureUrl: schoolObj?.principal_signature_url || schoolObj?.signature_url || student.school?.principal_signature_url || student.school?.signature_url,
-                      photoUrl: student.photo_url,
-                      className: student.class?.name || 'Class Assigned',
-                      gradeSection: student.class?.name || 'Class Assigned',
-                      routeCode: student.route_code || student.custom_fields?.route || student.route || 'R-CAMPUS',
-                      guardianName: student.guardian_name || student.custom_fields?.guardian_name || student.parent_name || 'Not Assigned',
-                      guardianPhone: student.guardian_phone || student.custom_fields?.emergency_phone || student.parent_phone || 'Not Available',
-                      homeStop: student.home_stop || student.house_landmark || student.house_address || student.custom_fields?.home_stop || 'Campus Gate',
-                      qrData: student.qr_code_data || `MYEDURIDE:${student.student_id_number}`,
-                    });
+                    const cardData = await buildPersonCardData(student, 'student', schoolObj);
+                    setPreviewPerson(cardData);
                   }}
                   className="p-2 rounded-xl bg-slate-900 hover:bg-slate-800 text-slate-300 hover:text-white border border-slate-800 transition-all cursor-pointer shrink-0"
                   title="Live Preview ID Card"
@@ -646,25 +735,11 @@ export default function SuperAdminIdCardsPage() {
                 {/* Preview Button */}
                 <button
                   type="button"
-                  onClick={(e) => {
+                  onClick={async (e) => {
                     e.stopPropagation();
                     const schoolObj = member.school || schools.find((s) => s.id === member.school_id) || (selectedSchool !== 'all' ? schools.find((s) => s.id === selectedSchool) : schools[0]);
-                    setPreviewPerson({
-                      kind: 'staff',
-                      id: member.id,
-                      schoolId: member.school?.id || member.school_id || schoolObj?.id,
-                      fullName,
-                      idNumber: member.staff?.staff_id_number || 'STAFF-1001',
-                      roleLabel: member.job_title || member.role.replace('_', ' ').toUpperCase(),
-                      schoolName: schoolObj?.name || member.school?.name || 'MYEDURIDE PARTNER SCHOOL',
-                      schoolAddress: schoolObj?.location_address || schoolObj?.address || member.school?.location_address || member.school?.address || 'Main Campus Gate',
-                      schoolLandmark: schoolObj?.location_landmark || member.school?.location_landmark,
-                      schoolPhone: schoolObj?.phone || member.school?.phone,
-                      logoUrl: schoolObj?.logo_url || member.school?.logo_url,
-                      signatureUrl: schoolObj?.principal_signature_url || schoolObj?.signature_url || member.school?.principal_signature_url || member.school?.signature_url,
-                      photoUrl: member.staff?.photo_url,
-                      qrData: member.staff?.qr_code_data || `MYEDURIDE:STAFF:${member.staff?.staff_id_number || '1001'}`,
-                    });
+                    const cardData = await buildPersonCardData(member, 'staff', schoolObj);
+                    setPreviewPerson(cardData);
                   }}
                   className="p-2 rounded-xl bg-slate-900 hover:bg-slate-800 text-slate-300 hover:text-white border border-slate-800 transition-all cursor-pointer shrink-0"
                   title="Live Preview ID Card"
@@ -682,6 +757,73 @@ export default function SuperAdminIdCardsPage() {
           <p className="text-sm font-semibold">
             {entityTab === 'staff' ? 'No staff found for this filter' : 'No students found for this filter'}
           </p>
+        </div>
+      )}
+
+      {/* Hidden Container for High-Fidelity DOM-to-PDF Export (Exact Preview Replica) */}
+      {exportingCards && exportingCards.length > 0 && (
+        <div
+          id="id-card-print-render-container"
+          style={{
+            position: 'fixed',
+            left: 0,
+            top: 0,
+            width: '460px',
+            pointerEvents: 'none',
+            zIndex: -9999,
+          }}
+          aria-hidden="true"
+        >
+          {exportingCards.map((card, idx) => (
+            <div key={card.id || idx} className="id-card-export-pair" style={{ marginBottom: '40px' }}>
+              {printFormat === 'atm' ? (
+                <AtmCardPass
+                  viewMode="both"
+                  cardType={card.kind}
+                  cardholderName={card.fullName}
+                  idNumber={card.idNumber}
+                  photoUrl={card.photoUrl}
+                  qrUrl={card.qrDataUrl}
+                  qrPayload={card.qrData}
+                  schoolName={card.schoolName}
+                  schoolAddress={card.schoolAddress}
+                  schoolPhone={card.schoolPhone}
+                  logoUrl={card.logoUrl}
+                  classNameOrRole={card.className || card.roleLabel}
+                  gradeSection={card.gradeSection}
+                  routeCode={card.routeCode}
+                  guardianName={card.guardianName}
+                  guardianPhone={card.guardianPhone}
+                  homeStop={card.homeStop}
+                  signatureUrl={card.signatureUrl}
+                  validThru={card.validThru || '07/27'}
+                  primaryColor={primaryColor || '#0C3B5E'}
+                  accentColor={accentColor || '#10B981'}
+                />
+              ) : (
+                <ClassicCardPass
+                  viewMode="both"
+                  cardType={card.kind}
+                  cardholderName={card.fullName}
+                  idNumber={card.idNumber}
+                  photoUrl={card.photoUrl}
+                  qrUrl={card.qrDataUrl}
+                  qrPayload={card.qrData}
+                  schoolName={card.schoolName}
+                  schoolAddress={card.schoolAddress}
+                  schoolLandmark={card.schoolLandmark}
+                  schoolPhone={card.schoolPhone}
+                  logoUrl={card.logoUrl}
+                  classNameOrRole={card.className || card.roleLabel}
+                  gradeSection={card.gradeSection}
+                  routeCode={card.routeCode}
+                  signatureUrl={card.signatureUrl}
+                  primaryColor={primaryColor || '#0C2340'}
+                  accentColor={accentColor || '#28A745'}
+                />
+              )}
+            </div>
+          ))}
         </div>
       )}
 

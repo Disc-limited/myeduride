@@ -43,6 +43,9 @@ import { myedurideVsSchoolEscortIsolationSuite } from './unit/myeduride-vs-schoo
 import { eveningEscrowSettlementSuite } from './unit/evening-escrow-settlement.test';
 import { preFlightBalanceAuditSuite } from './unit/pre-flight-balance-audit.test';
 import { vaultSecurityInvariantsSuite } from './unit/vault-security-invariants.test';
+import { daisafSpecHarmonizationSuite } from './unit/daisaf-spec-harmonization.test';
+import { phase2EnginesSuite } from './unit/phase2-engines.test';
+import { phase3RoutesInvariantsSuite } from './unit/phase3-routes-invariants.test';
 import { pickupControlApiSuite } from './integration/pickup-control-api.test';
 import { escortApisSuite } from './integration/escort-apis.test';
 import { routesVehiclesApiSuite } from './integration/routes-vehicles-api.test';
@@ -63,6 +66,7 @@ import { parentBookingWorkflowE2ESuite } from './e2e/parent-booking-workflow-e2e
 import { pickupAuthorizationE2ESuite } from './e2e/pickup-authorization-e2e.test';
 import { emergencyDeputisingE2ESuite } from './e2e/emergency-deputising-e2e.test';
 import { walletLifecycleSimulationE2ESuite } from './e2e/wallet-lifecycle-simulation-e2e.test';
+import { daisafSpecLifecycleE2ESuite } from './e2e/daisaf-spec-lifecycle-e2e.test';
 import { performanceSuite } from './performance/api-benchmarks.test';
 import { routesPerfSuite } from './performance/routes-perf.test';
 import { gateVisitorsPerfSuite } from './performance/gate-visitors-perf.test';
@@ -117,6 +121,9 @@ async function runAllTests() {
     eveningEscrowSettlementSuite,
     preFlightBalanceAuditSuite,
     vaultSecurityInvariantsSuite,
+    daisafSpecHarmonizationSuite,
+    phase2EnginesSuite,
+    phase3RoutesInvariantsSuite,
     pickupControlApiSuite,
     escortApisSuite,
     routesVehiclesApiSuite,
@@ -137,6 +144,7 @@ async function runAllTests() {
     pickupAuthorizationE2ESuite,
     emergencyDeputisingE2ESuite,
     walletLifecycleSimulationE2ESuite,
+    daisafSpecLifecycleE2ESuite,
     performanceSuite,
     routesPerfSuite,
     gateVisitorsPerfSuite,

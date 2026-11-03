@@ -25,6 +25,7 @@ import {
   resolveSchoolGateLocation,
   resolveRecordLocation,
 } from '@/lib/attendance/location-resolver';
+import { GateBillingEngine } from '@/lib/payments/gate-billing-engine';
 
 export const dynamic = 'force-dynamic';
 
@@ -247,6 +248,13 @@ export async function POST(request: NextRequest) {
           geofence_verified: resolvedLocation.geofence_verified,
         },
       });
+
+      // Daisaf Wallet Specification Section 2.1: Pay-As-You-Go ₦3 deduction
+      void GateBillingEngine.executeGateScanDeduction({
+        schoolId,
+        staffProfileId: profile?.id,
+        scanDirection: staffType === 'clock_in' ? 'sign_in' : 'sign_out',
+      }).catch((err) => console.warn('[gate/accept] Staff scan debit error:', err));
 
       return NextResponse.json({
         success: true,
@@ -556,6 +564,13 @@ export async function POST(request: NextRequest) {
       console.error('[gate/accept] parent notify failed:', err);
       return { notified: 0, skipped: String(err) };
     });
+
+    // Daisaf Wallet Specification Section 2.1: Pay-As-You-Go ₦3 deduction
+    void GateBillingEngine.executeGateScanDeduction({
+      schoolId,
+      studentId: student_id,
+      scanDirection: type === 'arrival' ? 'sign_in' : 'sign_out',
+    }).catch((err) => console.warn('[gate/accept] Student scan debit error:', err));
 
     return NextResponse.json({
       success: true,

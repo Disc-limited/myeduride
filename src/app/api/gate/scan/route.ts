@@ -15,6 +15,7 @@ import { getGateDayStatus } from '@/lib/gate/school-day-gate';
 import { sessionHasRole } from '@/lib/session';
 import { todayInLagos } from '@/lib/timezone';
 import { ensureAutoReadyForPickup } from '@/lib/gate/auto-ready-pickup';
+import { GateBillingEngine } from '@/lib/payments/gate-billing-engine';
 
 export const dynamic = 'force-dynamic';
 
@@ -96,6 +97,25 @@ export async function POST(request: NextRequest) {
       const classRel = Array.isArray(student.class) ? student.class[0] : student.class;
       const className = classRel?.name || '';
 
+      // Daisaf Wallet Specification: Validate Pay-As-You-Go Gate Eligibility
+      const walletCheck = await GateBillingEngine.validateGateScanEligibility({
+        schoolId: school_id,
+        studentId,
+      });
+
+      if (!walletCheck.allowed) {
+        return NextResponse.json(
+          {
+            error: walletCheck.message,
+            code: walletCheck.code,
+            payer_type: walletCheck.payerType,
+            available_balance_ngn: walletCheck.availableBalanceNgn,
+            required_funding_ngn: walletCheck.scanFeeNgn,
+          },
+          { status: 402 }
+        );
+      }
+
       const today = await getStudentTodayStatus(supabase, school_id, studentId);
       const checkIn = validateStudentGateAction(today, 'arrival');
       const checkOut = validateStudentGateAction(today, 'departure');
@@ -143,6 +163,25 @@ export async function POST(request: NextRequest) {
 
     const staff = await resolveStaffProfile(supabase, school_id, scan);
     if (staff) {
+      // Daisaf Wallet Specification: Validate School Wallet Eligibility for Staff Sign-In/Out
+      const walletCheck = await GateBillingEngine.validateGateScanEligibility({
+        schoolId: school_id,
+        staffProfileId: staff.id,
+      });
+
+      if (!walletCheck.allowed) {
+        return NextResponse.json(
+          {
+            error: walletCheck.message,
+            code: walletCheck.code,
+            payer_type: walletCheck.payerType,
+            available_balance_ngn: walletCheck.availableBalanceNgn,
+            required_funding_ngn: walletCheck.scanFeeNgn,
+          },
+          { status: 402 }
+        );
+      }
+
       const roleLabel = await resolveStaffRoleLabel(supabase, school_id, staff.user_id);
       const today = await getStaffTodayStatus(supabase, school_id, staff.user_id);
 
