@@ -1,9 +1,11 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { revalidatePath } from 'next/cache';
 import { getAdminClient } from '@/lib/supabase/admin';
 import { getSessionFromRequest, sessionHasRole } from '@/lib/session';
 import { resolveLogoMime, uploadSchoolSignatureBuffer } from '@/lib/storage/upload-school-logo';
 
 export const dynamic = 'force-dynamic';
+export const fetchCache = 'force-no-store';
 
 function canEditSignature(
   session: NonNullable<ReturnType<typeof getSessionFromRequest>>,
@@ -58,6 +60,14 @@ export async function POST(request: NextRequest) {
       .eq('id', schoolId);
 
     if (dbErr) return NextResponse.json({ error: dbErr.message }, { status: 500 });
+
+    try {
+      revalidatePath('/api/super-admin/id-cards');
+      revalidatePath('/dashboard/super-admin/id-cards');
+      revalidatePath('/dashboard/school-admin/students');
+    } catch {
+      // ignore revalidation errors in non-Next contexts
+    }
 
     return NextResponse.json({
       success: true,

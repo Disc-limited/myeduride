@@ -74,20 +74,26 @@ export default function AtmCardPass({
 }: AtmCardPassProps) {
   const [isFlipped, setIsFlipped] = useState(forcedSide === 'back');
   const [sigError, setSigError] = useState(false);
+  const [sigFallback, setSigFallback] = useState(false);
   const [logoError, setLogoError] = useState(false);
+  const [logoFallback, setLogoFallback] = useState(false);
   const [photoError, setPhotoError] = useState(false);
+  const [photoFallback, setPhotoFallback] = useState(false);
   const [localQr, setLocalQr] = useState<string>('');
 
   useEffect(() => {
     setSigError(false);
+    setSigFallback(false);
   }, [signatureUrl]);
 
   useEffect(() => {
     setLogoError(false);
+    setLogoFallback(false);
   }, [logoUrl]);
 
   useEffect(() => {
     setPhotoError(false);
+    setPhotoFallback(false);
   }, [photoUrl]);
 
   useEffect(() => {
@@ -136,7 +142,9 @@ export default function AtmCardPass({
   const displayNumber = formatCardNumber(cleanId);
   const barcodeRaw = barcodeValue || cleanId.replace(/\s+/g, '');
 
-  const photo = photoSrc(photoUrl);
+  const photo = photoFallback && photoUrl
+    ? `/api/photo?path=${encodeURIComponent(photoUrl)}`
+    : photoSrc(photoUrl);
 
   // Default Fallbacks matching verified database records
   const activeSchool = schoolName || 'MYEDURIDE PARTNER SCHOOL';
@@ -155,13 +163,45 @@ export default function AtmCardPass({
   const activeAccent = accentColor || '#10B981';
 
   // Resolved School Logo (null if not available, so placeholder can indicate "Add School Logo")
-  const rawLogo = logoUrl ? photoSrc(logoUrl) : null;
+  const rawLogo = logoUrl
+    ? logoFallback
+      ? `/api/photo?path=${encodeURIComponent(logoUrl)}`
+      : photoSrc(logoUrl)
+    : null;
   const resolvedLogo = rawLogo;
   const hasLogo = Boolean(rawLogo && !logoError);
 
   // Resolved Authorized Signature
-  const resolvedSignature = signatureUrl ? photoSrc(signatureUrl) : null;
+  const resolvedSignature = signatureUrl
+    ? sigFallback
+      ? `/api/photo?path=${encodeURIComponent(signatureUrl)}`
+      : photoSrc(signatureUrl)
+    : null;
   const hasSignature = !!resolvedSignature && !sigError;
+
+  const handleLogoImgError = () => {
+    if (!logoFallback && logoUrl && !logoUrl.startsWith('/api/photo')) {
+      setLogoFallback(true);
+    } else {
+      setLogoError(true);
+    }
+  };
+
+  const handleSigImgError = () => {
+    if (!sigFallback && signatureUrl && !signatureUrl.startsWith('/api/photo')) {
+      setSigFallback(true);
+    } else {
+      setSigError(true);
+    }
+  };
+
+  const handlePhotoImgError = () => {
+    if (!photoFallback && photoUrl && !photoUrl.startsWith('/api/photo')) {
+      setPhotoFallback(true);
+    } else {
+      setPhotoError(true);
+    }
+  };
 
   // Shared Front Card JSX
   const frontCardJsx = (
@@ -217,7 +257,7 @@ export default function AtmCardPass({
                 crossOrigin="anonymous"
                 alt={activeSchool}
                 className="w-full h-full object-contain"
-                onError={() => setLogoError(true)}
+                onError={handleLogoImgError}
               />
             </div>
           ) : (
@@ -300,7 +340,7 @@ export default function AtmCardPass({
                 crossOrigin="anonymous"
                 alt={formattedName}
                 className="w-full h-full object-cover"
-                onError={() => setPhotoError(true)}
+                onError={handlePhotoImgError}
               />
             ) : (
               <div className="w-full h-full bg-slate-100 flex flex-col items-center justify-center p-1">
@@ -404,7 +444,7 @@ export default function AtmCardPass({
                   crossOrigin="anonymous"
                   alt="Principal Signature"
                   className="max-h-5 sm:max-h-6 object-contain"
-                  onError={() => setSigError(true)}
+                  onError={handleSigImgError}
                 />
               ) : (
                 <div className="w-full flex items-center justify-between px-0.5">
@@ -479,7 +519,7 @@ export default function AtmCardPass({
                     crossOrigin="anonymous"
                     alt="School Logo"
                     className="w-full h-full object-contain"
-                    onError={() => setLogoError(true)}
+                    onError={handleLogoImgError}
                   />
                 </div>
               ) : (

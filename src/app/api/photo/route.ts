@@ -1,6 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getAdminClient } from '@/lib/supabase/admin';
 
+export const dynamic = 'force-dynamic';
+export const fetchCache = 'force-no-store';
+
 function extractStoragePath(input: string): string | null {
   try {
     const decoded = decodeURIComponent(input);
@@ -137,6 +140,7 @@ export async function GET(request: NextRequest) {
       headers: {
         'Content-Type': contentType,
         'Cache-Control': 'public, max-age=60, s-maxage=300, stale-while-revalidate=86400',
+        'Access-Control-Allow-Origin': '*',
         'ETag': etag,
       },
     });

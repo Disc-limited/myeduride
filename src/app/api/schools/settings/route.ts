@@ -1,10 +1,12 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { revalidatePath } from 'next/cache';
 import { getAdminClient } from '@/lib/supabase/admin';
 import { getSessionFromRequest, sessionHasRole } from '@/lib/session';
 import { TIME_FIELDS, timeInputToDb } from '@/lib/time-input';
 import { fetchSchoolSettings, updateSchoolSettings } from '@/lib/school-settings-db';
 
 export const dynamic = 'force-dynamic';
+export const fetchCache = 'force-no-store';
 
 function canEditSchool(
   session: NonNullable<ReturnType<typeof getSessionFromRequest>>,
@@ -154,6 +156,14 @@ export async function PUT(request: NextRequest) {
         { error: result.error, migration_required: result.migrationRequired },
         { status: result.migrationRequired ? 503 : 500 }
       );
+    }
+
+    try {
+      revalidatePath('/api/super-admin/id-cards');
+      revalidatePath('/dashboard/super-admin/id-cards');
+      revalidatePath('/dashboard/school-admin/students');
+    } catch {
+      // ignore revalidation errors in non-Next contexts
     }
 
     return NextResponse.json(

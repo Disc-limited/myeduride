@@ -75,23 +75,26 @@ export function photoSrc(url: string | null | undefined): string | null {
   // 3. Local app static assets (e.g. /images/default-avatar.png) render directly
   if (trimmed.startsWith('/')) return trimmed;
 
+  const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || 'https://fdcfirbpdmzrfymsixsi.supabase.co';
+
   // 4. Check if it's an external HTTP/HTTPS URL
   if (trimmed.startsWith('http://') || trimmed.startsWith('https://')) {
-    // Check if it's a Supabase storage URL that needs routing through /api/photo
+    // Check if it's a Supabase storage URL that can be normalized to direct public URL
     const storagePath = extractStoragePath(trimmed);
     if (storagePath) {
-      return `/api/photo?path=${encodeURIComponent(storagePath)}`;
+      const cleanPath = storagePath.replace(/^photos\//i, '');
+      return `${supabaseUrl}/storage/v1/object/public/photos/${cleanPath}`;
     }
     // Pure external image URL (Unsplash, Google Avatar, Cloudinary, etc.)
     return trimmed;
   }
 
-  // 5. Relative clean storage path (e.g. "staff/school-id/STF-01.jpg", "avatars/...", or with query param)
+  // 5. Relative clean storage path (e.g. "staff/school-id/STF-01.jpg", "logos/...", "avatars/...")
   const [basePath, query] = trimmed.split('?');
   const storagePath = extractStoragePath(basePath) || basePath.replace(/^[/\\]+/, '');
   const cleanPath = storagePath.replace(/^photos\//i, '');
 
-  return `/api/photo?path=${encodeURIComponent(cleanPath)}${query ? `&${query}` : ''}`;
+  return `${supabaseUrl}/storage/v1/object/public/photos/${cleanPath}${query ? `?${query}` : ''}`;
 }
 
 /**

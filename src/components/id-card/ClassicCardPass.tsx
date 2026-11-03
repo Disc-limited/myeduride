@@ -51,17 +51,25 @@ export default function ClassicCardPass({
 }: ClassicCardPassProps) {
   const [isFlipped, setIsFlipped] = useState(false);
   const [sigError, setSigError] = useState(false);
+  const [sigFallback, setSigFallback] = useState(false);
   const [logoError, setLogoError] = useState(false);
+  const [logoFallback, setLogoFallback] = useState(false);
 
   useEffect(() => {
     setSigError(false);
+    setSigFallback(false);
   }, [signatureUrl]);
 
   useEffect(() => {
     setLogoError(false);
+    setLogoFallback(false);
   }, [logoUrl]);
 
-  const resolvedSignature = signatureUrl ? photoSrc(signatureUrl) : null;
+  const resolvedSignature = signatureUrl
+    ? sigFallback
+      ? `/api/photo?path=${encodeURIComponent(signatureUrl)}`
+      : photoSrc(signatureUrl)
+    : null;
   const hasSignature = !!resolvedSignature && !sigError;
 
   const isStudent = cardType === 'student';
@@ -76,9 +84,29 @@ export default function ClassicCardPass({
   const formattedId = cleanId.match(/.{1,4}/g)?.join(' ') || idNumber;
 
   // Resolved School Logo (null if not available, so placeholder can indicate "Add School Logo")
-  const rawLogo = logoUrl ? photoSrc(logoUrl) : null;
+  const rawLogo = logoUrl
+    ? logoFallback
+      ? `/api/photo?path=${encodeURIComponent(logoUrl)}`
+      : photoSrc(logoUrl)
+    : null;
   const resolvedLogo = rawLogo;
   const hasLogo = Boolean(rawLogo && !logoError);
+
+  const handleLogoImgError = () => {
+    if (!logoFallback && logoUrl && !logoUrl.startsWith('/api/photo')) {
+      setLogoFallback(true);
+    } else {
+      setLogoError(true);
+    }
+  };
+
+  const handleSigImgError = () => {
+    if (!sigFallback && signatureUrl && !signatureUrl.startsWith('/api/photo')) {
+      setSigFallback(true);
+    } else {
+      setSigError(true);
+    }
+  };
 
   /* ========================================================================= */
   /* FRONT CARD JSX (CLASSIC CR80 PRINT LAYOUT)                                */
@@ -102,7 +130,7 @@ export default function ClassicCardPass({
                 crossOrigin="anonymous"
                 alt={schoolName}
                 className="w-full h-full object-contain"
-                onError={() => setLogoError(true)}
+                onError={handleLogoImgError}
               />
             </div>
           ) : (
@@ -238,7 +266,7 @@ export default function ClassicCardPass({
                 crossOrigin="anonymous"
                 alt="School Logo"
                 className="w-full h-full object-contain"
-                onError={() => setLogoError(true)}
+                onError={handleLogoImgError}
               />
             </div>
           ) : (
@@ -285,7 +313,7 @@ export default function ClassicCardPass({
                 crossOrigin="anonymous"
                 alt="Principal Signature"
                 className="max-h-7 object-contain"
-                onError={() => setSigError(true)}
+                onError={handleSigImgError}
               />
             ) : (
               <div className="w-full flex items-center justify-between px-1">

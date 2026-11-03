@@ -5,8 +5,18 @@ import { getSessionFromRequest, sessionHasRole } from '@/lib/session';
 import { resolveStudentIdCardDetails } from '@/lib/id-card/resolve-student-details';
 
 export const dynamic = 'force-dynamic';
+export const fetchCache = 'force-no-store';
+export const revalidate = 0;
 
 const STAFF_ACCESS_ROLES = ['staff', 'teacher', 'gate_officer', 'school_admin'] as const;
+
+function chunkArray<T>(items: T[], size = 100): T[][] {
+  const chunks: T[][] = [];
+  for (let i = 0; i < items.length; i += size) {
+    chunks.push(items.slice(i, i + size));
+  }
+  return chunks;
+}
 
 export async function GET(request: NextRequest) {
   const session = getSessionFromRequest(request);
@@ -94,33 +104,51 @@ export async function GET(request: NextRequest) {
     const schoolMap = new Map(schoolsList.map((s) => [s.id, s]));
 
     // Batch query linked parents and transport route assignments for all active students
+    // Chunked into batches of 100 IDs to prevent URL/Header overflow (UND_ERR_HEADERS_OVERFLOW)
     const studentListRaw = studentsRes.data || [];
     const studentIds = studentListRaw.map((s: any) => s.id);
+    const idChunks = chunkArray(studentIds, 100);
 
-    const [spLinksRes, routeAssignmentsRes] = await Promise.all([
-      studentIds.length > 0
-        ? supabase
-            .from('student_parents')
-            .select('student_id, parent_user_id, relationship, is_primary')
-            .in('student_id', studentIds)
-        : { data: [] },
-      studentIds.length > 0
-        ? supabase
-            .from('student_route_assignments')
-            .select('student_id, morning_stop:transport_route_stops!morning_stop_id(id, name, landmark), afternoon_stop:transport_route_stops!afternoon_stop_id(id, name, landmark), morning_route:transport_routes!morning_route_id(id, name, code), afternoon_route:transport_routes!afternoon_route_id(id, name, code)')
-            .in('student_id', studentIds)
-        : { data: [] },
+    const [spChunksRes, routeChunksRes] = await Promise.all([
+      idChunks.length > 0
+        ? Promise.all(
+            idChunks.map((chunk) =>
+              supabase
+                .from('student_parents')
+                .select('student_id, parent_user_id, relationship, is_primary')
+                .in('student_id', chunk)
+            )
+          )
+        : Promise.resolve([]),
+      idChunks.length > 0
+        ? Promise.all(
+            idChunks.map((chunk) =>
+              supabase
+                .from('student_route_assignments')
+                .select('student_id, morning_stop:transport_route_stops!morning_stop_id(id, name, landmark), afternoon_stop:transport_route_stops!afternoon_stop_id(id, name, landmark), morning_route:transport_routes!morning_route_id(id, name, code), afternoon_route:transport_routes!afternoon_route_id(id, name, code)')
+                .in('student_id', chunk)
+            )
+          )
+        : Promise.resolve([]),
     ]);
 
-    const spLinks = (spLinksRes.data || []) as any[];
+    const spLinks = spChunksRes.flatMap((r: any) => r.data || []);
+    const routeAssignmentsList = routeChunksRes.flatMap((r: any) => r.data || []);
+
     const parentUserIds = Array.from(new Set(spLinks.map((l) => l.parent_user_id).filter(Boolean)));
+    const parentIdChunks = chunkArray(parentUserIds, 100);
     let profilesMap = new Map<string, any>();
-    if (parentUserIds.length > 0) {
-      const { data: profs } = await supabase
-        .from('user_profiles')
-        .select('id, full_name, phone')
-        .in('id', parentUserIds);
-      profilesMap = new Map((profs || []).map((p: any) => [p.id, p]));
+    if (parentIdChunks.length > 0) {
+      const profChunksRes = await Promise.all(
+        parentIdChunks.map((chunk) =>
+          supabase
+            .from('user_profiles')
+            .select('id, full_name, phone')
+            .in('id', chunk)
+        )
+      );
+      const allProfs = profChunksRes.flatMap((r: any) => r.data || []);
+      profilesMap = new Map(allProfs.map((p: any) => [p.id, p]));
     }
 
     const parentsByStudent = new Map<string, any[]>();
@@ -135,7 +163,7 @@ export async function GET(request: NextRequest) {
     }
 
     const routeAssignmentsByStudent = new Map<string, any>();
-    for (const r of (routeAssignmentsRes.data || []) as any[]) {
+    for (const r of routeAssignmentsList) {
       routeAssignmentsByStudent.set(r.student_id, r);
     }
 
@@ -189,13 +217,20 @@ export async function GET(request: NextRequest) {
       };
     });
 
-    return NextResponse.json({
-      schools: schoolsList,
-      students: allStudents,
-      staff: allStaff,
-      total_students: allStudents.length,
-      total_staff: allStaff.length,
-    });
+    return NextResponse.json(
+      {
+        schools: schoolsList,
+        students: allStudents,
+        staff: allStaff,
+        total_students: allStudents.length,
+        total_staff: allStaff.length,
+      },
+      {
+        headers: {
+          'Cache-Control': 'no-store, no-cache, must-revalidate, max-age=0',
+        },
+      }
+    );
   } catch (error: unknown) {
     console.error('[GET /api/super-admin/id-cards] error:', error);
     const message = error instanceof Error ? error.message : 'Failed to load ID card data';

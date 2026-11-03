@@ -123,9 +123,10 @@ export default function SuperAdminIdCardsPage() {
     setLoading(true);
     setLoadError(null);
     try {
-      const res = await fetch('/api/super-admin/id-cards', {
+      const res = await fetch(`/api/super-admin/id-cards?t=${Date.now()}`, {
         cache: 'no-store',
         credentials: 'include',
+        headers: { 'Cache-Control': 'no-cache' },
       });
       const data = await res.json();
       if (!res.ok) {
