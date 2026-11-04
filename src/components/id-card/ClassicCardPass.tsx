@@ -113,14 +113,14 @@ export default function ClassicCardPass({
   /* ========================================================================= */
   const frontCardJsx = (
     <div
-      className="w-full h-full rounded-2xl p-4 text-white flex flex-col justify-between shadow-xl relative overflow-hidden select-none border border-white/20"
+      className="w-full h-full rounded-2xl px-6 pt-4 pb-6 sm:px-7 sm:pt-4 sm:pb-7 text-white flex flex-col justify-start gap-2.5 shadow-xl relative overflow-hidden select-none border border-white/20"
       style={{
         backgroundColor: primaryColor,
         aspectRatio: '1.586 / 1',
       }}
     >
       {/* Top Header */}
-      <div className="flex items-center justify-between border-b border-white/20 pb-2.5 gap-2">
+      <div className="flex items-center justify-between border-b border-white/20 pb-2 gap-2">
         <div className="flex items-center gap-2.5 max-w-[74%] min-w-0">
           {hasLogo ? (
             <div className="w-10 h-10 sm:w-11 sm:h-11 rounded-xl bg-white p-1 shadow-md border border-white/40 shrink-0 flex items-center justify-center overflow-hidden">
@@ -159,9 +159,9 @@ export default function ClassicCardPass({
       </div>
 
       {/* Main Row: Photo, Details, QR */}
-      <div className="flex items-center justify-between gap-2.5 my-auto py-1">
-        {/* Photo Box - Sized cleanly and prominently */}
-        <div className="w-[76px] h-[96px] sm:w-[86px] sm:h-[110px] bg-white rounded-2xl p-1 shadow-lg shrink-0 border border-white/40 overflow-hidden flex items-center justify-center">
+      <div className="flex items-center justify-between gap-3 sm:gap-4 py-1 px-1 sm:px-2">
+        {/* Photo Box - Enlarged and shifted inward */}
+        <div className="w-[88px] h-[110px] sm:w-[98px] sm:h-[122px] bg-white rounded-2xl p-1 shadow-lg shrink-0 border border-white/40 overflow-hidden flex items-center justify-center">
           {photoUrl ? (
             /* eslint-disable-next-line @next/next/no-img-element */
             <img

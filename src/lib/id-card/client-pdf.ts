@@ -126,13 +126,11 @@ export async function exportCardPdfFromDom({
             pixelRatio: 3,
             cacheBust: false,
             quality: 1,
-            skipFonts: true,
           }),
           toPng(targetBack, {
             pixelRatio: 3,
             cacheBust: false,
             quality: 1,
-            skipFonts: true,
           }),
         ]);
       } catch (toImgErr) {

@@ -199,37 +199,46 @@ async function drawAtmFront(
   doc.setLineWidth(0.2);
   doc.roundedRect(0.8, 0.8, CARD_W - 1.6, CARD_H - 1.6, 2.0, 2.0, 'S');
 
-  // 2. TOP HEADER ROW:
-  // Left: MyEduRide Brand Badge Pill
+  // 2. TOP HEADER ROW (Inset from edges):
+  // Left: Clean UI/UX MyEduRide Brand Badge Pill
   doc.setFillColor(255, 255, 255);
-  doc.roundedRect(4.2, 2.5, 26.0, 6.2, 1.2, 1.2, 'F');
+  doc.roundedRect(6.5, 4.0, 25.8, 6.4, 1.4, 1.4, 'F');
+
+  // Subtle inner icon container
+  doc.setFillColor(248, 250, 252);
+  doc.setDrawColor(226, 232, 240);
+  doc.setLineWidth(0.15);
+  doc.roundedRect(7.1, 4.6, 5.2, 5.2, 0.9, 0.9, 'FD');
 
   try {
-    doc.addImage(EDURIDE_EMBLEM_DATA_URL, 'PNG', 4.8, 3.0, 5.2, 5.2);
+    doc.addImage(EDURIDE_EMBLEM_DATA_URL, 'PNG', 7.3, 4.8, 4.8, 4.8);
   } catch {
     doc.setFillColor(245, 158, 11);
-    doc.roundedRect(4.8, 3.0, 5.2, 5.2, 1.0, 1.0, 'F');
+    doc.roundedRect(7.3, 4.8, 4.8, 4.8, 0.8, 0.8, 'F');
   }
 
   doc.setFont('helvetica', 'bold');
   doc.setFontSize(5.2);
   doc.setTextColor(12, 59, 94);
-  doc.text('MyEduRide', 10.8, 5.4);
+  doc.text('MyEdu', 13.0, 6.9);
+  const myEduW = doc.getTextWidth('MyEdu');
+  doc.setTextColor(5, 150, 105);
+  doc.text('Ride', 13.0 + myEduW, 6.9);
 
   doc.setFont('helvetica', 'bold');
-  doc.setFontSize(2.0);
+  doc.setFontSize(1.85);
   doc.setTextColor(100, 116, 139);
-  doc.text('THE STUDENT SAFETY PLATFORM', 10.8, 7.6);
+  doc.text('THE STUDENT SAFETY PLATFORM', 13.0, 9.0);
 
   // Opposite Right: School Crest Badge + School Name + Address + Contactless Wave
-  // Wave symbol at far right
-  drawContactlessWave(doc, CARD_W - 6.5, 5.6);
+  // Wave symbol inset from right edge
+  drawContactlessWave(doc, CARD_W - 8.0, 7.3);
 
   // School crest badge
   const crestW = 6.0;
   const crestH = 6.0;
-  const crestX = 33.0;
-  const crestY = 2.5;
+  const crestX = 33.8;
+  const crestY = 4.2;
   doc.setFillColor(255, 255, 255);
   doc.roundedRect(crestX, crestY, crestW, crestH, 1.0, 1.0, 'F');
 
@@ -246,41 +255,41 @@ async function drawAtmFront(
   }
 
   // School Name (bold, clear) and Address (clean, distinct)
-  const headerTextX = crestX + crestW + 1.8;
-  const headerMaxW = CARD_W - 8.0 - headerTextX;
+  const headerTextX = crestX + crestW + 1.6;
+  const headerMaxW = CARD_W - 10.5 - headerTextX;
 
   doc.setFont('helvetica', 'bold');
-  doc.setFontSize(4.4);
+  doc.setFontSize(4.2);
   doc.setTextColor(245, 250, 255);
   const schoolTitle = (school.name || 'MYEDURIDE PARTNER SCHOOL').toUpperCase();
-  doc.text(schoolTitle, headerTextX, 5.2, { maxWidth: headerMaxW });
+  doc.text(schoolTitle, headerTextX, 6.9, { maxWidth: headerMaxW });
 
   const schoolAddr = (school.locationAddress || school.address || '').trim();
   doc.setFont('helvetica', 'normal');
-  doc.setFontSize(2.6);
+  doc.setFontSize(2.5);
   doc.setTextColor(203, 213, 225);
-  doc.text(schoolAddr || 'Main Campus Gate', headerTextX, 7.8, { maxWidth: headerMaxW });
+  doc.text(schoolAddr || 'Main Campus Gate', headerTextX, 9.4, { maxWidth: headerMaxW });
 
-  // 3. Middle Row: Metallic Gold EMV Chip
-  const chipX = 4.2;
-  const chipY = 12.8;
-  const chipW = 11.5;
-  const chipH = 9.0;
+  // 3. Middle Row: Metallic Gold EMV Chip (Inset from left edge & pulled up)
+  const chipX = 6.8;
+  const chipY = 12.2;
+  const chipW = 11.0;
+  const chipH = 8.4;
   drawEmvChip(doc, chipX, chipY, chipW, chipH);
 
-  // 4. Passport Photograph Frame with Orbit Arc & Satellite Dots (Proportionate 35 x 45mm ratio)
-  const photoW = 19.5;
+  // 4. Enlarged Passport Photograph Frame Shifted Inside with Orbit Arc & Satellite Dots
+  const photoW = 22.5;
   const photoH = 25.0;
-  const photoX = CARD_W - photoW - 4.5;
-  const photoY = 13.5;
+  const photoX = CARD_W - photoW - 12.5;
+  const photoY = 11.8;
 
-  // Decorative Orbit Arc (Only curves across top-right to bottom-left, matching web UI)
+  // Decorative Orbit Arc (Curves cleanly around top-right & bottom-left corners outside the photo frame)
   const arcCx = photoX + photoW / 2;
   const arcCy = photoY + photoH / 2;
-  const arcR = 15.5;
-  const startAngle = Math.PI * 0.58; // bottom-left
-  const endAngle = -Math.PI * 0.18; // top-right
-  const steps = 24;
+  const arcR = 17.6;
+  const startAngle = -Math.PI * 0.42; // top-right start
+  const endAngle = -Math.PI * 0.08; // top-right end
+  const steps = 16;
 
   doc.setDrawColor(74, 222, 128); // #4ADE80
   doc.setLineWidth(0.45);
@@ -295,19 +304,19 @@ async function drawAtmFront(
     prevY = curY;
   }
 
-  // Top-Right Gold Satellite Dot
+  // Top-Right Gold Satellite Dot (Outside photo top-right corner)
   doc.setFillColor(251, 191, 36);
-  doc.circle(arcCx + arcR * Math.cos(endAngle), arcCy + arcR * Math.sin(endAngle), 1.0, 'F');
+  doc.circle(arcCx + arcR * Math.cos(-Math.PI * 0.22), arcCy + arcR * Math.sin(-Math.PI * 0.22), 0.95, 'F');
 
-  // Bottom-Left Gold Accent Dot
-  doc.circle(arcCx + arcR * Math.cos(startAngle), arcCy + arcR * Math.sin(startAngle), 0.8, 'F');
+  // Bottom-Left Gold Accent Dot (Outside photo bottom-left corner)
+  doc.circle(photoX - 1.4, photoY + photoH - 4.5, 0.75, 'F');
 
   // White Photo Box
   doc.setFillColor(255, 255, 255);
-  doc.roundedRect(photoX, photoY, photoW, photoH, 1.2, 1.2, 'F');
+  doc.roundedRect(photoX, photoY, photoW, photoH, 1.4, 1.4, 'F');
   doc.setDrawColor(255, 255, 255);
-  doc.setLineWidth(0.35);
-  doc.roundedRect(photoX, photoY, photoW, photoH, 1.2, 1.2, 'S');
+  doc.setLineWidth(0.4);
+  doc.roundedRect(photoX, photoY, photoW, photoH, 1.4, 1.4, 'S');
 
   const photoData = await resolvePhotoDataUrl(person);
   if (photoData) {
@@ -321,37 +330,37 @@ async function drawAtmFront(
     drawPhotoPlaceholder(doc, photoX, photoY, photoW, photoH);
   }
 
-  // 5. Card Number, Cardholder Name & Accent Line
+  // 5. Card Number, Cardholder Name & Accent Line (Pulled up & inset from left edge)
   const formattedCardNumber = formatCardNumber(person.idNumber);
-  const numY = 26.5;
+  const numY = 25.2;
 
   // Embossed Number with shadow
   doc.setFont('courier', 'bold');
-  doc.setFontSize(7.6);
+  doc.setFontSize(7.2);
   doc.setTextColor(10, 20, 30);
-  doc.text(formattedCardNumber, 4.3, numY + 0.2);
+  doc.text(formattedCardNumber, 6.9, numY + 0.2);
   doc.setTextColor(255, 255, 255);
-  doc.text(formattedCardNumber, 4.2, numY);
+  doc.text(formattedCardNumber, 6.8, numY);
 
   // Cardholder Full Name
   doc.setFont('helvetica', 'bold');
-  doc.setFontSize(5.6);
+  doc.setFontSize(5.4);
   doc.setTextColor(255, 255, 255);
-  doc.text(person.fullName.toUpperCase(), 4.2, 31.0, { maxWidth: photoX - 5.5 });
+  doc.text(person.fullName.toUpperCase(), 6.8, 29.2, { maxWidth: photoX - 8.5 });
 
   // Gold accent line
   doc.setFillColor(251, 191, 36);
-  doc.roundedRect(4.2, 32.6, 9.0, 0.55, 0.25, 0.25, 'F');
+  doc.roundedRect(6.8, 30.5, 9.0, 0.55, 0.25, 0.25, 'F');
 
-  // 6. Bottom Metadata Row
+  // 6. Bottom Metadata Row (Pulled up well above bottom edge & inset from left/right edges)
   doc.setFont('helvetica', 'bold');
   doc.setFontSize(2.4);
   doc.setTextColor(203, 213, 225);
-  doc.text('VALID THRU', 4.2, 38.5);
+  doc.text('VALID THRU', 6.8, 35.5);
   doc.setFont('courier', 'bold');
   doc.setFontSize(4.4);
   doc.setTextColor(255, 255, 255);
-  doc.text(person.validThru || '07/27', 4.2, 42.5);
+  doc.text(person.validThru || '07/27', 6.8, 38.8);
 
   if (person.kind !== 'student') {
     const roleLabel = person.kind === 'staff' ? 'ROLE · DEPT' : 'DESIGNATION';
@@ -359,31 +368,31 @@ async function drawAtmFront(
     doc.setFont('helvetica', 'bold');
     doc.setFontSize(2.4);
     doc.setTextColor(203, 213, 225);
-    doc.text(roleLabel, 18.0, 38.5);
+    doc.text(roleLabel, 19.8, 35.5);
     doc.setFont('helvetica', 'bold');
     doc.setFontSize(4.4);
     doc.setTextColor(255, 255, 255);
-    doc.text(roleVal.toUpperCase(), 18.0, 42.5, { maxWidth: 28 });
+    doc.text(roleVal.toUpperCase(), 19.8, 38.8, { maxWidth: 26 });
   }
 
-  // Status Pill Badge: TRANSPORT ACTIVE
-  const statusPillW = 26.5;
-  const statusPillH = 4.4;
-  const statusPillX = CARD_W - statusPillW - 4.5;
-  const statusPillY = 41.5;
+  // Status Pill Badge: TRANSPORT ACTIVE (Centered under photo & pulled up away from bottom edge)
+  const statusPillW = 25.5;
+  const statusPillH = 4.2;
+  const statusPillX = photoX + (photoW - statusPillW) / 2;
+  const statusPillY = 38.2;
 
   doc.setFillColor(16, 120, 68);
   doc.setDrawColor(52, 211, 153);
   doc.setLineWidth(0.2);
-  doc.roundedRect(statusPillX, statusPillY, statusPillW, statusPillH, 2.2, 2.2, 'FD');
+  doc.roundedRect(statusPillX, statusPillY, statusPillW, statusPillH, 2.1, 2.1, 'FD');
 
   doc.setFillColor(251, 191, 36);
-  doc.circle(statusPillX + 2.6, statusPillY + statusPillH / 2, 0.7, 'F');
+  doc.circle(statusPillX + 2.5, statusPillY + statusPillH / 2, 0.7, 'F');
 
   doc.setFont('helvetica', 'bold');
-  doc.setFontSize(2.8);
+  doc.setFontSize(2.7);
   doc.setTextColor(255, 255, 255);
-  doc.text(person.transportStatus || 'TRANSPORT ACTIVE', statusPillX + statusPillW / 2 + 1.0, statusPillY + 3.1, {
+  doc.text(person.transportStatus || 'TRANSPORT ACTIVE', statusPillX + statusPillW / 2 + 1.0, statusPillY + 2.95, {
     align: 'center',
   });
 }
@@ -403,15 +412,15 @@ async function drawAtmBack(
   doc.setLineWidth(0.25);
   doc.roundedRect(0.8, 0.8, CARD_W - 1.6, CARD_H - 1.6, 2.0, 2.0, 'S');
 
-  // 2. Full-Width Magnetic Stripe Across Top
+  // 2. Sleek Full-Width Magnetic Stripe Across Top
   doc.setFillColor(15, 23, 42);
-  doc.rect(0, 2.5, CARD_W, 7.5, 'F');
+  doc.rect(0, 2.0, CARD_W, 4.8, 'F');
 
-  // 3. Mid-Top Section: Signature Strip & Enlarged QR Code Box
-  const sigX = 4.2;
-  const sigY = 11.5;
-  const sigW = 48.0;
-  const sigH = 10.0;
+  // 3. Top Section: Signature Strip & Compact QR Code Box (Pushed Down Slightly from Top Stripe)
+  const sigX = 5.5;
+  const sigY = 10.2;
+  const sigW = 46.5;
+  const sigH = 9.0;
 
   doc.setFillColor(255, 255, 255);
   doc.roundedRect(sigX, sigY, sigW, sigH, 1.0, 1.0, 'F');
@@ -420,39 +429,39 @@ async function drawAtmBack(
   doc.roundedRect(sigX, sigY, sigW, sigH, 1.0, 1.0, 'S');
 
   doc.setFont('helvetica', 'bold');
-  doc.setFontSize(2.3);
+  doc.setFontSize(2.2);
   doc.setTextColor(148, 163, 184);
   doc.text('AUTHORISED SIGNATURE', sigX + 1.2, sigY + 2.4);
 
   doc.setFillColor(248, 250, 252);
-  doc.roundedRect(sigX + 1.0, sigY + 3.2, sigW - 2.0, sigH - 4.2, 0.6, 0.6, 'F');
+  doc.roundedRect(sigX + 1.0, sigY + 3.1, sigW - 2.0, sigH - 3.9, 0.6, 0.6, 'F');
   doc.setDrawColor(226, 232, 240);
   doc.setLineWidth(0.12);
-  doc.roundedRect(sigX + 1.0, sigY + 3.2, sigW - 2.0, sigH - 4.2, 0.6, 0.6, 'S');
+  doc.roundedRect(sigX + 1.0, sigY + 3.1, sigW - 2.0, sigH - 3.9, 0.6, 0.6, 'S');
 
   const signatureData = await resolveSignatureDataUrl(school.signatureUrl);
   if (signatureData) {
     try {
       const fmt = signatureData.includes('image/png') ? 'PNG' : 'JPEG';
-      doc.addImage(signatureData, fmt, sigX + 2.0, sigY + 3.4, 25.0, sigH - 4.6);
+      doc.addImage(signatureData, fmt, sigX + 2.0, sigY + 3.3, 24.0, sigH - 4.3);
     } catch {
       doc.setFont('helvetica', 'italic');
-      doc.setFontSize(3.2);
+      doc.setFontSize(3.1);
       doc.setTextColor(100, 116, 139);
-      doc.text('Principal Signature', sigX + 2.5, sigY + 6.3);
+      doc.text('Principal Signature', sigX + 2.5, sigY + 6.1);
     }
   } else {
     doc.setFont('helvetica', 'italic');
-    doc.setFontSize(3.2);
+    doc.setFontSize(3.1);
     doc.setTextColor(100, 116, 139);
-    doc.text('Principal Signature', sigX + 2.5, sigY + 6.3);
+    doc.text('Principal Signature', sigX + 2.5, sigY + 6.1);
   }
 
-  // Right: Prominently Enlarged QR Code Box for Fast Gate Scanning
-  const qrBoxW = 28.0;
-  const qrBoxH = 34.0;
-  const qrBoxX = CARD_W - qrBoxW - 4.2;
-  const qrBoxY = 11.5;
+  // Right: QR Code Box Aligned with Signature Section & Scan to Verify Underneath
+  const qrBoxW = 25.5;
+  const qrBoxH = 30.2;
+  const qrBoxX = CARD_W - qrBoxW - 5.5;
+  const qrBoxY = 10.2;
 
   doc.setFillColor(255, 255, 255);
   doc.roundedRect(qrBoxX, qrBoxY, qrBoxW, qrBoxH, 1.2, 1.2, 'F');
@@ -461,9 +470,9 @@ async function drawAtmBack(
   doc.roundedRect(qrBoxX, qrBoxY, qrBoxW, qrBoxH, 1.2, 1.2, 'S');
 
   doc.setFont('helvetica', 'bold');
-  doc.setFontSize(2.2);
+  doc.setFontSize(2.1);
   doc.setTextColor(100, 116, 139);
-  doc.text('GATE SCAN QR', qrBoxX + qrBoxW / 2, qrBoxY + 3.0, { align: 'center' });
+  doc.text('GATE SCAN QR', qrBoxX + 2.0, qrBoxY + 2.8);
 
   try {
     const qrPayload = person.qrData || `MYEDURIDE:${person.kind === 'staff' ? 'STAFF:' : ''}${person.idNumber}`;
@@ -473,119 +482,113 @@ async function drawAtmBack(
       errorCorrectionLevel: 'M',
       color: { dark: '#000000', light: '#ffffff' },
     });
-    doc.addImage(qrDataUrl, 'PNG', qrBoxX + 2.0, qrBoxY + 4.2, qrBoxW - 4.0, qrBoxW - 4.0);
+    doc.addImage(qrDataUrl, 'PNG', qrBoxX + 2.0, qrBoxY + 3.6, qrBoxW - 4.0, qrBoxW - 4.0);
   } catch (err) {
     console.error('[pdf] Back QR code generation error:', err);
   }
 
   doc.setFillColor(209, 250, 229);
-  doc.roundedRect(qrBoxX + 3.0, qrBoxY + qrBoxH - 4.5, qrBoxW - 6.0, 3.2, 0.6, 0.6, 'F');
+  doc.roundedRect(qrBoxX + 2.2, qrBoxY + qrBoxH - 4.0, qrBoxW - 4.4, 2.8, 0.5, 0.5, 'F');
   doc.setFont('helvetica', 'bold');
-  doc.setFontSize(2.0);
+  doc.setFontSize(1.9);
   doc.setTextColor(4, 120, 87);
-  doc.text('SCAN TO VERIFY', qrBoxX + qrBoxW / 2, qrBoxY + qrBoxH - 2.2, { align: 'center' });
+  doc.text('SCAN TO VERIFY', qrBoxX + qrBoxW / 2, qrBoxY + qrBoxH - 2.1, { align: 'center' });
 
-  // 4. Middle Section: IN CASE OF EMERGENCY + VERIFIED Seal
+  // 4. Middle Section: IN CASE OF EMERGENCY (Close to Principal Signature Section)
   doc.setFont('helvetica', 'bold');
-  doc.setFontSize(2.6);
+  doc.setFontSize(2.5);
   doc.setTextColor(148, 163, 184);
-  doc.text('IN CASE OF EMERGENCY', 4.2, 24.0);
+  doc.text('IN CASE OF EMERGENCY', 5.5, 22.4);
 
   doc.setFont('helvetica', 'bold');
-  doc.setFontSize(2.3);
+  doc.setFontSize(2.2);
   doc.setTextColor(148, 163, 184);
-  doc.text('GUARDIAN', 4.2, 26.6);
+  doc.text('GUARDIAN', 5.5, 24.8);
   doc.setFont('helvetica', 'bold');
-  doc.setFontSize(3.8);
+  doc.setFontSize(3.5);
   doc.setTextColor(15, 23, 42);
-  doc.text(person.guardianName || 'Not Assigned', 4.2, 29.8, { maxWidth: 16 });
+  doc.text(person.guardianName || 'Not Assigned', 5.5, 27.6, { maxWidth: 15.5 });
 
   doc.setFont('helvetica', 'bold');
-  doc.setFontSize(2.3);
+  doc.setFontSize(2.2);
   doc.setTextColor(148, 163, 184);
-  doc.text('PHONE', 21.0, 26.6);
+  doc.text('PHONE', 21.5, 24.8);
   doc.setFont('courier', 'bold');
-  doc.setFontSize(3.8);
+  doc.setFontSize(3.5);
   doc.setTextColor(15, 23, 42);
-  doc.text(person.guardianPhone || 'Not Available', 21.0, 29.8);
+  doc.text(person.guardianPhone || 'Not Available', 21.5, 27.6);
 
   doc.setFont('helvetica', 'bold');
-  doc.setFontSize(2.3);
+  doc.setFontSize(2.2);
   doc.setTextColor(148, 163, 184);
-  doc.text('HOME STOP', 38.0, 26.6);
+  doc.text('HOME STOP', 37.8, 24.8);
   doc.setFont('helvetica', 'bold');
-  doc.setFontSize(3.8);
+  doc.setFontSize(3.5);
   doc.setTextColor(15, 23, 42);
-  doc.text(person.homeStop || 'Campus Gate', 38.0, 29.8, { maxWidth: 11 });
+  doc.text(person.homeStop || 'Campus Gate', 37.8, 27.6, { maxWidth: 14 });
 
-  // Circular VERIFIED Seal positioned alongside emergency details
-  const sealX = 50.5;
-  const sealY = 27.5;
-  doc.setFillColor(209, 250, 229);
-  doc.setDrawColor(52, 211, 153);
-  doc.setLineWidth(0.25);
-  doc.circle(sealX, sealY, 3.0, 'FD');
-
-  doc.setFont('helvetica', 'bold');
-  doc.setFontSize(1.8);
-  doc.setTextColor(4, 120, 87);
-  doc.text('VERIFIED', sealX, sealY + 0.6, { align: 'center' });
-
-  // 5. Bottom Section: Legal Disclaimer + Card ID + Brand Emblem
+  // 5. Legal Disclaimer ("If found..." Close to Emergency Info)
   doc.setFont('helvetica', 'normal');
-  doc.setFontSize(2.1);
+  doc.setFontSize(2.0);
   doc.setTextColor(100, 116, 139);
   const campusAddr = (school.locationAddress || school.address || '').trim();
   const phoneText = school.phone ? ` or call ${school.phone}` : '';
   const retText = campusAddr
     ? `If found, please return to ${school.name || 'the school'}, ${campusAddr}${phoneText}.`
     : `If found, please return to ${school.name || 'the school'}${phoneText}.`;
-  doc.text(retText, 4.2, 35.0, { maxWidth: qrBoxX - 6.0 });
+  doc.text(retText, 5.5, 31.4, { maxWidth: qrBoxX - 7.0 });
   doc.text(
     `This card is non-transferable and remains the property of ${school.name || 'the school'}.`,
-    4.2,
-    37.8,
-    { maxWidth: qrBoxX - 6.0 }
+    5.5,
+    33.8,
+    { maxWidth: qrBoxX - 7.0 }
   );
 
-  // Card ID Number
+  // 6. Card ID Number + School & MyEduRide Logos (Close to "If found" Section)
+  doc.setDrawColor(226, 232, 240);
+  doc.setLineWidth(0.15);
+  doc.line(5.5, 35.8, qrBoxX - 2.5, 35.8);
+
   doc.setFont('helvetica', 'bold');
-  doc.setFontSize(2.2);
+  doc.setFontSize(2.0);
   doc.setTextColor(148, 163, 184);
-  doc.text('CARD ID NUMBER', 4.2, 43.5);
+  doc.text('CARD ID NUMBER', 5.5, 38.0);
 
   doc.setFont('courier', 'bold');
-  doc.setFontSize(3.6);
+  doc.setFontSize(3.4);
   doc.setTextColor(15, 23, 42);
-  doc.text(formatCardNumber(person.idNumber), 4.2, 47.5);
+  doc.text(formatCardNumber(person.idNumber), 5.5, 41.0);
 
-  // School Crest (if available) + Brand Emblem (positioned to left of QR box)
+  // School Crest (if available) + Brand Emblem (positioned right below "If found" section)
   if (logoData) {
     try {
       const fmt = logoData.includes('image/png') ? 'PNG' : 'JPEG';
       doc.setFillColor(255, 255, 255);
-      doc.roundedRect(30.0, 42.5, 5.0, 5.0, 0.8, 0.8, 'F');
+      doc.roundedRect(30.5, 36.8, 4.8, 4.8, 0.8, 0.8, 'F');
       doc.setDrawColor(226, 232, 240);
       doc.setLineWidth(0.1);
-      doc.roundedRect(30.0, 42.5, 5.0, 5.0, 0.8, 0.8, 'S');
-      doc.addImage(logoData, fmt, 30.5, 43.0, 4.0, 4.0);
+      doc.roundedRect(30.5, 36.8, 4.8, 4.8, 0.8, 0.8, 'S');
+      doc.addImage(logoData, fmt, 30.9, 37.2, 4.0, 4.0);
     } catch {
       /* ignore */
     }
   }
 
   try {
-    const embX = logoData ? 36.5 : 30.0;
-    doc.addImage(EDURIDE_EMBLEM_DATA_URL, 'PNG', embX, 42.5, 5.0, 5.0);
+    const embX = logoData ? 36.5 : 30.5;
+    doc.addImage(EDURIDE_EMBLEM_DATA_URL, 'PNG', embX, 36.8, 4.6, 4.6);
 
     doc.setFont('helvetica', 'bold');
     doc.setFontSize(2.8);
     doc.setTextColor(12, 59, 94);
-    doc.text('MyEduRide', embX + 5.5, 44.8);
+    doc.text('MyEdu', embX + 5.2, 39.0);
+    const wEdu = doc.getTextWidth('MyEdu');
+    doc.setTextColor(5, 150, 105);
+    doc.text('Ride', embX + 5.2 + wEdu, 39.0);
 
     doc.setFontSize(1.4);
     doc.setTextColor(100, 116, 139);
-    doc.text('STUDENT SAFETY', embX + 5.5, 46.8);
+    doc.text('STUDENT SAFETY', embX + 5.2, 40.8);
   } catch {
     /* ignore */
   }
@@ -611,11 +614,11 @@ async function drawClassicFront(
   doc.setLineWidth(0.25);
   doc.roundedRect(0.8, 0.8, CARD_W - 1.6, CARD_H - 1.6, 2.0, 2.0, 'S');
 
-  // Top Header Banner
+  // Top Header Banner (Inset from edges)
   const classicLogoData = await resolveLogoDataUrl(school.logoUrl);
-  const logoBoxX = 4.5;
-  const logoBoxY = 2.5;
-  const logoBoxSize = 7.5;
+  const logoBoxX = 6.2;
+  const logoBoxY = 3.6;
+  const logoBoxSize = 7.2;
   doc.setFillColor(255, 255, 255);
   doc.roundedRect(logoBoxX, logoBoxY, logoBoxSize, logoBoxSize, 1.2, 1.2, 'F');
   if (classicLogoData) {
@@ -628,36 +631,36 @@ async function drawClassicFront(
   } else {
     drawSchoolLogoPlaceholder(doc, logoBoxX, logoBoxY, logoBoxSize, logoBoxSize);
   }
-  const textStartX = 13.5;
+  const textStartX = 14.8;
 
   doc.setFont('helvetica', 'bold');
-  doc.setFontSize(4.4);
+  doc.setFontSize(4.2);
   doc.setTextColor(255, 255, 255);
-  doc.text((school.name || 'MYEDURIDE SCHOOL').toUpperCase(), textStartX, 5.8, { maxWidth: CARD_W - textStartX - 28.0 });
+  doc.text((school.name || 'MYEDURIDE SCHOOL').toUpperCase(), textStartX, 6.7, { maxWidth: CARD_W - textStartX - 28.5 });
 
   doc.setFont('helvetica', 'normal');
   doc.setFontSize(2.4);
   doc.setTextColor(220, 230, 245);
-  doc.text(school.locationAddress || school.address || 'Student Safety Platform', textStartX, 9.0, { maxWidth: CARD_W - textStartX - 28.0 });
+  doc.text(school.locationAddress || school.address || 'Student Safety Platform', textStartX, 9.7, { maxWidth: CARD_W - textStartX - 28.5 });
 
   // Top Right Role Badge
   const badgeText = person.kind === 'staff' ? (person.roleLabel || 'STAFF ID').toUpperCase() : 'STUDENT ID';
   doc.setFillColor(255, 255, 255);
-  doc.roundedRect(CARD_W - 26.0, 3.2, 21.5, 4.5, 1.0, 1.0, 'F');
+  doc.roundedRect(CARD_W - 26.7, 4.2, 20.5, 4.5, 1.0, 1.0, 'F');
   doc.setFont('helvetica', 'bold');
-  doc.setFontSize(3.0);
+  doc.setFontSize(2.9);
   doc.setTextColor(15, 23, 42);
-  doc.text(badgeText, CARD_W - 15.25, 6.4, { align: 'center' });
+  doc.text(badgeText, CARD_W - 16.45, 7.3, { align: 'center' });
 
   doc.setDrawColor(255, 255, 255);
   doc.setLineWidth(0.2);
-  doc.line(4.5, 11.2, CARD_W - 4.5, 11.2);
+  doc.line(6.2, 12.0, CARD_W - 6.2, 12.0);
 
-  // Enlarged Photo Box (Classic dimensions: 24.5mm x 31.0mm)
-  const photoW = 24.5;
+  // Enlarged Photo Box Shifted Inward (Classic dimensions: 25.0mm x 31.0mm)
+  const photoW = 25.0;
   const photoH = 31.0;
-  const photoX = 4.5;
-  const photoY = 13.0;
+  const photoX = 6.8;
+  const photoY = 13.4;
 
   doc.setFillColor(255, 255, 255);
   doc.roundedRect(photoX, photoY, photoW, photoH, 1.5, 1.5, 'F');
@@ -678,24 +681,24 @@ async function drawClassicFront(
   }
 
   // Details Column
-  const detailX = 31.5;
+  const detailX = 33.8;
   doc.setFont('helvetica', 'bold');
   doc.setFontSize(2.6);
   doc.setTextColor(190, 210, 235);
-  doc.text('FULL NAME', detailX, 16.5);
+  doc.text('FULL NAME', detailX, 17.5);
   doc.setFont('helvetica', 'bold');
-  doc.setFontSize(4.8);
+  doc.setFontSize(4.6);
   doc.setTextColor(255, 255, 255);
-  doc.text(person.fullName.toUpperCase(), detailX, 20.5, { maxWidth: 26.5 });
+  doc.text(person.fullName.toUpperCase(), detailX, 21.5, { maxWidth: 23.0 });
 
   doc.setFont('helvetica', 'bold');
   doc.setFontSize(2.6);
   doc.setTextColor(190, 210, 235);
-  doc.text('ID NUMBER', detailX, 25.5);
+  doc.text('ID NUMBER', detailX, 26.5);
   doc.setFont('courier', 'bold');
-  doc.setFontSize(4.8);
+  doc.setFontSize(4.6);
   doc.setTextColor(110, 231, 183);
-  doc.text(person.idNumber.toUpperCase(), detailX, 29.5);
+  doc.text(person.idNumber.toUpperCase(), detailX, 30.5);
 
   if (person.kind !== 'student') {
     const subLabel = 'ROLE / POSITION';
@@ -703,18 +706,18 @@ async function drawClassicFront(
     doc.setFont('helvetica', 'bold');
     doc.setFontSize(2.6);
     doc.setTextColor(190, 210, 235);
-    doc.text(subLabel, detailX, 34.5);
+    doc.text(subLabel, detailX, 35.5);
     doc.setFont('helvetica', 'bold');
-    doc.setFontSize(4.2);
+    doc.setFontSize(4.0);
     doc.setTextColor(255, 255, 255);
-    doc.text(subValue.toUpperCase(), detailX, 38.5, { maxWidth: 26.5 });
+    doc.text(subValue.toUpperCase(), detailX, 39.5, { maxWidth: 23.0 });
   }
 
-  // QR Code Box (Classic Right Side - Prominently Enlarged)
-  const qrBoxW = 23.5;
-  const qrBoxH = 23.5;
-  const qrBoxX = CARD_W - qrBoxW - 4.5;
-  const qrBoxY = 15.0;
+  // QR Code Box (Classic Right Side - Shifted Inward)
+  const qrBoxW = 22.0;
+  const qrBoxH = 22.0;
+  const qrBoxX = CARD_W - qrBoxW - 6.8;
+  const qrBoxY = 15.5;
 
   doc.setFillColor(255, 255, 255);
   doc.roundedRect(qrBoxX, qrBoxY, qrBoxW, qrBoxH, 1.5, 1.5, 'F');
@@ -738,18 +741,18 @@ async function drawClassicFront(
   doc.setFont('helvetica', 'bold');
   doc.setFontSize(2.5);
   doc.setTextColor(220, 235, 255);
-  doc.text('Gate Scannable', qrBoxX + qrBoxW / 2, qrBoxY + qrBoxH + 3.2, { align: 'center' });
+  doc.text('Gate Scannable', qrBoxX + qrBoxW / 2, qrBoxY + qrBoxH + 3.0, { align: 'center' });
 
-  // Footer Verification Bar
+  // Footer Verification Bar (Inset from bottom & side edges)
   doc.setDrawColor(255, 255, 255);
   doc.setLineWidth(0.2);
-  doc.line(4.5, CARD_H - 7.5, CARD_W - 4.5, CARD_H - 7.5);
+  doc.line(6.2, CARD_H - 8.2, CARD_W - 6.2, CARD_H - 8.2);
 
   doc.setFont('courier', 'bold');
   doc.setFontSize(2.8);
   doc.setTextColor(210, 230, 250);
-  doc.text('DISCL Gate Verified', 4.5, CARD_H - 4.2);
-  doc.text('MyEduRide Protection Network', CARD_W - 4.5, CARD_H - 4.2, { align: 'right' });
+  doc.text('DISCL Gate Verified', 6.2, CARD_H - 4.8);
+  doc.text('MyEduRide Protection Network', CARD_W - 6.2, CARD_H - 4.8, { align: 'right' });
 }
 
 async function drawClassicBack(
