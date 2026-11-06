@@ -187,13 +187,6 @@ async function drawAtmFront(
   doc.setFillColor(navy[0], navy[1], navy[2]);
   doc.triangle(0, 0, CARD_W * 0.9, 0, 0, CARD_H * 0.9, 'F');
 
-  // Subtle concentric radar contour ripples on the right side ONLY (clean background, no lines across chip/name)
-  doc.setDrawColor(20, 95, 125);
-  doc.setLineWidth(0.12);
-  doc.circle(CARD_W - 14.0, 26.0, 16.0, 'S');
-  doc.circle(CARD_W - 14.0, 26.0, 23.0, 'S');
-  doc.circle(CARD_W - 14.0, 26.0, 31.0, 'S');
-
   // Fine outer card rim
   doc.setDrawColor(255, 255, 255);
   doc.setLineWidth(0.2);
@@ -202,51 +195,50 @@ async function drawAtmFront(
   // 2. TOP HEADER ROW (Inset from edges):
   // Left: Clean UI/UX MyEduRide Brand Badge Pill
   doc.setFillColor(255, 255, 255);
-  doc.roundedRect(6.5, 4.0, 25.8, 6.4, 1.4, 1.4, 'F');
+  doc.roundedRect(6.0, 4.0, 25.8, 6.6, 1.4, 1.4, 'F');
 
   // Subtle inner icon container
   doc.setFillColor(248, 250, 252);
   doc.setDrawColor(226, 232, 240);
   doc.setLineWidth(0.15);
-  doc.roundedRect(7.1, 4.6, 5.2, 5.2, 0.9, 0.9, 'FD');
+  doc.roundedRect(6.6, 4.7, 5.2, 5.2, 0.9, 0.9, 'FD');
 
   try {
-    doc.addImage(EDURIDE_EMBLEM_DATA_URL, 'PNG', 7.3, 4.8, 4.8, 4.8);
+    doc.addImage(EDURIDE_EMBLEM_DATA_URL, 'PNG', 6.8, 4.9, 4.8, 4.8);
   } catch {
     doc.setFillColor(245, 158, 11);
-    doc.roundedRect(7.3, 4.8, 4.8, 4.8, 0.8, 0.8, 'F');
+    doc.roundedRect(6.8, 4.9, 4.8, 4.8, 0.8, 0.8, 'F');
   }
 
   doc.setFont('helvetica', 'bold');
   doc.setFontSize(5.2);
   doc.setTextColor(12, 59, 94);
-  doc.text('MyEdu', 13.0, 6.9);
+  doc.text('MyEdu', 12.5, 7.0);
   const myEduW = doc.getTextWidth('MyEdu');
   doc.setTextColor(5, 150, 105);
-  doc.text('Ride', 13.0 + myEduW, 6.9);
+  doc.text('Ride', 12.5 + myEduW, 7.0);
 
   doc.setFont('helvetica', 'bold');
   doc.setFontSize(1.85);
   doc.setTextColor(100, 116, 139);
-  doc.text('THE STUDENT SAFETY PLATFORM', 13.0, 9.0);
+  doc.text('THE STUDENT SAFETY PLATFORM', 12.5, 9.1);
 
-  // Opposite Right: School Crest Badge + School Name + Address + Contactless Wave
-  // Wave symbol inset from right edge
-  drawContactlessWave(doc, CARD_W - 8.0, 7.3);
+  // Opposite Right: Enlarged School Crest Badge + School Name + Address + Contactless Wave
+  drawContactlessWave(doc, CARD_W - 7.5, 7.5);
 
-  // School crest badge
-  const crestW = 6.0;
-  const crestH = 6.0;
-  const crestX = 33.8;
-  const crestY = 4.2;
+  // Enlarged School crest badge (7.8mm x 7.8mm)
+  const crestW = 7.8;
+  const crestH = 7.8;
+  const crestX = 34.0;
+  const crestY = 3.6;
   doc.setFillColor(255, 255, 255);
-  doc.roundedRect(crestX, crestY, crestW, crestH, 1.0, 1.0, 'F');
+  doc.roundedRect(crestX, crestY, crestW, crestH, 1.2, 1.2, 'F');
 
   const logoData = await resolveLogoDataUrl(school.logoUrl);
   if (logoData) {
     try {
       const fmt = logoData.includes('image/png') ? 'PNG' : 'JPEG';
-      doc.addImage(logoData, fmt, crestX + 0.4, crestY + 0.4, crestW - 0.8, crestH - 0.8);
+      doc.addImage(logoData, fmt, crestX + 0.45, crestY + 0.45, crestW - 0.9, crestH - 0.9);
     } catch {
       drawSchoolLogoPlaceholder(doc, crestX, crestY, crestW, crestH);
     }
@@ -254,42 +246,52 @@ async function drawAtmFront(
     drawSchoolLogoPlaceholder(doc, crestX, crestY, crestW, crestH);
   }
 
-  // School Name (bold, clear) and Address (clean, distinct)
-  const headerTextX = crestX + crestW + 1.6;
-  const headerMaxW = CARD_W - 10.5 - headerTextX;
+  // School Name (bold, clear) and Address (clean, left-aligned next to logo)
+  const headerTextX = crestX + crestW + 1.8;
+  const headerMaxW = CARD_W - 10.0 - headerTextX;
 
   doc.setFont('helvetica', 'bold');
-  doc.setFontSize(4.2);
-  doc.setTextColor(245, 250, 255);
+  doc.setFontSize(4.4);
+  doc.setTextColor(255, 255, 255);
   const schoolTitle = (school.name || 'MYEDURIDE PARTNER SCHOOL').toUpperCase();
-  doc.text(schoolTitle, headerTextX, 6.9, { maxWidth: headerMaxW });
+  doc.text(schoolTitle, headerTextX, 6.8, { maxWidth: headerMaxW });
 
   const schoolAddr = (school.locationAddress || school.address || '').trim();
-  doc.setFont('helvetica', 'normal');
-  doc.setFontSize(2.5);
-  doc.setTextColor(203, 213, 225);
-  doc.text(schoolAddr || 'Main Campus Gate', headerTextX, 9.4, { maxWidth: headerMaxW });
+  doc.setFont('helvetica', 'bold');
+  doc.setFontSize(2.6);
+  doc.setTextColor(224, 242, 254);
+  doc.text(schoolAddr || 'Main Campus Gate', headerTextX, 9.6, { maxWidth: headerMaxW });
 
-  // 3. Middle Row: Metallic Gold EMV Chip (Inset from left edge & pulled up)
-  const chipX = 6.8;
-  const chipY = 12.2;
-  const chipW = 11.0;
-  const chipH = 8.4;
+  // 3. Left Column Top: Metallic Gold EMV Chip (Evenly Spread)
+  const chipX = 6.5;
+  const chipY = 14.2;
+  const chipW = 11.2;
+  const chipH = 8.6;
   drawEmvChip(doc, chipX, chipY, chipW, chipH);
 
-  // 4. Enlarged Passport Photograph Frame Shifted Inside with Orbit Arc & Satellite Dots
-  const photoW = 22.5;
-  const photoH = 25.0;
-  const photoX = CARD_W - photoW - 12.5;
-  const photoY = 11.8;
+  // 4. Right Column: Student Photo Seated Dead-Center Inside Concentric Radar & Orbit Circle
+  const photoW = 19.8;
+  const photoH = 22.2;
+  const photoX = CARD_W - photoW - 9.8;
+  const photoY = 14.6;
 
-  // Decorative Orbit Arc (Curves cleanly around top-right & bottom-left corners outside the photo frame)
+  // Concentric Radar & Orbit Circles Centered Exactly at (arcCx, arcCy) of the Photo
   const arcCx = photoX + photoW / 2;
   const arcCy = photoY + photoH / 2;
-  const arcR = 17.6;
-  const startAngle = -Math.PI * 0.42; // top-right start
-  const endAngle = -Math.PI * 0.08; // top-right end
-  const steps = 16;
+  const arcR = 15.2; // > photo corner distance (14.1mm), so photo sits 100% inside the circle
+
+  doc.setDrawColor(25, 110, 145);
+  doc.setLineWidth(0.14);
+  doc.circle(arcCx, arcCy, 25.0, 'S');
+  doc.circle(arcCx, arcCy, 20.0, 'S');
+  doc.setDrawColor(180, 225, 240);
+  doc.setLineWidth(0.16);
+  doc.circle(arcCx, arcCy, arcR, 'S');
+
+  // Glowing Emerald Orbit Arcs Along the Circle Outside the Photo Frame
+  const startAngle = -Math.PI * 0.72;
+  const endAngle = -Math.PI * 0.08;
+  const steps = 20;
 
   doc.setDrawColor(74, 222, 128); // #4ADE80
   doc.setLineWidth(0.45);
@@ -304,19 +306,17 @@ async function drawAtmFront(
     prevY = curY;
   }
 
-  // Top-Right Gold Satellite Dot (Outside photo top-right corner)
+  // Gold Satellite Dots Seated on the Orbit Circle
   doc.setFillColor(251, 191, 36);
-  doc.circle(arcCx + arcR * Math.cos(-Math.PI * 0.22), arcCy + arcR * Math.sin(-Math.PI * 0.22), 0.95, 'F');
+  doc.circle(arcCx + arcR * Math.cos(-Math.PI * 0.22), arcCy + arcR * Math.sin(-Math.PI * 0.22), 0.9, 'F');
+  doc.circle(arcCx + arcR * Math.cos(Math.PI * 0.88), arcCy + arcR * Math.sin(Math.PI * 0.88), 0.75, 'F');
 
-  // Bottom-Left Gold Accent Dot (Outside photo bottom-left corner)
-  doc.circle(photoX - 1.4, photoY + photoH - 4.5, 0.75, 'F');
-
-  // White Photo Box
+  // White Photo Box Seated Inside the Circle
   doc.setFillColor(255, 255, 255);
-  doc.roundedRect(photoX, photoY, photoW, photoH, 1.4, 1.4, 'F');
+  doc.roundedRect(photoX, photoY, photoW, photoH, 1.6, 1.6, 'F');
   doc.setDrawColor(255, 255, 255);
   doc.setLineWidth(0.4);
-  doc.roundedRect(photoX, photoY, photoW, photoH, 1.4, 1.4, 'S');
+  doc.roundedRect(photoX, photoY, photoW, photoH, 1.6, 1.6, 'S');
 
   const photoData = await resolvePhotoDataUrl(person);
   if (photoData) {
@@ -330,37 +330,37 @@ async function drawAtmFront(
     drawPhotoPlaceholder(doc, photoX, photoY, photoW, photoH);
   }
 
-  // 5. Card Number, Cardholder Name & Accent Line (Pulled up & inset from left edge)
+  // 5. Left Column Middle: Card Number, Cardholder Name & Accent Line (Evenly Spread)
   const formattedCardNumber = formatCardNumber(person.idNumber);
-  const numY = 25.2;
+  const numY = 29.5;
 
   // Embossed Number with shadow
   doc.setFont('courier', 'bold');
-  doc.setFontSize(7.2);
+  doc.setFontSize(7.4);
   doc.setTextColor(10, 20, 30);
-  doc.text(formattedCardNumber, 6.9, numY + 0.2);
+  doc.text(formattedCardNumber, 6.6, numY + 0.2);
   doc.setTextColor(255, 255, 255);
-  doc.text(formattedCardNumber, 6.8, numY);
+  doc.text(formattedCardNumber, 6.5, numY);
 
   // Cardholder Full Name
   doc.setFont('helvetica', 'bold');
-  doc.setFontSize(5.4);
+  doc.setFontSize(5.6);
   doc.setTextColor(255, 255, 255);
-  doc.text(person.fullName.toUpperCase(), 6.8, 29.2, { maxWidth: photoX - 8.5 });
+  doc.text(person.fullName.toUpperCase(), 6.5, 34.2, { maxWidth: photoX - 9.0 });
 
   // Gold accent line
   doc.setFillColor(251, 191, 36);
-  doc.roundedRect(6.8, 30.5, 9.0, 0.55, 0.25, 0.25, 'F');
+  doc.roundedRect(6.5, 35.8, 10.0, 0.55, 0.25, 0.25, 'F');
 
-  // 6. Bottom Metadata Row (Pulled up well above bottom edge & inset from left/right edges)
+  // 6. Bottom Row: Valid Thru (Left) & Transport Active Pill (Right) Aligned on Same Baseline
   doc.setFont('helvetica', 'bold');
   doc.setFontSize(2.4);
   doc.setTextColor(203, 213, 225);
-  doc.text('VALID THRU', 6.8, 35.5);
+  doc.text('VALID THRU', 6.5, 42.4);
   doc.setFont('courier', 'bold');
-  doc.setFontSize(4.4);
+  doc.setFontSize(4.6);
   doc.setTextColor(255, 255, 255);
-  doc.text(person.validThru || '07/27', 6.8, 38.8);
+  doc.text(person.validThru || '07/27', 6.5, 45.8);
 
   if (person.kind !== 'student') {
     const roleLabel = person.kind === 'staff' ? 'ROLE · DEPT' : 'DESIGNATION';
@@ -368,18 +368,18 @@ async function drawAtmFront(
     doc.setFont('helvetica', 'bold');
     doc.setFontSize(2.4);
     doc.setTextColor(203, 213, 225);
-    doc.text(roleLabel, 19.8, 35.5);
+    doc.text(roleLabel, 19.8, 42.4);
     doc.setFont('helvetica', 'bold');
     doc.setFontSize(4.4);
     doc.setTextColor(255, 255, 255);
-    doc.text(roleVal.toUpperCase(), 19.8, 38.8, { maxWidth: 26 });
+    doc.text(roleVal.toUpperCase(), 19.8, 45.8, { maxWidth: 26 });
   }
 
-  // Status Pill Badge: TRANSPORT ACTIVE (Centered under photo & pulled up away from bottom edge)
-  const statusPillW = 25.5;
+  // Status Pill Badge: TRANSPORT ACTIVE (Centered under photo & aligned with VALID THRU baseline)
+  const statusPillW = 25.0;
   const statusPillH = 4.2;
   const statusPillX = photoX + (photoW - statusPillW) / 2;
-  const statusPillY = 38.2;
+  const statusPillY = 42.2;
 
   doc.setFillColor(16, 120, 68);
   doc.setDrawColor(52, 211, 153);
@@ -496,13 +496,13 @@ async function drawAtmBack(
 
   // 4. Middle Section: IN CASE OF EMERGENCY (Close to Principal Signature Section)
   doc.setFont('helvetica', 'bold');
-  doc.setFontSize(2.5);
-  doc.setTextColor(148, 163, 184);
+  doc.setFontSize(2.7);
+  doc.setTextColor(4, 120, 87);
   doc.text('IN CASE OF EMERGENCY', 5.5, 22.4);
 
   doc.setFont('helvetica', 'bold');
-  doc.setFontSize(2.2);
-  doc.setTextColor(148, 163, 184);
+  doc.setFontSize(2.4);
+  doc.setTextColor(71, 85, 105);
   doc.text('GUARDIAN', 5.5, 24.8);
   doc.setFont('helvetica', 'bold');
   doc.setFontSize(3.5);
@@ -510,8 +510,8 @@ async function drawAtmBack(
   doc.text(person.guardianName || 'Not Assigned', 5.5, 27.6, { maxWidth: 15.5 });
 
   doc.setFont('helvetica', 'bold');
-  doc.setFontSize(2.2);
-  doc.setTextColor(148, 163, 184);
+  doc.setFontSize(2.4);
+  doc.setTextColor(71, 85, 105);
   doc.text('PHONE', 21.5, 24.8);
   doc.setFont('courier', 'bold');
   doc.setFontSize(3.5);
@@ -519,8 +519,8 @@ async function drawAtmBack(
   doc.text(person.guardianPhone || 'Not Available', 21.5, 27.6);
 
   doc.setFont('helvetica', 'bold');
-  doc.setFontSize(2.2);
-  doc.setTextColor(148, 163, 184);
+  doc.setFontSize(2.4);
+  doc.setTextColor(71, 85, 105);
   doc.text('HOME STOP', 37.8, 24.8);
   doc.setFont('helvetica', 'bold');
   doc.setFontSize(3.5);
@@ -528,14 +528,10 @@ async function drawAtmBack(
   doc.text(person.homeStop || 'Campus Gate', 37.8, 27.6, { maxWidth: 14 });
 
   // 5. Legal Disclaimer ("If found..." Close to Emergency Info)
-  doc.setFont('helvetica', 'normal');
-  doc.setFontSize(2.0);
-  doc.setTextColor(100, 116, 139);
-  const campusAddr = (school.locationAddress || school.address || '').trim();
-  const phoneText = school.phone ? ` or call ${school.phone}` : '';
-  const retText = campusAddr
-    ? `If found, please return to ${school.name || 'the school'}, ${campusAddr}${phoneText}.`
-    : `If found, please return to ${school.name || 'the school'}${phoneText}.`;
+  doc.setFont('helvetica', 'bold');
+  doc.setFontSize(2.4);
+  doc.setTextColor(30, 41, 59);
+  const retText = 'If found, please return or call this number 09155034698.';
   doc.text(retText, 5.5, 31.4, { maxWidth: qrBoxX - 7.0 });
   doc.text(
     `This card is non-transferable and remains the property of ${school.name || 'the school'}.`,
@@ -550,12 +546,12 @@ async function drawAtmBack(
   doc.line(5.5, 35.8, qrBoxX - 2.5, 35.8);
 
   doc.setFont('helvetica', 'bold');
-  doc.setFontSize(2.0);
-  doc.setTextColor(148, 163, 184);
+  doc.setFontSize(2.4);
+  doc.setTextColor(71, 85, 105);
   doc.text('CARD ID NUMBER', 5.5, 38.0);
 
   doc.setFont('courier', 'bold');
-  doc.setFontSize(3.4);
+  doc.setFontSize(3.8);
   doc.setTextColor(15, 23, 42);
   doc.text(formatCardNumber(person.idNumber), 5.5, 41.0);
 

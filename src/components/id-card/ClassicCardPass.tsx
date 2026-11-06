@@ -123,13 +123,17 @@ export default function ClassicCardPass({
       <div className="flex items-center justify-between border-b border-white/20 pb-2 gap-2">
         <div className="flex items-center gap-2.5 max-w-[74%] min-w-0">
           {hasLogo ? (
-            <div className="w-10 h-10 sm:w-11 sm:h-11 rounded-xl bg-white p-1 shadow-md border border-white/40 shrink-0 flex items-center justify-center overflow-hidden">
+            <div
+              className="rounded-xl bg-white p-1 shadow-md border border-white/40 shrink-0 flex items-center justify-center overflow-hidden"
+              style={{ width: '42px', height: '42px', minWidth: '42px', maxWidth: '42px', minHeight: '42px', maxHeight: '42px' }}
+            >
               {/* eslint-disable-next-line @next/next/no-img-element */}
               <img
                 src={rawLogo!}
                 crossOrigin="anonymous"
                 alt={schoolName}
                 className="w-full h-full object-contain"
+                style={{ width: '100%', height: '100%', maxWidth: '34px', maxHeight: '34px', objectFit: 'contain' }}
                 onError={handleLogoImgError}
               />
             </div>
@@ -161,7 +165,10 @@ export default function ClassicCardPass({
       {/* Main Row: Photo, Details, QR */}
       <div className="flex items-center justify-between gap-3 sm:gap-4 py-1 px-1 sm:px-2">
         {/* Photo Box - Enlarged and shifted inward */}
-        <div className="w-[88px] h-[110px] sm:w-[98px] sm:h-[122px] bg-white rounded-2xl p-1 shadow-lg shrink-0 border border-white/40 overflow-hidden flex items-center justify-center">
+        <div
+          className="bg-white rounded-2xl p-1 shadow-lg shrink-0 border border-white/40 overflow-hidden flex items-center justify-center"
+          style={{ width: '94px', height: '116px', minWidth: '94px', maxWidth: '94px', minHeight: '116px', maxHeight: '116px' }}
+        >
           {photoUrl ? (
             /* eslint-disable-next-line @next/next/no-img-element */
             <img
@@ -169,6 +176,7 @@ export default function ClassicCardPass({
               crossOrigin="anonymous"
               alt={cardholderName}
               className="w-full h-full object-cover rounded-xl"
+              style={{ width: '100%', height: '100%', objectFit: 'cover' }}
             />
           ) : (
             <StudentAvatar
@@ -218,10 +226,19 @@ export default function ClassicCardPass({
 
         {/* QR Code - Enlarged Gate Scannable QR */}
         <div className="flex flex-col items-center shrink-0">
-          <div className="w-[84px] h-[84px] sm:w-[98px] sm:h-[98px] bg-white rounded-2xl p-1.5 shadow-lg flex items-center justify-center border border-white/40 overflow-hidden shrink-0">
+          <div
+            className="bg-white rounded-2xl p-1.5 shadow-lg flex items-center justify-center border border-white/40 overflow-hidden shrink-0"
+            style={{ width: '92px', height: '92px', minWidth: '92px', maxWidth: '92px', minHeight: '92px', maxHeight: '92px' }}
+          >
             {qrUrl ? (
               /* eslint-disable-next-line @next/next/no-img-element */
-              <img src={qrUrl} crossOrigin="anonymous" alt="Gate QR" className="w-full h-full object-contain" />
+              <img
+                src={qrUrl}
+                crossOrigin="anonymous"
+                alt="Gate QR"
+                className="w-full h-full object-contain"
+                style={{ width: '100%', height: '100%', objectFit: 'contain' }}
+              />
             ) : (
               <div className="w-full h-full bg-slate-900 rounded-xl flex items-center justify-center text-white text-[9px] font-mono">
                 QR CODE
