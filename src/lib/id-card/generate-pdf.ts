@@ -861,7 +861,8 @@ async function drawClassicBack(
   doc.setFont('helvetica', 'normal');
   doc.setFontSize(2.4);
   doc.setTextColor(51, 65, 85);
-  const retMsg = `Please return to ${school.name || 'the school'} or call ${school.phone || '+234 800 000 0001'}.`;
+  const retPhone = school.phone && !school.phone.includes('800 000 0001') ? school.phone : '09155034698';
+  const retMsg = `Please return to ${school.name || 'the school'} or call ${retPhone}.`;
   doc.text(doc.splitTextToSize(retMsg, boxW - 3.0), 4.5 + boxW + 4.5, boxY + 6.5);
 
   // Bold Code 128 Barcode at bottom for gate & escort quick scan

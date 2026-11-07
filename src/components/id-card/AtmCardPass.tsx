@@ -284,11 +284,11 @@ export default function AtmCardPass({
             </div>
           )}
 
-          <div className="min-w-0 text-left">
-            <div className="text-[10px] sm:text-xs font-black text-white tracking-wider uppercase leading-tight max-w-[170px] sm:max-w-[205px] truncate drop-shadow-xs">
+          <div className="min-w-0 text-left flex-1 max-w-[180px] sm:max-w-[220px]">
+            <div className="text-[9.5px] sm:text-[11px] font-black text-white tracking-wide uppercase leading-tight break-words drop-shadow-xs">
               {activeSchool}
             </div>
-            <div className="text-[7.5px] sm:text-[8.5px] text-sky-100/90 font-semibold leading-tight max-w-[180px] sm:max-w-[215px] truncate mt-1">
+            <div className="text-[7px] sm:text-[8px] text-sky-100/90 font-semibold leading-tight truncate mt-0.5">
               📍 {schoolAddress || 'Official School Campus Address'}
             </div>
           </div>
@@ -318,7 +318,7 @@ export default function AtmCardPass({
         <div className="flex flex-col justify-between min-w-0 flex-1 py-0.5">
           {/* Top: Metallic Gold EMV Chip */}
           <div>
-            <AtmChip size="md" />
+            <AtmChip size="lg" />
           </div>
 
           {/* Middle: Embossed Card Number, Cardholder Full Name & Accent Line */}
@@ -549,12 +549,14 @@ export default function AtmCardPass({
           </div>
 
           {/* 3. Legal Disclaimer ("If found..." Close to Emergency Contacts) */}
-          <div className="mt-2.5 sm:mt-3 text-[6.5px] sm:text-[7px] font-bold text-slate-800 leading-tight space-y-0.5">
+          <div className="mt-2 sm:mt-2.5 text-[6.5px] sm:text-[7px] font-bold text-slate-800 leading-tight space-y-0.5">
             <p className="truncate">
               If found, please return or call this number{' '}
               <span className="font-mono font-black text-slate-900">{returnPhone}</span>.
             </p>
-            <p className="truncate">This card is non-transferable and remains the property of {activeSchool}.</p>
+            <p className="break-words leading-tight">
+              This card is non-transferable and remains the property of {activeSchool}.
+            </p>
           </div>
 
           {/* 4. Card ID Number + School & MyEduRide Logos (Close to "If found" Section) */}

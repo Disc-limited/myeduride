@@ -4,7 +4,7 @@ import React from 'react';
 
 interface AtmChipProps {
   className?: string;
-  size?: 'sm' | 'md' | 'lg';
+  size?: 'sm' | 'md' | 'lg' | 'xl';
 }
 
 /**
@@ -15,8 +15,10 @@ export default function AtmChip({ className = '', size = 'md' }: AtmChipProps) {
   const dimensions =
     size === 'sm'
       ? { width: 34, height: 26 }
+      : size === 'xl'
+      ? { width: 58, height: 44 }
       : size === 'lg'
-      ? { width: 50, height: 38 }
+      ? { width: 52, height: 40 }
       : { width: 44, height: 34 };
 
   return (

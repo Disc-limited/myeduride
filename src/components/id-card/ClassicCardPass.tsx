@@ -38,7 +38,7 @@ export default function ClassicCardPass({
   schoolName = 'MYEDURIDE PARTNER SCHOOL',
   schoolAddress,
   schoolLandmark,
-  schoolPhone = '+234 800 000 0001',
+  schoolPhone = '09155034698',
   logoUrl,
   classNameOrRole,
   gradeSection,
@@ -355,7 +355,7 @@ export default function ClassicCardPass({
             Please return to the campus address or call the safety hotline.
           </p>
           <span className="text-[7.5px] font-mono font-bold text-emerald-700 truncate">
-            {schoolPhone}
+            09155034698
           </span>
         </div>
       </div>

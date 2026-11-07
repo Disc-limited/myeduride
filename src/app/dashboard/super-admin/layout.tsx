@@ -8,6 +8,8 @@ import UnderDevelopment from '@/components/super-admin/UnderDevelopment';
 import ParentsManagementView from '@/components/super-admin/ParentsManagementView';
 import SchoolsManagementView from '@/components/super-admin/SchoolsManagementView';
 import StudentsDirectoryView from '@/components/super-admin/StudentsDirectoryView';
+import FinancialCentreView from '@/components/super-admin/FinancialCentreView';
+import WalletAdminView from '@/components/super-admin/WalletAdminView';
 
 const VIEW_TITLES: Record<string, string> = {
   'school-escorts': 'School Escorts',
@@ -43,20 +45,24 @@ export default function SuperAdminLayout({ children }: { children: React.ReactNo
 
   return (
     <RouteGuard requiredRole="super_admin">
-      <div className="flex min-h-screen bg-slate-50 font-sans antialiased text-slate-900">
+      <div className="flex min-h-screen bg-slate-50 font-sans antialiased text-slate-900 w-full overflow-x-hidden">
         {/* Left Sidebar */}
         <SuperAdminSidebar />
 
         {/* Main Content Area */}
-        <div className="flex-1 md:ml-60 flex flex-col min-h-screen">
+        <div className="flex-1 md:ml-60 flex flex-col min-h-screen min-w-0 w-full overflow-x-hidden">
           <SuperAdminHeader />
-          <main className="flex-1 p-4 sm:p-6 lg:p-8 w-full max-w-full mx-auto">
+          <main className="flex-1 p-3 sm:p-6 lg:p-8 w-full max-w-full mx-auto min-w-0">
             {currentView === 'parents' ? (
               <ParentsManagementView />
             ) : currentView === 'schools' ? (
               <SchoolsManagementView />
             ) : currentView === 'students' ? (
               <StudentsDirectoryView />
+            ) : currentView === 'financial-centre' ? (
+              <FinancialCentreView />
+            ) : currentView === 'wallet-admin' ? (
+              <WalletAdminView />
             ) : isUnderDevView ? (
               <UnderDevelopment
                 title={VIEW_TITLES[currentView] || 'Module'}

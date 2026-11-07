@@ -66,7 +66,7 @@ export default function SuperAdminHeader({ onSearchChange, searchQuery = '' }: S
   };
 
   return (
-    <header className="bg-white border-b border-slate-200/80 sticky top-0 z-30 px-4 py-3 flex items-center justify-between gap-4 shadow-sm">
+    <header className="bg-white border-b border-slate-200/80 sticky top-0 z-20 px-4 py-3 flex items-center justify-between gap-4 shadow-sm w-full min-w-0">
       {/* Left Title / Badge */}
       <div className="flex items-center gap-3">
         <div className="flex items-center gap-2.5 bg-emerald-50 text-emerald-800 border border-emerald-200/60 px-3 py-1.5 rounded-xl shadow-xs">
