@@ -12,9 +12,20 @@ export function isNativePlatform(): boolean {
   if (typeof window === 'undefined') return false;
   // Check Capacitor global or userAgent markers
   const cap = (window as any).Capacitor;
-  if (cap && typeof cap.isNativePlatform === 'function') {
-    return cap.isNativePlatform();
+  if (cap) {
+    if (typeof cap.isNativePlatform === 'function' && cap.isNativePlatform()) {
+      return true;
+    }
+    if (cap.platform && cap.platform !== 'web') {
+      return true;
+    }
   }
+
+  const ua = navigator.userAgent || '';
+  if (ua.includes('MyEduRideApp') || ua.includes('Capacitor')) {
+    return true;
+  }
+
   return false;
 }
 

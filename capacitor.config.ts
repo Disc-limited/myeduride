@@ -6,7 +6,7 @@ const config: CapacitorConfig = {
   webDir: 'public',
   server: {
     // Live Cloud Server URL (updates automatically on git push)
-    url: process.env.CAPACITOR_SERVER_URL || 'https://www.myeduride.com',
+    url: process.env.CAPACITOR_SERVER_URL || 'https://www.myeduride.com/auth/login',
     cleartext: true,
     allowNavigation: [
       'myeduride.com',
@@ -32,11 +32,13 @@ const config: CapacitorConfig = {
     allowMixedContent: true,
     captureInput: true,
     webContentsDebuggingEnabled: true,
+    appendUserAgent: 'MyEduRideApp/Capacitor',
   },
   ios: {
     contentInset: 'always',
     allowsLinkPreview: false,
     scrollEnabled: true,
+    appendUserAgent: 'MyEduRideApp/Capacitor',
   },
 };
 

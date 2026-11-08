@@ -1,9 +1,11 @@
 'use client';
 
 import { useState, useEffect } from 'react';
+import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { ArrowRight, Shield, Sparkles } from 'lucide-react';
 import { createClient } from '@/lib/supabase/client';
+import { isNativePlatform } from '@/lib/platform/device';
 
 import Navbar from '@/components/landing/Navbar';
 import HeroSection from '@/components/landing/HeroSection';
@@ -18,11 +20,20 @@ import BookDemoModal from '@/components/landing/BookDemoModal';
 import MigoChatModal from '@/components/landing/MigoChatModal';
 
 export default function Home() {
+  const router = useRouter();
+  const [isNativeApp, setIsNativeApp] = useState(false);
   const [isDemoOpen, setIsDemoOpen] = useState(false);
   const [isMigoOpen, setIsMigoOpen] = useState(false);
   const [sessionUser, setSessionUser] = useState<any>(null);
 
   useEffect(() => {
+    // If opened on Capacitor mobile app (Android / iOS), route straight to login
+    if (isNativePlatform()) {
+      setIsNativeApp(true);
+      router.replace('/auth/login');
+      return;
+    }
+
     const checkSession = async () => {
       try {
         const supabase = createClient();
@@ -36,6 +47,15 @@ export default function Home() {
     };
     checkSession();
   }, []);
+
+  if (isNativeApp) {
+    return (
+      <div className="min-h-screen bg-[#0C3B5E] flex flex-col items-center justify-center p-4">
+        <div className="w-12 h-12 border-4 border-emerald-400 border-t-transparent rounded-full animate-spin mb-4" />
+        <p className="text-white text-sm font-semibold tracking-wide">Opening MyEduRide...</p>
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-screen bg-slate-50 font-poppins selection:bg-brand-green selection:text-white">
