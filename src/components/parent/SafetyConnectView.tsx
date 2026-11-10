@@ -473,17 +473,21 @@ export default function SafetyConnectView({
                       </div>
                     </div>
                     <p className="text-[10px] text-slate-500 leading-relaxed">
-                      {activeBooking.is_discounted ? (
+                      {activeBooking.is_discounted || activeBooking.used_stored_fare ? (
                         <>
-                          Standard fare ₦{Number(activeBooking.standard_daily_fare || 0).toLocaleString()} · actual amount charged for your child&apos;s escort today is{' '}
+                          {activeBooking.is_discounted && Number(activeBooking.standard_daily_fare || 0) > 0 && (
+                            <span className="line-through text-slate-400 mr-1">₦{Number(activeBooking.standard_daily_fare).toLocaleString()}</span>
+                          )}
+                          Actual daily escort charge:{' '}
                           <strong className="text-emerald-700">₦{Number(activeBooking.actual_amount_collected || activeBooking.daily_fare || 0).toLocaleString()}</strong>
-                          {activeBooking.discount_details?.discountReason ? ` (${activeBooking.discount_details.discountReason}).` : '.'}
+                          {typeof activeBooking.service_charge === 'number' && (
+                            <> (₦{Number(activeBooking.distance_charge || activeBooking.km_fee || Math.round(Number(activeBooking.daily_fare || 0) / (activeBooking.trip_type === 'both' ? 2.12 : 1.06))).toLocaleString()} Km fee + ₦{Number(activeBooking.service_charge).toLocaleString()} 6% service per trip)</>
+                          )}
+                          {activeBooking.discount_details?.discountReason ? ` · ${activeBooking.discount_details.discountReason}.` : '.'}
                         </>
-                      ) : activeBooking.used_stored_fare ? (
-                        <>This is the actual daily amount charged for your child&apos;s escort service.</>
                       ) : (
                         <>
-                          ₦300 / 0.5 km · ₦30 / extra 0.1 km
+                          Base transit rate: ₦{Number(activeBooking.distance_charge || 500).toLocaleString()}/km
                           {typeof activeBooking.service_charge === 'number' ? (
                             <> · 6% service ₦{Number(activeBooking.service_charge).toLocaleString()} per trip</>
                           ) : (

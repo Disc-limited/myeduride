@@ -639,15 +639,57 @@ export async function GET(request: NextRequest) {
         (b) =>
           b.student_id === stId || b.student?.id === stId || b.id === matchAssignment?.booking_id
       );
+
+      let bookingParsed: any = null;
       if (matchBooking?.notes) {
         try {
-          const parsed =
+          bookingParsed =
             typeof matchBooking.notes === 'string'
               ? JSON.parse(matchBooking.notes)
               : matchBooking.notes;
-          if (parsed?.discount) return parsed.discount;
         } catch {}
       }
+
+      let assignParsed: any = null;
+      if (matchAssignment?.notes) {
+        try {
+          assignParsed =
+            typeof matchAssignment.notes === 'string'
+              ? JSON.parse(matchAssignment.notes)
+              : matchAssignment.notes;
+        } catch {}
+      }
+
+      const candidate =
+        bookingParsed?.fare_correction ||
+        bookingParsed?.discount ||
+        assignParsed?.fare_correction ||
+        assignParsed?.discount ||
+        null;
+
+      if (candidate) {
+        return {
+          ...candidate,
+          km_fee: candidate.km_fee ?? candidate.one_way_km_fee ?? candidate.one_way_km_fare ?? bookingParsed?.km_fee ?? bookingParsed?.one_way_km_fare ?? assignParsed?.km_fee ?? assignParsed?.one_way_km_fare,
+          one_way_km_fare: candidate.one_way_km_fare ?? candidate.one_way_km_fee ?? candidate.km_fee ?? bookingParsed?.one_way_km_fare ?? assignParsed?.one_way_km_fare,
+          daily_km_fare: candidate.daily_km_fare ?? candidate.km_fare ?? bookingParsed?.daily_km_fare ?? bookingParsed?.km_fare ?? assignParsed?.daily_km_fare ?? assignParsed?.km_fare,
+          morning_km_fare: candidate.morning_km_fare ?? bookingParsed?.morning_km_fare ?? assignParsed?.morning_km_fare,
+          afternoon_km_fare: candidate.afternoon_km_fare ?? bookingParsed?.afternoon_km_fare ?? assignParsed?.afternoon_km_fare,
+          discountedFare: candidate.discountedFare ?? candidate.daily_fare ?? bookingParsed?.daily_fare ?? assignParsed?.daily_fare,
+        };
+      }
+
+      if (bookingParsed?.daily_km_fare || bookingParsed?.km_fee || bookingParsed?.km_fare || assignParsed?.daily_km_fare || assignParsed?.km_fee || assignParsed?.km_fare) {
+        return {
+          km_fee: bookingParsed?.km_fee ?? bookingParsed?.one_way_km_fare ?? assignParsed?.km_fee ?? assignParsed?.one_way_km_fare,
+          one_way_km_fare: bookingParsed?.one_way_km_fare ?? bookingParsed?.km_fee ?? assignParsed?.one_way_km_fare ?? assignParsed?.km_fee,
+          daily_km_fare: bookingParsed?.daily_km_fare ?? bookingParsed?.km_fare ?? assignParsed?.daily_km_fare ?? assignParsed?.km_fare,
+          morning_km_fare: bookingParsed?.morning_km_fare ?? assignParsed?.morning_km_fare,
+          afternoon_km_fare: bookingParsed?.afternoon_km_fare ?? assignParsed?.afternoon_km_fare,
+          discountedFare: bookingParsed?.daily_fare ?? assignParsed?.daily_fare,
+        };
+      }
+
       if (
         matchAssignment?.notes &&
         String(matchAssignment.notes).includes('Accountant Discounted Fare')
@@ -860,31 +902,57 @@ export async function GET(request: NextRequest) {
       const isDiscounted =
         discountInfo?.discountedFare != null && Number(discountInfo.discountedFare) > 0;
       
-      const discountRatio = isDiscounted && fareEngine.dailyFare > 0
-        ? Number(discountInfo.discountedFare) / fareEngine.dailyFare
-        : 1;
-
       // Approved Km Fare (Base distance transit rate approved by City Manager)
-      const approvedKmDaily = Math.round(fareEngine.dailyKmFare * discountRatio);
+      // ESCORT PRIVACY RULE: The escort is strictly allowed to see ONLY the Km Fare approved by the City Manager.
+      // E.g. If City Manager sets 400 Km fee, the escort sees strictly 400 (one-way) or 800 (complete round trip).
+      const explicitKmDaily = Number(
+        discountInfo?.daily_km_fare ??
+        discountInfo?.km_fare ??
+        0
+      );
+      const explicitKmOneWay = Number(
+        discountInfo?.one_way_km_fare ??
+        discountInfo?.km_fee ??
+        0
+      );
+
+      let approvedKmDaily: number;
+      if (explicitKmDaily > 0) {
+        approvedKmDaily = explicitKmDaily;
+      } else if (explicitKmOneWay > 0) {
+        approvedKmDaily = normalizedTripType === 'both' ? explicitKmOneWay * 2 : explicitKmOneWay;
+      } else if (isDiscounted && fareEngine.dailyFare > 0) {
+        // Fallback: derive base km from discounted total collected
+        approvedKmDaily = Math.round(Number(discountInfo.discountedFare) / 1.06);
+      } else {
+        approvedKmDaily = fareEngine.dailyKmFare;
+      }
+
+      const oneWayKm = explicitKmOneWay > 0
+        ? explicitKmOneWay
+        : normalizedTripType === 'both'
+          ? Math.round(approvedKmDaily / 2)
+          : approvedKmDaily;
+
       const approvedKmMorning =
         normalizedTripType === 'afternoon_only'
           ? 0
           : normalizedTripType === 'morning_only'
             ? approvedKmDaily
-            : Math.round(approvedKmDaily / 2);
+            : (discountInfo?.morning_km_fare != null ? Number(discountInfo.morning_km_fare) : oneWayKm);
       const approvedKmAfternoon =
         normalizedTripType === 'morning_only'
           ? 0
           : normalizedTripType === 'afternoon_only'
             ? approvedKmDaily
-            : approvedKmDaily - approvedKmMorning;
+            : (discountInfo?.afternoon_km_fare != null ? Number(discountInfo.afternoon_km_fare) : approvedKmDaily - approvedKmMorning);
 
       // 80% Driver net earnings from Approved Km Fare (20% platform levy)
       const driverDailyNet = Math.round(approvedKmDaily * 0.8);
       const driverMorningNet = Math.round(approvedKmMorning * 0.8);
       const driverAfternoonNet = driverDailyNet - driverMorningNet;
 
-      // The fare visible to the escort is strictly the Approved Km Fare
+      // The fare visible to the escort is strictly the Approved Km Fare (NEVER service charge)
       const dailyFare = isSchoolEscort ? null : approvedKmDaily;
       const morningFare = isSchoolEscort ? null : approvedKmMorning;
       const afternoonFare = isSchoolEscort ? null : approvedKmAfternoon;
@@ -936,6 +1004,9 @@ export async function GET(request: NextRequest) {
           afternoonFare != null ? `₦${afternoonFare.toLocaleString()}` : null,
         approved_km_fare: approvedKmDaily,
         formatted_approved_km_fare: `₦${approvedKmDaily.toLocaleString()}`,
+        km_fee: oneWayKm,
+        morning_km_fare: approvedKmMorning,
+        afternoon_km_fare: approvedKmAfternoon,
         approved_km_fare_morning: approvedKmMorning,
         formatted_approved_km_fare_morning: `₦${approvedKmMorning.toLocaleString()}`,
         approved_km_fare_afternoon: approvedKmAfternoon,

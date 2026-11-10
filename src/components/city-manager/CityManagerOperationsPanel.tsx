@@ -75,6 +75,7 @@ export function CityManagerOperationsPanel() {
     originalFare: number;
     discountedFare: string;
     discountAmount: string;
+    kmFee: string;
     accountantApprovalRef: string;
     accountantName: string;
     discountReason: string;
@@ -86,6 +87,7 @@ export function CityManagerOperationsPanel() {
     originalFare: 3500,
     discountedFare: '2500',
     discountAmount: '',
+    kmFee: '400',
     accountantApprovalRef: '',
     accountantName: 'City Manager',
     discountReason: 'Fare correction',
@@ -114,6 +116,18 @@ export function CityManagerOperationsPanel() {
       standard
     );
     const savings = standard > current ? standard - current : 0;
+    const tripMultiplier = initialTripType === 'both' ? 2 : 1;
+    const existingKmFee = Number(
+      req.km_fee ??
+      req.one_way_km_fare ??
+      req.discount_details?.km_fee ??
+      req.discount_details?.one_way_km_fare ??
+      req.distance_charge ??
+      0
+    );
+    const initialKm = existingKmFee > 0
+      ? existingKmFee
+      : Math.round((current || standard || 848) / (tripMultiplier * 1.06));
 
     setDiscountModal({
       open: true,
@@ -129,6 +143,7 @@ export function CityManagerOperationsPanel() {
       originalFare: standard,
       discountedFare: String(current || standard),
       discountAmount: savings > 0 ? String(savings) : '',
+      kmFee: String(initialKm),
       accountantApprovalRef: req.accountant_approval_ref || '',
       accountantName: req.accountant_name || 'City Manager',
       discountReason: req.discount_details?.discountReason || (initialTripType !== 'both' ? `One-way ${initialTripType === 'morning_only' ? 'morning' : 'afternoon'} trip` : 'Fare correction'),
@@ -144,6 +159,15 @@ export function CityManagerOperationsPanel() {
       return;
     }
 
+    const tripMultiplier = discountModal.tripType === 'both' ? 2 : 1;
+    const kmFeeNum = Number(discountModal.kmFee);
+    const oneWayKm = !isNaN(kmFeeNum) && kmFeeNum > 0
+      ? Math.round(kmFeeNum)
+      : Math.round(dFare / (tripMultiplier * 1.06));
+    const dailyKm = oneWayKm * tripMultiplier;
+    const oneWaySvc = Math.round(oneWayKm * 0.06);
+    const dailySvc = Math.max(0, dFare - dailyKm);
+
     setDiscountModal((prev) => ({ ...prev, submitting: true }));
     try {
       const res = await fetch('/api/city-manager/operations', {
@@ -157,6 +181,11 @@ export function CityManagerOperationsPanel() {
           originalFare: discountModal.originalFare,
           tripType: discountModal.tripType,
           correctedFare: dFare,
+          kmFee: oneWayKm,
+          oneWayKmFee: oneWayKm,
+          dailyKmFare: dailyKm,
+          serviceCharge: dailySvc,
+          oneWayServiceCharge: oneWaySvc,
           accountantApprovalRef: discountModal.accountantApprovalRef.trim(),
           accountantName: discountModal.accountantName.trim(),
           discountReason: discountModal.discountReason.trim(),
@@ -183,10 +212,24 @@ export function CityManagerOperationsPanel() {
             actual_amount_collected: dFare,
             morning_fare: mFare,
             afternoon_fare: aFare,
+            km_fee: oneWayKm,
+            one_way_km_fare: oneWayKm,
+            daily_km_fare: dailyKm,
+            km_fare: dailyKm,
+            morning_km_fare: discountModal.tripType === 'afternoon_only' ? 0 : oneWayKm,
+            afternoon_km_fare: discountModal.tripType === 'morning_only' ? 0 : (dailyKm - (discountModal.tripType === 'afternoon_only' ? 0 : oneWayKm)),
+            service_charge: oneWaySvc,
+            daily_service_charge: dailySvc,
+            driver_net_earnings: Math.round(dailyKm * 0.8),
             is_discounted: Boolean(dFare < discountModal.originalFare),
             discount_details: {
               ...(item.discount_details || {}),
               discountedFare: dFare,
+              km_fee: oneWayKm,
+              one_way_km_fare: oneWayKm,
+              daily_km_fare: dailyKm,
+              service_charge: oneWaySvc,
+              daily_service_charge: dailySvc,
               accountantApprovalRef: discountModal.accountantApprovalRef.trim(),
               accountantName: discountModal.accountantName.trim(),
               discountReason: discountModal.discountReason.trim(),
@@ -200,7 +243,7 @@ export function CityManagerOperationsPanel() {
         };
       });
 
-      toast.success(json.message || `Fare updated to ₦${dFare.toLocaleString()}/day`);
+      toast.success(json.message || `Fare updated to ₦${dFare.toLocaleString()}/day (Km fee: ₦${oneWayKm})`);
       setDiscountModal((prev) => ({ ...prev, open: false, submitting: false }));
       await load();
     } catch (err: any) {
@@ -215,10 +258,14 @@ export function CityManagerOperationsPanel() {
     const nextFare = Number.isFinite(amount) && amount > 0
       ? Math.max(0, discountModal.originalFare - amount)
       : discountModal.originalFare;
+    const tripMultiplier = discountModal.tripType === 'both' ? 2 : 1;
+    const dailyKm = Math.round(nextFare / 1.06);
+    const oneWayKm = Math.round(dailyKm / tripMultiplier);
     setDiscountModal((prev) => ({
       ...prev,
       discountAmount: amountStr,
       discountedFare: String(nextFare),
+      kmFee: String(oneWayKm),
     }));
   };
 
@@ -1883,9 +1930,15 @@ export function CityManagerOperationsPanel() {
                 <button
                   type="button"
                   onClick={() => {
+                    const km = Number(discountModal.kmFee) || 400;
+                    const dailyKm = km * 2;
+                    const dailySvc = Math.round(dailyKm * 0.06);
+                    const totalFare = dailyKm + dailySvc;
                     setDiscountModal((prev) => ({
                       ...prev,
                       tripType: 'both',
+                      discountedFare: String(totalFare),
+                      discountAmount: prev.originalFare > totalFare ? String(prev.originalFare - totalFare) : '',
                       discountReason: prev.discountReason.replace(/One-way (morning|afternoon) trip/gi, '').trim() || 'Fare adjustment',
                     }));
                   }}
@@ -1904,17 +1957,17 @@ export function CityManagerOperationsPanel() {
                 <button
                   type="button"
                   onClick={() => {
-                    const halfStandard = Math.round(discountModal.originalFare / 2);
-                    setDiscountModal((prev) => {
-                      const shouldSuggestHalf = Number(prev.discountedFare) === prev.originalFare;
-                      return {
-                        ...prev,
-                        tripType: 'morning_only',
-                        discountedFare: shouldSuggestHalf ? String(halfStandard) : prev.discountedFare,
-                        discountAmount: shouldSuggestHalf ? String(halfStandard) : prev.discountAmount,
-                        discountReason: 'One-way morning trip',
-                      };
-                    });
+                    const km = Number(discountModal.kmFee) || 400;
+                    const dailyKm = km;
+                    const dailySvc = Math.round(dailyKm * 0.06);
+                    const totalFare = dailyKm + dailySvc;
+                    setDiscountModal((prev) => ({
+                      ...prev,
+                      tripType: 'morning_only',
+                      discountedFare: String(totalFare),
+                      discountAmount: prev.originalFare > totalFare ? String(prev.originalFare - totalFare) : '',
+                      discountReason: 'One-way morning trip',
+                    }));
                   }}
                   className={`p-2.5 rounded-xl border text-left flex flex-col justify-between gap-1 transition-all cursor-pointer ${
                     discountModal.tripType === 'morning_only'
@@ -1931,17 +1984,17 @@ export function CityManagerOperationsPanel() {
                 <button
                   type="button"
                   onClick={() => {
-                    const halfStandard = Math.round(discountModal.originalFare / 2);
-                    setDiscountModal((prev) => {
-                      const shouldSuggestHalf = Number(prev.discountedFare) === prev.originalFare;
-                      return {
-                        ...prev,
-                        tripType: 'afternoon_only',
-                        discountedFare: shouldSuggestHalf ? String(halfStandard) : prev.discountedFare,
-                        discountAmount: shouldSuggestHalf ? String(halfStandard) : prev.discountAmount,
-                        discountReason: 'One-way afternoon trip',
-                      };
-                    });
+                    const km = Number(discountModal.kmFee) || 400;
+                    const dailyKm = km;
+                    const dailySvc = Math.round(dailyKm * 0.06);
+                    const totalFare = dailyKm + dailySvc;
+                    setDiscountModal((prev) => ({
+                      ...prev,
+                      tripType: 'afternoon_only',
+                      discountedFare: String(totalFare),
+                      discountAmount: prev.originalFare > totalFare ? String(prev.originalFare - totalFare) : '',
+                      discountReason: 'One-way afternoon trip',
+                    }));
                   }}
                   className={`p-2.5 rounded-xl border text-left flex flex-col justify-between gap-1 transition-all cursor-pointer ${
                     discountModal.tripType === 'afternoon_only'
@@ -1965,45 +2018,133 @@ export function CityManagerOperationsPanel() {
                   <button
                     type="button"
                     onClick={() => {
-                      const half = Math.round(discountModal.originalFare / 2);
+                      const km = Number(discountModal.kmFee) || 400;
+                      const dailySvc = Math.round(km * 0.06);
+                      const totalFare = km + dailySvc;
                       setDiscountModal((prev) => ({
                         ...prev,
-                        discountedFare: String(half),
-                        discountAmount: String(prev.originalFare - half),
+                        discountedFare: String(totalFare),
+                        discountAmount: String(Math.max(0, prev.originalFare - totalFare)),
                       }));
                     }}
                     className="text-[10px] underline font-extrabold text-white hover:text-amber-200 cursor-pointer"
                   >
-                    Set to ₦{Math.round(discountModal.originalFare / 2).toLocaleString()}
+                    Recalculate 1-Way (₦{(Number(discountModal.kmFee || 400) + Math.round(Number(discountModal.kmFee || 400) * 0.06)).toLocaleString()})
                   </button>
                 </div>
               )}
             </div>
 
-            {/* SEGMENT FARE PREVIEW DECK */}
-            <div className="grid grid-cols-2 gap-2 text-xs bg-slate-900/90 p-2.5 rounded-2xl border border-slate-800">
-              <div className="text-center p-2 rounded-xl bg-slate-950/70 border border-slate-800/80">
-                <span className="text-slate-400 block text-[10px] uppercase font-bold">Morning Segment</span>
-                <span className={`font-mono font-black text-xs ${discountModal.tripType === 'afternoon_only' ? 'text-slate-600 line-through' : 'text-emerald-400'}`}>
-                  {discountModal.tripType === 'afternoon_only'
-                    ? '₦0 (Excluded)'
-                    : `₦${(discountModal.tripType === 'morning_only' ? Number(discountModal.discountedFare || 0) : Math.round(Number(discountModal.discountedFare || 0) / 2)).toLocaleString()}`}
-                </span>
-              </div>
-              <div className="text-center p-2 rounded-xl bg-slate-950/70 border border-slate-800/80">
-                <span className="text-slate-400 block text-[10px] uppercase font-bold">Afternoon Segment</span>
-                <span className={`font-mono font-black text-xs ${discountModal.tripType === 'morning_only' ? 'text-slate-600 line-through' : 'text-emerald-400'}`}>
-                  {discountModal.tripType === 'morning_only'
-                    ? '₦0 (Excluded)'
-                    : `₦${(discountModal.tripType === 'afternoon_only' ? Number(discountModal.discountedFare || 0) : Number(discountModal.discountedFare || 0) - Math.round(Number(discountModal.discountedFare || 0) / 2)).toLocaleString()}`}
-                </span>
-              </div>
-            </div>
-
+            {/* PRICE & KM CONTROLS */}
             <div className="space-y-3 text-xs">
+              {/* Dedicated One-Way Km Fee Box */}
+              <div>
+                <div className="flex items-center justify-between mb-1">
+                  <label className="text-[10px] font-extrabold uppercase text-indigo-400">
+                    One-Way Km Fee (₦ per leg) *
+                  </label>
+                  <span className="text-[10px] text-slate-400 font-medium">Seen by Escort</span>
+                </div>
+                <div className="relative">
+                  <span className="absolute left-3 top-2.5 font-bold text-slate-400">₦</span>
+                  <input
+                    type="number"
+                    min={1}
+                    value={discountModal.kmFee}
+                    onChange={(e) => {
+                      const kmVal = Number(e.target.value);
+                      const tripMultiplier = discountModal.tripType === 'both' ? 2 : 1;
+                      const dailyKm = (Number.isFinite(kmVal) && kmVal > 0 ? kmVal : 0) * tripMultiplier;
+                      const dailySvc = Math.round(dailyKm * 0.06);
+                      const totalFare = dailyKm + dailySvc;
+                      const savings = Number.isFinite(totalFare) && totalFare < discountModal.originalFare
+                        ? discountModal.originalFare - totalFare
+                        : 0;
+                      setDiscountModal({
+                        ...discountModal,
+                        kmFee: e.target.value,
+                        discountedFare: String(totalFare),
+                        discountAmount: savings > 0 ? String(savings) : '',
+                      });
+                    }}
+                    placeholder="400"
+                    className="w-full pl-8 pr-3 py-2 bg-slate-900 border-2 border-indigo-500/60 rounded-xl text-white font-mono font-bold text-sm focus:outline-none focus:border-indigo-400 shadow-inner"
+                  />
+                </div>
+                <span className="text-[10px] text-slate-400 block mt-1">
+                  Adjust this box to directly set the distance rate. Escort sees strictly this transit fee (₦{Number(discountModal.kmFee || 0).toLocaleString()} 1-way, ₦{(Number(discountModal.kmFee || 0) * (discountModal.tripType === 'both' ? 2 : 1)).toLocaleString()} complete).
+                </span>
+              </div>
+
+              {/* SEGMENT & CHARGES LIVE BREAKDOWN DECK */}
+              {(() => {
+                const oneWayKm = Number(discountModal.kmFee) || 0;
+                const isBoth = discountModal.tripType === 'both';
+                const dailyKm = isBoth ? oneWayKm * 2 : oneWayKm;
+                const oneWaySvc = Math.round(oneWayKm * 0.06);
+                const dailySvc = Math.round(dailyKm * 0.06);
+                const morningKm = discountModal.tripType === 'afternoon_only' ? 0 : oneWayKm;
+                const afternoonKm = discountModal.tripType === 'morning_only' ? 0 : oneWayKm;
+                const driverNetDaily = Math.round(dailyKm * 0.8);
+                const driverNetOneWay = Math.round(oneWayKm * 0.8);
+
+                return (
+                  <div className="bg-slate-950/80 p-3 rounded-2xl border border-slate-800 space-y-2">
+                    <div className="text-[10px] font-bold uppercase tracking-wider text-slate-400 border-b border-slate-800/80 pb-1 flex items-center justify-between">
+                      <span>Live Fare &amp; Split Breakdown</span>
+                      <span className="text-indigo-400 lowercase font-mono">6% auto-calculated</span>
+                    </div>
+
+                    <div className="grid grid-cols-2 gap-2">
+                      <div className="p-2 rounded-xl bg-slate-900/90 border border-slate-800">
+                        <span className="text-slate-400 block text-[10px] uppercase font-bold">🚗 Escort Sees (Km Fare)</span>
+                        <div className="font-mono font-black text-sm text-emerald-400">
+                          ₦{dailyKm.toLocaleString()} {isBoth ? '(Complete)' : '(One-Way)'}
+                        </div>
+                        <span className="text-[10px] text-slate-400 block">
+                          AM: ₦{morningKm.toLocaleString()} · PM: ₦{afternoonKm.toLocaleString()}
+                        </span>
+                      </div>
+
+                      <div className="p-2 rounded-xl bg-slate-900/90 border border-slate-800">
+                        <span className="text-slate-400 block text-[10px] uppercase font-bold">🛡️ Platform Service (6%)</span>
+                        <div className="font-mono font-black text-sm text-indigo-300">
+                          ₦{dailySvc.toLocaleString()} {isBoth ? `(₦${oneWaySvc} / trip)` : '(per trip)'}
+                        </div>
+                        <span className="text-[10px] text-slate-400 block">
+                          Auto-adjusts from ₦{oneWayKm.toLocaleString()} Km fee
+                        </span>
+                      </div>
+                    </div>
+
+                    <div className="grid grid-cols-2 gap-2 pt-1 border-t border-slate-800/60">
+                      <div className="p-2 rounded-xl bg-indigo-950/30 border border-indigo-900/40">
+                        <span className="text-indigo-300 block text-[10px] uppercase font-bold">💳 Parent Total Fee</span>
+                        <div className="font-mono font-black text-sm text-white">
+                          ₦{(dailyKm + dailySvc).toLocaleString()} / day
+                        </div>
+                        <span className="text-[9px] text-slate-400 block">
+                          ₦{dailyKm.toLocaleString()} Km + ₦{dailySvc.toLocaleString()} Service
+                        </span>
+                      </div>
+
+                      <div className="p-2 rounded-xl bg-emerald-950/30 border border-emerald-900/40">
+                        <span className="text-emerald-300 block text-[10px] uppercase font-bold">💰 Driver 80% Net</span>
+                        <div className="font-mono font-black text-sm text-emerald-300">
+                          ₦{driverNetDaily.toLocaleString()} / day
+                        </div>
+                        <span className="text-[9px] text-slate-400 block">
+                          ₦{driverNetOneWay.toLocaleString()} per completed leg
+                        </span>
+                      </div>
+                    </div>
+                  </div>
+                );
+              })()}
+
               <div>
                 <label className="block text-[10px] font-bold uppercase text-slate-400 mb-1">
-                  Daily Fare to Collect *
+                  Daily Fare to Collect from Parent *
                 </label>
                 <div className="relative">
                   <span className="absolute left-3 top-2.5 font-bold text-slate-400">₦</span>
@@ -2014,12 +2155,16 @@ export function CityManagerOperationsPanel() {
                     onChange={(e) => {
                       const val = e.target.value;
                       const fare = Number(val);
+                      const tripMultiplier = discountModal.tripType === 'both' ? 2 : 1;
+                      const dailyKm = Math.round(fare / 1.06);
+                      const oneWayKm = Math.round(dailyKm / tripMultiplier);
                       const savings = Number.isFinite(fare) && fare < discountModal.originalFare
                         ? discountModal.originalFare - fare
                         : 0;
                       setDiscountModal({
                         ...discountModal,
                         discountedFare: val,
+                        kmFee: Number.isFinite(oneWayKm) && oneWayKm > 0 ? String(oneWayKm) : discountModal.kmFee,
                         discountAmount: savings > 0 ? String(savings) : '',
                       });
                     }}

@@ -354,14 +354,79 @@ export function resolveStoredEscortFare(input: {
           : engine.afternoonFare;
 
   // Discount scaling factor for Km fare and driver earnings
-  const discountRatio = isDiscounted && standardDaily > 0 ? dailyFare / standardDaily : 1;
-  const dailyKmFare = Math.round(engine.dailyKmFare * discountRatio);
-  const morningKmFare = tripType === 'afternoon_only' ? 0 : tripType === 'morning_only' ? dailyKmFare : Math.round(dailyKmFare / 2);
-  const afternoonKmFare = tripType === 'morning_only' ? 0 : tripType === 'afternoon_only' ? dailyKmFare : dailyKmFare - morningKmFare;
+  const explicitDailyKm = Number(
+    storedDiscount?.daily_km_fare ??
+    storedDiscount?.km_fare ??
+    meta.daily_km_fare ??
+    meta.km_fare ??
+    assignMeta.daily_km_fare ??
+    assignMeta.km_fare ??
+    0
+  );
+  const explicitOneWayKm = Number(
+    storedDiscount?.one_way_km_fee ??
+    storedDiscount?.km_fee ??
+    storedDiscount?.one_way_km_fare ??
+    meta.one_way_km_fare ??
+    meta.km_fee ??
+    assignMeta.one_way_km_fare ??
+    assignMeta.km_fee ??
+    0
+  );
 
-  const dailyServiceCharge = dailyFare - dailyKmFare;
-  const morningServiceCharge = morningFare - morningKmFare;
-  const afternoonServiceCharge = afternoonFare - afternoonKmFare;
+  let dailyKmFare: number;
+  if (explicitDailyKm > 0) {
+    dailyKmFare = explicitDailyKm;
+  } else if (explicitOneWayKm > 0) {
+    dailyKmFare = tripType === 'both' ? explicitOneWayKm * 2 : explicitOneWayKm;
+  } else if (hasDiscount) {
+    dailyKmFare = Math.round(dailyFare / 1.06);
+  } else {
+    dailyKmFare = engine.dailyKmFare;
+  }
+
+  const oneWayKmFare =
+    explicitOneWayKm > 0
+      ? explicitOneWayKm
+      : tripType === 'both'
+        ? Math.round(dailyKmFare / 2)
+        : dailyKmFare;
+
+  const morningKmFare =
+    tripType === 'afternoon_only'
+      ? 0
+      : tripType === 'morning_only'
+        ? dailyKmFare
+        : storedDiscount?.morning_km_fare != null
+          ? Number(storedDiscount.morning_km_fare)
+          : oneWayKmFare;
+
+  const afternoonKmFare =
+    tripType === 'morning_only'
+      ? 0
+      : tripType === 'afternoon_only'
+        ? dailyKmFare
+        : storedDiscount?.afternoon_km_fare != null
+          ? Number(storedDiscount.afternoon_km_fare)
+          : dailyKmFare - morningKmFare;
+
+  const dailyServiceCharge = Math.max(0, dailyFare - dailyKmFare);
+  const oneWayServiceCharge =
+    tripType === 'both'
+      ? Math.round(dailyServiceCharge / 2)
+      : dailyServiceCharge;
+  const morningServiceCharge =
+    tripType === 'afternoon_only'
+      ? 0
+      : tripType === 'morning_only'
+        ? dailyServiceCharge
+        : oneWayServiceCharge;
+  const afternoonServiceCharge =
+    tripType === 'morning_only'
+      ? 0
+      : tripType === 'afternoon_only'
+        ? dailyServiceCharge
+        : dailyServiceCharge - morningServiceCharge;
 
   const driverDailyEarnings = Math.round(dailyKmFare * 0.8);
   const driverMorningEarnings = Math.round(morningKmFare * 0.8);
@@ -379,6 +444,13 @@ export function resolveStoredEscortFare(input: {
     dailyFare,
     standardDailyFare: standardDaily,
     actualAmountCollected: dailyFare,
+    distanceCharge: oneWayKmFare,
+    formattedDistanceCharge: formatNgn(oneWayKmFare),
+    baseFarePerTrip: oneWayKmFare,
+    serviceCharge: oneWayServiceCharge,
+    formattedServiceCharge: formatNgn(oneWayServiceCharge),
+    oneWayFare: oneWayKmFare + oneWayServiceCharge,
+    formattedOneWayFare: formatNgn(oneWayKmFare + oneWayServiceCharge),
     dailyKmFare,
     morningKmFare,
     afternoonKmFare,
@@ -403,7 +475,7 @@ export function resolveStoredEscortFare(input: {
     formattedPlatformDailyTotal: formatNgn(platformDailyTotal),
     isDiscounted,
     discountDetails: storedDiscount,
-    usedStoredFare: isDiscounted,
+    usedStoredFare: isDiscounted || Boolean(explicitDailyKm || explicitOneWayKm),
     formattedMorningFare: formatNgn(morningFare),
     formattedAfternoonFare: formatNgn(afternoonFare),
     formattedDailyFare: formatNgn(dailyFare),

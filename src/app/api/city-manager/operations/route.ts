@@ -11,7 +11,7 @@ import { getPlatformSchoolId } from '@/lib/auth/super-admin';
 import { resolveEscortCategory } from '@/lib/escort/escort-category';
 import { escortAllowsOverlappingPickup } from '@/lib/escort/escort-scheduler';
 import { extractHandoverPin, ensureDailyHandoverPin } from '@/lib/escort/handover-pin';
-import { calculateEscortFare, parseEscortNotes, normalizeEscortTripType } from '@/lib/escort/escort-pricing';
+import { calculateEscortFare, resolveStoredEscortFare, parseEscortNotes, normalizeEscortTripType } from '@/lib/escort/escort-pricing';
 import { getActiveCityPricing, normalizeCityKey, toEscortFareOverrides } from '@/lib/escort/city-pricing';
 import { readOpsCache, writeOpsCache, invalidateOpsCache } from '@/lib/city-manager/ops-cache';
 
@@ -237,48 +237,21 @@ export async function GET(request: NextRequest) {
         assignMeta.fareResult?.tripType ||
         'both'
       );
-      const fareResult = calculateEscortFare(distanceKm, tripType, fareRates);
-      const storedDiscount =
-        meta?.discount ||
-        meta?.fare_correction ||
-        assignMeta?.discount ||
-        assignMeta?.fare_correction ||
-        null;
-      const storedDaily = Number(
-        storedDiscount?.discountedFare ||
-        meta?.fareResult?.dailyFare ||
-        meta?.daily_fare ||
-        assignMeta?.fareResult?.dailyFare ||
-        assignMeta?.daily_fare ||
-        b.fare_amount ||
-        0
-      );
-      const standardDaily = Number(
-        meta?.fareResult?.originalDailyFare ||
-        assignMeta?.fareResult?.originalDailyFare ||
-        storedDiscount?.originalFare ||
-        fareResult.dailyFare
-      );
-      const dailyFare = storedDaily > 0 ? storedDaily : fareResult.dailyFare;
+      const resolvedFare = resolveStoredEscortFare({
+        fareAmount: b.fare_amount,
+        notes: meta,
+        assignmentNotes: matchedAssignment?.notes,
+        distanceKm,
+        tripType,
+        rates: fareRates,
+      });
 
-      let morningFare = 0;
-      let afternoonFare = 0;
-      if (tripType === 'afternoon_only') {
-        morningFare = 0;
-        afternoonFare = dailyFare;
-      } else if (tripType === 'morning_only') {
-        morningFare = dailyFare;
-        afternoonFare = 0;
-      } else {
-        const rawM = meta?.fareResult?.morningFare ?? meta?.morning_fare ?? assignMeta?.fareResult?.morningFare ?? assignMeta?.morning_fare;
-        morningFare = rawM != null && !isNaN(Number(rawM)) && Number(rawM) > 0
-          ? Number(rawM)
-          : Math.round(dailyFare / 2);
-        afternoonFare = dailyFare - morningFare;
-      }
-
-      let discountDetails: any = storedDiscount;
-      let actualCollected = dailyFare;
+      const dailyFare = resolvedFare.dailyFare;
+      const standardDaily = resolvedFare.standardDailyFare;
+      const morningFare = resolvedFare.morningFare;
+      const afternoonFare = resolvedFare.afternoonFare;
+      const discountDetails: any = resolvedFare.discountDetails;
+      const actualCollected = resolvedFare.actualAmountCollected;
 
       const isConfirmed = b.status === 'assigned' || matchedAssignment?.status === 'active';
 
@@ -306,22 +279,24 @@ export async function GET(request: NextRequest) {
         afternoon_fare: afternoonFare,
         daily_fare: dailyFare,
         standard_daily_fare: standardDaily,
-        distance_charge: fareResult.distanceCharge,
-        service_charge: fareResult.serviceCharge,
-        service_charge_percent: fareResult.serviceChargePercent,
-        billable_km: fareResult.billableKm,
-        km_fare: fareResult.dailyKmFare,
-        daily_km_fare: fareResult.dailyKmFare,
-        morning_km_fare: fareResult.morningKmFare,
-        afternoon_km_fare: fareResult.afternoonKmFare,
-        service_charge_fare: fareResult.dailyServiceCharge,
-        driver_net_earnings: fareResult.driverDailyEarnings,
-        platform_km_levy: fareResult.platformDailyLevy,
+        distance_charge: resolvedFare.distanceCharge,
+        service_charge: resolvedFare.serviceCharge,
+        service_charge_percent: resolvedFare.serviceChargePercent,
+        billable_km: resolvedFare.billableKm,
+        km_fare: resolvedFare.dailyKmFare,
+        daily_km_fare: resolvedFare.dailyKmFare,
+        one_way_km_fare: resolvedFare.distanceCharge,
+        km_fee: resolvedFare.distanceCharge,
+        morning_km_fare: resolvedFare.morningKmFare,
+        afternoon_km_fare: resolvedFare.afternoonKmFare,
+        service_charge_fare: resolvedFare.dailyServiceCharge,
+        driver_net_earnings: resolvedFare.driverDailyEarnings,
+        platform_km_levy: resolvedFare.platformDailyLevy,
         driver_share_percent: 80,
         platform_levy_percent: 20,
         actual_amount_collected: actualCollected,
         discount_details: discountDetails,
-        is_discounted: Boolean(discountDetails) || (standardDaily > 0 && dailyFare < standardDaily),
+        is_discounted: resolvedFare.isDiscounted,
         accountant_approval_ref: discountDetails?.accountantApprovalRef || null,
         accountant_name: discountDetails?.accountantName || null,
         trip_type: tripType,
@@ -370,31 +345,15 @@ export async function GET(request: NextRequest) {
         assignMeta?.fareResult?.tripType ||
         'both'
       );
-      const assignEngine = calculateEscortFare(4.2, assignTripType, fareRates);
-      const storedAssignDaily = Number(
-        assignMeta?.discount?.discountedFare ||
-        assignMeta?.fare_correction?.discountedFare ||
-        assignMeta?.fareResult?.dailyFare ||
-        assignMeta?.daily_fare ||
-        0
-      );
-      const assignDaily = storedAssignDaily > 0 ? storedAssignDaily : assignEngine.dailyFare;
+      const assignDist = Number(assignMeta?.distance_km || assignMeta?.distance || 4.2);
+      const resolvedAssignFare = resolveStoredEscortFare({
+        assignmentNotes: a.notes,
+        notes: a.notes,
+        distanceKm: assignDist,
+        tripType: assignTripType,
+        rates: fareRates,
+      });
 
-      let assignMorning = 0;
-      let assignAfternoon = 0;
-      if (assignTripType === 'afternoon_only') {
-        assignMorning = 0;
-        assignAfternoon = assignDaily;
-      } else if (assignTripType === 'morning_only') {
-        assignMorning = assignDaily;
-        assignAfternoon = 0;
-      } else {
-        const rawM = assignMeta?.fareResult?.morningFare ?? assignMeta?.morning_fare;
-        assignMorning = rawM != null && !isNaN(Number(rawM)) && Number(rawM) > 0
-          ? Number(rawM)
-          : Math.round(assignDaily / 2);
-        assignAfternoon = assignDaily - assignMorning;
-      }
       parentRequests.push({
         booking_id: a.booking_id || null,
         assignment_id: a.id,
@@ -406,29 +365,31 @@ export async function GET(request: NextRequest) {
         school_id: a.school_id,
         school_name: sch?.name || 'School Campus',
         source: 'school',
-        distance_km: Number(assignMeta?.distance_km || assignMeta?.distance || 4.2),
-        morning_fare: assignMorning,
-        afternoon_fare: assignAfternoon,
-        daily_fare: assignDaily,
-        standard_daily_fare: assignEngine.dailyFare,
-        km_fare: assignEngine.dailyKmFare,
-        daily_km_fare: assignEngine.dailyKmFare,
-        morning_km_fare: assignEngine.morningKmFare,
-        afternoon_km_fare: assignEngine.afternoonKmFare,
-        service_charge_fare: assignEngine.dailyServiceCharge,
-        driver_net_earnings: assignEngine.driverDailyEarnings,
-        platform_km_levy: assignEngine.platformDailyLevy,
+        distance_km: assignDist,
+        morning_fare: resolvedAssignFare.morningFare,
+        afternoon_fare: resolvedAssignFare.afternoonFare,
+        daily_fare: resolvedAssignFare.dailyFare,
+        standard_daily_fare: resolvedAssignFare.standardDailyFare,
+        km_fare: resolvedAssignFare.dailyKmFare,
+        daily_km_fare: resolvedAssignFare.dailyKmFare,
+        one_way_km_fare: resolvedAssignFare.distanceCharge,
+        km_fee: resolvedAssignFare.distanceCharge,
+        morning_km_fare: resolvedAssignFare.morningKmFare,
+        afternoon_km_fare: resolvedAssignFare.afternoonKmFare,
+        service_charge_fare: resolvedAssignFare.dailyServiceCharge,
+        driver_net_earnings: resolvedAssignFare.driverDailyEarnings,
+        platform_km_levy: resolvedAssignFare.platformDailyLevy,
         driver_share_percent: 80,
         platform_levy_percent: 20,
-        distance_charge: assignEngine.distanceCharge,
-        service_charge: assignEngine.serviceCharge,
-        service_charge_percent: assignEngine.serviceChargePercent,
-        billable_km: assignEngine.billableKm,
-        actual_amount_collected: assignDaily,
-        discount_details: assignMeta?.discount || null,
-        is_discounted: Boolean(assignMeta?.discount) || assignDaily < assignEngine.dailyFare,
-        accountant_approval_ref: assignMeta?.discount?.accountantApprovalRef || null,
-        accountant_name: assignMeta?.discount?.accountantName || null,
+        distance_charge: resolvedAssignFare.distanceCharge,
+        service_charge: resolvedAssignFare.serviceCharge,
+        service_charge_percent: resolvedAssignFare.serviceChargePercent,
+        billable_km: resolvedAssignFare.billableKm,
+        actual_amount_collected: resolvedAssignFare.actualAmountCollected,
+        discount_details: resolvedAssignFare.discountDetails,
+        is_discounted: resolvedAssignFare.isDiscounted,
+        accountant_approval_ref: resolvedAssignFare.discountDetails?.accountantApprovalRef || null,
+        accountant_name: resolvedAssignFare.discountDetails?.accountantName || null,
         trip_type: assignTripType,
         escort_type: 'myeduride_escort',
         preferred_escort_id: a.escort_application_id,
@@ -1373,6 +1334,11 @@ export async function POST(request: NextRequest) {
         originalFare,
         discountedFare,
         correctedFare,
+        kmFee,
+        oneWayKmFee,
+        dailyKmFare,
+        serviceCharge,
+        oneWayServiceCharge,
         accountantApprovalRef,
         accountantName,
         discountReason,
@@ -1386,14 +1352,55 @@ export async function POST(request: NextRequest) {
         return NextResponse.json({ error: 'Enter a valid corrected daily fare' }, { status: 400 });
       }
 
+      const resolvedTripType = normalizeEscortTripType(tripType);
+      const tripMultiplier = resolvedTripType === 'both' ? 2 : 1;
+
+      // Prioritize explicit Km fee entered by City Manager
+      const resolvedOneWayKm = Number(kmFee ?? oneWayKmFee) > 0
+        ? Math.round(Number(kmFee ?? oneWayKmFee))
+        : Math.round(rawCorrected / (tripMultiplier * 1.06));
+
+      const resolvedDailyKm = Number(dailyKmFare) > 0
+        ? Math.round(Number(dailyKmFare))
+        : resolvedOneWayKm * tripMultiplier;
+
+      const resolvedMorningKm = resolvedTripType === 'afternoon_only' ? 0 : resolvedOneWayKm;
+      const resolvedAfternoonKm = resolvedTripType === 'morning_only' ? 0 : (resolvedDailyKm - resolvedMorningKm);
+
+      const resolvedOneWaySvc = Number(oneWayServiceCharge) >= 0 && oneWayServiceCharge !== ''
+        ? Math.round(Number(oneWayServiceCharge))
+        : Math.round(resolvedOneWayKm * 0.06);
+
+      const resolvedDailySvc = Number(serviceCharge) >= 0 && serviceCharge !== ''
+        ? Math.round(Number(serviceCharge))
+        : Math.max(0, rawCorrected - resolvedDailyKm);
+
       const variance = rawOriginal > 0 ? rawOriginal - rawCorrected : 0;
       const isDiscount = variance > 0;
-      const resolvedTripType = normalizeEscortTripType(tripType);
       const morningFare = resolvedTripType === 'afternoon_only' ? 0 : resolvedTripType === 'morning_only' ? rawCorrected : Math.round(rawCorrected / 2);
       const afternoonFare = resolvedTripType === 'morning_only' ? 0 : resolvedTripType === 'afternoon_only' ? rawCorrected : rawCorrected - morningFare;
+
       const discountPayload = {
         originalFare: rawOriginal || rawCorrected,
         discountedFare: rawCorrected,
+        daily_fare: rawCorrected,
+        morning_fare: morningFare,
+        afternoon_fare: afternoonFare,
+        km_fee: resolvedOneWayKm,
+        one_way_km_fee: resolvedOneWayKm,
+        one_way_km_fare: resolvedOneWayKm,
+        daily_km_fare: resolvedDailyKm,
+        km_fare: resolvedDailyKm,
+        morning_km_fare: resolvedMorningKm,
+        afternoon_km_fare: resolvedAfternoonKm,
+        service_charge: resolvedOneWaySvc,
+        daily_service_charge: resolvedDailySvc,
+        service_charge_fare: resolvedDailySvc,
+        driver_net_earnings: Math.round(resolvedDailyKm * 0.8),
+        driver_daily_earnings: Math.round(resolvedDailyKm * 0.8),
+        driver_morning_earnings: Math.round(resolvedMorningKm * 0.8),
+        driver_afternoon_earnings: Math.round(resolvedDailyKm * 0.8) - Math.round(resolvedMorningKm * 0.8),
+        trip_type: resolvedTripType,
         variance,
         is_correction: true,
         is_discount: isDiscount,
@@ -1480,11 +1487,29 @@ export async function POST(request: NextRequest) {
           currentNotes.morning_fare = morningFare;
           currentNotes.afternoon_fare = afternoonFare;
           currentNotes.actual_amount_collected = rawCorrected;
+          currentNotes.km_fee = resolvedOneWayKm;
+          currentNotes.one_way_km_fare = resolvedOneWayKm;
+          currentNotes.daily_km_fare = resolvedDailyKm;
+          currentNotes.km_fare = resolvedDailyKm;
+          currentNotes.morning_km_fare = resolvedMorningKm;
+          currentNotes.afternoon_km_fare = resolvedAfternoonKm;
+          currentNotes.service_charge = resolvedOneWaySvc;
+          currentNotes.daily_service_charge = resolvedDailySvc;
+          currentNotes.service_charge_fare = resolvedDailySvc;
+          currentNotes.driver_net_earnings = Math.round(resolvedDailyKm * 0.8);
           currentNotes.fareResult = {
             ...(currentNotes.fareResult || {}),
             dailyFare: rawCorrected,
             morningFare,
             afternoonFare,
+            dailyKmFare: resolvedDailyKm,
+            oneWayKmFare: resolvedOneWayKm,
+            morningKmFare: resolvedMorningKm,
+            afternoonKmFare: resolvedAfternoonKm,
+            distanceCharge: resolvedOneWayKm,
+            serviceCharge: resolvedOneWaySvc,
+            dailyServiceCharge: resolvedDailySvc,
+            driverDailyEarnings: Math.round(resolvedDailyKm * 0.8),
             originalDailyFare: rawOriginal || currentNotes.fareResult?.originalDailyFare || rawCorrected,
             discountVariance: variance,
             tripType: resolvedTripType,
@@ -1565,6 +1590,14 @@ export async function POST(request: NextRequest) {
             dailyFare: rawCorrected,
             morningFare,
             afternoonFare,
+            dailyKmFare: resolvedDailyKm,
+            oneWayKmFare: resolvedOneWayKm,
+            morningKmFare: resolvedMorningKm,
+            afternoonKmFare: resolvedAfternoonKm,
+            distanceCharge: resolvedOneWayKm,
+            serviceCharge: resolvedOneWaySvc,
+            dailyServiceCharge: resolvedDailySvc,
+            driverDailyEarnings: Math.round(resolvedDailyKm * 0.8),
             originalDailyFare: rawOriginal || rawCorrected,
             tripType: resolvedTripType,
           };
@@ -1573,6 +1606,16 @@ export async function POST(request: NextRequest) {
           assignNotes.daily_fare = rawCorrected;
           assignNotes.morning_fare = morningFare;
           assignNotes.afternoon_fare = afternoonFare;
+          assignNotes.km_fee = resolvedOneWayKm;
+          assignNotes.one_way_km_fare = resolvedOneWayKm;
+          assignNotes.daily_km_fare = resolvedDailyKm;
+          assignNotes.km_fare = resolvedDailyKm;
+          assignNotes.morning_km_fare = resolvedMorningKm;
+          assignNotes.afternoon_km_fare = resolvedAfternoonKm;
+          assignNotes.service_charge = resolvedOneWaySvc;
+          assignNotes.daily_service_charge = resolvedDailySvc;
+          assignNotes.service_charge_fare = resolvedDailySvc;
+          assignNotes.driver_net_earnings = Math.round(resolvedDailyKm * 0.8);
           if (isDiscount) assignNotes.discount = discountPayload;
           else delete assignNotes.discount;
           if (keepText) assignNotes.prior_notes = keepText;
@@ -1614,10 +1657,28 @@ export async function POST(request: NextRequest) {
               morning_fare: morningFare,
               afternoon_fare: afternoonFare,
               actual_amount_collected: rawCorrected,
+              km_fee: resolvedOneWayKm,
+              one_way_km_fare: resolvedOneWayKm,
+              daily_km_fare: resolvedDailyKm,
+              km_fare: resolvedDailyKm,
+              morning_km_fare: resolvedMorningKm,
+              afternoon_km_fare: resolvedAfternoonKm,
+              service_charge: resolvedOneWaySvc,
+              daily_service_charge: resolvedDailySvc,
+              service_charge_fare: resolvedDailySvc,
+              driver_net_earnings: Math.round(resolvedDailyKm * 0.8),
               fareResult: {
                 dailyFare: rawCorrected,
                 morningFare,
                 afternoonFare,
+                dailyKmFare: resolvedDailyKm,
+                oneWayKmFare: resolvedOneWayKm,
+                morningKmFare: resolvedMorningKm,
+                afternoonKmFare: resolvedAfternoonKm,
+                distanceCharge: resolvedOneWayKm,
+                serviceCharge: resolvedOneWaySvc,
+                dailyServiceCharge: resolvedDailySvc,
+                driverDailyEarnings: Math.round(resolvedDailyKm * 0.8),
                 originalDailyFare: rawOriginal || rawCorrected,
                 discountVariance: variance,
                 tripType: resolvedTripType,
