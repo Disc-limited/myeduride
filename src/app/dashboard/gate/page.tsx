@@ -310,6 +310,7 @@ function GateOfficerDashboardInner() {
             remaining_scans: Math.floor(milli / 500),
             status: milli < 500 ? 'exhausted' : units <= lowThresh ? 'low' : 'healthy',
             low_threshold_units: lowThresh,
+            scan_unit_cost: 0.5,
           });
         }
       }
