@@ -40,12 +40,23 @@ import {
 import Link from 'next/link';
 import StudentAvatar from '@/components/shared/StudentAvatar';
 import SendNoticeModal from '@/components/school-admin/SendNoticeModal';
+import SchoolGateCreditsModal from '@/components/school-admin/SchoolGateCreditsModal';
 
 export default function SchoolAdminDashboard() {
   const [schoolName, setSchoolName] = useState('Greenfield International School');
   const [userName, setUserName] = useState('Admin');
   const [schoolId, setSchoolId] = useState('');
   const [noticeModalOpen, setNoticeModalOpen] = useState(false);
+  const [gateCreditsModalOpen, setGateCreditsModalOpen] = useState(false);
+  const [gateCreditsModalTab, setGateCreditsModalTab] = useState<'ledger' | 'purchase' | 'reports'>('ledger');
+  const [gateCreditsInfo, setGateCreditsInfo] = useState({
+    remaining_units: 25.0,
+    remaining_scans: 50,
+    status: 'healthy',
+    wallet_balance_ngn: 0,
+    month_units_consumed: 0,
+    total_transactions: 0,
+  });
   const [showWalletBalance, setShowWalletBalance] = useState(true);
   const [currentDate, setCurrentDate] = useState(new Date());
 
@@ -190,13 +201,26 @@ export default function SchoolAdminDashboard() {
       }
 
       // Fetch all core operational streams concurrently via Promise.allSettled
-      const [dashResult, escortResult, vehicleResult, notifResult, calResult] = await Promise.allSettled([
+      const [dashResult, escortResult, vehicleResult, notifResult, calResult, creditsResult] = await Promise.allSettled([
         fetchData('get_school_dashboard', { school_id: targetSchoolId }),
         fetch(`/api/school-admin/escorts?school_id=${targetSchoolId}`, { credentials: 'include' }).then((r) => r.json()),
         fetch(`/api/school-admin/vehicles?school_id=${targetSchoolId}`, { credentials: 'include' }).then((r) => r.json()),
         fetch(`/api/notifications/inbox?school_id=${targetSchoolId}&limit=10`, { credentials: 'include' }).then((r) => r.json()),
         fetch(`/api/schools/calendar?school_id=${targetSchoolId}`, { credentials: 'include' }).then((r) => r.json()),
+        fetch(`/api/schools/gate-credits?school_id=${targetSchoolId}&limit=50`, { credentials: 'include', cache: 'no-store' }).then((r) => r.json()),
       ]);
+
+      if (creditsResult.status === 'fulfilled' && creditsResult.value?.credits) {
+        const c = creditsResult.value;
+        setGateCreditsInfo({
+          remaining_units: Number(c.credits.remaining_units ?? 25),
+          remaining_scans: Number(c.credits.remaining_scans ?? 50),
+          status: c.credits.status || 'healthy',
+          wallet_balance_ngn: Number(c.wallet?.available_balance_ngn ?? 0),
+          month_units_consumed: Number(c.summary?.month_units_consumed ?? 0),
+          total_transactions: Array.isArray(c.ledger) ? c.ledger.length : 0,
+        });
+      }
 
       // 1. Core School Dashboard Data
       let dashboardData: any = null;
@@ -498,28 +522,84 @@ export default function SchoolAdminDashboard() {
               </span>
             </div>
 
-            {/* School Wallet Balance Inset Card */}
-            <div className="bg-black/30 backdrop-blur-md p-3.5 rounded-2xl border border-white/15 min-w-[200px] shrink-0">
-              <div className="flex items-center justify-between gap-2 text-[11px] text-emerald-200 font-semibold mb-1">
-                <span>School Wallet Balance</span>
-                <button
-                  type="button"
-                  onClick={() => setShowWalletBalance(!showWalletBalance)}
-                  className="text-emerald-300 hover:text-white"
-                >
-                  {showWalletBalance ? <Eye size={14} /> : <EyeOff size={14} />}
-                </button>
-              </div>
-              <p className="text-xl font-black text-white tracking-tight mb-2">
-                {showWalletBalance ? '₦0.00' : '••••••••'}
-              </p>
-              <Link
-                href="/dashboard/school-admin/wallet"
-                className="inline-flex items-center gap-1.5 px-3 py-1 bg-emerald-500 hover:bg-emerald-400 text-slate-900 font-extrabold text-xs rounded-xl shadow-sm transition"
+            <div className="flex flex-wrap items-center gap-3">
+              {/* Gate Credit Units Inset Card (Click to view every transaction & purchase units) */}
+              <div
+                onClick={() => {
+                  setGateCreditsModalTab('ledger');
+                  setGateCreditsModalOpen(true);
+                }}
+                className="cursor-pointer bg-emerald-950/60 hover:bg-emerald-950/80 backdrop-blur-md p-3.5 rounded-2xl border border-emerald-400/30 min-w-[210px] shrink-0 transition shadow-sm group"
+                title="Click to view every Gate Credit transaction and purchase units"
               >
-                <span>Wallet Overview</span>
-                <ArrowRight size={14} />
-              </Link>
+                <div className="flex items-center justify-between gap-2 text-[11px] text-emerald-200 font-bold mb-1">
+                  <span className="flex items-center gap-1.5">
+                    <CreditCard size={13} className="text-emerald-300" />
+                    Gate Credit Units
+                  </span>
+                  <span className="px-1.5 py-0.5 rounded bg-emerald-500/20 text-emerald-300 text-[9px] font-extrabold uppercase">
+                    ₦6/Day
+                  </span>
+                </div>
+                <p className="text-xl font-black text-white tracking-tight font-mono mb-2">
+                  {showWalletBalance
+                    ? `${Number(gateCreditsInfo.remaining_units || 0).toFixed(1)} Units`
+                    : '•••• Units'}
+                </p>
+                <div className="flex items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      setGateCreditsModalTab('ledger');
+                      setGateCreditsModalOpen(true);
+                    }}
+                    className="inline-flex items-center gap-1 px-2.5 py-1 bg-white/15 hover:bg-white/25 text-white font-bold text-[11px] rounded-xl transition"
+                  >
+                    <span>Transactions</span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      setGateCreditsModalTab('purchase');
+                      setGateCreditsModalOpen(true);
+                    }}
+                    className="inline-flex items-center gap-1 px-2.5 py-1 bg-emerald-400 hover:bg-emerald-300 text-slate-950 font-extrabold text-[11px] rounded-xl shadow-xs transition"
+                  >
+                    <span>Buy Credits</span>
+                    <ArrowRight size={12} />
+                  </button>
+                </div>
+              </div>
+
+              {/* School Wallet Balance Inset Card */}
+              <div className="bg-black/30 backdrop-blur-md p-3.5 rounded-2xl border border-white/15 min-w-[200px] shrink-0">
+                <div className="flex items-center justify-between gap-2 text-[11px] text-emerald-200 font-semibold mb-1">
+                  <span>School Wallet Balance</span>
+                  <button
+                    type="button"
+                    onClick={() => setShowWalletBalance(!showWalletBalance)}
+                    className="text-emerald-300 hover:text-white"
+                  >
+                    {showWalletBalance ? <Eye size={14} /> : <EyeOff size={14} />}
+                  </button>
+                </div>
+                <p className="text-xl font-black text-white tracking-tight mb-2">
+                  {showWalletBalance
+                    ? `₦${Number(gateCreditsInfo.wallet_balance_ngn || 0).toLocaleString('en-NG', {
+                        minimumFractionDigits: 2,
+                      })}`
+                    : '••••••••'}
+                </p>
+                <Link
+                  href="/dashboard/school-admin/wallet"
+                  className="inline-flex items-center gap-1.5 px-3 py-1 bg-emerald-500 hover:bg-emerald-400 text-slate-900 font-extrabold text-xs rounded-xl shadow-sm transition"
+                >
+                  <span>Wallet Overview</span>
+                  <ArrowRight size={14} />
+                </Link>
+              </div>
             </div>
           </div>
         </div>
@@ -1115,6 +1195,15 @@ export default function SchoolAdminDashboard() {
         onClose={() => setNoticeModalOpen(false)}
         schoolId={schoolId}
         schoolName={schoolName}
+      />
+
+      {/* SCHOOL GATE CREDIT SYSTEM & AUDIT LEDGER MODAL */}
+      <SchoolGateCreditsModal
+        isOpen={gateCreditsModalOpen}
+        onClose={() => setGateCreditsModalOpen(false)}
+        schoolId={schoolId}
+        initialTab={gateCreditsModalTab}
+        onUpdated={() => loadDashboard()}
       />
     </div>
   );

@@ -249,12 +249,15 @@ export async function POST(request: NextRequest) {
         },
       });
 
-      // Daisaf Wallet Specification Section 2.1: Pay-As-You-Go ₦3 deduction
-      void GateBillingEngine.executeGateScanDeduction({
+      // School Gate Credit System: Deduct 0.5 Unit (₦3.00 equivalent) per Staff Clock-In / Clock-Out
+      const creditDeduction = await GateBillingEngine.executeGateScanDeduction({
         schoolId,
         staffProfileId: profile?.id,
         scanDirection: staffType === 'clock_in' ? 'sign_in' : 'sign_out',
-      }).catch((err) => console.warn('[gate/accept] Staff scan debit error:', err));
+      }).catch((err) => {
+        console.warn('[gate/accept] Staff scan credit deduction error:', err);
+        return null;
+      });
 
       return NextResponse.json({
         success: true,
@@ -267,6 +270,12 @@ export async function POST(request: NextRequest) {
         action_location: resolvedLocation.action_label,
         gps_coords: resolvedLocation.gps_coords,
         geofence_verified: resolvedLocation.geofence_verified,
+        gate_credits: creditDeduction
+          ? {
+              units_deducted: creditDeduction.unitsDeducted,
+              remaining_units: creditDeduction.remainingUnits,
+            }
+          : undefined,
       });
     }
 
@@ -565,12 +574,15 @@ export async function POST(request: NextRequest) {
       return { notified: 0, skipped: String(err) };
     });
 
-    // Daisaf Wallet Specification Section 2.1: Pay-As-You-Go ₦3 deduction
-    void GateBillingEngine.executeGateScanDeduction({
+    // School Gate Credit System: Deduct 0.5 Unit (₦3.00 equivalent) per Student Clock-In / Clock-Out
+    const creditDeduction = await GateBillingEngine.executeGateScanDeduction({
       schoolId,
       studentId: student_id,
       scanDirection: type === 'arrival' ? 'sign_in' : 'sign_out',
-    }).catch((err) => console.warn('[gate/accept] Student scan debit error:', err));
+    }).catch((err) => {
+      console.warn('[gate/accept] Student scan credit deduction error:', err);
+      return null;
+    });
 
     return NextResponse.json({
       success: true,
@@ -584,6 +596,12 @@ export async function POST(request: NextRequest) {
       parents_notified: notifyResult.notified,
       notify_skipped: notifyResult.skipped,
       activity_logged: activityResult.ok,
+      gate_credits: creditDeduction
+        ? {
+            units_deducted: creditDeduction.unitsDeducted,
+            remaining_units: creditDeduction.remainingUnits,
+          }
+        : undefined,
     });
   } catch (err: any) {
     console.error('[gate/accept] crash:', err);

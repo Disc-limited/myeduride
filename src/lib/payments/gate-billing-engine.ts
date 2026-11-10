@@ -1,27 +1,44 @@
 /**
- * GATE SCAN BILLING ENGINE (PAY-AS-YOU-GO)
+ * SCHOOL GATE MANAGER PREPAID CREDIT & BILLING ENGINE
  *
- * Implements Daisaf Wallet System Specification Section 2.1 & 3.1:
- * - ₦3 per scan in, ₦3 per scan out (300 Kobo)
- * - 2% Service Charge on monthly spend
- * - Real-time insufficient wallet balance gate lockout
- * - School-funded vs Parent-funded modes
- * - Atomic double-entry cryptographic ledger debit (Payer -> Daisaf)
+ * Implements the School Gate Credit Unit System:
+ * - Strict View Isolation: Gate system ONLY sees remaining Gate Credit Units (never cash wallet balances).
+ * - Credit Packages:
+ *     25 Units  = ₦3,000
+ *     50 Units  = ₦6,000
+ *     100 Units = ₦12,000
+ *     200 Units = ₦24,000
+ *     500 Units = ₦60,000
+ *     Custom multiples of 25 Units (@ ₦120 / unit)
+ * - Free Trial: 25 Units granted to newly onboarded schools before payment.
+ * - Daily Unit Consumption Rule:
+ *     1 Complete Unit = ₦6.00 / day = 1 Clock-In (0.5 Unit / ₦3.00) + 1 Clock-Out (0.5 Unit / ₦3.00) per user.
+ * - Full Audit Documentation: Every unit purchased or spent is recorded in `school_gate_credit_ledger`.
  */
 
 import { getAdminClient } from '@/lib/supabase/admin';
-import crypto from 'crypto';
 
 export interface GateScanEligibilityResult {
   allowed: boolean;
   payerType: 'school' | 'parent' | 'none';
   payerWalletId?: string;
   payerName?: string;
+  /** Remaining Gate Credit Units (e.g. 24.5). This is the ONLY balance metric exposed to the gate system. */
+  remainingUnits: number;
+  remainingUnitsMilli: number;
+  requiredUnits: number;
   availableBalanceKobo: number;
   availableBalanceNgn: number;
   scanFeeKobo: number;
   scanFeeNgn: number;
-  code?: 'eligible' | 'unmetered' | 'insufficient_funds' | 'unregistered_student' | 'wallet_inactive' | 'wallet_not_found';
+  code?:
+    | 'eligible'
+    | 'unmetered'
+    | 'insufficient_credits'
+    | 'insufficient_funds'
+    | 'unregistered_student'
+    | 'wallet_inactive'
+    | 'wallet_not_found';
   message?: string;
 }
 
@@ -32,6 +49,8 @@ export interface GateScanDeductionResult {
   payerType: 'school' | 'parent' | 'none';
   payerWalletId?: string;
   scanDirection: 'sign_in' | 'sign_out';
+  unitsDeducted: number;
+  remainingUnits: number;
   feeKobo: number;
   feeNgn: number;
   newBalanceKobo: number;
@@ -40,15 +59,88 @@ export interface GateScanDeductionResult {
   code?: string;
 }
 
-export class GateBillingEngine {
-  /** Standard Gate Scan Fee: ₦3.00 (300 Kobo) */
-  public static readonly DEFAULT_SCAN_FEE_KOBO = 300;
+export interface GateCreditPackage {
+  id: string;
+  name: string;
+  units: number;
+  price_kobo: number;
+  price_ngn: number;
+  daily_equivalent: number;
+  description: string;
+  badge_text?: string | null;
+  display_order: number;
+}
 
-  /** Minimum School Wallet Deposit: ₦10,000 (1,000,000 Kobo) */
-  public static readonly MIN_SCHOOL_FUNDING_KOBO = 1000000;
+export class GateBillingEngine {
+  /** 1 Scan (Clock-In or Clock-Out) = 0.5 Unit (500 Milli-Units) = ₦3.00 (300 Kobo) */
+  public static readonly DEFAULT_SCAN_FEE_KOBO = 300;
+  public static readonly SCAN_COST_MILLI_UNITS = 500; // 0.5 Unit per scan (1.0 Unit = Clock-In + Clock-Out = ₦6/day)
+  public static readonly DAILY_UNIT_COST_NGN = 6;
+  public static readonly FREE_TRIAL_UNITS = 25;
+
+  /** Minimum School Wallet Deposit: ₦3,000 (minimum package price) */
+  public static readonly MIN_SCHOOL_FUNDING_KOBO = 300000;
 
   /** Standard Monthly Operational Service Charge: 2.0% */
   public static readonly SERVICE_CHARGE_PERCENT = 2.0;
+
+  public static readonly DEFAULT_PACKAGES: GateCreditPackage[] = [
+    {
+      id: 'PKG_25',
+      name: 'Starter Credit Bundle',
+      units: 25,
+      price_kobo: 300000,
+      price_ngn: 3000,
+      daily_equivalent: 25,
+      description: '25 Gate Credit Units · Covers 50 clock-in/clock-out scans (₦6/day per full unit)',
+      badge_text: 'Starter',
+      display_order: 1,
+    },
+    {
+      id: 'PKG_50',
+      name: 'Standard Growth Bundle',
+      units: 50,
+      price_kobo: 600000,
+      price_ngn: 6000,
+      daily_equivalent: 50,
+      description: '50 Gate Credit Units · Covers 100 clock-in/clock-out scans across your campus',
+      badge_text: 'Most Popular',
+      display_order: 2,
+    },
+    {
+      id: 'PKG_100',
+      name: 'Institutional Pro Bundle',
+      units: 100,
+      price_kobo: 1200000,
+      price_ngn: 12000,
+      daily_equivalent: 100,
+      description: '100 Gate Credit Units · Covers 200 clock-in/clock-out scans for growing schools',
+      badge_text: 'Best Value',
+      display_order: 3,
+    },
+    {
+      id: 'PKG_200',
+      name: 'Campus Enterprise Bundle',
+      units: 200,
+      price_kobo: 2400000,
+      price_ngn: 24000,
+      daily_equivalent: 200,
+      description: '200 Gate Credit Units · High-capacity gate attendance volume for large campuses',
+      badge_text: 'Enterprise',
+      display_order: 4,
+    },
+    {
+      id: 'PKG_500',
+      name: 'Mega Institutional Bundle',
+      units: 500,
+      price_kobo: 6000000,
+      price_ngn: 60000,
+      daily_equivalent: 500,
+      description: '500 Gate Credit Units · Full-term institutional gate attendance volume',
+      badge_text: 'Mega Tier',
+      display_order: 5,
+    },
+  ];
 
   /**
    * Calculates the 2% monthly service charge on total operational spend.
@@ -59,8 +151,48 @@ export class GateBillingEngine {
   }
 
   /**
+   * Strictly sanitized Gate Credit status for the Gate Officer station.
+   * Exposes ONLY remaining credit units — zero wallet or bank balance data.
+   */
+  public static async getGateStationCreditStatus(schoolId: string): Promise<{
+    remaining_units: number;
+    remaining_scans: number;
+    low_threshold_units: number;
+    status: 'healthy' | 'low' | 'exhausted';
+    daily_unit_rate_ngn: number;
+    scan_unit_cost: number;
+  }> {
+    const supabase = getAdminClient();
+    const { data: school } = await supabase
+      .from('schools')
+      .select('gate_credit_balance_milli, low_credit_threshold_units')
+      .eq('id', schoolId)
+      .maybeSingle();
+
+    const milli = Number(school?.gate_credit_balance_milli ?? 25000);
+    const remainingUnits = Number((milli / 1000).toFixed(1));
+    const lowThreshold = Number(school?.low_credit_threshold_units ?? 10);
+
+    let status: 'healthy' | 'low' | 'exhausted' = 'healthy';
+    if (milli < this.SCAN_COST_MILLI_UNITS) {
+      status = 'exhausted';
+    } else if (remainingUnits <= lowThreshold) {
+      status = 'low';
+    }
+
+    return {
+      remaining_units: remainingUnits,
+      remaining_scans: Math.floor(milli / this.SCAN_COST_MILLI_UNITS),
+      low_threshold_units: lowThreshold,
+      status,
+      daily_unit_rate_ngn: this.DAILY_UNIT_COST_NGN,
+      scan_unit_cost: 0.5,
+    };
+  }
+
+  /**
    * Validates whether a student or staff gate scan is authorized to proceed
-   * based on real-time wallet funding status.
+   * based on real-time School Gate Credit Units (0.5 unit per clock-in or clock-out).
    */
   public static async validateGateScanEligibility(params: {
     schoolId: string;
@@ -70,17 +202,41 @@ export class GateBillingEngine {
     const { schoolId, studentId } = params;
     const supabase = getAdminClient();
 
-    // 1. Fetch School & Wallet Configuration
-    const { data: school, error: schoolErr } = await supabase
+    // 1. Fetch School & Gate Credit Balance
+    let school: any = null;
+    const { data: schoolData, error: schoolErr } = await supabase
       .from('schools')
-      .select('id, name, wallet_mode, is_wallet_active, gate_scan_fee_kobo')
+      .select('id, name, wallet_mode, is_wallet_active, gate_scan_fee_kobo, gate_credit_balance_milli')
       .eq('id', schoolId)
       .maybeSingle();
 
-    if (schoolErr || !school) {
+    if (!schoolErr && schoolData) {
+      school = schoolData;
+    } else {
+      const { data: baseSchool } = await supabase
+        .from('schools')
+        .select('id, name')
+        .eq('id', schoolId)
+        .maybeSingle();
+
+      if (baseSchool) {
+        school = {
+          ...baseSchool,
+          wallet_mode: 'school_funded',
+          is_wallet_active: true,
+          gate_scan_fee_kobo: this.DEFAULT_SCAN_FEE_KOBO,
+          gate_credit_balance_milli: 25000,
+        };
+      }
+    }
+
+    if (!school) {
       return {
         allowed: false,
         payerType: 'school',
+        remainingUnits: 0,
+        remainingUnitsMilli: 0,
+        requiredUnits: 0.5,
         availableBalanceKobo: 0,
         availableBalanceNgn: 0,
         scanFeeKobo: this.DEFAULT_SCAN_FEE_KOBO,
@@ -93,22 +249,10 @@ export class GateBillingEngine {
     const scanFeeKobo = school.gate_scan_fee_kobo || this.DEFAULT_SCAN_FEE_KOBO;
     const scanFeeNgn = scanFeeKobo / 100;
     const walletMode = school.wallet_mode || 'school_funded';
+    const creditsMilli = Number(school.gate_credit_balance_milli ?? 0);
+    const remainingUnits = Number((creditsMilli / 1000).toFixed(1));
 
-    // If school is not using Gate Manager wallet, Gate Manager is open but wallet is unactivated
-    if (school.is_wallet_active === false || walletMode === 'inactive') {
-      return {
-        allowed: true,
-        payerType: 'none',
-        availableBalanceKobo: 0,
-        availableBalanceNgn: 0,
-        scanFeeKobo: 0,
-        scanFeeNgn: 0,
-        code: 'unmetered',
-        message: 'Gate Manager is active in unmetered mode (no wallet deduction).',
-      };
-    }
-
-    // 2. Parent-Funded Mode (Schools where parents pay directly)
+    // 2. Parent-Funded Mode (if specifically set to parent_funded)
     if (walletMode === 'parent_funded' && studentId) {
       const { data: parentLink } = await supabase
         .from('student_parents')
@@ -122,6 +266,9 @@ export class GateBillingEngine {
         return {
           allowed: false,
           payerType: 'parent',
+          remainingUnits,
+          remainingUnitsMilli: creditsMilli,
+          requiredUnits: 0.5,
           availableBalanceKobo: 0,
           availableBalanceNgn: 0,
           scanFeeKobo,
@@ -145,12 +292,15 @@ export class GateBillingEngine {
           allowed: false,
           payerType: 'parent',
           payerWalletId: parentWallet?.id,
+          remainingUnits,
+          remainingUnitsMilli: creditsMilli,
+          requiredUnits: 0.5,
           availableBalanceKobo: balKobo,
           availableBalanceNgn: balKobo / 100,
           scanFeeKobo,
           scanFeeNgn,
           code: 'insufficient_funds',
-          message: `Parent wallet has insufficient funds (₦${(balKobo / 100).toFixed(2)}). Minimum ₦${scanFeeNgn.toFixed(2)} required for gate transit.`,
+          message: 'Parent account has insufficient gate transit credits.',
         };
       }
 
@@ -158,45 +308,45 @@ export class GateBillingEngine {
         allowed: true,
         payerType: 'parent',
         payerWalletId: parentWallet?.id,
-        availableBalanceKobo: balKobo,
-        availableBalanceNgn: balKobo / 100,
+        remainingUnits,
+        remainingUnitsMilli: creditsMilli,
+        requiredUnits: 0.5,
+        availableBalanceKobo: 0,
+        availableBalanceNgn: 0,
         scanFeeKobo,
         scanFeeNgn,
         code: 'eligible',
       };
     }
 
-    // 3. School-Funded Mode (Default Pay-As-You-Go Gate Manager)
-    const { data: schoolWallet } = await supabase
-      .from('wallets')
-      .select('id, available_balance_kobo, status')
-      .eq('school_id', schoolId)
-      .eq('entity_type', 'school')
-      .maybeSingle();
-
-    const balKobo = schoolWallet?.available_balance_kobo || 0;
-    if (balKobo < scanFeeKobo) {
+    // 3. School Gate Credit System (Default)
+    // Requires at least 0.5 Unit (500 milli-units) per Clock-In or Clock-Out scan
+    if (creditsMilli < this.SCAN_COST_MILLI_UNITS) {
       return {
         allowed: false,
         payerType: 'school',
-        payerWalletId: schoolWallet?.id,
         payerName: school.name,
-        availableBalanceKobo: balKobo,
-        availableBalanceNgn: balKobo / 100,
+        remainingUnits,
+        remainingUnitsMilli: creditsMilli,
+        requiredUnits: 0.5,
+        availableBalanceKobo: 0,
+        availableBalanceNgn: 0,
         scanFeeKobo,
         scanFeeNgn,
-        code: 'insufficient_funds',
-        message: `School wallet balance (₦${(balKobo / 100).toFixed(2)}) is insufficient to process gate sign-in/out. Please fund your institutional wallet (Minimum ₦10,000).`,
+        code: 'insufficient_credits',
+        message: `Gate Credit Units exhausted (${remainingUnits.toFixed(1)} Units remaining). Please contact School Admin to purchase Gate Credit Units.`,
       };
     }
 
     return {
       allowed: true,
       payerType: 'school',
-      payerWalletId: schoolWallet?.id,
       payerName: school.name,
-      availableBalanceKobo: balKobo,
-      availableBalanceNgn: balKobo / 100,
+      remainingUnits,
+      remainingUnitsMilli: creditsMilli,
+      requiredUnits: 0.5,
+      availableBalanceKobo: 0,
+      availableBalanceNgn: 0,
       scanFeeKobo,
       scanFeeNgn,
       code: 'eligible',
@@ -204,8 +354,8 @@ export class GateBillingEngine {
   }
 
   /**
-   * Executes atomic ₦3 pay-as-you-go debit from Payer (School or Parent)
-   * and credits Daisaf revenue wallet.
+   * Executes atomic 0.5 Gate Credit Unit (₦3.00 equivalent) deduction per Clock-In / Clock-Out scan
+   * and logs the transaction in `school_gate_credit_ledger`.
    */
   public static async executeGateScanDeduction(params: {
     schoolId: string;
@@ -216,7 +366,7 @@ export class GateBillingEngine {
     const { schoolId, studentId, staffProfileId, scanDirection } = params;
     const supabase = getAdminClient();
 
-    // 1. Attempt Atomic PostgreSQL Stored Procedure Execution
+    // 1. Atomic PostgreSQL Stored Procedure Execution
     try {
       const { data: rpcData, error: rpcErr } = await supabase.rpc('deduct_gate_scan_fee', {
         p_school_id: schoolId,
@@ -231,12 +381,14 @@ export class GateBillingEngine {
             success: false,
             payerType: rpcData.payer_type || 'school',
             scanDirection,
+            unitsDeducted: 0,
+            remainingUnits: Number(rpcData.remaining_units ?? 0),
             feeKobo: rpcData.required_kobo || this.DEFAULT_SCAN_FEE_KOBO,
             feeNgn: (rpcData.required_kobo || this.DEFAULT_SCAN_FEE_KOBO) / 100,
-            newBalanceKobo: rpcData.available_balance_kobo || 0,
-            newBalanceNgn: (rpcData.available_balance_kobo || 0) / 100,
+            newBalanceKobo: 0,
+            newBalanceNgn: 0,
             error: rpcData.message || rpcData.error,
-            code: rpcData.code || 'insufficient_funds',
+            code: rpcData.code || 'insufficient_credits',
           };
         }
 
@@ -246,131 +398,100 @@ export class GateBillingEngine {
           transactionRef: rpcData.reference,
           payerType: rpcData.payer_type || 'school',
           scanDirection,
+          unitsDeducted: Number(rpcData.units_deducted ?? 0.5),
+          remainingUnits: Number(rpcData.remaining_units ?? 0),
           feeKobo: rpcData.fee_kobo || this.DEFAULT_SCAN_FEE_KOBO,
           feeNgn: (rpcData.fee_kobo || this.DEFAULT_SCAN_FEE_KOBO) / 100,
-          newBalanceKobo: rpcData.new_balance_kobo,
-          newBalanceNgn: rpcData.new_balance_ngn,
+          newBalanceKobo: 0,
+          newBalanceNgn: 0,
         };
       }
     } catch (procErr) {
-      console.warn('[GateBillingEngine] Stored procedure unavailable, falling back to direct ledger transaction:', procErr);
+      console.warn('[GateBillingEngine] Stored procedure fallback triggered:', procErr);
     }
 
-    // 2. Direct Fallback: Pure Supabase Double-Entry Ledger Transaction
+    // 2. Resilient Direct Fallback: Deduct 500 milli-units (0.5 unit) directly and document in ledger
     const eligibility = await this.validateGateScanEligibility({ schoolId, studentId, staffProfileId });
     if (!eligibility.allowed) {
       return {
         success: false,
         payerType: eligibility.payerType,
-        payerWalletId: eligibility.payerWalletId,
         scanDirection,
+        unitsDeducted: 0,
+        remainingUnits: eligibility.remainingUnits,
         feeKobo: eligibility.scanFeeKobo,
         feeNgn: eligibility.scanFeeNgn,
-        newBalanceKobo: eligibility.availableBalanceKobo,
-        newBalanceNgn: eligibility.availableBalanceNgn,
+        newBalanceKobo: 0,
+        newBalanceNgn: 0,
         error: eligibility.message,
         code: eligibility.code,
       };
     }
 
-    if (eligibility.payerType === 'none' || eligibility.scanFeeKobo === 0) {
-      return {
-        success: true,
-        payerType: 'none',
-        scanDirection,
-        feeKobo: 0,
-        feeNgn: 0,
-        newBalanceKobo: 0,
-        newBalanceNgn: 0,
-      };
+    const newMilli = Math.max(0, eligibility.remainingUnitsMilli - this.SCAN_COST_MILLI_UNITS);
+    const newUnits = Number((newMilli / 1000).toFixed(1));
+    const ref = `GC-SCAN-${Date.now()}-${Math.random().toString(36).substring(2, 7).toUpperCase()}`;
+    const scanTypeLabel = scanDirection === 'sign_out' ? 'clock_out' : 'clock_in';
+
+    // Resolve person name for ledger documentation
+    let personName = 'Campus Member';
+    let personCode = '';
+    let personRole = studentId ? 'student' : 'staff';
+
+    if (studentId) {
+      const { data: st } = await supabase
+        .from('students')
+        .select('first_name, last_name, student_id_number')
+        .eq('id', studentId)
+        .maybeSingle();
+      if (st) {
+        personName = `${st.first_name || ''} ${st.last_name || ''}`.trim();
+        personCode = st.student_id_number || '';
+      }
+    } else if (staffProfileId) {
+      const { data: tp } = await supabase
+        .from('teacher_profiles')
+        .select('staff_id_number, user:user_profiles(full_name)')
+        .eq('id', staffProfileId)
+        .maybeSingle();
+      if (tp) {
+        const u: any = Array.isArray(tp.user) ? tp.user[0] : tp.user;
+        personName = u?.full_name || 'Staff Member';
+        personCode = tp.staff_id_number || '';
+      }
     }
 
-    const feeKobo = eligibility.scanFeeKobo;
-    const payerWalletId = eligibility.payerWalletId!;
+    await supabase
+      .from('schools')
+      .update({ gate_credit_balance_milli: newMilli, updated_at: new Date().toISOString() })
+      .eq('id', schoolId);
 
-    // Resolve Daisaf Wallet
-    let { data: daisafWallet } = await supabase
-      .from('wallets')
-      .select('id, available_balance_kobo')
-      .in('entity_type', ['daisaf', 'platform_treasury'])
-      .order('created_at', { ascending: false })
-      .limit(1)
-      .maybeSingle();
-
-    if (!daisafWallet) {
-      const { data: newDaisaf } = await supabase
-        .from('wallets')
-        .insert({
-          entity_type: 'daisaf',
-          currency: 'NGN',
-          available_balance_kobo: 0,
-          status: 'active',
-        })
-        .select('id, available_balance_kobo')
-        .single();
-      daisafWallet = newDaisaf;
-    }
-
-    const newPayerBal = eligibility.availableBalanceKobo - feeKobo;
-    const ref = `SCAN-${Date.now()}-${Math.random().toString(36).substring(2, 7).toUpperCase()}`;
-
-    // Update balances
-    await Promise.all([
-      supabase
-        .from('wallets')
-        .update({ available_balance_kobo: newPayerBal, updated_at: new Date().toISOString() })
-        .eq('id', payerWalletId),
-      daisafWallet
-        ? supabase
-            .from('wallets')
-            .update({
-              available_balance_kobo: (daisafWallet.available_balance_kobo || 0) + feeKobo,
-              updated_at: new Date().toISOString(),
-            })
-            .eq('id', daisafWallet.id)
-        : Promise.resolve(),
-    ]);
-
-    // Insert audit ledger transactions
-    await supabase.from('wallet_transactions').insert([
-      {
-        wallet_id: payerWalletId,
-        counterpart_wallet_id: daisafWallet?.id || null,
-        transaction_type: 'DEBIT',
-        channel: 'DAILY_GATE_FEE',
-        amount_kobo: feeKobo,
-        balance_before_kobo: eligibility.availableBalanceKobo,
-        balance_after_kobo: newPayerBal,
-        reference: ref,
-        student_id: studentId || null,
-        status: 'COMPLETED',
-        description: `Gate Scan ${scanDirection === 'sign_in' ? 'Sign-In' : 'Sign-Out'} (₦3 Pay-As-You-Go)`,
-        metadata: {
-          school_id: schoolId,
-          scan_direction: scanDirection,
-          payer_type: eligibility.payerType,
-        },
+    await supabase.from('school_gate_credit_ledger').insert({
+      school_id: schoolId,
+      entry_type: 'CONSUMPTION_SCAN',
+      units_delta_milli: -this.SCAN_COST_MILLI_UNITS,
+      units_before_milli: eligibility.remainingUnitsMilli,
+      units_after_milli: newMilli,
+      amount_kobo: this.DEFAULT_SCAN_FEE_KOBO,
+      student_id: studentId || null,
+      staff_profile_id: staffProfileId || null,
+      person_name: personName,
+      person_code: personCode,
+      person_role: personRole,
+      scan_type: scanTypeLabel,
+      reference: ref,
+      description: `${scanDirection === 'sign_in' ? 'Clock-In' : 'Clock-Out'} Scan: ${personName} (${personCode || personRole.toUpperCase()}) · -0.5 Unit (₦3)`,
+      metadata: {
+        scan_direction: scanDirection,
+        scan_type: scanTypeLabel,
+        person_name: personName,
+        person_code: personCode,
+        person_role: personRole,
+        unit_cost_ngn: 3,
+        daily_unit_rate_ngn: 6,
       },
-      {
-        wallet_id: daisafWallet?.id || payerWalletId,
-        counterpart_wallet_id: payerWalletId,
-        transaction_type: 'CREDIT',
-        channel: 'DAILY_GATE_FEE',
-        amount_kobo: feeKobo,
-        balance_before_kobo: daisafWallet?.available_balance_kobo || 0,
-        balance_after_kobo: (daisafWallet?.available_balance_kobo || 0) + feeKobo,
-        reference: `${ref}-REV`,
-        student_id: studentId || null,
-        status: 'COMPLETED',
-        description: 'Gate Scan Revenue (₦3 Pay-As-You-Go)',
-        metadata: {
-          school_id: schoolId,
-          scan_direction: scanDirection,
-        },
-      },
-    ]);
+    });
 
-    // Insert log
     const { data: logData } = await supabase
       .from('gate_scan_logs')
       .insert({
@@ -378,9 +499,8 @@ export class GateBillingEngine {
         student_id: studentId || null,
         staff_profile_id: staffProfileId || null,
         scan_direction: scanDirection,
-        scan_fee_kobo: feeKobo,
-        billed_wallet_id: payerWalletId,
-        payer_type: eligibility.payerType,
+        scan_fee_kobo: this.DEFAULT_SCAN_FEE_KOBO,
+        payer_type: 'school',
         status: 'BILLED',
         transaction_ref: ref,
       })
@@ -391,13 +511,14 @@ export class GateBillingEngine {
       success: true,
       scanLogId: logData?.id,
       transactionRef: ref,
-      payerType: eligibility.payerType,
-      payerWalletId,
+      payerType: 'school',
       scanDirection,
-      feeKobo,
-      feeNgn: feeKobo / 100,
-      newBalanceKobo: newPayerBal,
-      newBalanceNgn: newPayerBal / 100,
+      unitsDeducted: 0.5,
+      remainingUnits: newUnits,
+      feeKobo: this.DEFAULT_SCAN_FEE_KOBO,
+      feeNgn: 3,
+      newBalanceKobo: 0,
+      newBalanceNgn: 0,
     };
   }
 }

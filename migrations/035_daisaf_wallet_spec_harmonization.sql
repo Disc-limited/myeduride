@@ -163,6 +163,20 @@ BEGIN
     RETURN jsonb_build_object('success', false, 'error', 'SCHOOL_NOT_FOUND', 'code', 'school_not_found');
   END IF;
 
+  -- Unmetered / Inactive wallet mode: Gate Manager operates freely without wallet deduction
+  IF v_school.is_wallet_active = FALSE OR v_school.wallet_mode = 'inactive' THEN
+    RETURN jsonb_build_object(
+      'success', true,
+      'payer_type', 'none',
+      'scan_fee_kobo', 0,
+      'fee_kobo', 0,
+      'new_balance_kobo', 0,
+      'new_balance_ngn', 0,
+      'code', 'unmetered',
+      'message', 'Gate scan approved in unmetered mode.'
+    );
+  END IF;
+
   v_fee_kobo := v_school.gate_scan_fee_kobo;
 
   -- 2. Resolve Daisaf Revenue Wallet

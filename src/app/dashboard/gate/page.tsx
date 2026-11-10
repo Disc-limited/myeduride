@@ -96,6 +96,19 @@ function GateOfficerDashboardInner() {
   const [pickupRequestsByStudent, setPickupRequestsByStudent] = useState<Record<string, any>>({});
 
   // Live Metrics & Aggregations
+  const [gateCredits, setGateCredits] = useState<{
+    remaining_units: number;
+    remaining_scans: number;
+    low_threshold_units: number;
+    status: 'healthy' | 'low' | 'exhausted';
+    scan_unit_cost: number;
+  }>({
+    remaining_units: 25,
+    remaining_scans: 50,
+    low_threshold_units: 10,
+    status: 'healthy',
+    scan_unit_cost: 0.5,
+  });
   const [metrics, setMetrics] = useState({
     students_checked_in: 0,
     staff_checked_in: 0,
@@ -203,6 +216,7 @@ function GateOfficerDashboardInner() {
       });
       const data = await res.json();
       if (res.ok) {
+        if (data.gate_credits) setGateCredits(data.gate_credits);
         if (data.students) setAllStudents(data.students);
         if (data.pickup_queue) setPickupQueue(data.pickup_queue);
         if (data.pickup_notices) setPickupNotices(data.pickup_notices);
@@ -287,6 +301,17 @@ function GateOfficerDashboardInner() {
           logo_url: data.school.logo_url || '',
           primary_color: data.school.primary_color || '#1B4D3E',
         });
+        if (data.school.gate_credit_balance_milli !== undefined && data.school.gate_credit_balance_milli !== null) {
+          const milli = Number(data.school.gate_credit_balance_milli);
+          const units = Number((milli / 1000).toFixed(1));
+          const lowThresh = Number(data.school.low_credit_threshold_units ?? 10);
+          setGateCredits({
+            remaining_units: units,
+            remaining_scans: Math.floor(milli / 500),
+            status: milli < 500 ? 'exhausted' : units <= lowThresh ? 'low' : 'healthy',
+            low_threshold_units: lowThresh,
+          });
+        }
       }
       if (data.user?.full_name) {
         setOfficerInfo((prev) => ({ ...prev, name: data.user.full_name }));
@@ -404,7 +429,51 @@ function GateOfficerDashboardInner() {
         </div>
 
         {/* Right Actions & Profile */}
-        <div className="flex items-center gap-3">
+        <div className="flex items-center gap-2 sm:gap-3">
+          {/* Gate Credit Units Pill (Strictly Isolated — Only Units Visible to Gate System) */}
+          <div
+            className={`flex items-center gap-2 px-2.5 sm:px-3 py-1.5 rounded-xl border text-xs shadow-2xs transition-colors ${
+              gateCredits.status === 'exhausted'
+                ? 'bg-red-50 border-red-200 text-red-900'
+                : gateCredits.status === 'low'
+                  ? 'bg-amber-50 border-amber-200 text-amber-900'
+                  : 'bg-slate-900 border-slate-800 text-white'
+            }`}
+            title="School Gate Credit Units (0.5 Unit per Clock-In / Clock-Out scan)"
+          >
+            <CreditCard
+              size={15}
+              className={
+                gateCredits.status === 'exhausted'
+                  ? 'text-red-600 shrink-0'
+                  : gateCredits.status === 'low'
+                    ? 'text-amber-600 shrink-0'
+                    : 'text-emerald-400 shrink-0'
+              }
+            />
+            <div className="flex flex-col leading-none">
+              <span
+                className={`text-[9px] font-extrabold uppercase tracking-wider ${
+                  gateCredits.status === 'healthy' ? 'text-slate-400' : 'opacity-75'
+                }`}
+              >
+                Gate Credits
+              </span>
+              <span
+                className={`font-mono text-xs sm:text-sm font-black mt-0.5 ${
+                  gateCredits.status === 'exhausted'
+                    ? 'text-red-700'
+                    : gateCredits.status === 'low'
+                      ? 'text-amber-800'
+                      : 'text-emerald-400'
+                }`}
+              >
+                {Number(gateCredits.remaining_units || 0).toFixed(1)}{' '}
+                <span className="text-[10px] font-bold">Units</span>
+              </span>
+            </div>
+          </div>
+
           {/* Live Date Pill */}
           <div className="hidden lg:flex items-center gap-2 bg-slate-50 border border-slate-200 px-3 py-1.5 rounded-xl text-xs font-semibold text-slate-700">
             <Calendar size={14} className="text-emerald-600" />
@@ -522,6 +591,33 @@ function GateOfficerDashboardInner() {
                   {officerInfo.gate}
                 </p>
               </div>
+            </div>
+
+            {/* Strictly Isolated Gate Credit Units Card in Left Sidebar */}
+            <div
+              className={`rounded-2xl p-3 border transition-colors ${
+                gateCredits.status === 'exhausted'
+                  ? 'bg-red-950/60 border-red-500/40 text-red-100'
+                  : gateCredits.status === 'low'
+                    ? 'bg-amber-950/60 border-amber-500/40 text-amber-100'
+                    : 'bg-[#0f243a] border-emerald-500/30 text-white'
+              }`}
+            >
+              <div className="flex items-center justify-between">
+                <span className="text-[9px] font-extrabold uppercase tracking-widest text-emerald-300">
+                  Gate Credit Units
+                </span>
+                <CreditCard size={14} className="text-emerald-400" />
+              </div>
+              <div className="flex items-baseline gap-1.5 mt-1">
+                <span className="text-xl font-black font-mono text-white">
+                  {Number(gateCredits.remaining_units || 0).toFixed(1)}
+                </span>
+                <span className="text-[11px] font-bold text-emerald-300">Units</span>
+              </div>
+              <p className="text-[10px] text-slate-300 font-medium mt-0.5">
+                Covers {gateCredits.remaining_scans || Math.floor(Number(gateCredits.remaining_units || 0) * 2)} Clock-In/Out Scans
+              </p>
             </div>
 
             {/* Nav List */}
@@ -878,8 +974,76 @@ function GateOfficerDashboardInner() {
               {/* OFFICIAL SCHOOL NOTICES & PUBLIC HOLIDAY ADVISORIES */}
               <SchoolNoticeBanner role="gate_officers" schoolId={schoolId} className="mb-4" />
 
-              {/* ROW 1: 7 KPI STAT CARDS */}
-              <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-7 gap-3">
+              {/* ROW 1: 8 KPI STAT CARDS */}
+              <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-8 gap-3">
+                {/* 0. Gate Credit Units (Strict View Isolation — Only Units Visible) */}
+                <div
+                  className={`rounded-2xl p-3.5 border shadow-xs flex flex-col justify-between transition-all ${
+                    gateCredits.status === 'exhausted'
+                      ? 'bg-red-50 border-red-200'
+                      : gateCredits.status === 'low'
+                        ? 'bg-amber-50 border-amber-200'
+                        : 'bg-gradient-to-br from-emerald-950 via-slate-900 to-emerald-900 border-emerald-800 text-white'
+                  }`}
+                >
+                  <div className="flex items-center justify-between">
+                    <div
+                      className={`w-9 h-9 rounded-xl flex items-center justify-center ${
+                        gateCredits.status === 'healthy'
+                          ? 'bg-emerald-500/20 text-emerald-300 border border-emerald-400/30'
+                          : 'bg-white text-emerald-700'
+                      }`}
+                    >
+                      <CreditCard size={18} />
+                    </div>
+                    <span
+                      className={`text-[9px] font-black uppercase px-1.5 py-0.5 rounded-md ${
+                        gateCredits.status === 'exhausted'
+                          ? 'bg-red-200 text-red-900'
+                          : gateCredits.status === 'low'
+                            ? 'bg-amber-200 text-amber-900'
+                            : 'bg-emerald-500/20 text-emerald-300'
+                      }`}
+                    >
+                      {gateCredits.status === 'exhausted' ? 'Exhausted' : gateCredits.status === 'low' ? 'Low Units' : 'Active'}
+                    </span>
+                  </div>
+                  <div className="mt-2">
+                    <p
+                      className={`text-[10px] font-bold uppercase ${
+                        gateCredits.status === 'healthy' ? 'text-emerald-200/80' : 'text-slate-600'
+                      }`}
+                    >
+                      Gate Credit Units
+                    </p>
+                    <p
+                      className={`text-xl font-black font-mono leading-none mt-1 ${
+                        gateCredits.status === 'exhausted'
+                          ? 'text-red-700'
+                          : gateCredits.status === 'low'
+                            ? 'text-amber-900'
+                            : 'text-white'
+                      }`}
+                    >
+                      {Number(gateCredits.remaining_units || 0).toFixed(1)} <span className="text-xs font-bold">U</span>
+                    </p>
+                    <p
+                      className={`text-[9px] font-bold mt-1 ${
+                        gateCredits.status === 'healthy' ? 'text-emerald-300' : 'text-slate-600'
+                      }`}
+                    >
+                      {gateCredits.remaining_scans || Math.floor(Number(gateCredits.remaining_units || 0) * 2)} scans left
+                    </p>
+                  </div>
+                  <span
+                    className={`text-[9px] font-semibold mt-2 block ${
+                      gateCredits.status === 'healthy' ? 'text-slate-300' : 'text-slate-600'
+                    }`}
+                  >
+                    0.5U / Clock-In or Out
+                  </span>
+                </div>
+
                 {/* 1. Students Checked In */}
                 <div className="bg-white rounded-2xl p-3.5 border border-slate-200 shadow-xs flex flex-col justify-between hover:shadow-md transition-all">
                   <div className="flex items-center justify-between">

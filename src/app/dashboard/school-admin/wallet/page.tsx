@@ -28,6 +28,7 @@ import {
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { DigitalReceiptModal } from '@/components/shared/DigitalReceiptModal';
+import SchoolGateCreditsModal from '@/components/school-admin/SchoolGateCreditsModal';
 
 interface WalletOverviewData {
   wallet: {
@@ -83,8 +84,17 @@ export default function SchoolWalletOverviewPage() {
 
   // Fund Wallet Modal State
   const [isDepositModalOpen, setIsDepositModalOpen] = useState(false);
-  const [depositAmount, setDepositAmount] = useState<number | ''>(10000);
+  const [depositAmount, setDepositAmount] = useState<number | ''>(6000);
   const [isDepositing, setIsDepositing] = useState(false);
+
+  // Gate Credits Modal & Summary State
+  const [isGateCreditsModalOpen, setIsGateCreditsModalOpen] = useState(false);
+  const [gateCreditsModalTab, setGateCreditsModalTab] = useState<'ledger' | 'purchase' | 'reports'>('purchase');
+  const [gateCreditsSummary, setGateCreditsSummary] = useState({
+    remaining_units: 25.0,
+    remaining_scans: 50,
+    month_units_consumed: 0,
+  });
 
   // Filter & Search
   const [filterType, setFilterType] = useState<'ALL' | 'CREDIT' | 'DEBIT'>('ALL');
@@ -99,12 +109,26 @@ export default function SchoolWalletOverviewPage() {
     else setIsRefreshing(true);
 
     try {
-      const res = await fetch('/api/schools/wallet', { cache: 'no-store' });
+      const [res, creditsRes] = await Promise.all([
+        fetch('/api/schools/wallet', { cache: 'no-store' }),
+        fetch('/api/schools/gate-credits?limit=25', { cache: 'no-store' }).catch(() => null),
+      ]);
       const json = await res.json();
       if (!res.ok) {
         throw new Error(json.error || 'Failed to load school wallet');
       }
       setData(json);
+
+      if (creditsRes && creditsRes.ok) {
+        const cJson = await creditsRes.json();
+        if (cJson?.credits) {
+          setGateCreditsSummary({
+            remaining_units: Number(cJson.credits.remaining_units ?? 25),
+            remaining_scans: Number(cJson.credits.remaining_scans ?? 50),
+            month_units_consumed: Number(cJson.summary?.month_units_consumed ?? 0),
+          });
+        }
+      }
     } catch (err: any) {
       console.error('[SchoolWalletPage] Error loading wallet:', err);
       toast.error(err.message || 'Error fetching wallet balance');
@@ -226,7 +250,7 @@ export default function SchoolWalletOverviewPage() {
     return true;
   });
 
-  const presetAmounts = [10000, 25000, 50000, 100000, 250000, 500000];
+  const presetAmounts = [3000, 6000, 12000, 25000, 50000, 100000];
 
   return (
     <div className="mx-auto max-w-7xl space-y-6 p-4 font-sans text-slate-800 md:p-6">
@@ -247,8 +271,7 @@ export default function SchoolWalletOverviewPage() {
             School Wallet & Revenue Control
           </h1>
           <p className="max-w-2xl text-xs font-medium text-slate-300 md:text-sm">
-            Live institutional ledger for gate security subscriptions, transport collections, escort
-            automated releases, and dedicated NUBAN funding.
+            Live institutional ledger for School Gate Credit Unit packages (25U/₦3k, 50U/₦6k, 100U/₦12k), transport collections, and dedicated NUBAN funding.
           </p>
         </div>
 
@@ -259,6 +282,17 @@ export default function SchoolWalletOverviewPage() {
           >
             <Plus size={15} />
             <span>Fund School Wallet</span>
+          </button>
+
+          <button
+            onClick={() => {
+              setGateCreditsModalTab('purchase');
+              setIsGateCreditsModalOpen(true);
+            }}
+            className="flex cursor-pointer items-center gap-2 rounded-2xl bg-amber-400 px-4 py-2.5 text-xs font-black text-slate-950 shadow-md transition-all hover:bg-amber-300 active:scale-95"
+          >
+            <CreditCard size={15} />
+            <span>Buy School Gate Credits</span>
           </button>
 
           <Link
@@ -379,40 +413,60 @@ export default function SchoolWalletOverviewPage() {
           </p>
         </div>
 
-        {/* Card 3: Gate Platform Security & Daily Billing */}
-        <div className="shadow-xs flex flex-col justify-between space-y-4 rounded-3xl border border-slate-200 bg-white p-6">
+        {/* Card 3: School Gate Credit Units Vault */}
+        <div
+          onClick={() => {
+            setGateCreditsModalTab('ledger');
+            setIsGateCreditsModalOpen(true);
+          }}
+          className="shadow-xs cursor-pointer flex flex-col justify-between space-y-4 rounded-3xl border border-slate-200 bg-white p-6 transition hover:border-emerald-500 hover:shadow-md"
+        >
           <div className="flex items-center justify-between">
             <span className="flex items-center gap-1.5 text-xs font-black uppercase tracking-wider text-slate-500">
-              <CreditCard size={15} className="text-purple-600" /> Daily Gate Platform Fee
+              <CreditCard size={15} className="text-emerald-600" /> School Gate Credit Units
             </span>
             <span className="rounded-full border border-emerald-200 bg-emerald-50 px-2 py-0.5 text-[10px] font-extrabold text-emerald-700">
-              Active Security
+              1 Unit = ₦6/day
             </span>
           </div>
 
           <div>
-            <div className="flex items-baseline gap-1">
-              <h2 className="text-2xl font-black tracking-tight text-slate-900">
-                ₦
-                {(wallet?.daily_gate_fee_ngn ?? 2500).toLocaleString('en-NG', {
-                  minimumFractionDigits: 2,
-                })}
+            <div className="flex items-baseline gap-1.5">
+              <h2 className="font-mono text-2xl font-black tracking-tight text-slate-900">
+                {Number(gateCreditsSummary.remaining_units || 0).toFixed(1)} Units
               </h2>
-              <span className="text-xs font-bold text-slate-400">/ operational day</span>
+              <span className="text-xs font-bold text-slate-400">
+                ({gateCreditsSummary.remaining_scans || 0} scans left)
+              </span>
             </div>
-            <p className="mt-1 text-xs font-bold text-purple-700">
-              Automated daily attendance & security roll-call billing
+            <p className="mt-1 text-xs font-bold text-emerald-700">
+              25U (₦3,000) · 50U (₦6,000) · 100U (₦12,000)
             </p>
           </div>
 
-          <div className="flex items-center justify-between border-t border-slate-100 pt-2 text-xs text-slate-500">
-            <span>This Month's Gate Incurred:</span>
-            <span className="font-black text-slate-900">
-              ₦
-              {(data?.stats?.monthly_gate_deductions_ngn ?? 0).toLocaleString('en-NG', {
-                minimumFractionDigits: 2,
-              })}
-            </span>
+          <div className="flex items-center justify-between border-t border-slate-100 pt-2 text-xs">
+            <button
+              type="button"
+              onClick={(e) => {
+                e.stopPropagation();
+                setGateCreditsModalTab('ledger');
+                setIsGateCreditsModalOpen(true);
+              }}
+              className="font-bold text-slate-600 hover:text-slate-900"
+            >
+              View All Transactions →
+            </button>
+            <button
+              type="button"
+              onClick={(e) => {
+                e.stopPropagation();
+                setGateCreditsModalTab('purchase');
+                setIsGateCreditsModalOpen(true);
+              }}
+              className="rounded-xl bg-emerald-600 px-3 py-1 font-extrabold text-white hover:bg-emerald-500"
+            >
+              Buy Credits
+            </button>
           </div>
         </div>
       </div>
@@ -700,7 +754,7 @@ export default function SchoolWalletOverviewPage() {
                   </span>
                   <input
                     type="number"
-                    min="10000"
+                    min="3000"
                     max="5000000"
                     step="1000"
                     value={depositAmount}
@@ -708,12 +762,12 @@ export default function SchoolWalletOverviewPage() {
                       setDepositAmount(e.target.value === '' ? '' : Number(e.target.value))
                     }
                     required
-                    placeholder="e.g. 50000"
+                    placeholder="e.g. 6000"
                     className="w-full rounded-xl border border-slate-200 bg-slate-50/50 py-2.5 pl-8 pr-4 text-base font-black text-slate-900 focus:outline-emerald-500"
                   />
                 </div>
                 <span className="mt-1 block text-[10px] text-slate-400">
-                  Min ₦10,000 · Max ₦5,000,000 per institutional checkout (Daisaf Spec Section 2.1).
+                  Min ₦3,000 (25 Credit Units) · Max ₦5,000,000 per institutional checkout.
                 </span>
               </div>
 
@@ -765,6 +819,15 @@ export default function SchoolWalletOverviewPage() {
           name: data?.wallet.school_name || 'Institutional School Account',
           type: 'SCHOOL',
         }}
+      />
+
+      {/* School Gate Credits Purchase & Audit Ledger Modal */}
+      <SchoolGateCreditsModal
+        isOpen={isGateCreditsModalOpen}
+        onClose={() => setIsGateCreditsModalOpen(false)}
+        schoolId={data?.wallet?.school_id}
+        initialTab={gateCreditsModalTab}
+        onUpdated={() => fetchWallet(true)}
       />
     </div>
   );

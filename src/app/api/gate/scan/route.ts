@@ -97,7 +97,7 @@ export async function POST(request: NextRequest) {
       const classRel = Array.isArray(student.class) ? student.class[0] : student.class;
       const className = classRel?.name || '';
 
-      // Daisaf Wallet Specification: Validate Pay-As-You-Go Gate Eligibility
+      // School Gate Credit System: Validate Gate Credit Unit Eligibility (0.5 Unit per Scan)
       const walletCheck = await GateBillingEngine.validateGateScanEligibility({
         schoolId: school_id,
         studentId,
@@ -109,8 +109,8 @@ export async function POST(request: NextRequest) {
             error: walletCheck.message,
             code: walletCheck.code,
             payer_type: walletCheck.payerType,
-            available_balance_ngn: walletCheck.availableBalanceNgn,
-            required_funding_ngn: walletCheck.scanFeeNgn,
+            remaining_units: walletCheck.remainingUnits,
+            required_units: walletCheck.requiredUnits,
           },
           { status: 402 }
         );
@@ -140,6 +140,10 @@ export async function POST(request: NextRequest) {
           class_name: className,
           photo_url: student.photo_url,
         },
+        gate_credits: {
+          remaining_units: walletCheck.remainingUnits,
+          scan_unit_cost: walletCheck.requiredUnits,
+        },
         today_status: today,
         pickup_context,
         pickup_notice: pickup_context.pickup_notice,
@@ -163,7 +167,7 @@ export async function POST(request: NextRequest) {
 
     const staff = await resolveStaffProfile(supabase, school_id, scan);
     if (staff) {
-      // Daisaf Wallet Specification: Validate School Wallet Eligibility for Staff Sign-In/Out
+      // School Gate Credit System: Validate Gate Credit Unit Eligibility for Staff Sign-In/Out
       const walletCheck = await GateBillingEngine.validateGateScanEligibility({
         schoolId: school_id,
         staffProfileId: staff.id,
@@ -175,8 +179,8 @@ export async function POST(request: NextRequest) {
             error: walletCheck.message,
             code: walletCheck.code,
             payer_type: walletCheck.payerType,
-            available_balance_ngn: walletCheck.availableBalanceNgn,
-            required_funding_ngn: walletCheck.scanFeeNgn,
+            remaining_units: walletCheck.remainingUnits,
+            required_units: walletCheck.requiredUnits,
           },
           { status: 402 }
         );
@@ -197,6 +201,10 @@ export async function POST(request: NextRequest) {
           staff_id: staff.staff_id_number,
           photo_url: staff.photo_url,
           role_label: roleLabel,
+        },
+        gate_credits: {
+          remaining_units: walletCheck.remainingUnits,
+          scan_unit_cost: walletCheck.requiredUnits,
         },
         today_status: {
           has_clock_in: today.has_clock_in,

@@ -35,7 +35,7 @@ export async function GET(request: NextRequest) {
 
       supabase
         .from('schools')
-        .select('id, name, logo_url')
+        .select('id, name, logo_url, gate_credit_balance_milli, free_trial_credits_claimed')
         .order('name', { ascending: true }),
     ]);
 
@@ -77,6 +77,8 @@ export async function GET(request: NextRequest) {
         owner_phone: user?.phone || null,
         owner_avatar: user?.avatar_url || null,
         school_name: school?.name || null,
+        gate_credit_units: school ? Number(((school.gate_credit_balance_milli ?? 0) / 1000).toFixed(1)) : null,
+        free_trial_credits_claimed: school ? !!school.free_trial_credits_claimed : null,
         available_balance_ngn: (w.available_balance_kobo || 0) / 100,
         reserved_balance_ngn: (w.reserved_balance_kobo || 0) / 100,
         pending_earnings_ngn: (w.pending_earnings_kobo || 0) / 100,
@@ -91,6 +93,9 @@ export async function GET(request: NextRequest) {
     const frozenWallets = wallets.filter((w) => ['frozen', 'suspended', 'closed'].includes((w.status || '').toLowerCase())).length;
     const totalFloatNgn = wallets.reduce((acc, w) => acc + w.available_balance_ngn, 0);
     const totalReservedNgn = wallets.reduce((acc, w) => acc + w.reserved_balance_ngn + w.pending_earnings_ngn, 0);
+    const totalSchoolGateUnits = Number(
+      allSchools.reduce((acc, s) => acc + (s.gate_credit_balance_milli ?? 0) / 1000, 0).toFixed(1)
+    );
 
     // Identify users and schools without wallets for quick creation selection
     const userWalletKeys = new Set(
@@ -113,6 +118,8 @@ export async function GET(request: NextRequest) {
       id: s.id,
       name: s.name,
       hasWallet: schoolWalletIds.has(s.id),
+      gate_credit_units: Number(((s.gate_credit_balance_milli ?? 0) / 1000).toFixed(1)),
+      free_trial_credits_claimed: !!s.free_trial_credits_claimed,
     }));
 
     return NextResponse.json({
@@ -123,6 +130,8 @@ export async function GET(request: NextRequest) {
         frozen_wallets: frozenWallets,
         total_float_ngn: totalFloatNgn,
         total_reserved_ngn: totalReservedNgn,
+        total_school_gate_units: totalSchoolGateUnits,
+        total_schools: allSchools.length,
       },
       wallets,
       candidateUsers,

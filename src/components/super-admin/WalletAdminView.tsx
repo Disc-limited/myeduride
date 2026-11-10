@@ -33,6 +33,7 @@ import {
   AlertTriangle,
 } from 'lucide-react';
 import { toast } from 'sonner';
+import SchoolGateCreditsModal from '@/components/school-admin/SchoolGateCreditsModal';
 
 interface WalletItem {
   id: string;
@@ -45,6 +46,8 @@ interface WalletItem {
   owner_phone: string | null;
   owner_avatar: string | null;
   school_name: string | null;
+  gate_credit_units?: number | null;
+  free_trial_credits_claimed?: boolean | null;
   currency: string;
   available_balance_ngn: number;
   reserved_balance_ngn: number;
@@ -76,6 +79,8 @@ interface CandidateSchool {
   id: string;
   name: string;
   hasWallet: boolean;
+  gate_credit_units?: number;
+  free_trial_credits_claimed?: boolean;
 }
 
 interface StatsSummary {
@@ -84,6 +89,8 @@ interface StatsSummary {
   frozen_wallets: number;
   total_float_ngn: number;
   total_reserved_ngn: number;
+  total_school_gate_units?: number;
+  total_schools?: number;
 }
 
 export default function WalletAdminView() {
@@ -113,6 +120,7 @@ export default function WalletAdminView() {
   const [showAdjustModal, setShowAdjustModal] = useState(false);
   const [showInspectModal, setShowInspectModal] = useState(false);
   const [showDeleteModal, setShowDeleteModal] = useState(false);
+  const [gateCreditsSchoolId, setGateCreditsSchoolId] = useState<string | null>(null);
 
   // Active wallet targets for modals
   const [activeWallet, setActiveWallet] = useState<WalletItem | null>(null);
@@ -527,7 +535,7 @@ export default function WalletAdminView() {
           </p>
         </div>
 
-        <div className="grid grid-cols-2 gap-2 sm:flex sm:items-center sm:gap-3 w-full sm:w-auto">
+        <div className="grid grid-cols-2 gap-2 sm:flex sm:items-center sm:gap-2.5 w-full sm:w-auto flex-wrap">
           <button
             type="button"
             onClick={() => fetchWallets(true)}
@@ -540,8 +548,28 @@ export default function WalletAdminView() {
 
           <button
             type="button"
+            onClick={() => {
+              const firstSchoolId =
+                candidateSchools[0]?.id ||
+                wallets.find((w) => w.entity_type === 'school' && w.school_id)?.school_id ||
+                null;
+              if (firstSchoolId) {
+                setGateCreditsSchoolId(firstSchoolId);
+              } else {
+                toast.info('No school records found');
+              }
+            }}
+            className="flex items-center justify-center gap-1.5 px-3.5 py-2 text-xs sm:text-sm font-semibold text-emerald-900 bg-emerald-100 hover:bg-emerald-200 border border-emerald-300/80 rounded-xl shadow-2xs transition-all cursor-pointer"
+            title="Manage School Gate Credit Units, Packages, and Monthly Reports"
+          >
+            <CreditCard size={16} className="text-emerald-700" />
+            <span>School Gate Credits</span>
+          </button>
+
+          <button
+            type="button"
             onClick={() => setShowCreateModal(true)}
-            className="flex items-center justify-center gap-1.5 px-3.5 py-2 text-xs sm:text-sm font-semibold text-white bg-emerald-600 hover:bg-emerald-700 active:bg-emerald-800 rounded-xl shadow-xs transition-all cursor-pointer"
+            className="col-span-2 sm:col-span-1 flex items-center justify-center gap-1.5 px-3.5 py-2 text-xs sm:text-sm font-semibold text-white bg-emerald-600 hover:bg-emerald-700 active:bg-emerald-800 rounded-xl shadow-xs transition-all cursor-pointer"
           >
             <PlusCircle size={16} />
             <span>Create Wallet</span>
@@ -549,8 +577,8 @@ export default function WalletAdminView() {
         </div>
       </div>
 
-      {/* KPI Stats Overview - 2x2 on Mobile, 4 columns on Desktop */}
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-2.5 sm:gap-4 w-full min-w-0">
+      {/* KPI Stats Overview - 2x2 on Mobile, 5 columns on Desktop */}
+      <div className="grid grid-cols-2 lg:grid-cols-5 gap-2.5 sm:gap-4 w-full min-w-0">
         {/* Total Wallets */}
         <div className="bg-white p-3 sm:p-5 rounded-2xl border border-slate-200/80 shadow-xs flex items-center justify-between">
           <div className="min-w-0">
@@ -619,6 +647,36 @@ export default function WalletAdminView() {
             <DollarSign size={18} className="sm:w-[22px] sm:h-[22px]" />
           </div>
         </div>
+
+        {/* School Gate Credit Units */}
+        <button
+          type="button"
+          onClick={() => setEntityFilter(entityFilter === 'school' ? 'all' : 'school')}
+          className="col-span-2 lg:col-span-1 text-left bg-gradient-to-br from-emerald-50/90 via-white to-teal-50/70 hover:from-emerald-100/80 p-3 sm:p-5 rounded-2xl border border-emerald-200 shadow-xs flex items-center justify-between transition-all cursor-pointer group"
+          title="Click to filter School Wallets & manage Gate Credit Units"
+        >
+          <div className="min-w-0">
+            <span className="text-[10px] sm:text-xs font-extrabold uppercase tracking-wider text-emerald-800 block truncate">
+              School Gate Credits
+            </span>
+            <div className="text-lg sm:text-2xl font-black text-emerald-700 mt-0.5 truncate font-mono">
+              {loading
+                ? '...'
+                : `${Number(
+                    stats?.total_school_gate_units ??
+                      wallets
+                        .filter((w) => w.entity_type === 'school')
+                        .reduce((acc, w) => acc + (w.gate_credit_units ?? 25), 0)
+                  ).toFixed(1)} U`}
+            </div>
+            <span className="text-[10px] sm:text-xs text-emerald-700/80 font-semibold block truncate group-hover:underline">
+              {entityFilter === 'school' ? 'Showing Schools (Click for All)' : 'Click to view School Units →'}
+            </span>
+          </div>
+          <div className="w-9 h-9 sm:w-12 sm:h-12 rounded-xl bg-emerald-600 text-white flex items-center justify-center shrink-0 ml-2 shadow-xs">
+            <CreditCard size={18} className="sm:w-[22px] sm:h-[22px]" />
+          </div>
+        </button>
       </div>
 
       {/* Filter and Search Bar - Mobile Optimized */}
@@ -638,10 +696,10 @@ export default function WalletAdminView() {
         {/* Quick Entity Type Pills for Mobile & Desktop */}
         <div className="flex items-center gap-1.5 overflow-x-auto pb-1 scrollbar-none text-xs">
           {[
-            { id: 'all', label: 'All Wallets' },
-            { id: 'parent', label: 'Parents' },
-            { id: 'escort', label: 'Escorts / Drivers' },
-            { id: 'school', label: 'Schools' },
+            { id: 'all', label: `All Wallets (${wallets.length})` },
+            { id: 'parent', label: `Parents (${wallets.filter((w) => w.entity_type === 'parent').length})` },
+            { id: 'escort', label: `Escorts / Drivers (${wallets.filter((w) => w.entity_type === 'escort').length})` },
+            { id: 'school', label: `Schools & Gate Credits (${wallets.filter((w) => w.entity_type === 'school').length})` },
             { id: 'platform_treasury', label: 'Treasury' },
           ].map((tab) => (
             <button
@@ -714,6 +772,7 @@ export default function WalletAdminView() {
                 <th className="py-3 px-4">Account / Entity</th>
                 <th className="py-3 px-3">Type</th>
                 <th className="py-3 px-4">Available Balance</th>
+                <th className="py-3 px-4">Gate Credits</th>
                 <th className="py-3 px-4">Virtual Account</th>
                 <th className="py-3 px-4">Payout Account</th>
                 <th className="py-3 px-3">Status</th>
@@ -723,14 +782,14 @@ export default function WalletAdminView() {
             <tbody className="divide-y divide-slate-100">
               {loading ? (
                 <tr>
-                  <td colSpan={7} className="text-center py-12 text-slate-400">
+                  <td colSpan={8} className="text-center py-12 text-slate-400">
                     <RefreshCw size={24} className="animate-spin mx-auto mb-2 text-emerald-600" />
                     Loading wallet records...
                   </td>
                 </tr>
               ) : filteredWallets.length === 0 ? (
                 <tr>
-                  <td colSpan={7} className="text-center py-12 text-slate-400">
+                  <td colSpan={8} className="text-center py-12 text-slate-400">
                     <Wallet size={32} className="mx-auto mb-2 text-slate-300" />
                     No wallets found matching your filter criteria.
                   </td>
@@ -818,6 +877,30 @@ export default function WalletAdminView() {
                         )}
                       </td>
 
+                      {/* Gate Credits */}
+                      <td className="py-3.5 px-4">
+                        {isSchool && w.school_id ? (
+                          <button
+                            type="button"
+                            onClick={() => setGateCreditsSchoolId(w.school_id!)}
+                            className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-emerald-50 hover:bg-emerald-100 text-emerald-800 border border-emerald-200 font-mono text-xs font-extrabold cursor-pointer transition shadow-2xs"
+                            title="Click to manage School Gate Credit Units, Packages & Monthly Reports"
+                          >
+                            <CreditCard size={13} className="text-emerald-600 shrink-0" />
+                            <span>{Number(w.gate_credit_units ?? 25).toFixed(1)} Units</span>
+                          </button>
+                        ) : (
+                          <button
+                            type="button"
+                            onClick={() => setEntityFilter('school')}
+                            className="text-[11px] text-slate-400 hover:text-emerald-700 font-medium cursor-pointer transition"
+                            title="Gate Credit Units apply to School accounts. Click to view School Wallets."
+                          >
+                            School only →
+                          </button>
+                        )}
+                      </td>
+
                       {/* Virtual Account */}
                       <td className="py-3.5 px-4">
                         {w.virtual_account_number ? (
@@ -897,6 +980,18 @@ export default function WalletAdminView() {
                       {/* Actions */}
                       <td className="py-3.5 px-4 text-right">
                         <div className="flex items-center justify-end gap-1">
+                          {/* Manage School Gate Credits (for school wallets) */}
+                          {isSchool && w.school_id && (
+                            <button
+                              type="button"
+                              onClick={() => setGateCreditsSchoolId(w.school_id!)}
+                              title="Manage School Gate Credit Units & Packages"
+                              className="p-1.5 text-emerald-700 hover:text-emerald-900 bg-emerald-50 hover:bg-emerald-100 rounded-lg transition-colors cursor-pointer"
+                            >
+                              <CreditCard size={15} />
+                            </button>
+                          )}
+
                           {/* Inspect / Ledger Details */}
                           <button
                             type="button"
@@ -1965,6 +2060,18 @@ export default function WalletAdminView() {
           </div>
         </div>
       )}
+
+      {/* Super Admin School Gate Credits Management Modal */}
+      <SchoolGateCreditsModal
+        isOpen={!!gateCreditsSchoolId}
+        onClose={() => setGateCreditsSchoolId(null)}
+        schoolId={gateCreditsSchoolId || undefined}
+        initialTab="ledger"
+        isSuperAdmin={true}
+        schoolsList={candidateSchools}
+        onSelectSchool={(id) => setGateCreditsSchoolId(id)}
+        onUpdated={() => fetchWallets(true)}
+      />
     </div>
   );
 }

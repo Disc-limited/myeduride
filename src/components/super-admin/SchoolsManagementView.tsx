@@ -24,11 +24,13 @@ import {
   AlertCircle,
   Check,
   MoreVertical,
+  CreditCard,
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { photoSrc } from '@/lib/photo';
 import EditSchoolModal, { type SchoolForEdit } from './EditSchoolModal';
 import AddSchoolModal from './AddSchoolModal';
+import SchoolGateCreditsModal from '@/components/school-admin/SchoolGateCreditsModal';
 
 export interface SchoolRecord {
   id: string;
@@ -50,6 +52,8 @@ export interface SchoolRecord {
   dismissal_end_time?: string | null;
   primary_color?: string | null;
   secondary_color?: string | null;
+  gate_credit_balance_milli?: number;
+  free_trial_credits_claimed?: boolean;
 }
 
 export default function SchoolsManagementView() {
@@ -64,6 +68,7 @@ export default function SchoolsManagementView() {
   const [showAddModal, setShowAddModal] = useState(false);
   const [copiedEmailId, setCopiedEmailId] = useState<string | null>(null);
   const [openMenuId, setOpenMenuId] = useState<string | null>(null);
+  const [gateCreditsSchoolId, setGateCreditsSchoolId] = useState<string | null>(null);
 
   const fetchSchools = useCallback(async (opts?: { silent?: boolean }) => {
     if (opts?.silent) setRefreshing(true);
@@ -458,6 +463,17 @@ export default function SchoolsManagementView() {
                           <SchoolIcon size={12} />
                           {school.class_count || 0} Classes
                         </span>
+                        <button
+                          type="button"
+                          onClick={() => setGateCreditsSchoolId(school.id)}
+                          className="inline-flex items-center gap-1 px-2 py-0.5 rounded-lg bg-emerald-50 hover:bg-emerald-100 text-emerald-800 text-[11px] font-extrabold border border-emerald-200 cursor-pointer transition"
+                          title="Click to inspect or grant Gate Credit Units"
+                        >
+                          <CreditCard size={12} className="text-emerald-600" />
+                          <span>
+                            {Number(((school.gate_credit_balance_milli ?? 25000) / 1000)).toFixed(1)} Gate Units
+                          </span>
+                        </button>
                       </div>
                     </td>
 
@@ -548,6 +564,18 @@ export default function SchoolsManagementView() {
                                 <ExternalLink size={13} className="text-slate-400" />
                                 <span>Open Portal</span>
                               </Link>
+
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  setOpenMenuId(null);
+                                  setGateCreditsSchoolId(school.id);
+                                }}
+                                className="w-full px-3 py-2 text-slate-700 hover:text-emerald-700 hover:bg-emerald-50/60 flex items-center gap-2 font-medium transition-colors text-left cursor-pointer"
+                              >
+                                <CreditCard size={13} className="text-emerald-600" />
+                                <span>Manage Gate Credits</span>
+                              </button>
 
                               <button
                                 type="button"
@@ -663,6 +691,16 @@ export default function SchoolsManagementView() {
           </div>
         </div>
       )}
+
+      {/* Super Admin School Gate Credits Management Modal */}
+      <SchoolGateCreditsModal
+        isOpen={!!gateCreditsSchoolId}
+        onClose={() => setGateCreditsSchoolId(null)}
+        schoolId={gateCreditsSchoolId || undefined}
+        initialTab="ledger"
+        isSuperAdmin={true}
+        onUpdated={() => fetchSchools({ silent: true })}
+      />
     </div>
   );
 }

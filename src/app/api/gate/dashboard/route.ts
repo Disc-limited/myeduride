@@ -8,6 +8,7 @@ import { getGateDayStatus } from '@/lib/gate/school-day-gate';
 import { fetchEnrichedPickupQueue } from '@/lib/gate/pickup-queue-enrich';
 import { matchPickupPhoto, type PickupPersonRow } from '@/lib/gate/student-pickup-context';
 import { resolveEffectiveDaySchedule } from '@/lib/gate/effective-day-schedule';
+import { GateBillingEngine } from '@/lib/payments/gate-billing-engine';
 
 type EnrichedPickupNotice = Record<string, unknown> & {
   student_id: string;
@@ -34,16 +35,30 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ error: 'school_id required' }, { status: 400 });
     }
 
-    const allowed = session.roles.some(
+    const supabase = getAdminClient();
+
+    let allowed = session.roles.some(
       (r) =>
-        r.school_id === schoolId &&
-        ['gate_officer', 'gate_manager', 'security_officer', 'school_admin', 'super_admin'].includes(r.role)
+        (r.school_id === schoolId &&
+          ['gate_officer', 'gate_manager', 'security_officer', 'school_admin', 'super_admin'].includes(r.role)) ||
+        r.role === 'super_admin'
     );
-    if (!allowed && !session.roles.some((r) => r.role === 'super_admin')) {
+    if (!allowed && session.user_id) {
+      const { data: dbRole } = await supabase
+        .from('user_school_roles')
+        .select('role')
+        .eq('user_id', session.user_id)
+        .eq('school_id', schoolId)
+        .eq('is_active', true)
+        .in('role', ['gate_officer', 'gate_manager', 'security_officer', 'school_admin', 'super_admin'])
+        .limit(1)
+        .maybeSingle();
+      if (dbRole) allowed = true;
+    }
+    if (!allowed) {
       return NextResponse.json({ error: 'Access denied' }, { status: 403 });
     }
 
-    const supabase = getAdminClient();
     const { dateStr, startIso, endIso } = lagosDayBounds();
 
     const { data: school } = await supabase
@@ -357,8 +372,18 @@ export async function GET(request: NextRequest) {
       attendance_captured: (officerStudentArrivals || 0) + (officerStudentDepartures || 0) + (officerStaffClockIns || 0),
     };
 
+    const gate_credits = await GateBillingEngine.getGateStationCreditStatus(schoolId).catch(() => ({
+      remaining_units: 25,
+      remaining_scans: 50,
+      low_threshold_units: 10,
+      status: 'healthy' as const,
+      daily_unit_rate_ngn: 6,
+      scan_unit_cost: 0.5,
+    }));
+
     return NextResponse.json({
       school: school || null,
+      gate_credits,
       students: students || [],
       pickup_queue: pickupQueue || [],
       pickup_notices: pickupNotices,

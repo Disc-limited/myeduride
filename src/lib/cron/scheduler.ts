@@ -16,6 +16,7 @@ import {
   sendDailyGateDigestEmail,
   GateDeductionSummary,
 } from '@/lib/notifications/email-templates/daily-gate-digest';
+import { compileAndDispatchMonthlyGateCreditReport } from '@/lib/notifications/email-templates/monthly-gate-credit-report';
 
 interface SchedulerState {
   isRunning: boolean;
@@ -217,12 +218,78 @@ export async function executeScheduledDigestRun(shift: 'morning' | 'afternoon', 
 }
 
 /**
+ * Monthly Gate Credit Statement Dispatch:
+ * Runs on the 1st of every month to compile and email the previous month's Gate Credit Statement
+ * and publish an in-app notification for every active school.
+ */
+export async function executeMonthlyGateCreditReportRun(reportMonth?: string) {
+  const supabase = getAdminClient();
+  const targetMonth =
+    reportMonth ||
+    (() => {
+      const d = new Date();
+      d.setUTCMonth(d.getUTCMonth() - 1);
+      return d.toISOString().slice(0, 7);
+    })();
+
+  console.log(`\n📊 [In-Process Cron] Starting Monthly Gate Credit Statement dispatch for ${targetMonth}...`);
+
+  try {
+    const { data: schools, error } = await supabase
+      .from('schools')
+      .select('id, name')
+      .eq('approval_status', 'approved');
+
+    if (error || !schools) {
+      return { success: false, error: error?.message || 'No schools found' };
+    }
+
+    const results = [];
+    for (const s of schools) {
+      try {
+        const res = await compileAndDispatchMonthlyGateCreditReport({
+          schoolId: s.id,
+          reportMonth: targetMonth,
+          sendEmailReport: true,
+        });
+        results.push({
+          school_id: s.id,
+          school_name: s.name,
+          email_sent: res.emailSent,
+          closing_units: res.statement.closingUnits,
+        });
+      } catch (err: any) {
+        console.warn(`[In-Process Cron] Monthly credit report failed for ${s.name}:`, err?.message);
+      }
+    }
+
+    return {
+      success: true,
+      report_month: targetMonth,
+      schools_processed: results.length,
+      details: results,
+    };
+  } catch (err: any) {
+    return { success: false, error: err?.message };
+  }
+}
+
+/**
  * Tick handler executed once every 60 seconds.
  */
 async function cronTick() {
   const { dayOfWeek, hour, minute, dateStr } = getLagosClockParts();
 
-  // Only run Monday (1) to Friday (5)
+  // Check 1st day of the month at 06:00 AM Lagos Time for Monthly Gate Credit Statements
+  if (dateStr.endsWith('-01') && hour === 6 && minute === 0) {
+    const monthlyKey = `${dateStr}_monthly_credit_statement`;
+    if (state.lastExecutedShiftKey !== monthlyKey) {
+      state.lastExecutedShiftKey = monthlyKey;
+      await executeMonthlyGateCreditReportRun();
+    }
+  }
+
+  // Only run daily roll-call Monday (1) to Friday (5)
   if (dayOfWeek === 0 || dayOfWeek === 6) {
     return;
   }
