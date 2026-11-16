@@ -87,6 +87,32 @@ export default function ParentWalletView({
   const [refreshing, setRefreshing] = useState(false);
   const [showBalance, setShowBalance] = useState(true);
   const [copiedAccount, setCopiedAccount] = useState(false);
+  const [syncingTransfer, setSyncingTransfer] = useState(false);
+
+  const handleSyncTransfer = async () => {
+    setSyncingTransfer(true);
+    const toastId = toast.loading('Checking SeerBit for bank transfer deposits...');
+    try {
+      const res = await fetch('/api/parent/wallet/sync-transfer', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || 'Failed to sync');
+
+      if (data.credited) {
+        toast.success(data.message || 'Deposit verified and credited!', { id: toastId });
+      } else {
+        toast.success('Wallet is up to date! Inbound transfers reflect automatically.', { id: toastId });
+      }
+      fetchWallet(true);
+    } catch (err: any) {
+      toast.error(err.message || 'Could not sync transfer status', { id: toastId });
+    } finally {
+      setSyncingTransfer(false);
+    }
+  };
 
   // Dynamic Agreed Transit Fee (starts with agreed daily fee, capped at 1 school month = 20 days)
   const [dailyFee, setDailyFee] = useState<number>(agreedDailyFee || 1060);
@@ -498,9 +524,21 @@ export default function ParentWalletView({
             </div>
           </div>
 
-          <div className="mt-4 pt-3 border-t border-white/10 flex items-center gap-1.5 text-[10px] text-emerald-300/90 font-medium">
-            <Sparkles className="w-3 h-3 text-emerald-400 shrink-0" />
-            <span>Instant webhook credit with tamper-evident cryptographic hash.</span>
+          <div className="mt-4 pt-3 border-t border-white/10 flex items-center justify-between gap-1.5 text-[10px] text-emerald-300/90 font-medium">
+            <div className="flex items-center gap-1.5">
+              <Sparkles className="w-3 h-3 text-emerald-400 shrink-0" />
+              <span>Instant webhook credit with cryptographic hash.</span>
+            </div>
+            <button
+              type="button"
+              onClick={() => handleSyncTransfer()}
+              disabled={syncingTransfer}
+              className="text-[10px] font-bold text-emerald-300 hover:text-white underline cursor-pointer flex items-center gap-1 disabled:opacity-50"
+              title="Check SeerBit gateway for newly arrived bank transfers"
+            >
+              <RefreshCw size={11} className={syncingTransfer ? 'animate-spin' : ''} />
+              <span>{syncingTransfer ? 'Checking...' : 'Check Status'}</span>
+            </button>
           </div>
         </div>
       </div>

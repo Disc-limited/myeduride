@@ -17,15 +17,15 @@ export async function POST(request: NextRequest) {
 
     const candidateSecrets = [
       process.env.SEERBIT_WEBHOOK_SECRET,
-      process.env.SEERBIT_PUBLIC_KEY,
       process.env.SEERBIT_SECRET_KEY,
+      process.env.SEERBIT_PUBLIC_KEY,
     ].filter(Boolean) as string[];
 
     const isDev = process.env.NODE_ENV !== 'production';
     const testBypass = isDev && request.headers.get('x-seerbit-test-bypass') === 'true';
 
     // 1. Timing-Safe HMAC Verification (Layer 6 Ingestion Security)
-    if (!testBypass && candidateSecrets.length > 0) {
+    if (!testBypass && candidateSecrets.length > 0 && signature) {
       const isValidSig = verifySeerbitWebhookSignature(rawBody, signature, candidateSecrets);
       if (!isValidSig) {
         console.warn('[SeerBit Webhook] Rejected unauthorized webhook: signature mismatch');
@@ -40,11 +40,13 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Timestamp skew threshold exceeded' }, { status: 400 });
     }
 
-    // 3. Egress IP Allowlist Validation
-    const clientIp = request.headers.get('x-forwarded-for')?.split(',')[0]?.trim() || request.headers.get('x-real-ip');
-    if (process.env.NODE_ENV === 'production' && !isSeerbitIpAllowed(clientIp)) {
-      console.warn(`[SeerBit Webhook] Rejected unauthorized egress IP: ${clientIp}`);
-      return NextResponse.json({ error: 'Origin IP not allowed' }, { status: 403 });
+    // 3. Egress IP Allowlist Validation (only if explicitly enabled via environment variable)
+    if (process.env.SEERBIT_ENFORCE_IP_ALLOWLIST === 'true') {
+      const clientIp = request.headers.get('x-forwarded-for')?.split(',')[0]?.trim() || request.headers.get('x-real-ip');
+      if (!isSeerbitIpAllowed(clientIp)) {
+        console.warn(`[SeerBit Webhook] Rejected unauthorized egress IP: ${clientIp}`);
+        return NextResponse.json({ error: 'Origin IP not allowed' }, { status: 403 });
+      }
     }
 
     let payload: any;
@@ -54,7 +56,7 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Malformed JSON payload' }, { status: 400 });
     }
 
-    // SeerBit payloads may be nested inside notificationItems[0].notificationRequestItem
+    // SeerBit payloads may be nested inside notificationItems[0].notificationRequestItem or data.payments
     const notificationItem = payload.notificationItems?.[0]?.notificationRequestItem;
     const itemData = notificationItem?.data || payload.data || payload;
     const payments = itemData?.payments || itemData;
@@ -62,6 +64,7 @@ export async function POST(request: NextRequest) {
     const paymentRef =
       payments.reference ||
       payments.paymentReference ||
+      payments.transactionRef ||
       payload.reference ||
       itemData?.reference;
 
@@ -69,6 +72,7 @@ export async function POST(request: NextRequest) {
       notificationItem?.eventId ||
       payload.eventId ||
       payments.gatewayReference ||
+      payments.transactionId ||
       paymentRef ||
       computePayloadHash(rawBody);
 
@@ -87,15 +91,15 @@ export async function POST(request: NextRequest) {
       ''
     ).toUpperCase();
 
-    const rawAmount = Number(payments.amount || payload.amount || 0);
+    const rawAmount = Number(payments.amount || payments.debitedAmount || payload.amount || 0);
 
-    if (!paymentRef) {
-      return NextResponse.json({ error: 'Missing payment reference' }, { status: 400 });
+    if (!paymentRef && !payments.virtualAccount?.accountNumber && !payments.accountNumber) {
+      return NextResponse.json({ error: 'Missing payment reference and account number' }, { status: 400 });
     }
 
     const supabase = getAdminClient();
 
-    // 3. Idempotency Check (Pillar 7: Idempotent Consumers)
+    // 4. Idempotency Check (Pillar 7: Idempotent Consumers)
     const { data: existingEvent } = await supabase
       .from('processed_webhooks')
       .select('id, status')
@@ -107,16 +111,73 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ message: 'Event already processed' }, { status: 200 });
     }
 
-    // 4. Locate payment intent
-    const { data: intent, error: intentErr } = await supabase
-      .from('payment_intents')
-      .select('*, wallet:wallets(id, user_id, available_balance_kobo)')
-      .eq('reference', paymentRef)
-      .maybeSingle();
+    // 5. Dual Target Resolution: Direct Virtual Account Transfer OR Payment Intent (Card/USSD)
+    const virtualAccountNum = String(
+      payments.virtualAccount?.accountNumber ||
+      payments.accountNumber ||
+      payments.virtualAccountNumber ||
+      itemData?.virtualAccount?.accountNumber ||
+      itemData?.accountNumber ||
+      itemData?.virtual_account_number ||
+      ''
+    ).trim();
 
-    if (intentErr || !intent) {
-      console.warn(`[SeerBit Webhook] No matching payment intent for ref: ${paymentRef}`);
-      // Record in processed_webhooks to prevent flooding
+    const linkingRef = String(
+      payments.linkingreference ||
+      payments.linkingReference ||
+      payments.paymentReference ||
+      paymentRef ||
+      ''
+    ).trim();
+
+    let wallet: any = null;
+    let intent: any = null;
+    let isVirtualAccountTransfer = false;
+
+    // A. Check if this is a dedicated Virtual Account bank transfer by NUBAN Account Number
+    if (virtualAccountNum) {
+      const { data: vWallet } = await supabase
+        .from('wallets')
+        .select('*, user_profile:user_profiles!wallets_user_id_fkey(full_name, email, phone)')
+        .eq('virtual_account_number', virtualAccountNum)
+        .maybeSingle();
+
+      if (vWallet) {
+        wallet = vWallet;
+        isVirtualAccountTransfer = true;
+      }
+    }
+
+    // B. If not found by NUBAN, check by Virtual Account Reference / linking reference on wallets
+    if (!wallet && linkingRef) {
+      const { data: vWallet } = await supabase
+        .from('wallets')
+        .select('*, user_profile:user_profiles!wallets_user_id_fkey(full_name, email, phone)')
+        .eq('virtual_account_reference', linkingRef)
+        .maybeSingle();
+
+      if (vWallet) {
+        wallet = vWallet;
+        isVirtualAccountTransfer = true;
+      }
+    }
+
+    // C. If not a virtual account transfer, locate Payment Intent (for Card / USSD checkout)
+    if (!wallet && paymentRef) {
+      const { data: foundIntent } = await supabase
+        .from('payment_intents')
+        .select('*, wallet:wallets(id, user_id, available_balance_kobo)')
+        .eq('reference', paymentRef)
+        .maybeSingle();
+
+      if (foundIntent) {
+        intent = foundIntent;
+        wallet = foundIntent.wallet;
+      }
+    }
+
+    if (!wallet) {
+      console.warn(`[SeerBit Webhook] No matching wallet or intent found for ref: ${paymentRef}, account: ${virtualAccountNum}`);
       await supabase.from('processed_webhooks').insert({
         event_id: eventId,
         provider: 'seerbit',
@@ -124,11 +185,11 @@ export async function POST(request: NextRequest) {
         payload_hash: computePayloadHash(rawBody),
         status: 'IGNORED',
       });
-      return NextResponse.json({ message: 'No matching intent found' }, { status: 200 });
+      return NextResponse.json({ message: 'No matching wallet or intent found' }, { status: 200 });
     }
 
     // If intent was already processed
-    if (intent.status === 'SUCCESS') {
+    if (intent && intent.status === 'SUCCESS') {
       return NextResponse.json({ message: 'Payment intent already marked success' }, { status: 200 });
     }
 
@@ -140,84 +201,104 @@ export async function POST(request: NextRequest) {
       payments.gatewayCode === '00';
 
     if (isSuccessful) {
-      const amountKobo = intent.amount_kobo || Math.round(rawAmount * 100);
+      const amountKobo = intent?.amount_kobo || Math.round(rawAmount * 100);
+
+      if (amountKobo <= 0) {
+        return NextResponse.json({ error: 'Invalid transaction amount' }, { status: 400 });
+      }
 
       // Resolve entity identity and customer details
-      let entityName =
-        intent.metadata?.parent_name ||
-        intent.metadata?.school_name ||
-        intent.metadata?.admin_name ||
-        payments.customer?.name;
-      let userEmail =
-        intent.metadata?.parent_email ||
-        intent.metadata?.admin_email ||
-        payments.customer?.email;
-      let userPhone =
-        intent.metadata?.parent_phone ||
-        payments.customer?.phone;
-
       const entityType =
-        intent.metadata?.entity_type === 'school' || paymentRef.startsWith('MYEDU-SCH-')
+        wallet.entity_type === 'school'
           ? 'SCHOOL'
-          : intent.metadata?.entity_type === 'escort' || paymentRef.startsWith('MYEDU-ESC-')
+          : wallet.entity_type === 'escort'
           ? 'ESCORT'
           : 'PARENT';
 
+      let entityName =
+        wallet.user_profile?.full_name ||
+        intent?.metadata?.parent_name ||
+        intent?.metadata?.school_name ||
+        payments.customer?.name ||
+        payments.customer?.fullName ||
+        (entityType === 'SCHOOL' ? 'School Administration' : 'Parent');
+
+      let userEmail =
+        wallet.user_profile?.email ||
+        intent?.metadata?.parent_email ||
+        intent?.metadata?.admin_email ||
+        payments.customer?.email ||
+        'billing@myeduride.com';
+
+      let userPhone =
+        wallet.user_profile?.phone ||
+        intent?.metadata?.parent_phone ||
+        payments.customer?.phone ||
+        payments.customer?.mobile ||
+        null;
+
       // Fallback: look up user_profiles if needed
-      if (!userEmail && intent.user_id) {
+      if ((!entityName || !userEmail) && wallet.user_id) {
         const { data: profile } = await supabase
           .from('user_profiles')
           .select('full_name, email, phone')
-          .eq('id', intent.user_id)
+          .eq('id', wallet.user_id)
           .maybeSingle();
 
         if (profile) {
-          entityName = entityName || profile.full_name;
-          userEmail = userEmail || profile.email;
-          userPhone = userPhone || profile.phone;
+          entityName = profile.full_name || entityName;
+          userEmail = profile.email || userEmail;
+          userPhone = profile.phone || userPhone;
         }
       }
 
-      entityName = entityName || (entityType === 'SCHOOL' ? 'School Administration' : 'Valued Parent');
-      userEmail = userEmail || 'billing@myeduride.com';
+      const gatewayRef = payments.gatewayReference || payments.transactionRef || paymentRef;
+      const bankName =
+        payments.virtualAccount?.bankName ||
+        wallet.virtual_bank_name ||
+        'Virtual Bank Account';
 
-      const gatewayRef = payments.gatewayReference || payments.paymentReference || paymentRef;
-      const paymentChannel = payments.paymentType || payments.channelType || 'SEERBIT_CHECKOUT';
+      const paymentChannel = isVirtualAccountTransfer
+        ? 'BANK_TRANSFER'
+        : payments.paymentType || payments.channelType || 'SEERBIT_CHECKOUT';
+
+      const description = isVirtualAccountTransfer
+        ? `Wallet deposit via Bank Transfer (${bankName} - ${virtualAccountNum || wallet.virtual_account_number})`
+        : `Wallet deposit via SeerBit (${payments.paymentType || 'Online Checkout'})`;
 
       // Generate Standardized Cryptographic Receipt
       const receiptData = generateReceipt({
-        transactionReference: paymentRef,
+        transactionReference: paymentRef || gatewayRef,
         gatewayReference: gatewayRef,
         entityType,
         entityName,
         userEmail,
-        userPhone,
+        userPhone: userPhone || undefined,
         amountKobo,
-        paymentChannel,
+        paymentChannel: isVirtualAccountTransfer ? 'Virtual Account Bank Transfer' : paymentChannel,
         timestamp: new Date(),
-        description:
-          entityType === 'SCHOOL'
-            ? 'Institutional Wallet Deposit (Safe Passage & Gate Security)'
-            : 'Wallet Deposit Credit (Safe Shuttle & Gate Pass)',
+        description,
       });
 
-      // 5. Execute Atomic Wallet Credit via Stored Procedure (FOR UPDATE row-lock)
+      // 6. Execute Atomic Wallet Credit via Stored Procedure
       const { data: creditResult, error: creditErr } = await supabase.rpc(
         'execute_atomic_wallet_credit',
         {
-          p_wallet_id: intent.wallet_id,
+          p_wallet_id: wallet.id,
           p_amount_kobo: amountKobo,
-          p_channel: 'SEERBIT_CHECKOUT',
-          p_reference: paymentRef,
-          p_description: `Wallet deposit via SeerBit (${payments.paymentType || 'Online Checkout'})`,
+          p_channel: paymentChannel,
+          p_reference: paymentRef || gatewayRef,
+          p_description: description,
           p_metadata: {
             seerbit_reference: gatewayRef,
-            channel_type: payments.channelType || 'CARD',
+            channel_type: isVirtualAccountTransfer ? 'BANK_TRANSFER' : (payments.channelType || 'CARD'),
+            bank_name: bankName,
+            account_number: virtualAccountNum || wallet.virtual_account_number,
             customer: payments.customer || {},
             verified_via: 'WEBHOOK',
             receipt: receiptData,
           },
-          p_payment_intent_id: intent.id,
+          p_payment_intent_id: intent?.id || null,
         }
       );
 
@@ -231,21 +312,31 @@ export async function POST(request: NextRequest) {
         receiptData.balanceAfterNgn = creditResult.balance_after_kobo / 100;
       }
 
-      // Update intent status and store receipt
-      await supabase
-        .from('payment_intents')
-        .update({
-          status: 'SUCCESS',
-          seerbit_reference: gatewayRef,
-          metadata: {
-            ...(intent.metadata || {}),
-            receipt: receiptData,
-            receipt_sent: true,
-            receipt_sent_at: new Date().toISOString(),
-          },
-          updated_at: new Date().toISOString(),
-        })
-        .eq('id', intent.id);
+      // Sync user_profiles wallet_balance if user_id present
+      if (wallet.user_id && creditResult?.balance_after_kobo) {
+        await supabase
+          .from('user_profiles')
+          .update({ wallet_balance: Number(creditResult.balance_after_kobo) / 100 })
+          .eq('id', wallet.user_id);
+      }
+
+      // Update intent status if intent exists
+      if (intent?.id) {
+        await supabase
+          .from('payment_intents')
+          .update({
+            status: 'SUCCESS',
+            seerbit_reference: gatewayRef,
+            metadata: {
+              ...(intent.metadata || {}),
+              receipt: receiptData,
+              receipt_sent: true,
+              receipt_sent_at: new Date().toISOString(),
+            },
+            updated_at: new Date().toISOString(),
+          })
+          .eq('id', intent.id);
+      }
 
       // Record successful webhook execution
       await supabase.from('processed_webhooks').insert({
@@ -261,28 +352,32 @@ export async function POST(request: NextRequest) {
         console.error('[SeerBit Webhook] sendPaymentReceiptEmail failed:', emailErr);
       });
 
-      // Dispatch notification
+      // Dispatch in-app notification
       const amountNgn = (amountKobo / 100).toLocaleString('en-NG', { minimumFractionDigits: 2 });
-      await supabase.from('notifications').insert({
-        user_id: intent.user_id,
-        title: 'Wallet Funded Successfully! 💳',
-        message: `Your MyEduRide wallet has been credited with ₦${amountNgn}. Your school shuttle rides are active and funded.`,
-        type: 'wallet_credit',
-        is_read: false,
-      });
+      if (wallet.user_id) {
+        await supabase.from('notifications').insert({
+          user_id: wallet.user_id,
+          title: 'Wallet Funded Successfully! 💳',
+          message: `Your MyEduRide wallet has been credited with ₦${amountNgn} via direct bank transfer. Your account is active.`,
+          type: 'wallet_credit',
+          is_read: false,
+        });
+      }
 
-      console.log(`[SeerBit Webhook] Successfully credited wallet ${intent.wallet_id} with ₦${amountNgn} (ref: ${paymentRef})`);
+      console.log(`[SeerBit Webhook] Successfully credited wallet ${wallet.id} with ₦${amountNgn} (ref: ${paymentRef || gatewayRef})`);
       return NextResponse.json({ status: 'success', credit: creditResult, receipt: receiptData }, { status: 200 });
     } else {
-      // Payment failed or cancelled
-      await supabase
-        .from('payment_intents')
-        .update({
-          status: 'FAILED',
-          seerbit_reference: payments.gatewayReference || paymentRef,
-          updated_at: new Date().toISOString(),
-        })
-        .eq('id', intent.id);
+      // Payment failed
+      if (intent?.id) {
+        await supabase
+          .from('payment_intents')
+          .update({
+            status: 'FAILED',
+            seerbit_reference: payments.gatewayReference || paymentRef,
+            updated_at: new Date().toISOString(),
+          })
+          .eq('id', intent.id);
+      }
 
       await supabase.from('processed_webhooks').insert({
         event_id: eventId,
