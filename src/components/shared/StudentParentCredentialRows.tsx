@@ -1,6 +1,6 @@
 'use client';
 
-import { Copy, KeyRound, UserPlus, Pencil, Trash2 } from 'lucide-react';
+import { Copy, KeyRound, UserPlus, Pencil, Trash2, Lock } from 'lucide-react';
 import { toast } from 'sonner';
 
 export type AuthorisedPickupPerson = {
@@ -41,17 +41,22 @@ type Props = {
   showPasswords: boolean;
   onEdit?: (row: StudentParentCredential) => void;
   onDelete?: (row: StudentParentCredential) => void;
+  allowPasswordReset?: boolean;
 };
 
-export function StudentParentCredentialTableHead() {
+export function StudentParentCredentialTableHead({
+  allowPasswordReset = true,
+}: {
+  allowPasswordReset?: boolean;
+} = {}) {
   return (
     <tr className="text-left border-b bg-white text-xs text-gray-500 uppercase">
       <th className="py-2.5 px-5 font-semibold">Student</th>
       <th className="py-2.5 pr-4 font-semibold">Parent name</th>
       <th className="py-2.5 pr-4 font-semibold">Authorised pickup</th>
       <th className="py-2.5 pr-4 font-semibold">Parent username</th>
-      <th className="py-2.5 pr-3 font-semibold">Password</th>
-      <th className="py-2.5 pr-4 font-semibold">Confirm</th>
+      <th className="py-2.5 pr-3 font-semibold">{allowPasswordReset ? 'Password' : 'Password Access'}</th>
+      <th className="py-2.5 pr-4 font-semibold">{allowPasswordReset ? 'Confirm' : 'Reset Policy'}</th>
       <th className="py-2.5 pr-5 font-semibold">Actions</th>
     </tr>
   );
@@ -88,6 +93,7 @@ export function StudentParentCredentialRows({
   showPasswords,
   onEdit,
   onDelete,
+  allowPasswordReset = true,
 }: Props) {
   if (rows.length === 0) return null;
 
@@ -153,53 +159,64 @@ export function StudentParentCredentialRows({
               )}
             </td>
             <td className="py-3 pr-3 min-w-[160px]">
-              <input
-                type={showPasswords ? 'text' : 'password'}
-                value={draftPasswords[key] ?? (hasParent ? row.password : '')}
-                onChange={(e) =>
-                  setDraftPasswords((prev) => ({ ...prev, [key]: e.target.value }))
-                }
-                className="input h-9 font-mono text-xs w-full"
-                placeholder={
-                  linkingExisting
-                    ? 'Existing account — no password needed'
-                    : hasParent || displayParentName
-                      ? 'Password'
-                      : 'Set parent name on student first'
-                }
-                disabled={linkingExisting}
-              />
+              {!allowPasswordReset ? (
+                <div className="inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg bg-slate-100 text-slate-600 text-xs border border-slate-200 select-none">
+                  <Lock size={12} className="text-slate-400 shrink-0" />
+                  <span className="font-medium text-slate-600">Super Admin only</span>
+                </div>
+              ) : (
+                <input
+                  type={showPasswords ? 'text' : 'password'}
+                  value={draftPasswords[key] ?? (hasParent ? row.password : '')}
+                  onChange={(e) =>
+                    setDraftPasswords((prev) => ({ ...prev, [key]: e.target.value }))
+                  }
+                  className="input h-9 font-mono text-xs w-full"
+                  placeholder={
+                    linkingExisting
+                      ? 'Existing account — no password needed'
+                      : hasParent || displayParentName
+                        ? 'Password'
+                        : 'Set parent name on student first'
+                  }
+                  disabled={linkingExisting}
+                />
+              )}
             </td>
             <td className="py-3 pr-4 min-w-[160px]">
-              <input
-                type={showPasswords ? 'text' : 'password'}
-                value={draftConfirmPasswords[key] ?? (hasParent ? row.password : '')}
-                onChange={(e) =>
-                  setDraftConfirmPasswords((prev) => ({ ...prev, [key]: e.target.value }))
-                }
-                className="input h-9 font-mono text-xs w-full"
-                placeholder={linkingExisting ? '—' : 'Confirm'}
-                disabled={linkingExisting}
-              />
+              {!allowPasswordReset ? (
+                <span className="text-xs text-slate-400 italic">Protected (Cannot reset)</span>
+              ) : (
+                <input
+                  type={showPasswords ? 'text' : 'password'}
+                  value={draftConfirmPasswords[key] ?? (hasParent ? row.password : '')}
+                  onChange={(e) =>
+                    setDraftConfirmPasswords((prev) => ({ ...prev, [key]: e.target.value }))
+                  }
+                  className="input h-9 font-mono text-xs w-full"
+                  placeholder={linkingExisting ? '—' : 'Confirm'}
+                  disabled={linkingExisting}
+                />
+              )}
             </td>
             <td className="py-3 pr-5">
               <div className="flex items-center gap-2">
                 <button
                   type="button"
                   onClick={() => {
-                    const pw = draftPasswords[key] ?? row.password ?? '';
+                    const pw = allowPasswordReset ? (draftPasswords[key] ?? row.password ?? '') : '';
                     const username = hasParent ? row.parent_username : '(create login first)';
                     navigator.clipboard.writeText(
-                      `Student: ${row.student_name}\nParent: ${displayParentName}\nAuthorised pickup: ${persons.map((p) => p.name).join(', ') || '—'}\nParent username: ${username}\nPassword: ${pw || '(not set)'}`
+                      `Student: ${row.student_name}\nParent: ${displayParentName}\nAuthorised pickup: ${persons.map((p) => p.name).join(', ') || '—'}\nParent username: ${username}${allowPasswordReset ? `\nPassword: ${pw || '(not set)'}` : ''}`
                     );
-                    toast.success('Copied');
+                    toast.success('Copied login details');
                   }}
                   className="btn-secondary h-9 px-2.5"
                   title="Copy credentials"
                 >
                   <Copy size={14} />
                 </button>
-                {hasParent && row.parent_username ? (
+                {allowPasswordReset && hasParent && row.parent_username ? (
                   <button
                     type="button"
                     onClick={() => onSave(row.parent_user_id!)}
@@ -209,6 +226,14 @@ export function StudentParentCredentialRows({
                     <KeyRound size={14} />
                     {savingId === row.parent_user_id ? 'Saving…' : 'Update'}
                   </button>
+                ) : !allowPasswordReset && hasParent ? (
+                  <span
+                    className="text-[11px] font-medium text-slate-400 bg-slate-50 border border-slate-200 px-2.5 py-1.5 rounded-md inline-flex items-center gap-1"
+                    title="Only Super Admins can reset parent passwords"
+                  >
+                    <Lock size={11} className="text-slate-400" />
+                    Reset Locked
+                  </span>
                 ) : onProvision && showParentBlock ? (
                   <button
                     type="button"

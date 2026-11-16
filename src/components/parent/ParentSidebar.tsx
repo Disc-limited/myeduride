@@ -29,8 +29,10 @@ import {
   CreditCard,
   Radio,
   BadgePercent,
+  Building2,
 } from 'lucide-react';
 import { toast } from 'sonner';
+import { photoSrc } from '@/lib/photo';
 
 export type ParentTabType =
   | 'dashboard'
@@ -62,6 +64,12 @@ interface ParentSidebarProps {
   onToggleCollapse?: () => void;
   isMobileDrawer?: boolean;
   onCloseMobileDrawer?: () => void;
+  schoolInfo?: {
+    id?: string;
+    name?: string;
+    logo_url?: string | null;
+    primary_color?: string | null;
+  } | null;
 }
 
 export default function ParentSidebar({
@@ -76,8 +84,18 @@ export default function ParentSidebar({
   onToggleCollapse,
   isMobileDrawer = false,
   onCloseMobileDrawer,
+  schoolInfo,
 }: ParentSidebarProps) {
   const [safetySubmenuOpen, setSafetySubmenuOpen] = useState(false);
+  const [logoFailed, setLogoFailed] = useState(false);
+
+  const schoolLogoSrc = schoolInfo?.logo_url ? photoSrc(schoolInfo.logo_url) || schoolInfo.logo_url : null;
+  const schoolInitials = (schoolInfo?.name || 'School')
+    .split(' ')
+    .filter(Boolean)
+    .slice(0, 2)
+    .map((w) => w[0].toUpperCase())
+    .join('');
 
   const menuSections = [
     {
@@ -163,16 +181,19 @@ export default function ParentSidebar({
         isCollapsed ? 'w-20' : 'w-64'
       }`}
     >
-      {/* Sidebar Top: Official Brand Logo Header */}
+      {/* Sidebar Top: Official Brand Logo & School Header */}
       <div>
         <div className="pb-3 mb-1.5 border-b border-slate-800/80">
           {!isCollapsed ? (
-            <div className="flex items-center gap-2 px-1">
+            <div className="flex items-center justify-between gap-2 px-1">
               <img
                 src="/images/eduride_logo.png"
                 alt="MyEduRide Brand Logo"
-                className="h-9 sm:h-10 w-auto object-contain shrink-0 filter drop-shadow-sm"
+                className="h-8 w-auto object-contain shrink-0 filter drop-shadow-sm"
               />
+              <span className="text-[9px] font-black tracking-wider uppercase px-2 py-0.5 rounded bg-emerald-950 text-emerald-400 border border-emerald-800/60">
+                School Safety
+              </span>
             </div>
           ) : (
             <div className="flex items-center justify-center">
@@ -181,6 +202,61 @@ export default function ParentSidebar({
                 alt="MyEduRide Brand Logo"
                 className="h-7 w-7 object-contain filter drop-shadow-sm"
               />
+            </div>
+          )}
+
+          {/* School Campus Identity Badge */}
+          {schoolInfo?.name && (
+            <div className="mt-2.5 pt-2 border-t border-slate-800/60">
+              {!isCollapsed ? (
+                <div className="bg-slate-900/95 border border-slate-800/90 rounded-2xl p-2 flex items-center gap-2.5 shadow-xs">
+                  <div className="w-8 h-8 rounded-xl bg-white border border-slate-700 flex items-center justify-center p-0.5 shrink-0 overflow-hidden shadow-xs ring-1 ring-white/10">
+                    {schoolLogoSrc && !logoFailed ? (
+                      <img
+                        src={schoolLogoSrc}
+                        alt={schoolInfo.name}
+                        className="w-full h-full object-contain"
+                        onError={() => setLogoFailed(true)}
+                      />
+                    ) : (
+                      <div className="w-full h-full rounded-lg bg-emerald-700 text-white flex items-center justify-center font-black text-[11px]">
+                        {schoolInitials || <Building2 className="w-4 h-4 text-white" />}
+                      </div>
+                    )}
+                  </div>
+                  <div className="min-w-0 flex-1">
+                    <p className="text-xs font-bold text-white truncate leading-tight">
+                      {schoolInfo.name}
+                    </p>
+                    <div className="flex items-center gap-1.5 mt-0.5">
+                      <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse"></span>
+                      <p className="text-[10px] text-emerald-300 font-semibold truncate leading-none">
+                        School Platform
+                      </p>
+                    </div>
+                  </div>
+                </div>
+              ) : (
+                <div
+                  className="flex justify-center"
+                  title={`${schoolInfo.name} — Official School Platform`}
+                >
+                  <div className="w-8 h-8 rounded-xl bg-white border border-slate-700 flex items-center justify-center p-0.5 overflow-hidden shadow-xs">
+                    {schoolLogoSrc && !logoFailed ? (
+                      <img
+                        src={schoolLogoSrc}
+                        alt={schoolInfo.name}
+                        className="w-full h-full object-contain"
+                        onError={() => setLogoFailed(true)}
+                      />
+                    ) : (
+                      <div className="w-full h-full rounded-lg bg-emerald-700 text-white flex items-center justify-center font-black text-[10px]">
+                        {schoolInitials || <Building2 className="w-3.5 h-3.5 text-white" />}
+                      </div>
+                    )}
+                  </div>
+                </div>
+              )}
             </div>
           )}
         </div>

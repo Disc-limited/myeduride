@@ -14,24 +14,59 @@ export async function POST(request: NextRequest) {
 
     const body = await request.json().catch(() => ({}));
     const rawAmount = Number(body.amount_ngn ?? body.amount);
+    const supabase = getAdminClient();
 
-    if (isNaN(rawAmount) || rawAmount < 500) {
+    // 0. Resolve active agreed daily fee from transport bookings
+    const { data: parentBookings } = await supabase
+      .from('transport_bookings')
+      .select('id, notes, fare_amount, status')
+      .eq('parent_user_id', session.user_id)
+      .not('status', 'in', '(cancelled,canceled,rejected)')
+      .order('created_at', { ascending: false })
+      .limit(5);
+
+    let agreedDailyFee = 1060; // Standard 1 km baseline default
+    if (parentBookings && parentBookings.length > 0) {
+      for (const pb of parentBookings) {
+        if (pb.notes) {
+          try {
+            const meta = typeof pb.notes === 'string' ? JSON.parse(pb.notes) : pb.notes;
+            const fare = Number(
+              meta.fare_correction?.discountedFare ||
+              meta.discount?.discountedFare ||
+              meta.daily_fare ||
+              meta.fareResult?.dailyFare ||
+              pb.fare_amount ||
+              0
+            );
+            if (fare > 0) {
+              agreedDailyFee = fare;
+              break;
+            }
+          } catch {}
+        }
+      }
+    }
+
+    const minAmount = agreedDailyFee;
+    const maxMonthlyAmount = agreedDailyFee * 20; // Maximum allowed payment is 1 school month (20 days)
+
+    if (isNaN(rawAmount) || rawAmount < minAmount) {
       return NextResponse.json(
-        { error: 'Minimum deposit amount is ₦500' },
+        { error: `The least amount payable is ₦${minAmount.toLocaleString()} (the agreed daily transit fee for 1 day).` },
         { status: 400 }
       );
     }
 
-    // Velocity Anomaly Limit (Cybersecurity Plan Section 3.4: Max single parent deposit ₦500,000)
-    if (rawAmount > 500000) {
+    // Maximum payment constraint: Parents are only expected to pay for a month (20 school days)
+    if (rawAmount > maxMonthlyAmount) {
       return NextResponse.json(
-        { error: 'Maximum single deposit amount is ₦500,000' },
+        { error: `Parents are only expected to pay for a maximum of 1 month (20 school days: ₦${maxMonthlyAmount.toLocaleString()}).` },
         { status: 400 }
       );
     }
 
     const amountKobo = Math.round(rawAmount * 100);
-    const supabase = getAdminClient();
 
     // 1. Fetch parent wallet
     const { data: userWallets } = await supabase

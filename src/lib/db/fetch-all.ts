@@ -132,19 +132,45 @@ export async function loadAuthPasswordsForUsers(
   const uniqueIds = [...new Set(userIds.filter(Boolean))];
   if (uniqueIds.length === 0) return authById;
 
-  for (const batch of chunkArray(uniqueIds, 25)) {
-    await Promise.all(
-      batch.map(async (userId) => {
-        try {
-          const resolved = await resolveAuthUserForProfile(supabase, userId);
-          if ('error' in resolved) return;
-          const pw = (resolved.user.user_metadata?.login_password as string) || '';
-          authById.set(userId, pw);
-        } catch {
-          /* skip */
+  // High-performance path: When requesting multiple users, bulk list from Supabase Auth admin
+  if (uniqueIds.length > 5) {
+    try {
+      const neededSet = new Set(uniqueIds);
+      let page = 1;
+      while (true) {
+        const { data, error } = await supabase.auth.admin.listUsers({ page, perPage: 1000 });
+        if (error || !data?.users?.length) break;
+        for (const u of data.users) {
+          const pw = (u.user_metadata?.login_password as string) || '';
+          if (neededSet.has(u.id)) {
+            authById.set(u.id, pw);
+          }
         }
-      })
-    );
+        if (data.users.length < 1000 || authById.size >= neededSet.size) break;
+        page++;
+      }
+    } catch (listErr) {
+      console.warn('[fetch-all] bulk listUsers fallback notice:', listErr);
+    }
+  }
+
+  // Fallback for any missing IDs (or when small batch requested)
+  const remainingIds = uniqueIds.filter((id) => !authById.has(id));
+  if (remainingIds.length > 0) {
+    for (const batch of chunkArray(remainingIds, 25)) {
+      await Promise.all(
+        batch.map(async (userId) => {
+          try {
+            const resolved = await resolveAuthUserForProfile(supabase, userId);
+            if ('error' in resolved) return;
+            const pw = (resolved.user.user_metadata?.login_password as string) || '';
+            authById.set(userId, pw);
+          } catch {
+            /* skip */
+          }
+        })
+      );
+    }
   }
 
   return authById;

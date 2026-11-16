@@ -73,6 +73,8 @@ export function CityManagerOperationsPanel() {
     open: boolean;
     booking: any | null;
     originalFare: number;
+    baseKmFee: number;
+    selectedPercentage: number | null;
     discountedFare: string;
     discountAmount: string;
     kmFee: string;
@@ -84,16 +86,55 @@ export function CityManagerOperationsPanel() {
   }>({
     open: false,
     booking: null,
-    originalFare: 3500,
-    discountedFare: '2500',
+    originalFare: 1060,
+    baseKmFee: 500,
+    selectedPercentage: null,
+    discountedFare: '1060',
     discountAmount: '',
-    kmFee: '400',
+    kmFee: '500',
     accountantApprovalRef: '',
     accountantName: 'City Manager',
     discountReason: 'Fare correction',
     tripType: 'both',
     submitting: false,
   });
+
+  const applyKmDiscountPercentage = (pct: number) => {
+    const tripMultiplier = discountModal.tripType === 'both' ? 2 : 1;
+    const baseKm = discountModal.baseKmFee || Math.max(100, Math.round(discountModal.originalFare / (tripMultiplier * 1.06)));
+    const discountKm = Math.round(baseKm * (pct / 100));
+    const newOneWayKm = Math.max(50, baseKm - discountKm);
+    const dailyKm = newOneWayKm * tripMultiplier;
+    const dailySvc = Math.round(dailyKm * 0.06);
+    const totalFare = dailyKm + dailySvc;
+    const savings = Math.max(0, discountModal.originalFare - totalFare);
+
+    setDiscountModal((prev) => ({
+      ...prev,
+      kmFee: String(newOneWayKm),
+      discountedFare: String(totalFare),
+      discountAmount: savings > 0 ? String(savings) : '',
+      selectedPercentage: pct,
+      discountReason: `City Manager ${pct}% discount on system Km rate authorized`,
+    }));
+  };
+
+  const resetToOriginalKm = () => {
+    const tripMultiplier = discountModal.tripType === 'both' ? 2 : 1;
+    const baseKm = discountModal.baseKmFee || Math.max(100, Math.round(discountModal.originalFare / (tripMultiplier * 1.06)));
+    const dailyKm = baseKm * tripMultiplier;
+    const dailySvc = Math.round(dailyKm * 0.06);
+    const totalFare = dailyKm + dailySvc;
+
+    setDiscountModal((prev) => ({
+      ...prev,
+      kmFee: String(baseKm),
+      discountedFare: String(totalFare),
+      discountAmount: '',
+      selectedPercentage: 0,
+      discountReason: 'Standard system calculated rate',
+    }));
+  };
 
   const openFareEditor = (req: any) => {
     const studentName = req.child_name
@@ -117,6 +158,7 @@ export function CityManagerOperationsPanel() {
     );
     const savings = standard > current ? standard - current : 0;
     const tripMultiplier = initialTripType === 'both' ? 2 : 1;
+    const baseOneWayKm = Math.max(100, Math.round((standard || 1060) / (tripMultiplier * 1.06)));
     const existingKmFee = Number(
       req.km_fee ??
       req.one_way_km_fare ??
@@ -127,7 +169,15 @@ export function CityManagerOperationsPanel() {
     );
     const initialKm = existingKmFee > 0
       ? existingKmFee
-      : Math.round((current || standard || 848) / (tripMultiplier * 1.06));
+      : baseOneWayKm;
+
+    let initialPct: number | null = null;
+    if (baseOneWayKm > 0 && initialKm < baseOneWayKm) {
+      const calcPct = Math.round(((baseOneWayKm - initialKm) / baseOneWayKm) * 100);
+      if ([5, 10, 15, 20, 25].includes(calcPct)) {
+        initialPct = calcPct;
+      }
+    }
 
     setDiscountModal({
       open: true,
@@ -141,6 +191,8 @@ export function CityManagerOperationsPanel() {
         trip_type: initialTripType,
       },
       originalFare: standard,
+      baseKmFee: baseOneWayKm,
+      selectedPercentage: initialPct,
       discountedFare: String(current || standard),
       discountAmount: savings > 0 ? String(savings) : '',
       kmFee: String(initialKm),
@@ -186,6 +238,7 @@ export function CityManagerOperationsPanel() {
           dailyKmFare: dailyKm,
           serviceCharge: dailySvc,
           oneWayServiceCharge: oneWaySvc,
+          discountPercentage: discountModal.selectedPercentage,
           accountantApprovalRef: discountModal.accountantApprovalRef.trim(),
           accountantName: discountModal.accountantName.trim(),
           discountReason: discountModal.discountReason.trim(),
@@ -1042,7 +1095,7 @@ export function CityManagerOperationsPanel() {
                 <div className="flex items-center justify-between text-[11px] gap-2">
                   <span className="text-slate-400 font-bold">Doorstep Distance:</span>
                   <span className="font-mono font-black text-emerald-400">
-                    📏 {req.distance_km || 4.2} km
+                    📏 {req.distance_km != null ? req.distance_km : 1.0} km
                   </span>
                 </div>
                 <div className="grid grid-cols-2 gap-1.5 text-[10px]">
@@ -2037,6 +2090,69 @@ export function CityManagerOperationsPanel() {
 
             {/* PRICE & KM CONTROLS */}
             <div className="space-y-3 text-xs">
+              {/* SYSTEM KM PERCENTAGE DISCOUNT BUTTONS (5%, 10%, 15%, 20%, 25%) */}
+              <div className="space-y-1.5 p-3 rounded-2xl bg-indigo-950/40 border border-indigo-800/40 shadow-inner">
+                <div className="flex items-center justify-between">
+                  <label className="text-[10px] font-black uppercase tracking-wider text-indigo-300 flex items-center gap-1.5">
+                    <BadgePercent size={14} className="text-indigo-400" />
+                    Km Rate Discount (% off System Km) *
+                  </label>
+                  <span className="text-[10px] text-slate-300 font-mono font-bold bg-slate-900/90 px-2 py-0.5 rounded-md border border-slate-700/60">
+                    System: ₦{discountModal.baseKmFee.toLocaleString()}/km ({discountModal.booking?.distance_km != null ? discountModal.booking.distance_km : 1.0} km)
+                  </span>
+                </div>
+
+                <div className="grid grid-cols-6 gap-1.5 pt-1">
+                  {[5, 10, 15, 20, 25].map((pct) => {
+                    const isSelected = discountModal.selectedPercentage === pct;
+                    const tripMultiplier = discountModal.tripType === 'both' ? 2 : 1;
+                    const baseKm = discountModal.baseKmFee || Math.max(100, Math.round(discountModal.originalFare / (tripMultiplier * 1.06)));
+                    const discountedKm = Math.max(50, baseKm - Math.round(baseKm * (pct / 100)));
+                    return (
+                      <button
+                        key={pct}
+                        type="button"
+                        onClick={() => applyKmDiscountPercentage(pct)}
+                        className={`py-2 px-1 rounded-xl text-center font-bold text-xs transition-all cursor-pointer flex flex-col items-center justify-center gap-0.5 ${
+                          isSelected
+                            ? 'bg-gradient-to-b from-emerald-500 to-teal-600 text-white shadow-lg shadow-emerald-500/30 ring-2 ring-emerald-400 font-black scale-102'
+                            : 'bg-slate-900/90 hover:bg-slate-800 text-slate-300 border border-slate-700/80 hover:border-indigo-500/50'
+                        }`}
+                      >
+                        <span className="text-xs">{pct}%</span>
+                        <span className={`text-[9px] font-mono ${isSelected ? 'text-emerald-100 font-black' : 'text-slate-400'}`}>
+                          ₦{discountedKm}
+                        </span>
+                      </button>
+                    );
+                  })}
+
+                  {/* Reset / 0% Option */}
+                  <button
+                    type="button"
+                    onClick={resetToOriginalKm}
+                    className={`py-2 px-1 rounded-xl text-center font-bold text-xs transition-all cursor-pointer flex flex-col items-center justify-center gap-0.5 ${
+                      discountModal.selectedPercentage === 0 || (!discountModal.selectedPercentage && Number(discountModal.kmFee) === discountModal.baseKmFee)
+                        ? 'bg-slate-800 text-slate-200 border-2 border-slate-500 ring-1 ring-slate-400'
+                        : 'bg-slate-900/60 hover:bg-slate-800 text-slate-400 border border-slate-800'
+                    }`}
+                    title="Reset to 100% standard system rate"
+                  >
+                    <span className="text-xs">0%</span>
+                    <span className="text-[9px] font-mono text-slate-500">Reset</span>
+                  </button>
+                </div>
+
+                <div className="flex items-center justify-between text-[10px] text-indigo-300/80 pt-0.5">
+                  <span>Click any percentage to apply instant discount to system Km fee.</span>
+                  {discountModal.selectedPercentage != null && discountModal.selectedPercentage > 0 && (
+                    <span className="font-bold text-emerald-400 bg-emerald-500/15 px-1.5 py-0.5 rounded border border-emerald-500/30">
+                      ✓ {discountModal.selectedPercentage}% Km discount applied
+                    </span>
+                  )}
+                </div>
+              </div>
+
               {/* Dedicated One-Way Km Fee Box */}
               <div>
                 <div className="flex items-center justify-between mb-1">

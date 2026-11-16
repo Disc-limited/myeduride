@@ -52,20 +52,19 @@ export async function POST(request: NextRequest) {
 
     const belongsToAdminSchool = (targetRoles || []).some((r) => schoolIds.includes(r.school_id));
 
-    let allowed = belongsToAdminSchool;
-    if (!allowed) {
-      const { data: parentLinks } = await supabase
-        .from('student_parents')
-        .select('student_id, students!inner(school_id)')
-        .eq('parent_user_id', userId);
+    // Check if user is linked to any students in the school
+    const { data: parentLinks } = await supabase
+      .from('student_parents')
+      .select('student_id, students!inner(school_id)')
+      .eq('parent_user_id', userId);
 
-      allowed = (parentLinks || []).some((link) => {
-        const st = link.students as { school_id?: string } | { school_id?: string }[];
-        const schoolId = Array.isArray(st) ? st[0]?.school_id : st?.school_id;
-        return schoolId && schoolIds.includes(schoolId);
-      });
-    }
+    const hasLinkedStudentsInSchool = (parentLinks || []).some((link) => {
+      const st = link.students as { school_id?: string } | { school_id?: string }[];
+      const schoolId = Array.isArray(st) ? st[0]?.school_id : st?.school_id;
+      return schoolId && schoolIds.includes(schoolId);
+    });
 
+    const allowed = belongsToAdminSchool || hasLinkedStudentsInSchool;
     if (!allowed) {
       return NextResponse.json({ error: 'You can only manage users in your school' }, { status: 403 });
     }
@@ -73,6 +72,22 @@ export async function POST(request: NextRequest) {
     const includesSuperAdmin = (targetRoles || []).some((r) => r.role === 'super_admin');
     if (includesSuperAdmin) {
       return NextResponse.json({ error: 'Super admin passwords can only be managed by super admin' }, { status: 403 });
+    }
+
+    // Security & Compliance Policy:
+    // School admins are strictly blocked from resetting parent passwords.
+    // Only Super Admins are permitted to reset parent passwords.
+    const isParentRole = (targetRoles || []).some((r) => r.role === 'parent');
+    const isStudentParent = hasLinkedStudentsInSchool || ((parentLinks || []).length > 0);
+    const hasStaffRole = (targetRoles || []).some(
+      (r) => ['school_admin', 'teacher', 'gate_officer', 'staff'].includes(r.role) && schoolIds.includes(r.school_id)
+    );
+
+    if ((isParentRole || isStudentParent) && !hasStaffRole) {
+      return NextResponse.json(
+        { error: 'School admins are not permitted to reset parent passwords. Only Super Admins can reset parent passwords.' },
+        { status: 403 }
+      );
     }
 
     const { error } = await setAuthPasswordForProfile(supabase, userId, password, {

@@ -115,8 +115,8 @@ export async function getOrCreateSchoolWallet(schoolId: string): Promise<any> {
           .from('wallets')
           .update({
             virtual_account_number: virtualAcc.accountNumber,
-            virtual_bank_name: virtualAcc.bankName || 'Wema Bank (SeerBit)',
-            virtual_account_name: virtualAcc.accountName || `MyEduRide / ${school.name}`,
+            virtual_bank_name: virtualAcc.bankName || null,
+            virtual_account_name: virtualAcc.accountName || null,
             virtual_account_reference: ref,
             updated_at: new Date().toISOString(),
           })
@@ -196,8 +196,8 @@ export async function getSchoolWalletOverview(schoolId: string): Promise<SchoolW
       status: wallet.status || 'active',
       virtual_account: {
         account_number: wallet.virtual_account_number || null,
-        bank_name: wallet.virtual_bank_name || 'Wema Bank (SeerBit)',
-        account_name: wallet.virtual_account_name || `MyEduRide / ${school.name}`,
+        bank_name: wallet.virtual_bank_name || null,
+        account_name: wallet.virtual_account_name || null,
       },
     },
     transactions: (transactions || []).map((tx) => ({

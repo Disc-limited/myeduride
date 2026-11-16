@@ -5,7 +5,7 @@ import { getAdminClient } from '@/lib/supabase/admin';
 import { nowUtcIso } from '@/lib/utils/time';
 import { todayInLagos } from '@/lib/timezone';
 import { ensureDailyHandoverPin } from '@/lib/escort/handover-pin';
-import { resolveStoredEscortFare, parseEscortNotes } from '@/lib/escort/escort-pricing';
+import { resolveStoredEscortFare, parseEscortNotes, calculateSchoolToHomeDistance } from '@/lib/escort/escort-pricing';
 import {
   getActiveCityPricing,
   resolveCityKeyFromLocations,
@@ -101,12 +101,20 @@ export async function GET(request: NextRequest) {
         try { appData = JSON.parse(appData); } catch { appData = {}; }
       }
 
+      const distResult = calculateSchoolToHomeDistance(
+        { gps_lat: childSch?.gps_lat, gps_lng: childSch?.gps_lng, address: childSch?.address },
+        { house_lat: child.house_lat, house_lng: child.house_lng, house_address: child.house_address, custom_fields: child.custom_fields }
+      );
+      const childDistKm = distResult.isExactCoordinate ? distResult.distanceKm : (Number(appData.distance_km) || distResult.distanceKm);
+
       const fare = resolveStoredEscortFare({
         assignmentNotes: activeAssign?.notes,
         notes: activeAssign?.notes,
-        distanceKm: appData.distance_km || 4.5,
+        distanceKm: childDistKm,
         tripType: appData.trip_type || 'both',
         rates: cRates,
+        school: childSch,
+        student: child,
       });
 
       perChildFees.push({
@@ -354,13 +362,26 @@ export async function GET(request: NextRequest) {
             meta = parseEscortNotes(ensured.notes);
           }
 
+          const bookingSchool = unwrapRel(b.school);
+          const childSchool = unwrapRel(childRecord?.school);
+          const activeSchool = bookingSchool || childSchool;
+          const distResult = calculateSchoolToHomeDistance(
+            { gps_lat: activeSchool?.gps_lat, gps_lng: activeSchool?.gps_lng, address: activeSchool?.address },
+            { house_lat: childRecord?.house_lat ?? b.pickup_lat, house_lng: childRecord?.house_lng ?? b.pickup_lng, house_address: b.pickup_address, custom_fields: childRecord?.custom_fields }
+          );
+          const resolvedDistKm = distResult.isExactCoordinate
+            ? distResult.distanceKm
+            : (Number(meta.distance_km || parseEscortNotes(matchedAssignment?.notes).distance_km) || distResult.distanceKm);
+
           const fare = resolveStoredEscortFare({
             fareAmount: b.fare_amount,
             notes: meta,
             assignmentNotes: matchedAssignment?.notes,
-            distanceKm: meta.distance_km || parseEscortNotes(matchedAssignment?.notes).distance_km,
+            distanceKm: resolvedDistKm,
             tripType: meta.trip_type || parseEscortNotes(matchedAssignment?.notes).trip_type,
             rates: activeFareRates,
+            school: activeSchool,
+            student: childRecord,
           });
           const distanceKm = fare.distanceKm;
           const tripType = fare.tripType;
@@ -369,9 +390,6 @@ export async function GET(request: NextRequest) {
           const dailyFare = fare.dailyFare;
 
           const isConfirmed = b.status === 'assigned' || matchedAssignment?.status === 'active';
-
-          const bookingSchool = unwrapRel(b.school);
-          const childSchool = unwrapRel(childRecord?.school);
           const rowSchoolName =
             bookingSchool?.name ||
             (b.student_id && childRecord?.id === b.student_id ? childSchool?.name : null) ||

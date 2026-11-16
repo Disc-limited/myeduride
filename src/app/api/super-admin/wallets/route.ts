@@ -238,7 +238,7 @@ export async function POST(request: NextRequest) {
     // 2. Resolve virtual account defaults if not explicitly provided
     let vRef = virtual_account_reference;
     let vName = virtual_account_name;
-    let vBank = virtual_bank_name || 'Wema Bank (SeerBit)';
+    let vBank = virtual_bank_name || null;
     let vNumber = virtual_account_number;
 
     if (!vRef) {
@@ -247,39 +247,27 @@ export async function POST(request: NextRequest) {
       vRef = `VIRT-${prefix}-${targetId}-${Math.floor(1000 + Math.random() * 9000)}`;
     }
 
-    if (!vName && user_id) {
+    let recipientName = 'Authorized DISC Entity';
+    let recipientEmail = 'support@myeduride.com';
+    let recipientPhone: string | undefined = undefined;
+
+    if (user_id) {
       const { data: u } = await supabase.from('user_profiles').select('full_name, email, phone').eq('id', user_id).maybeSingle();
-      if (u?.full_name) {
-        vName = `MYEDURIDE / ${u.full_name.toUpperCase()}`;
+      if (u) {
+        recipientName = u.full_name || recipientName;
+        recipientEmail = u.email || recipientEmail;
+        recipientPhone = u.phone || undefined;
       }
-    } else if (!vName && school_id) {
+    } else if (school_id) {
       const { data: s } = await supabase.from('schools').select('name').eq('id', school_id).maybeSingle();
       if (s?.name) {
-        vName = `MYEDURIDE / ${s.name.toUpperCase()}`;
+        recipientName = s.name;
       }
     }
 
     // Auto-provision virtual account via SeerBit if account number is not explicitly supplied
     if (!vNumber && entity_type !== 'platform_treasury') {
       try {
-        let recipientName = vName || 'MyEduRide User';
-        let recipientEmail = 'support@myeduride.com';
-        let recipientPhone: string | undefined = undefined;
-
-        if (user_id) {
-          const { data: u } = await supabase.from('user_profiles').select('full_name, email, phone').eq('id', user_id).maybeSingle();
-          if (u) {
-            recipientName = u.full_name || recipientName;
-            recipientEmail = u.email || recipientEmail;
-            recipientPhone = u.phone || undefined;
-          }
-        } else if (school_id) {
-          const { data: s } = await supabase.from('schools').select('name').eq('id', school_id).maybeSingle();
-          if (s) {
-            recipientName = s.name || recipientName;
-          }
-        }
-
         const virtualAcc = await SeerBitClient.createVirtualAccount({
           fullName: recipientName,
           email: recipientEmail,
@@ -290,7 +278,7 @@ export async function POST(request: NextRequest) {
         if (virtualAcc?.accountNumber) {
           vNumber = virtualAcc.accountNumber;
           vBank = virtualAcc.bankName || vBank;
-          vName = virtualAcc.accountName || vName;
+          vName = virtualAcc.accountName || vName || null;
         }
       } catch (vaErr) {
         console.warn('[super-admin/wallets POST] Could not auto-provision SeerBit virtual account:', vaErr);

@@ -181,6 +181,12 @@ export default function ParentDashboard() {
   const [liveTrackingData, setLiveTrackingData] = useState<any>(null);
   const [schoolAnnouncements, setSchoolAnnouncements] = useState<any[]>([]);
   const [upcomingEvents, setUpcomingEvents] = useState<any[]>([]);
+  const [schoolInfo, setSchoolInfo] = useState<{
+    id?: string;
+    name?: string;
+    logo_url?: string | null;
+    primary_color?: string | null;
+  } | null>(null);
 
   // Fetch Live Tracking directly from Database
   const fetchLiveTracking = async (childId?: string) => {
@@ -513,6 +519,16 @@ export default function ParentDashboard() {
       setChildren(kids);
 
       const sess = getSession();
+      const firstSchool = kids.find((k: any) => k?.school?.name)?.school || kids[0]?.school;
+      if (firstSchool) {
+        setSchoolInfo({
+          id: firstSchool.id,
+          name: firstSchool.name,
+          logo_url: firstSchool.logo_url || null,
+          primary_color: firstSchool.primary_color || null,
+        });
+      }
+
       if (kids[0]) {
         const firstId = kids[0].id;
         setSelectedChild((c) => c || firstId);
@@ -527,8 +543,27 @@ export default function ParentDashboard() {
         fetchLiveTracking();
       }
 
-      const schoolId = kids[0]?.school_id || sess?.roles?.find((r: any) => r.school_id)?.school_id;
+      const schoolId = kids[0]?.school_id || firstSchool?.id || sess?.roles?.find((r: any) => r.school_id)?.school_id;
       if (schoolId) {
+        // If logo_url wasn't loaded via student join, fetch school branding directly
+        if (!firstSchool?.logo_url) {
+          fetch(`/api/public/school-branding?school_id=${encodeURIComponent(schoolId)}`, {
+            credentials: 'include',
+            cache: 'no-store',
+          })
+            .then((res) => (res.ok ? res.json() : null))
+            .then((data) => {
+              if (data?.school?.name) {
+                setSchoolInfo((prev) => ({
+                  id: data.school.id || prev?.id || schoolId,
+                  name: data.school.name || prev?.name || 'School Campus',
+                  logo_url: data.school.logo_url || prev?.logo_url || null,
+                  primary_color: prev?.primary_color || null,
+                }));
+              }
+            })
+            .catch(() => {});
+        }
         fetch(`/api/school-notices/active?user_role=parents&school_id=${encodeURIComponent(schoolId)}`, {
           credentials: 'include',
           cache: 'no-store',
@@ -824,6 +859,14 @@ export default function ParentDashboard() {
   const safeChildren = children || [];
   const safeNotices = recentNotices || [];
 
+  const activeChild = safeChildren.find((c: any) => c.id === selectedChild) || safeChildren[0] || null;
+  const currentSchool = {
+    id: activeChild?.school?.id || schoolInfo?.id,
+    name: activeChild?.school?.name || schoolInfo?.name,
+    logo_url: activeChild?.school?.logo_url ?? schoolInfo?.logo_url ?? null,
+    primary_color: activeChild?.school?.primary_color || schoolInfo?.primary_color || null,
+  };
+
   const unreadNotifsCount = safeNotifications.filter((n) => !n?.is_read).length;
 
   // Handle Quick Actions
@@ -938,6 +981,7 @@ export default function ParentDashboard() {
           onOpenIdPass={() => setShowIdPassModal(true)}
           isCollapsed={isSidebarCollapsed}
           onToggleCollapse={() => setIsSidebarCollapsed(!isSidebarCollapsed)}
+          schoolInfo={currentSchool}
         />
       </div>
 
@@ -964,6 +1008,7 @@ export default function ParentDashboard() {
           onOpenIdPass={() => setShowIdPassModal(true)}
           isMobileDrawer={true}
           onCloseMobileDrawer={() => setIsMobileSidebarOpen(false)}
+          schoolInfo={currentSchool}
         />
       )}
 
@@ -983,6 +1028,7 @@ export default function ParentDashboard() {
           onToggleMobileSidebar={() => setIsMobileSidebarOpen(!isMobileSidebarOpen)}
           searchQuery={searchQuery}
           setSearchQuery={setSearchQuery}
+          schoolInfo={currentSchool}
         />
         {/* Main Content Dashboard - EXACT 9-COL / 3-COL STRUCTURE */}
         <main className="flex-1 p-4 sm:p-6 lg:p-6 pb-24 lg:pb-6 overflow-y-auto">
@@ -1160,6 +1206,7 @@ export default function ParentDashboard() {
                         setSafetyPillar('school_escort');
                         setActiveTab('safety');
                       }}
+                      schoolInfo={currentSchool}
                     />
                   </div>
                   <div className="md:col-span-5 lg:col-span-5">
@@ -1588,7 +1635,8 @@ export default function ParentDashboard() {
             phone: (session as any)?.phone || (session as any)?.user_metadata?.phone || '',
             photo_url: userPhotoUrl,
           }}
-          schoolName={(safeChildren[0] as any)?.schools?.name || (safeChildren[0] as any)?.school_name || 'MyEduRide Partner Campus'}
+          schoolName={currentSchool?.name || (safeChildren[0] as any)?.school?.name || (safeChildren[0] as any)?.schools?.name || 'MyEduRide Partner Campus'}
+          schoolLogoUrl={currentSchool?.logo_url}
           childrenList={safeChildren}
         />
       )}

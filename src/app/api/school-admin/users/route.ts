@@ -84,14 +84,19 @@ export async function GET(request: NextRequest) {
     }
 
     const users: ListedUser[] = (profiles || [])
-      .map((p) => ({
-        id: p.id,
-        username: p.username || '',
-        email: p.email || '',
-        full_name: p.full_name || '',
-        roles: Array.from(roleMap.get(p.id) || []),
-        password: authById.get(p.id)?.password || '',
-      }))
+      .map((p) => {
+        const roles = Array.from(roleMap.get(p.id) || []);
+        const isParentOnly = roles.every((r) => r === 'parent');
+        return {
+          id: p.id,
+          username: p.username || '',
+          email: p.email || '',
+          full_name: p.full_name || '',
+          roles,
+          // Parent passwords are protected and hidden from school admins
+          password: isParentOnly ? '' : (authById.get(p.id)?.password || ''),
+        };
+      })
       .sort((a, b) => a.username.localeCompare(b.username));
 
     return NextResponse.json({ users });

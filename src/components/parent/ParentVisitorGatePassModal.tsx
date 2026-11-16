@@ -18,6 +18,7 @@ import {
   Sparkles,
 } from 'lucide-react';
 import StudentAvatar from '@/components/shared/StudentAvatar';
+import { photoSrc } from '@/lib/photo';
 
 export interface LinkedChildInfo {
   id: string;
@@ -43,6 +44,7 @@ interface ParentVisitorGatePassModalProps {
     photo_url?: string | null;
   };
   schoolName?: string;
+  schoolLogoUrl?: string | null;
   childrenList: LinkedChildInfo[];
 }
 
@@ -51,6 +53,7 @@ export default function ParentVisitorGatePassModal({
   onClose,
   parent,
   schoolName = 'MyEduRide Partner Campus',
+  schoolLogoUrl,
   childrenList = [],
 }: ParentVisitorGatePassModalProps) {
   if (!isOpen) return null;
@@ -59,6 +62,7 @@ export default function ParentVisitorGatePassModal({
   const idNumber = `PAR-${parentId.slice(0, 8).toUpperCase()}`;
   const qrData = `MYEDURIDE:PARENT:${parentId}`;
   const qrUrl = `https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=${encodeURIComponent(qrData)}`;
+  const schoolLogoSrc = schoolLogoUrl ? photoSrc(schoolLogoUrl) || schoolLogoUrl : null;
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 bg-slate-950/80 backdrop-blur-sm animate-in fade-in overflow-y-auto">
@@ -111,14 +115,24 @@ export default function ParentVisitorGatePassModal({
           {/* Main Card View */}
           <div className="rounded-3xl border-2 border-emerald-800/20 bg-gradient-to-b from-emerald-50/50 via-white to-slate-50 p-4 sm:p-5 shadow-sm space-y-4">
             {/* School Campus & Identification Row */}
-            <div className="flex items-center justify-between border-b border-emerald-100 pb-3">
-              <div className="flex items-center gap-2">
-                <Building2 size={16} className="text-emerald-800" />
-                <span className="text-xs font-black text-slate-900 uppercase tracking-wider">
+            <div className="flex items-center justify-between border-b border-emerald-100 pb-3 gap-2">
+              <div className="flex items-center gap-2.5 min-w-0">
+                <div className="w-7 h-7 rounded-lg bg-white border border-emerald-200 p-0.5 flex items-center justify-center overflow-hidden shrink-0 shadow-2xs">
+                  {schoolLogoSrc ? (
+                    <img
+                      src={schoolLogoSrc}
+                      alt={schoolName}
+                      className="w-full h-full object-contain"
+                    />
+                  ) : (
+                    <Building2 size={16} className="text-emerald-800" />
+                  )}
+                </div>
+                <span className="text-xs font-black text-slate-900 uppercase tracking-wider truncate">
                   {schoolName}
                 </span>
               </div>
-              <span className="text-[10px] font-mono font-black text-emerald-800 bg-emerald-100 px-2.5 py-1 rounded-lg">
+              <span className="text-[10px] font-mono font-black text-emerald-800 bg-emerald-100 px-2.5 py-1 rounded-lg shrink-0">
                 {idNumber}
               </span>
             </div>

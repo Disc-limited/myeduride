@@ -895,7 +895,7 @@ export async function GET(request: NextRequest) {
       // The customer service charge is stripped entirely from the escort payload.
       const discountInfo = extractDiscountInfo(st.id);
       const fareEngine = calculateEscortFare(
-        distanceKm != null ? distanceKm : 4.5,
+        distanceKm != null ? distanceKm : 1.0,
         normalizedTripType,
         fareRates
       );

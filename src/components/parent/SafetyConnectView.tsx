@@ -14,6 +14,7 @@ import {
   Navigation,
   CheckCircle2,
   Calendar,
+  CreditCard,
   KeyRound,
   AlertTriangle,
   ArrowRight,
@@ -65,6 +66,74 @@ export default function SafetyConnectView({
     reason: 'School Escort Unavailable / Urgent Leave',
   });
   const [submittingBooking, setSubmittingBooking] = useState(false);
+  const [paymentModal, setPaymentModal] = useState<{
+    open: boolean;
+    dailyFee: number;
+    childName: string;
+    schoolName: string;
+    selectedDays: number;
+    submitting: boolean;
+  }>({
+    open: false,
+    dailyFee: 1060,
+    childName: '',
+    schoolName: '',
+    selectedDays: 1,
+    submitting: false,
+  });
+
+  const openPaymentForBooking = (booking: any) => {
+    const fee = Number(booking.actual_amount_collected || booking.daily_fare || 1060);
+    setPaymentModal({
+      open: true,
+      dailyFee: fee > 0 ? fee : 1060,
+      childName: booking.child_name || 'Student',
+      schoolName: booking.destination || booking.school_name || 'School Campus',
+      selectedDays: 1,
+      submitting: false,
+    });
+  };
+
+  const handleProcessPayment = async () => {
+    const minAmount = paymentModal.dailyFee;
+    const maxAmount = paymentModal.dailyFee * 20;
+    const totalAmount = paymentModal.selectedDays * paymentModal.dailyFee;
+
+    if (totalAmount < minAmount) {
+      toast.error(`The least amount payable is ₦${minAmount.toLocaleString()} (agreed daily fee for 1 day).`);
+      return;
+    }
+    if (totalAmount > maxAmount) {
+      toast.error(`Maximum allowable payment is 1 school month (20 days: ₦${maxAmount.toLocaleString()}).`);
+      return;
+    }
+
+    setPaymentModal((prev) => ({ ...prev, submitting: true }));
+    try {
+      const res = await fetch('/api/parent/wallet/deposit', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify({ amount_ngn: totalAmount }),
+      });
+      const resJson = await res.json();
+      if (!res.ok || !resJson.success) {
+        throw new Error(resJson.error || 'Failed to initiate payment');
+      }
+
+      if (resJson.checkout_url) {
+        toast.info('Redirecting to SeerBit secure checkout...');
+        window.location.href = resJson.checkout_url;
+      } else {
+        toast.success(`Transit payment of ₦${totalAmount.toLocaleString()} initiated successfully!`);
+        setPaymentModal((prev) => ({ ...prev, open: false }));
+      }
+    } catch (err: any) {
+      toast.error(err.message || 'Payment initiation failed');
+    } finally {
+      setPaymentModal((prev) => ({ ...prev, submitting: false }));
+    }
+  };
 
   useEffect(() => {
     if (initialTab) {
@@ -497,6 +566,28 @@ export default function SafetyConnectView({
                         </>
                       )}
                     </p>
+
+                    {/* PROCEED TO PAYMENT ACTION BANNER */}
+                    <div className="pt-2 border-t border-slate-100 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 bg-emerald-50/70 p-3 rounded-2xl border border-emerald-200/80">
+                      <div>
+                        <span className="text-xs font-black text-slate-800 flex items-center gap-1.5">
+                          <CreditCard size={14} className="text-emerald-700" />
+                          Agreed Daily Fee: <strong className="font-mono text-emerald-800">₦{Number(activeBooking.actual_amount_collected || activeBooking.daily_fare || 1060).toLocaleString()}</strong> / day
+                        </span>
+                        <p className="text-[10px] text-slate-500 mt-0.5">
+                          Choose payment duration (1 day min up to 1 school month max).
+                        </p>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => openPaymentForBooking(activeBooking)}
+                        className="w-full sm:w-auto px-4 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white font-extrabold text-xs shadow-md shadow-emerald-600/20 transition-all flex items-center justify-center gap-2 cursor-pointer shrink-0"
+                      >
+                        <CreditCard size={14} />
+                        <span>Proceed to Payment</span>
+                        <ArrowRight size={14} />
+                      </button>
+                    </div>
                   </div>
 
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 pt-2 border-t border-slate-200/60 text-[11px] text-slate-700">
@@ -853,6 +944,138 @@ export default function SafetyConnectView({
                 </button>
               </div>
             </form>
+          </div>
+        </div>
+      )}
+
+      {/* Escort Transit Payment Modal */}
+      {paymentModal.open && (
+        <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4">
+          <div className="bg-white rounded-3xl max-w-md w-full p-6 sm:p-7 shadow-2xl border border-slate-100 space-y-5 animate-in fade-in zoom-in duration-200">
+            <div className="flex items-center justify-between pb-3 border-b border-slate-100">
+              <div className="flex items-center gap-2.5">
+                <div className="w-9 h-9 rounded-xl bg-emerald-50 text-emerald-600 flex items-center justify-center font-black">
+                  <CreditCard className="w-5 h-5" />
+                </div>
+                <div>
+                  <h3 className="text-base font-extrabold text-slate-900">Escort Transit Payment</h3>
+                  <p className="text-[11px] text-slate-500">{paymentModal.childName} &bull; {paymentModal.schoolName}</p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setPaymentModal((prev) => ({ ...prev, open: false }))}
+                className="p-1 text-slate-400 hover:text-slate-700 rounded-lg cursor-pointer"
+              >
+                ✕
+              </button>
+            </div>
+
+            {/* AGREED FEE & LIMIT HEADER */}
+            <div className="p-3 bg-emerald-50 rounded-2xl border border-emerald-200/80 space-y-1">
+              <div className="flex items-center justify-between text-xs">
+                <span className="font-extrabold text-slate-700">Agreed Daily Transit Fee:</span>
+                <span className="font-mono font-black text-emerald-700 text-sm">
+                  ₦{paymentModal.dailyFee.toLocaleString()} / day
+                </span>
+              </div>
+              <div className="flex items-center justify-between text-[11px] text-slate-500 pt-0.5 border-t border-emerald-100">
+                <span>Least Payment: <strong>₦{paymentModal.dailyFee.toLocaleString()} (1 Day)</strong></span>
+                <span>1 Month Limit: <strong>₦{(paymentModal.dailyFee * 20).toLocaleString()} (20 Days)</strong></span>
+              </div>
+            </div>
+
+            {/* PAYMENT PROGRESSION OPTIONS (1060, 2120, 3180, 4240, 5300, etc.) */}
+            <div>
+              <label className="text-xs font-bold text-slate-700 block mb-1.5">
+                Select Transit Payment Duration:
+              </label>
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+                {[
+                  { days: 1, label: '1 Day (Min)' },
+                  { days: 2, label: '2 Days' },
+                  { days: 3, label: '3 Days' },
+                  { days: 4, label: '4 Days' },
+                  { days: 5, label: '5 Days (1 Wk)' },
+                  { days: 10, label: '10 Days (2 Wks)' },
+                  { days: 15, label: '15 Days (3 Wks)' },
+                  { days: 20, label: '20 Days (1 Mo Max)' },
+                ].map((opt) => {
+                  const isSelected = paymentModal.selectedDays === opt.days;
+                  const optAmount = opt.days * paymentModal.dailyFee;
+                  return (
+                    <button
+                      key={opt.days}
+                      type="button"
+                      onClick={() => setPaymentModal((prev) => ({ ...prev, selectedDays: opt.days }))}
+                      className={`p-2.5 rounded-xl text-center border transition-all cursor-pointer flex flex-col items-center justify-center gap-0.5 ${
+                        isSelected
+                          ? 'bg-emerald-600 text-white border-emerald-600 shadow-md ring-2 ring-emerald-400 font-black'
+                          : 'bg-slate-50 hover:bg-slate-100 text-slate-700 border-slate-200 font-bold'
+                      }`}
+                    >
+                      <span className={`text-[10px] ${isSelected ? 'text-emerald-100' : 'text-slate-500'}`}>
+                        {opt.label}
+                      </span>
+                      <span className="font-mono text-xs">
+                        ₦{optAmount.toLocaleString()}
+                      </span>
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+
+            {/* DAYS STEPPER */}
+            <div className="p-3 rounded-2xl bg-slate-50 border border-slate-200 flex items-center justify-between">
+              <div>
+                <span className="text-xs font-bold text-slate-700 block">Custom Days Selector:</span>
+                <span className="text-[10px] text-slate-500">Pick any duration (1 to 20 days max)</span>
+              </div>
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={() => setPaymentModal((prev) => ({ ...prev, selectedDays: Math.max(1, prev.selectedDays - 1) }))}
+                  className="w-8 h-8 rounded-lg bg-white border border-slate-300 text-slate-700 font-black text-sm flex items-center justify-center hover:bg-slate-100 cursor-pointer"
+                >
+                  -
+                </button>
+                <span className="font-mono font-black text-xs text-slate-900 w-14 text-center">
+                  {paymentModal.selectedDays} {paymentModal.selectedDays === 1 ? 'day' : 'days'}
+                </span>
+                <button
+                  type="button"
+                  onClick={() => setPaymentModal((prev) => ({ ...prev, selectedDays: Math.min(20, prev.selectedDays + 1) }))}
+                  className="w-8 h-8 rounded-lg bg-white border border-slate-300 text-slate-700 font-black text-sm flex items-center justify-center hover:bg-slate-100 cursor-pointer"
+                >
+                  +
+                </button>
+              </div>
+            </div>
+
+            {/* SECURITY & PAYMENT BUTTON */}
+            <div className="p-3 bg-emerald-50/60 rounded-2xl border border-emerald-100 text-[11px] text-emerald-900 flex items-start gap-2">
+              <ShieldCheck className="w-4 h-4 text-emerald-600 shrink-0 mt-0.5" />
+              <span>
+                Processed securely via <strong>SeerBit CBN-Licensed Gateway</strong>. Funds are held in escrow and disbursed only as trips are verified.
+              </span>
+            </div>
+
+            <button
+              type="button"
+              onClick={handleProcessPayment}
+              disabled={paymentModal.submitting}
+              className="w-full bg-emerald-600 hover:bg-emerald-500 text-white font-black text-xs py-3.5 rounded-xl shadow-md shadow-emerald-600/20 transition-all flex items-center justify-center gap-2 cursor-pointer disabled:opacity-60"
+            >
+              {paymentModal.submitting ? (
+                <span>Connecting to Payment Gateway...</span>
+              ) : (
+                <>
+                  <span>Pay ₦{(paymentModal.selectedDays * paymentModal.dailyFee).toLocaleString()} ({paymentModal.selectedDays} {paymentModal.selectedDays === 1 ? 'Day' : 'Days'})</span>
+                  <ChevronRight className="w-4 h-4" />
+                </>
+              )}
+            </button>
           </div>
         </div>
       )}

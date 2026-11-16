@@ -88,9 +88,17 @@ export async function GET(request: NextRequest) {
 
     const roleRows = await fetchAllActiveSchoolRoles(supabase, schoolIds);
     const userIds = [...new Set(roleRows.map((r) => r.user_id).filter(Boolean))];
+    // Security & Data Protection: School admins are only authorized to see staff passwords, NOT parent passwords.
+    // Restrict password lookup strictly to staff user IDs.
+    const staffUserIds = [...new Set(
+      roleRows
+        .filter((r) => STAFF_ROLES.has(r.role))
+        .map((r) => r.user_id)
+        .filter(Boolean)
+    )];
     const [profileById, authById, staffProfiles] = await Promise.all([
       fetchProfilesByIds(supabase, userIds),
-      loadAuthPasswordsForUsers(supabase, userIds),
+      loadAuthPasswordsForUsers(supabase, staffUserIds),
       fetchAllTeacherProfiles(supabase, schoolIds),
     ]);
 
@@ -123,13 +131,19 @@ export async function GET(request: NextRequest) {
       const parents: CredentialUser[] = [];
       const other: CredentialUser[] = [];
 
+      // loadPasswords: false ensures parent passwords are not retrieved or exposed to school admins
       const students = await fetchStudentParentCredentials(
         supabase,
         school.id,
         profileById,
         authById,
-        { repairMissingParents: false, loadPasswords: true }
+        { repairMissingParents: false, loadPasswords: false }
       );
+      // Extra safety: ensure students passwords are completely stripped
+      for (const s of students) {
+        s.password = '';
+      }
+
       const linkedStudentsByParent = new Map<string, string[]>();
       for (const s of students) {
         if (!s.parent_user_id) continue;
@@ -143,18 +157,19 @@ export async function GET(request: NextRequest) {
           const profile = profileById.get(userId);
           if (!profile) continue;
 
-          const password = authById.get(userId) || '';
+          const isStaff = roles.some((r) => STAFF_ROLES.has(r));
+          const isParentOnly = roles.every((r) => r === 'parent');
+
+          // Staff passwords are only exposed if the user has an active staff role; parents always get empty password
+          const password = isStaff ? (authById.get(userId) || '') : '';
           const staffId = staffIdByUserSchool.get(`${userId}:${school.id}`) ?? null;
           const row = toUserRow(profile, roles, password, staffId);
           if (linkedStudentsByParent.has(userId)) {
             row.linked_students = linkedStudentsByParent.get(userId);
           }
 
-          const isParentOnly = roles.every((r) => r === 'parent');
-          const isStaff = roles.some((r) => STAFF_ROLES.has(r));
-
           if (isStaff) staff.push(row);
-          else if (isParentOnly) parents.push(row);
+          else if (isParentOnly) parents.push({ ...row, password: '' });
           else other.push(row);
         }
       }

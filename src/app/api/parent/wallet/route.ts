@@ -53,8 +53,8 @@ export async function GET(request: NextRequest) {
           locked_balance_kobo: 0,
           currency: 'NGN',
           virtual_account_number: virtualAcc.accountNumber || null,
-          virtual_bank_name: virtualAcc.bankName || 'Wema Bank (SeerBit)',
-          virtual_account_name: virtualAcc.accountName || `MyEduRide / ${session.full_name}`,
+          virtual_bank_name: virtualAcc.bankName || null,
+          virtual_account_name: virtualAcc.accountName || null,
           virtual_account_reference: ref,
           status: 'active',
         })
@@ -85,12 +85,47 @@ export async function GET(request: NextRequest) {
       .eq('status', 'HELD')
       .order('created_at', { ascending: false });
 
+    // 4. Fetch parent's active escort bookings to resolve agreed daily transit fee
+    const { data: parentBookings } = await supabase
+      .from('transport_bookings')
+      .select('id, notes, fare_amount, status, student:students(id, first_name, last_name)')
+      .eq('parent_user_id', session.user_id)
+      .not('status', 'in', '(cancelled,canceled,rejected)')
+      .order('created_at', { ascending: false })
+      .limit(5);
+
+    let agreedDailyFee = 1060; // Standard 1 km round commute default
+    if (parentBookings && parentBookings.length > 0) {
+      for (const pb of parentBookings) {
+        if (pb.notes) {
+          try {
+            const meta = typeof pb.notes === 'string' ? JSON.parse(pb.notes) : pb.notes;
+            const fare = Number(
+              meta.fare_correction?.discountedFare ||
+              meta.discount?.discountedFare ||
+              meta.daily_fare ||
+              meta.fareResult?.dailyFare ||
+              pb.fare_amount ||
+              0
+            );
+            if (fare > 0) {
+              agreedDailyFee = fare;
+              break;
+            }
+          } catch {}
+        }
+      }
+    }
+
     const availableKobo = Number(wallet.available_balance_kobo || 0);
     const escrowKobo = Number(wallet.escrow_balance_kobo || 0);
     const reservedKobo = Number(wallet.reserved_balance_kobo || 0);
 
     return NextResponse.json({
       success: true,
+      agreed_daily_fee: agreedDailyFee,
+      max_monthly_fee: agreedDailyFee * 20,
+      max_school_days: 20,
       wallet: {
         id: wallet.id,
         currency: wallet.currency || 'NGN',
@@ -103,7 +138,7 @@ export async function GET(request: NextRequest) {
         status: wallet.status || 'active',
         virtual_account: {
           account_number: wallet.virtual_account_number,
-          bank_name: wallet.virtual_bank_name || 'Wema Bank (SeerBit)',
+          bank_name: wallet.virtual_bank_name || null,
           account_name: wallet.virtual_account_name,
         },
       },

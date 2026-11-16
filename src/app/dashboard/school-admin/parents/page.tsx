@@ -102,7 +102,7 @@ export default function ParentsListPage() {
           <p className="page-badge">Parents</p>
           <h1 className="page-title">Parent list ({parents.length})</h1>
           <p className="page-subtitle">
-            Parent names on file for your students. Manage usernames and passwords on the Passwords page.
+            Parent names on file for your students. Staff passwords can be managed on the Passwords page (Parent passwords can only be reset by Super Admin).
           </p>
         </div>
         <div className="flex flex-wrap gap-2 shrink-0 w-full sm:w-auto">

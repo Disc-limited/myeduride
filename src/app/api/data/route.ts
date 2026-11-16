@@ -804,7 +804,7 @@ export async function POST(request: NextRequest) {
           // Fallback: still return linked students without joins so the portal never goes blank
           const { data: plainStudents, error: plainErr } = await supabase
             .from('students')
-            .select('id, first_name, last_name, photo_url, student_id_number, class_id, school_id, is_active, house_lat, house_lng, house_address, house_landmark, house_notes')
+            .select('id, first_name, last_name, photo_url, student_id_number, class_id, school_id, is_active, house_lat, house_lng, house_address, house_landmark, house_notes, school:schools(id, name, primary_color, logo_url)')
             .in('id', ids)
             .eq('is_active', true);
           if (plainErr) {

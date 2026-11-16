@@ -219,10 +219,18 @@ export async function PATCH(request: NextRequest, { params }: RouteParams) {
       balance: newAvailableKobo / 100,
     };
 
+    // Reset SeerBit Virtual Account if requested
+    if (body.reset_virtual_account || body.action === 'reset_virtual_account') {
+      updates.virtual_account_number = null;
+      updates.virtual_bank_name = null;
+      updates.virtual_account_name = null;
+      updates.virtual_account_reference = null;
+    }
+
     // Auto-generate SeerBit Virtual Account if requested
     if (body.generate_virtual_account || body.action === 'generate_virtual_account') {
       try {
-        let recipientName = currentWallet.virtual_account_name || 'MyEduRide User';
+        let recipientName = 'DISC Partner';
         let recipientEmail = 'support@myeduride.com';
         let recipientPhone: string | undefined = undefined;
 
@@ -242,7 +250,7 @@ export async function PATCH(request: NextRequest, { params }: RouteParams) {
 
         const prefix = currentWallet.entity_type === 'parent' ? 'PAR' : currentWallet.entity_type === 'escort' ? 'ESC' : currentWallet.entity_type === 'school' ? 'SCH' : 'SYS';
         const targetId = (currentWallet.user_id || currentWallet.school_id || 'DISC').toString().replace(/[^a-zA-Z0-9]/g, '').slice(0, 8).toUpperCase();
-        const vRef = currentWallet.virtual_account_reference || `VIRT-${prefix}-${targetId}-${Math.floor(1000 + Math.random() * 9000)}`;
+        const vRef = `VIRT-${prefix}-${targetId}-${Date.now().toString().slice(-6)}`;
 
         const virtualAcc = await SeerBitClient.createVirtualAccount({
           fullName: recipientName,
@@ -253,8 +261,8 @@ export async function PATCH(request: NextRequest, { params }: RouteParams) {
 
         if (virtualAcc?.accountNumber) {
           updates.virtual_account_number = virtualAcc.accountNumber;
-          updates.virtual_bank_name = virtualAcc.bankName || 'Wema Bank (SeerBit)';
-          updates.virtual_account_name = virtualAcc.accountName || `MYEDURIDE / ${recipientName.toUpperCase()}`;
+          updates.virtual_bank_name = virtualAcc.bankName || null;
+          updates.virtual_account_name = virtualAcc.accountName || null;
           updates.virtual_account_reference = vRef;
         }
       } catch (vaErr) {

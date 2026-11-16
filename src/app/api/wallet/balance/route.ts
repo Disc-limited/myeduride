@@ -82,7 +82,7 @@ export async function GET(request: NextRequest) {
         status: schoolWallet.status || 'active',
         virtual_account: {
           account_number: schoolWallet.virtual_account_number || null,
-          bank_name: schoolWallet.virtual_bank_name || 'Wema Bank (SeerBit)',
+          bank_name: schoolWallet.virtual_bank_name || null,
           account_name: schoolWallet.virtual_account_name || null,
         },
       });
@@ -159,7 +159,7 @@ export async function GET(request: NextRequest) {
       status: parentWallet.status || 'active',
       virtual_account: {
         account_number: parentWallet.virtual_account_number || null,
-        bank_name: parentWallet.virtual_bank_name || 'Wema Bank (SeerBit)',
+        bank_name: parentWallet.virtual_bank_name || null,
         account_name: parentWallet.virtual_account_name || null,
       },
     });

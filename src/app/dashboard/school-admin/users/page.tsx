@@ -47,6 +47,17 @@ export default function SchoolAdminUsersPage() {
   }, []);
 
   const savePassword = async (userId: string) => {
+    const targetUser = users.find((u) => u.id === userId);
+    const isParentOnly =
+      targetUser &&
+      targetUser.roles.includes('parent') &&
+      !targetUser.roles.some((r) => ['teacher', 'gate_officer', 'staff', 'school_admin'].includes(r));
+
+    if (isParentOnly) {
+      toast.error('School admins cannot reset parent passwords. Only Super Admins can reset parent passwords.');
+      return;
+    }
+
     const password = (draftPasswords[userId] || '').trim();
     if (!password) {
       toast.error('Enter a password first');
@@ -109,35 +120,51 @@ export default function SchoolAdminUsersPage() {
               </tr>
             </thead>
             <tbody>
-              {users.map((user) => (
-                <tr key={user.id} className="border-b last:border-b-0">
-                  <td className="py-3 pr-4">{user.full_name || '-'}</td>
-                  <td className="py-3 pr-4">{user.username}</td>
-                  <td className="py-3 pr-4">{user.roles.length ? user.roles.join(', ') : '-'}</td>
-                  <td className="py-3 pr-4 min-w-[260px]">
-                    <input
-                      type="text"
-                      value={draftPasswords[user.id] ?? ''}
-                      onChange={(e) =>
-                        setDraftPasswords((prev) => ({ ...prev, [user.id]: e.target.value }))
-                      }
-                      className="input h-9"
-                      placeholder="Set user password"
-                    />
-                  </td>
-                  <td className="py-3">
-                    <button
-                      type="button"
-                      onClick={() => savePassword(user.id)}
-                      disabled={savingId === user.id}
-                      className="btn-primary h-9 px-3 inline-flex items-center gap-1.5"
-                    >
-                      <KeyRound size={14} />
-                      {savingId === user.id ? 'Saving...' : 'Save'}
-                    </button>
-                  </td>
-                </tr>
-              ))}
+              {users.map((user) => {
+                const isParentOnly =
+                  user.roles.includes('parent') &&
+                  !user.roles.some((r) => ['teacher', 'gate_officer', 'staff', 'school_admin'].includes(r));
+
+                return (
+                  <tr key={user.id} className="border-b last:border-b-0">
+                    <td className="py-3 pr-4">{user.full_name || '-'}</td>
+                    <td className="py-3 pr-4">{user.username}</td>
+                    <td className="py-3 pr-4">{user.roles.length ? user.roles.join(', ') : '-'}</td>
+                    <td className="py-3 pr-4 min-w-[260px]">
+                      {isParentOnly ? (
+                        <span className="text-xs text-slate-500 font-medium px-2.5 py-1.5 rounded-lg bg-slate-100 border border-slate-200 inline-block">
+                          🔒 Protected (Super Admin Only)
+                        </span>
+                      ) : (
+                        <input
+                          type="text"
+                          value={draftPasswords[user.id] ?? ''}
+                          onChange={(e) =>
+                            setDraftPasswords((prev) => ({ ...prev, [user.id]: e.target.value }))
+                          }
+                          className="input h-9"
+                          placeholder="Set user password"
+                        />
+                      )}
+                    </td>
+                    <td className="py-3">
+                      {isParentOnly ? (
+                        <span className="text-xs text-slate-400">Locked</span>
+                      ) : (
+                        <button
+                          type="button"
+                          onClick={() => savePassword(user.id)}
+                          disabled={savingId === user.id}
+                          className="btn-primary h-9 px-3 inline-flex items-center gap-1.5"
+                        >
+                          <KeyRound size={14} />
+                          {savingId === user.id ? 'Saving...' : 'Save'}
+                        </button>
+                      )}
+                    </td>
+                  </tr>
+                );
+              })}
             </tbody>
           </table>
         </div>

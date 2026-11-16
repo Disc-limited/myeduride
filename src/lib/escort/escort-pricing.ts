@@ -75,37 +75,42 @@ export interface EscortFareBreakdown {
  */
 export function calculateSchoolToHomeDistance(
   school: { gps_lat?: number | string | null; gps_lng?: number | string | null; address?: string | null },
-  student: { house_lat?: number | string | null; house_lng?: number | string | null; house_address?: string | null; address?: string | null }
+  student: { house_lat?: number | string | null; house_lng?: number | string | null; house_address?: string | null; address?: string | null; custom_fields?: any }
 ): EscortDistanceResult {
-  const schoolLat = school?.gps_lat != null ? Number(school.gps_lat) : null;
-  const schoolLng = school?.gps_lng != null ? Number(school.gps_lng) : null;
-  const studentLat = student?.house_lat != null ? Number(student.house_lat) : null;
-  const studentLng = student?.house_lng != null ? Number(student.house_lng) : null;
+  const schoolLat = school?.gps_lat != null && !isNaN(Number(school.gps_lat)) ? Number(school.gps_lat) : null;
+  const schoolLng = school?.gps_lng != null && !isNaN(Number(school.gps_lng)) ? Number(school.gps_lng) : null;
+  const studentLat =
+    student?.house_lat != null && !isNaN(Number(student.house_lat))
+      ? Number(student.house_lat)
+      : student?.custom_fields?.house_lat != null && !isNaN(Number(student.custom_fields.house_lat))
+        ? Number(student.custom_fields.house_lat)
+        : null;
+  const studentLng =
+    student?.house_lng != null && !isNaN(Number(student.house_lng))
+      ? Number(student.house_lng)
+      : student?.custom_fields?.house_lng != null && !isNaN(Number(student.custom_fields.house_lng))
+        ? Number(student.custom_fields.house_lng)
+        : null;
 
   if (
     schoolLat != null &&
     schoolLng != null &&
     studentLat != null &&
-    studentLng != null &&
-    !isNaN(schoolLat) &&
-    !isNaN(schoolLng) &&
-    !isNaN(studentLat) &&
-    !isNaN(studentLng)
+    studentLng != null
   ) {
     const meters = calculateHaversineDistance(schoolLat, schoolLng, studentLat, studentLng);
-    // Add 25% road-curvature factor to direct great-circle distance for realistic driving routing
-    const roadMeters = meters * 1.25;
-    const distanceKm = Math.max(0.5, Number((roadMeters / 1000).toFixed(1)));
+    // Actual doorstep geographic distance in kilometers (straight-line coordinate difference)
+    const distanceKm = Math.max(0.1, Number((meters / 1000).toFixed(1)));
     return {
       distanceKm,
-      distanceMeters: Math.round(roadMeters),
+      distanceMeters: Math.round(meters),
       isExactCoordinate: true,
-      notes: `GPS Doorstep Pinned (${distanceKm} km turn-by-turn estimate)`,
+      notes: `GPS Doorstep Pinned (${distanceKm} km actual distance)`,
     };
   }
 
-  // Graceful fallback when coordinates are not yet pinned
-  const defaultKm = 5.0;
+  // Graceful fallback when coordinates are not yet pinned (1.0 km base band)
+  const defaultKm = 1.0;
   return {
     distanceKm: defaultKm,
     distanceMeters: defaultKm * 1000,
@@ -138,7 +143,8 @@ export type EscortFareRateOverrides = {
 export function billableDistanceKm(distanceKm: number): number {
   const raw = Number(distanceKm);
   const km = Number.isFinite(raw) && raw > 0 ? raw : 1;
-  return Math.max(1, Math.ceil(km - 1e-9));
+  // Apply a 100m tolerance so e.g. 1.05 km counts as 1 km band
+  return Math.max(1, Math.ceil(km - 0.1));
 }
 
 function formatNgn(val: number): string {
@@ -306,13 +312,25 @@ export function resolveStoredEscortFare(input: {
   distanceKm?: number | string | null;
   tripType?: string | null;
   rates?: EscortFareRateOverrides;
+  school?: any;
+  student?: any;
 }) {
   const meta = parseEscortNotes(input.notes);
   const assignMeta = parseEscortNotes(input.assignmentNotes);
   const tripType = normalizeEscortTripType(
     input.tripType || meta.trip_type || assignMeta.trip_type || meta.fareResult?.tripType
   );
-  const distanceKm = Number(input.distanceKm || meta.distance_km || assignMeta.distance_km || 4.5) || 4.5;
+
+  let distanceKm: number;
+  if (input.distanceKm != null && !isNaN(Number(input.distanceKm)) && Number(input.distanceKm) > 0) {
+    distanceKm = Number(input.distanceKm);
+  } else if (input.school && input.student) {
+    const liveDist = calculateSchoolToHomeDistance(input.school, input.student);
+    distanceKm = liveDist.distanceKm;
+  } else {
+    distanceKm = Number(meta.distance_km || assignMeta.distance_km || 1.0) || 1.0;
+  }
+
   const engine = calculateEscortFare(distanceKm, tripType, input.rates);
 
   const correctionCandidates = [

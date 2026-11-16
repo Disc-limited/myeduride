@@ -1,7 +1,9 @@
 'use client';
 
-import { CheckCircle2, ShieldCheck, Clock, Bus, Home } from 'lucide-react';
+import { useState } from 'react';
+import { CheckCircle2, ShieldCheck, Clock, Bus, Home, Building2 } from 'lucide-react';
 import { formatTimeLagos } from '@/lib/timezone';
+import { photoSrc } from '@/lib/photo';
 
 interface Child {
   id: string;
@@ -21,9 +23,22 @@ interface HeroGreetingCardProps {
   userName: string;
   childrenList: Child[];
   onOpenSafetyConnect?: () => void;
+  schoolInfo?: {
+    id?: string;
+    name?: string;
+    logo_url?: string | null;
+    primary_color?: string | null;
+  } | null;
 }
 
-export default function HeroGreetingCard({ userName, childrenList, onOpenSafetyConnect }: HeroGreetingCardProps) {
+export default function HeroGreetingCard({
+  userName,
+  childrenList,
+  onOpenSafetyConnect,
+  schoolInfo,
+}: HeroGreetingCardProps) {
+  const [logoFailed, setLogoFailed] = useState(false);
+
   const getGreeting = () => {
     const hour = new Date().getHours();
     if (hour < 12) return 'Good Morning';
@@ -41,6 +56,14 @@ export default function HeroGreetingCard({ userName, childrenList, onOpenSafetyC
       : `${kidsNames[0]} is linked to your live safety dashboard.`
     : 'Welcome to MyEduRide. Connect your child to monitor live school transit & safety.';
 
+  const schoolLogoSrc = schoolInfo?.logo_url ? photoSrc(schoolInfo.logo_url) || schoolInfo.logo_url : null;
+  const schoolInitials = (schoolInfo?.name || 'School')
+    .split(' ')
+    .filter(Boolean)
+    .slice(0, 2)
+    .map((w) => w[0].toUpperCase())
+    .join('');
+
   return (
     <div className="relative rounded-3xl overflow-hidden bg-slate-900 border border-slate-800 shadow-xl min-h-[220px] flex flex-col justify-between p-6 sm:p-8 text-white group h-full">
       {/* Background Graphic & Dark Gradient Overlay */}
@@ -54,6 +77,36 @@ export default function HeroGreetingCard({ userName, childrenList, onOpenSafetyC
 
       {/* Main Content Header */}
       <div className="relative z-20 max-w-xl">
+        {/* School Campus Platform Identification Banner */}
+        {schoolInfo?.name && (
+          <div className="mb-3 flex items-center flex-wrap gap-2">
+            <div className="inline-flex items-center gap-2.5 bg-slate-950/70 hover:bg-slate-950/90 backdrop-blur-md border border-white/20 px-3 py-1.5 rounded-2xl shadow-md transition-all">
+              <div className="w-7 h-7 rounded-xl bg-white p-0.5 flex items-center justify-center overflow-hidden shrink-0 shadow-xs border border-white/40">
+                {schoolLogoSrc && !logoFailed ? (
+                  <img
+                    src={schoolLogoSrc}
+                    alt={schoolInfo.name}
+                    className="w-full h-full object-contain"
+                    onError={() => setLogoFailed(true)}
+                  />
+                ) : (
+                  <div className="w-full h-full rounded-lg bg-emerald-700 text-white flex items-center justify-center font-black text-[10px]">
+                    {schoolInitials || <Building2 className="w-3.5 h-3.5 text-white" />}
+                  </div>
+                )}
+              </div>
+              <div className="flex items-center gap-2">
+                <span className="text-xs sm:text-sm font-extrabold text-white tracking-tight truncate max-w-[200px] sm:max-w-xs">
+                  {schoolInfo.name}
+                </span>
+                <span className="text-[9px] font-black uppercase px-2 py-0.5 rounded-full bg-emerald-500 text-white tracking-wider shadow-xs">
+                  School Platform
+                </span>
+              </div>
+            </div>
+          </div>
+        )}
+
         <h1 className="text-2xl sm:text-3xl font-black tracking-tight text-white leading-tight">
           {getGreeting()},{' '}
           <span className="bg-gradient-to-r from-white via-slate-100 to-slate-200 bg-clip-text text-transparent">

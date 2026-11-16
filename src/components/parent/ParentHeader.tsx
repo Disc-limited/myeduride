@@ -1,7 +1,20 @@
 'use client';
 
 import { useState } from 'react';
-import { Bell, MessageSquare, Search, ChevronDown, LogOut, KeyRound, Bot, Menu, User, CreditCard } from 'lucide-react';
+import {
+  Bell,
+  MessageSquare,
+  Search,
+  ChevronDown,
+  LogOut,
+  KeyRound,
+  Bot,
+  Menu,
+  User,
+  CreditCard,
+  Building2,
+  ShieldCheck,
+} from 'lucide-react';
 import { logout } from '@/lib/api';
 import { photoSrc } from '@/lib/photo';
 
@@ -18,6 +31,12 @@ interface ParentHeaderProps {
   onToggleMobileSidebar?: () => void;
   searchQuery: string;
   setSearchQuery: (q: string) => void;
+  schoolInfo?: {
+    id?: string;
+    name?: string;
+    logo_url?: string | null;
+    primary_color?: string | null;
+  } | null;
 }
 
 // Default high-quality parent avatar image when no custom photo is uploaded
@@ -37,8 +56,10 @@ export default function ParentHeader({
   onToggleMobileSidebar,
   searchQuery,
   setSearchQuery,
+  schoolInfo,
 }: ParentHeaderProps) {
   const [profileDropdownOpen, setProfileDropdownOpen] = useState(false);
+  const [logoFailed, setLogoFailed] = useState(false);
 
   // Ensure red notification badges always display unread numbers
   const displayNotifCount = unreadNotifsCount > 0 ? unreadNotifsCount : 3;
@@ -47,31 +68,73 @@ export default function ParentHeader({
   // Use uploaded photo or fallback to default parent avatar image
   const avatarImageSrc = userPhotoUrl ? photoSrc(userPhotoUrl) || userPhotoUrl : DEFAULT_PARENT_AVATAR;
 
+  // Resolve school logo URL
+  const schoolLogoSrc = schoolInfo?.logo_url ? photoSrc(schoolInfo.logo_url) || schoolInfo.logo_url : null;
+  const schoolInitials = (schoolInfo?.name || 'School')
+    .split(' ')
+    .filter(Boolean)
+    .slice(0, 2)
+    .map((w) => w[0].toUpperCase())
+    .join('');
+
   return (
-    <header className="sticky top-0 z-30 bg-white/90 backdrop-blur-md border-b border-slate-200/60 px-4 sm:px-6 lg:px-8 py-3 transition-all">
-      <div className="max-w-[1600px] mx-auto flex items-center justify-between gap-4">
+    <header className="sticky top-0 z-30 bg-white/95 backdrop-blur-md border-b border-slate-200/70 px-3 sm:px-6 lg:px-8 py-2.5 transition-all">
+      <div className="max-w-[1600px] mx-auto flex items-center justify-between gap-3 sm:gap-4">
         
-        {/* Left Section: Mobile Sidebar Toggle & Brand Logo */}
-        <div className="flex items-center gap-3">
+        {/* Left Section: Mobile Menu & Official School Campus Branding */}
+        <div className="flex items-center gap-2 sm:gap-3 shrink-0 min-w-0">
           {onToggleMobileSidebar && (
             <button
               type="button"
               onClick={onToggleMobileSidebar}
-              className="p-2 rounded-xl text-slate-600 hover:bg-slate-100 lg:hidden transition-colors"
+              className="p-2 rounded-xl text-slate-600 hover:bg-slate-100 lg:hidden transition-colors shrink-0"
               title="Toggle Navigation Menu"
             >
               <Menu className="w-5 h-5" />
             </button>
           )}
 
-          {/* Official Brand Logo for Mobile */}
-          <div className="lg:hidden flex items-center gap-2">
-            <img
-              src="/images/eduride_logo.png"
-              alt="MyEduRide Brand Logo"
-              className="h-8 w-auto object-contain"
-            />
-          </div>
+          {/* School Identity: Official Logo & School Name */}
+          {schoolInfo?.name ? (
+            <div className="flex items-center gap-2 sm:gap-2.5 bg-gradient-to-r from-slate-50 via-emerald-50/30 to-slate-50 border border-slate-200/90 hover:border-emerald-300/80 px-2 sm:px-3 py-1 sm:py-1.5 rounded-2xl shadow-2xs transition-all group max-w-[200px] sm:max-w-xs md:max-w-sm">
+              <div className="w-8 h-8 sm:w-9 sm:h-9 rounded-xl bg-white border border-slate-200/80 shadow-2xs flex items-center justify-center p-0.5 shrink-0 overflow-hidden ring-1 ring-slate-100">
+                {schoolLogoSrc && !logoFailed ? (
+                  <img
+                    src={schoolLogoSrc}
+                    alt={schoolInfo.name}
+                    className="w-full h-full object-contain"
+                    onError={() => setLogoFailed(true)}
+                  />
+                ) : (
+                  <div className="w-full h-full rounded-lg bg-emerald-700 text-white flex items-center justify-center font-black text-xs shadow-inner">
+                    {schoolInitials || <Building2 className="w-4 h-4 text-white" />}
+                  </div>
+                )}
+              </div>
+              <div className="min-w-0">
+                <div className="flex items-center gap-1.5">
+                  <p className="text-xs sm:text-sm font-extrabold text-slate-900 truncate tracking-tight leading-tight group-hover:text-emerald-700 transition-colors">
+                    {schoolInfo.name}
+                  </p>
+                  <span className="hidden sm:inline-flex items-center gap-0.5 text-[8px] font-black uppercase tracking-wider px-1.5 py-0.5 rounded-md bg-emerald-100 text-emerald-800 shrink-0">
+                    <ShieldCheck className="w-2.5 h-2.5 text-emerald-700" />
+                    School Platform
+                  </span>
+                </div>
+                <p className="text-[10px] text-slate-500 font-semibold truncate leading-none mt-0.5">
+                  Official Parent Portal
+                </p>
+              </div>
+            </div>
+          ) : (
+            <div className="lg:hidden flex items-center gap-2">
+              <img
+                src="/images/eduride_logo.png"
+                alt="MyEduRide Brand Logo"
+                className="h-8 w-auto object-contain"
+              />
+            </div>
+          )}
         </div>
 
         {/* Center: Global Search Bar */}

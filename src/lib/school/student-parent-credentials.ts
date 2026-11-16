@@ -191,7 +191,7 @@ export async function fetchStudentParentCredentials(
       const profile = profileById.get(parentUserId);
       parentName = profile?.full_name || onFile.parent_name;
       parentUsername = profile?.username?.trim() || '';
-      password = authById.get(parentUserId) || '';
+      password = opts?.loadPasswords === false ? '' : (authById.get(parentUserId) || '');
     }
 
     rows.push({

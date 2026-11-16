@@ -277,7 +277,7 @@ export async function POST(request: NextRequest) {
       // 2. Automatically Calculate Distance (School <-> Student Home)
       const distanceResult = calculateSchoolToHomeDistance(
         { gps_lat: school?.gps_lat, gps_lng: school?.gps_lng, address: school?.address },
-        { house_lat: student?.house_lat, house_lng: student?.house_lng, house_address: student?.house_address }
+        { house_lat: student?.house_lat, house_lng: student?.house_lng, house_address: student?.house_address, custom_fields: student?.custom_fields }
       );
 
       const resolvedCityKey = resolveCityKeyFromContext([

@@ -12,6 +12,7 @@ import {
   RefreshCcw,
   Search,
   BookUser,
+  ShieldAlert,
 } from 'lucide-react';
 import { toast } from 'sonner';
 import {
@@ -180,12 +181,18 @@ function StudentSection({
         <span className="text-emerald-600/70 font-normal">({students.length})</span>
       </div>
       <p className="px-5 py-2 text-xs text-gray-500 border-b bg-white">
-        Each student&apos;s parent app login (username &amp; password set when the student was added)
+        Each student&apos;s parent app login. Parent passwords are encrypted and confidential.
       </p>
+      <div className="px-5 py-2.5 bg-amber-50 border-b border-amber-200/60 flex items-center gap-2 text-xs text-amber-800">
+        <ShieldAlert size={14} className="text-amber-600 shrink-0" />
+        <span>
+          <strong>Data Protection Policy:</strong> Parent passwords are confidential and protected. School Admins cannot view or reset parent passwords. Only Super Admins can reset parent passwords.
+        </span>
+      </div>
       <div className="overflow-x-auto">
         <table className="w-full text-sm min-w-[1100px]">
           <thead>
-            <StudentParentCredentialTableHead />
+            <StudentParentCredentialTableHead allowPasswordReset={false} />
           </thead>
           <StudentParentCredentialRows
             rows={students}
@@ -198,6 +205,7 @@ function StudentSection({
             savingId={savingId}
             provisioningId={provisioningId}
             showPasswords={showPasswords}
+            allowPasswordReset={false}
           />
         </table>
       </div>
@@ -553,6 +561,10 @@ export default function SchoolAdminPasswordsPage() {
     }
   };
 
+  const handleBlockedParentReset = () => {
+    toast.error('School Admins cannot reset parent passwords. Only Super Admins can reset parent passwords.');
+  };
+
   const staffCount = totalStaff || schools.reduce((n, s) => n + s.staff.length, 0);
   const studentCount = totalStudents || schools.reduce((n, s) => n + s.students.length, 0);
   const singleSchool = filteredSchools.length === 1 ? filteredSchools[0] : null;
@@ -566,7 +578,7 @@ export default function SchoolAdminPasswordsPage() {
             Passwords
           </h1>
           <p className="text-sm text-gray-500">
-            Staff and student–parent logins — same layout as attendance reports
+            Manage school staff passwords. Parent passwords are confidential and managed exclusively by Super Admin.
           </p>
         </div>
         <div className="flex flex-wrap gap-2 self-start">
@@ -644,7 +656,7 @@ export default function SchoolAdminPasswordsPage() {
               setDraftPasswords={setDraftPasswords}
               setDraftConfirmPasswords={setDraftConfirmPasswords}
               onSave={savePassword}
-              onSaveParent={savePassword}
+              onSaveParent={handleBlockedParentReset}
               onProvisionParent={provisionParent}
               savingId={savingId}
               provisioningId={provisioningId}
@@ -664,7 +676,7 @@ export default function SchoolAdminPasswordsPage() {
               setDraftPasswords={setDraftPasswords}
               setDraftConfirmPasswords={setDraftConfirmPasswords}
               onSave={savePassword}
-              onSaveParent={savePassword}
+              onSaveParent={handleBlockedParentReset}
               onProvisionParent={provisionParent}
               savingId={savingId}
               provisioningId={provisioningId}

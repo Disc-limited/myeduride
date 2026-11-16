@@ -219,8 +219,8 @@ export async function GET(request: NextRequest) {
         available_balance_ngn: Number((walletBalKobo / 100).toFixed(2)),
         virtual_account: {
           account_number: walletData?.virtual_account_number || null,
-          bank_name: walletData?.virtual_bank_name || 'Wema Bank (SeerBit)',
-          account_name: walletData?.virtual_account_name || `MyEduRide / ${school.name}`,
+          bank_name: walletData?.virtual_bank_name || null,
+          account_name: walletData?.virtual_account_name || null,
         },
       },
       packages,

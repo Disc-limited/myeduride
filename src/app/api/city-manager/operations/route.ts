@@ -11,7 +11,7 @@ import { getPlatformSchoolId } from '@/lib/auth/super-admin';
 import { resolveEscortCategory } from '@/lib/escort/escort-category';
 import { escortAllowsOverlappingPickup } from '@/lib/escort/escort-scheduler';
 import { extractHandoverPin, ensureDailyHandoverPin } from '@/lib/escort/handover-pin';
-import { calculateEscortFare, resolveStoredEscortFare, parseEscortNotes, normalizeEscortTripType } from '@/lib/escort/escort-pricing';
+import { calculateEscortFare, resolveStoredEscortFare, parseEscortNotes, normalizeEscortTripType, calculateSchoolToHomeDistance } from '@/lib/escort/escort-pricing';
 import { getActiveCityPricing, normalizeCityKey, toEscortFareOverrides } from '@/lib/escort/city-pricing';
 import { readOpsCache, writeOpsCache, invalidateOpsCache } from '@/lib/city-manager/ops-cache';
 
@@ -229,7 +229,13 @@ export async function GET(request: NextRequest) {
         securityPin = extractHandoverPin(b.notes) || extractHandoverPin(matchedAssignment?.notes);
       }
 
-      const distanceKm = meta.distance_km || assignMeta.distance_km || 4.2;
+      const liveDistResult = calculateSchoolToHomeDistance(
+        { gps_lat: sch?.gps_lat, gps_lng: sch?.gps_lng, address: sch?.address },
+        { house_lat: stu?.house_lat ?? b.pickup_lat, house_lng: stu?.house_lng ?? b.pickup_lng, house_address: stu?.house_address ?? b.pickup_address, custom_fields: stu?.custom_fields }
+      );
+      const distanceKm = liveDistResult.isExactCoordinate
+        ? liveDistResult.distanceKm
+        : (Number(meta.distance_km || assignMeta.distance_km) || liveDistResult.distanceKm);
       const tripType = normalizeEscortTripType(
         meta.trip_type ||
         meta.fareResult?.tripType ||
@@ -244,6 +250,8 @@ export async function GET(request: NextRequest) {
         distanceKm,
         tripType,
         rates: fareRates,
+        school: sch,
+        student: stu,
       });
 
       const dailyFare = resolvedFare.dailyFare;
@@ -345,13 +353,21 @@ export async function GET(request: NextRequest) {
         assignMeta?.fareResult?.tripType ||
         'both'
       );
-      const assignDist = Number(assignMeta?.distance_km || assignMeta?.distance || 4.2);
+      const liveAssignDist = calculateSchoolToHomeDistance(
+        { gps_lat: sch?.gps_lat, gps_lng: sch?.gps_lng, address: sch?.address },
+        { house_lat: stu?.house_lat, house_lng: stu?.house_lng, house_address: stu?.house_address, custom_fields: stu?.custom_fields }
+      );
+      const assignDist = liveAssignDist.isExactCoordinate
+        ? liveAssignDist.distanceKm
+        : (Number(assignMeta?.distance_km || assignMeta?.distance) || liveAssignDist.distanceKm);
       const resolvedAssignFare = resolveStoredEscortFare({
         assignmentNotes: a.notes,
         notes: a.notes,
         distanceKm: assignDist,
         tripType: assignTripType,
         rates: fareRates,
+        school: sch,
+        student: stu,
       });
 
       parentRequests.push({
@@ -1343,6 +1359,7 @@ export async function POST(request: NextRequest) {
         accountantName,
         discountReason,
         tripType,
+        discountPercentage,
       } = body;
 
       const rawOriginal = Number(originalFare) || 0;
@@ -1404,6 +1421,8 @@ export async function POST(request: NextRequest) {
         variance,
         is_correction: true,
         is_discount: isDiscount,
+        discountPercentage: discountPercentage ? Number(discountPercentage) : null,
+        discount_percentage: discountPercentage ? Number(discountPercentage) : null,
         accountantApprovalRef: String(accountantApprovalRef || '').trim() || null,
         accountantName: String(accountantName || '').trim() || (isDiscount ? 'City Manager Fare Correction' : 'City Manager'),
         discountReason: String(discountReason || '').trim() || (isDiscount ? 'City Manager discount correction' : 'City Manager fare correction'),
