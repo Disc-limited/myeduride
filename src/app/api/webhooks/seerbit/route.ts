@@ -106,7 +106,7 @@ export async function POST(request: NextRequest) {
       .eq('event_id', eventId)
       .maybeSingle();
 
-    if (existingEvent) {
+    if (existingEvent && existingEvent.status === 'SUCCESS') {
       console.log(`[SeerBit Webhook] Idempotent duplicate event ${eventId} ignored`);
       return NextResponse.json({ message: 'Event already processed' }, { status: 200 });
     }

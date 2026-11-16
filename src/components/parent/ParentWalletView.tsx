@@ -90,6 +90,12 @@ export default function ParentWalletView({
   const [syncingTransfer, setSyncingTransfer] = useState(false);
 
   const handleSyncTransfer = async () => {
+    const userRef = window.prompt(
+      'If you have a transaction reference from your SeerBit receipt or bank transfer, enter it below to verify immediately (or leave blank to refresh):',
+      ''
+    );
+    if (userRef === null) return; // User cancelled prompt
+
     setSyncingTransfer(true);
     const toastId = toast.loading('Checking SeerBit for bank transfer deposits...');
     try {
@@ -97,12 +103,15 @@ export default function ParentWalletView({
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         credentials: 'include',
+        body: JSON.stringify({ reference: userRef.trim() || undefined }),
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || 'Failed to sync');
 
       if (data.credited) {
         toast.success(data.message || 'Deposit verified and credited!', { id: toastId });
+      } else if (data.already_credited) {
+        toast.info(data.message, { id: toastId });
       } else {
         toast.success('Wallet is up to date! Inbound transfers reflect automatically.', { id: toastId });
       }
