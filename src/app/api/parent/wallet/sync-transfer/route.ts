@@ -30,12 +30,13 @@ export async function POST(request: NextRequest) {
     }
 
     if (!wallet.virtual_account_number && !wallet.virtual_account_reference) {
-      return NextResponse.json({
-        error: 'No virtual bank account assigned to this wallet yet.',
-      }, { status: 400 });
+      return NextResponse.json(
+        { error: 'No virtual bank account assigned to this wallet yet.' },
+        { status: 400 }
+      );
     }
 
-    // 2. If a specific transaction reference was provided by the user, verify it directly with SeerBit
+    // 2. If a specific transaction reference was provided, verify it directly with SeerBit
     if (customRef) {
       const verifyRes = await SeerBitClient.verifyPayment(customRef);
       const payments = (verifyRes?.data?.payments || verifyRes?.data) as any;
@@ -115,14 +116,105 @@ export async function POST(request: NextRequest) {
       }
     }
 
-    // 3. Fallback: Fetch latest balance
+    // 3. Automated Check: Check recent pending payment intents for this parent (last 4 hours)
+    const fourHoursAgo = new Date(Date.now() - 4 * 60 * 60 * 1000).toISOString();
+    const { data: pendingIntents } = await supabase
+      .from('payment_intents')
+      .select('*')
+      .eq('user_id', session.user_id)
+      .eq('status', 'PENDING')
+      .gte('created_at', fourHoursAgo)
+      .order('created_at', { ascending: false })
+      .limit(3);
+
+    if (pendingIntents && pendingIntents.length > 0) {
+      for (const pIntent of pendingIntents) {
+        try {
+          const verifyRes = await SeerBitClient.verifyPayment(pIntent.reference);
+          const payments = (verifyRes?.data?.payments || verifyRes?.data) as any;
+          const isSuccess =
+            verifyRes?.status === 'SUCCESS' &&
+            (payments?.status === 'SUCCESS' || payments?.gatewayCode === '00' || payments?.code === '00');
+
+          if (isSuccess && payments) {
+            const amountNgn = Number(payments.amount || pIntent.amount_kobo / 100 || 0);
+            const amountKobo = Math.round(amountNgn * 100);
+
+            const { data: existingTx } = await supabase
+              .from('wallet_transactions')
+              .select('id')
+              .eq('reference', pIntent.reference)
+              .maybeSingle();
+
+            if (!existingTx) {
+              const receipt = generateReceipt({
+                transactionReference: pIntent.reference,
+                gatewayReference: payments.gatewayReference || pIntent.reference,
+                entityType: 'PARENT',
+                entityName: session.full_name || wallet.user_profile?.full_name || 'Valued Parent',
+                userEmail: session.email || wallet.user_profile?.email || 'parent@myeduride.com',
+                amountKobo,
+                paymentChannel: payments.paymentType || 'SEERBIT_CHECKOUT',
+                timestamp: new Date(),
+                description: `Wallet deposit verified (${payments.paymentType || 'Online Checkout'})`,
+              });
+
+              const { data: creditResult } = await supabase.rpc('execute_atomic_wallet_credit', {
+                p_wallet_id: wallet.id,
+                p_amount_kobo: amountKobo,
+                p_channel: payments.paymentType || 'SEERBIT_CHECKOUT',
+                p_reference: pIntent.reference,
+                p_description: `Wallet deposit verified (${payments.paymentType || 'Online Checkout'})`,
+                p_metadata: {
+                  seerbit_reference: payments.gatewayReference || pIntent.reference,
+                  verified_via: 'AUTO_INTENT_SYNC',
+                  receipt,
+                },
+                p_payment_intent_id: pIntent.id,
+              });
+
+              await supabase
+                .from('payment_intents')
+                .update({ status: 'SUCCESS', updated_at: new Date().toISOString() })
+                .eq('id', pIntent.id);
+
+              if (creditResult?.balance_after_kobo) {
+                const newBalNgn = Number(creditResult.balance_after_kobo) / 100;
+                await supabase
+                  .from('user_profiles')
+                  .update({ wallet_balance: newBalNgn })
+                  .eq('id', session.user_id);
+
+                return NextResponse.json({
+                  success: true,
+                  credited: true,
+                  amount_ngn: amountNgn,
+                  new_balance_ngn: newBalNgn,
+                  message: `Verified and credited deposit of ₦${amountNgn.toLocaleString()}!`,
+                });
+              }
+            }
+          }
+        } catch (intentErr) {
+          console.warn('[sync-transfer] Pending intent check warning:', intentErr);
+        }
+      }
+    }
+
+    // 4. Return current fresh balance
+    const { data: freshWallet } = await supabase
+      .from('wallets')
+      .select('available_balance_kobo, virtual_account_number, virtual_bank_name')
+      .eq('id', wallet.id)
+      .single();
+
     return NextResponse.json({
       success: true,
       synced: true,
-      balance_ngn: Number(wallet.available_balance_kobo) / 100,
-      account_number: wallet.virtual_account_number,
-      bank_name: wallet.virtual_bank_name,
-      message: 'Wallet status synced with gateway.',
+      balance_ngn: Number(freshWallet?.available_balance_kobo || wallet.available_balance_kobo) / 100,
+      account_number: freshWallet?.virtual_account_number || wallet.virtual_account_number,
+      bank_name: freshWallet?.virtual_bank_name || wallet.virtual_bank_name,
+      message: 'Wallet status is up to date.',
     });
   } catch (err: any) {
     console.error('[sync-transfer error]:', err);

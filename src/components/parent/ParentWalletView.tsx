@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import {
   Wallet,
   ArrowDownLeft,
@@ -88,32 +88,27 @@ export default function ParentWalletView({
   const [showBalance, setShowBalance] = useState(true);
   const [copiedAccount, setCopiedAccount] = useState(false);
   const [syncingTransfer, setSyncingTransfer] = useState(false);
+  const prevBalanceRef = useRef<number | null>(null);
 
-  const handleSyncTransfer = async () => {
-    const userRef = window.prompt(
-      'If you have a transaction reference from your SeerBit receipt or bank transfer, enter it below to verify immediately (or leave blank to refresh):',
-      ''
-    );
-    if (userRef === null) return; // User cancelled prompt
-
+  const handleSyncTransfer = async (manualRef?: string) => {
     setSyncingTransfer(true);
-    const toastId = toast.loading('Checking SeerBit for bank transfer deposits...');
+    const toastId = toast.loading('Reconciling wallet with payment gateway...');
     try {
       const res = await fetch('/api/parent/wallet/sync-transfer', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         credentials: 'include',
-        body: JSON.stringify({ reference: userRef.trim() || undefined }),
+        body: JSON.stringify({ reference: manualRef || undefined }),
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || 'Failed to sync');
 
       if (data.credited) {
-        toast.success(data.message || 'Deposit verified and credited!', { id: toastId });
+        toast.success(data.message || `Deposit of ₦${data.amount_ngn} verified and credited!`, { id: toastId });
       } else if (data.already_credited) {
         toast.info(data.message, { id: toastId });
       } else {
-        toast.success('Wallet is up to date! Inbound transfers reflect automatically.', { id: toastId });
+        toast.success('Wallet is up to date and active.', { id: toastId });
       }
       fetchWallet(true);
     } catch (err: any) {
@@ -150,6 +145,14 @@ export default function ParentWalletView({
       }
       const data = await res.json();
       if (data.success && data.wallet) {
+        const newBal = data.wallet.available_balance_ngn;
+        if (prevBalanceRef.current !== null && newBal > prevBalanceRef.current) {
+          const diff = newBal - prevBalanceRef.current;
+          toast.success(`₦${diff.toLocaleString()} received! Wallet updated to ₦${newBal.toLocaleString()}`, {
+            duration: 6000,
+          });
+        }
+        prevBalanceRef.current = newBal;
         setWallet(data.wallet);
         setTransactions(data.transactions || []);
         setEscrowHolds(data.escrow_holds || []);
@@ -225,8 +228,26 @@ export default function ParentWalletView({
     }
   }, [fetchWallet, verifyingRef]);
 
+  // Automated background polling & visibility re-sync (Zero user interaction required)
   useEffect(() => {
     fetchWallet(false);
+
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === 'visible') {
+        fetchWallet(true);
+      }
+    };
+    document.addEventListener('visibilitychange', handleVisibilityChange);
+
+    // Poll silently every 8 seconds to reflect newly arrived bank transfers
+    const pollInterval = setInterval(() => {
+      fetchWallet(true);
+    }, 8000);
+
+    return () => {
+      document.removeEventListener('visibilitychange', handleVisibilityChange);
+      clearInterval(pollInterval);
+    };
   }, [fetchWallet]);
 
   const handleCopyAccount = (accountNum: string) => {
